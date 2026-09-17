@@ -15,6 +15,7 @@ type ReportExportButtonsProps<T> = {
   disabled?: boolean;
   iconOnly?: boolean;
   appearance?: "default" | "on-dark";
+  onAction?: (action: "print" | "pdf" | "excel") => void;
 };
 
 export function ReportExportButtons<T>({
@@ -22,10 +23,12 @@ export function ReportExportButtons<T>({
   disabled,
   iconOnly = false,
   appearance = "default",
+  onAction,
 }: ReportExportButtonsProps<T>) {
   const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
 
   async function exportReport(format: "pdf" | "excel") {
+    onAction?.(format);
     setExporting(format);
     try {
       if (format === "pdf") await exportReportToPdf(config);
@@ -40,6 +43,7 @@ export function ReportExportButtons<T>({
 
   function printSelectedReport() {
     try {
+      onAction?.("print");
       printReport(config);
     } catch {
       toast.error("No se pudo preparar la impresión del reporte.");

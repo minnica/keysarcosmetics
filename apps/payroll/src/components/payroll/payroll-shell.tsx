@@ -15,6 +15,7 @@ import {
   Delete,
   EyeOff,
   FileText,
+  Gift,
   Gavel,
   HandCoins,
   Landmark,
@@ -35,6 +36,7 @@ import {
   Sun,
   TrendingUp,
   UserCircle2,
+  UserMinus,
   KeyRound,
   UserRoundCheck,
   UsersRound,
@@ -56,7 +58,13 @@ import {
   usePayrollDemo,
 } from "./payroll-demo-context";
 
-type SectionId = "direction" | "people" | "payroll" | "operations" | "settings" | "reports";
+type SectionId =
+  | "direction"
+  | "people"
+  | "payroll"
+  | "operations"
+  | "settings"
+  | "reports";
 type NavItem = { href: string; label: string; icon: React.ElementType };
 type NavSection = { id: SectionId; label: string; items: NavItem[] };
 
@@ -111,6 +119,12 @@ const sections: NavSection[] = [
         label: "Dispersión de nómina",
         icon: Landmark,
       },
+      {
+        href: "/liquidaciones-finiquitos",
+        label: "Liquidaciones y finiquitos",
+        icon: UserMinus,
+      },
+      { href: "/aguinaldos", label: "Aguinaldos", icon: Gift },
     ],
   },
   {
@@ -181,6 +195,11 @@ const sections: NavSection[] = [
       },
       { href: "/reportes/bonos", label: "Bonos", icon: Sparkles },
       { href: "/reportes/multas", label: "Multas", icon: Gavel },
+      {
+        href: "/reportes/liquidaciones",
+        label: "Liquidaciones",
+        icon: UserMinus,
+      },
       { href: "/recibos", label: "Recibos", icon: FileText },
       {
         href: "/recibos-kiosco",
@@ -750,9 +769,7 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
         return;
       }
       privacyTimeoutId = window.setTimeout(() => {
-        if (
-          Date.now() - lastActivityRef.current >= PRIVACY_IDLE_LIMIT_MS
-        ) {
+        if (Date.now() - lastActivityRef.current >= PRIVACY_IDLE_LIMIT_MS) {
           lockSensitiveInformation();
         } else {
           scheduleSecurityTimers();
@@ -881,7 +898,10 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
                 <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#d2a77c]">
                   Protección de nómina
                 </p>
-                <h2 id="privacy-lock-title" className="mt-1 text-lg font-semibold">
+                <h2
+                  id="privacy-lock-title"
+                  className="mt-1 text-lg font-semibold"
+                >
                   Información bloqueada
                 </h2>
                 <p
@@ -921,18 +941,16 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
                 aria-label="Código privado master capturado con teclado seguro"
               />
               <div className="mt-3 grid grid-cols-3 gap-2">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(
-                  (digit) => (
-                    <button
-                      key={digit}
-                      type="button"
-                      onClick={() => addPrivateCodeDigit(digit)}
-                      className="h-9 rounded-xl border border-white/10 bg-white/[0.04] text-sm font-semibold transition-colors hover:border-[#d2a77c]/55 hover:bg-white/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d2a77c]"
-                    >
-                      {digit}
-                    </button>
-                  ),
-                )}
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
+                  <button
+                    key={digit}
+                    type="button"
+                    onClick={() => addPrivateCodeDigit(digit)}
+                    className="h-9 rounded-xl border border-white/10 bg-white/[0.04] text-sm font-semibold transition-colors hover:border-[#d2a77c]/55 hover:bg-white/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d2a77c]"
+                  >
+                    {digit}
+                  </button>
+                ))}
                 <button
                   type="button"
                   onClick={() => setPrivateCode("")}
@@ -959,7 +977,10 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
               {unlockError && (
-                <p className="mt-3 text-xs font-medium text-rose-300" role="alert">
+                <p
+                  className="mt-3 text-xs font-medium text-rose-300"
+                  role="alert"
+                >
                   {unlockError}
                 </p>
               )}
@@ -974,7 +995,8 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
               <KeyRound className="mr-2 h-4 w-4" /> Desbloquear información
             </Button>
             <p className="mt-3 text-center text-[10px] leading-4 text-white/45">
-              Si la inactividad llega a 5 minutos, la sesión se cerrará por completo.
+              Si la inactividad llega a 5 minutos, la sesión se cerrará por
+              completo.
             </p>
           </section>
         </div>

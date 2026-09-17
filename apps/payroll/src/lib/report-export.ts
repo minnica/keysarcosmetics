@@ -35,6 +35,7 @@ export type ReportExportConfig<T> = {
   metadata?: ReportMetadataItem[];
   metrics?: ReportMetric[];
   analysis?: string[];
+  signatureLines?: string[];
   summarySection?: {
     title: string;
     sheetName?: string;
@@ -169,12 +170,20 @@ export async function exportReportToExcel<T>(
         ),
       ]
     : [];
+  const signatureRows = config.signatureLines?.length
+    ? [
+        [],
+        ["FIRMAS"],
+        ...config.signatureLines.map((label) => [uppercase(label), "____________________________"]),
+      ]
+    : [];
   const sheet = XLSX.utils.aoa_to_sheet([
     ...titleRows,
     [],
     config.columns.map((column) => uppercase(column.header)),
     ...bodyRows,
     ...footerRows,
+    ...signatureRows,
   ]);
 
   const headerRowIndex = titleRows.length + 1;
@@ -350,6 +359,14 @@ export function printReport<T>(config: ReportExportConfig<T>): void {
         }).format(config.summarySection.total),
       )}</td></tr></tbody></table></section>`
     : "";
+  const signatures = config.signatureLines?.length
+    ? `<section class="signatures">${config.signatureLines
+        .map(
+          (label) =>
+            `<div class="signature"><span></span><strong>${escapeHtml(uppercase(label))}</strong></div>`,
+        )
+        .join("")}</section>`
+    : "";
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(
     config.title,
   )}</title><style>
@@ -386,6 +403,9 @@ export function printReport<T>(config: ReportExportConfig<T>): void {
     .summary-section { margin-top: 12px; break-inside: avoid; }
     .summary-table { width: min(100%, 520px); font-size: 8pt; }
     .summary-table th:first-child, .summary-table td:first-child { text-align: left; }
+    .signatures { display: grid; grid-template-columns: repeat(${Math.max(config.signatureLines?.length ?? 0, 1)}, minmax(0, 1fr)); gap: 24px; margin: 28px 12px 8px; break-inside: avoid; }
+    .signature { text-align: center; font-size: 7pt; }
+    .signature span { display: block; height: 26px; border-bottom: 1px solid #5f5852; margin-bottom: 5px; }
     .footer { margin-top: 8px; padding-top: 5px; border-top: 1px solid #d8c9ba; color: #756a60; font-size: 6.5pt; text-align: right; }
     @media screen { body { padding: 18px; } }
   </style></head><body><header><div class="brand">KEYSAR COSMETICS · PAYROLL</div><h1>${escapeHtml(
@@ -405,7 +425,7 @@ export function printReport<T>(config: ReportExportConfig<T>): void {
     .join("")}</section>
   <section class="analysis"><h2>ANÁLISIS DEL REPORTE</h2><ul>${analysis
     .map((item) => `<li>${escapeHtml(item)}</li>`)
-    .join("")}</ul></section>${printTableHtml(config)}${summary}<footer class="footer">Reporte generado para la selección indicada · ${escapeHtml(
+    .join("")}</ul></section>${printTableHtml(config)}${summary}${signatures}<footer class="footer">Reporte generado para la selección indicada · ${escapeHtml(
     new Intl.DateTimeFormat("es-MX", {
       dateStyle: "medium",
       timeStyle: "short",
@@ -692,6 +712,32 @@ export async function exportReportToPdf<T>(
         right: horizontalMargin,
         bottom: 30,
       },
+    });
+  }
+  if (config.signatureLines?.length) {
+    const finalY =
+      (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable
+        ?.finalY ?? reportStartY;
+    const neededHeight = 58;
+    if (finalY + neededHeight > doc.internal.pageSize.getHeight() - 30)
+      doc.addPage();
+    const signatureY =
+      finalY + neededHeight > doc.internal.pageSize.getHeight() - 30
+        ? 72
+        : finalY + 42;
+    const widthPerSignature = usableWidth / config.signatureLines.length;
+    config.signatureLines.forEach((label, index) => {
+      const left = horizontalMargin + index * widthPerSignature + 12;
+      const right =
+        horizontalMargin + (index + 1) * widthPerSignature - 12;
+      doc.setDrawColor(95, 88, 82);
+      doc.line(left, signatureY, right, signatureY);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(45, 40, 36);
+      doc.text(uppercase(label), (left + right) / 2, signatureY + 12, {
+        align: "center",
+      });
     });
   }
   const pageCount = doc.getNumberOfPages();

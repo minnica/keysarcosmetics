@@ -20,6 +20,8 @@ export type PayrollModule =
   | "SPECIALIST"
   | "COMMISSION"
   | "CONTRACTOR"
+  | "SETTLEMENT"
+  | "CHRISTMAS_BONUS"
   | `CUSTOM_${string}`;
 export type PayrollModuleConcept =
   | "SALARY"
@@ -30,7 +32,9 @@ export type PayrollModuleConcept =
   | "ADJUSTMENT_MINUS"
   | "LOAN"
   | "ADVANCE"
-  | "VIATICS";
+  | "VIATICS"
+  | "SETTLEMENT"
+  | "CHRISTMAS_BONUS";
 export type PayrollPeriodFrequency = "WEEKLY" | "BIWEEKLY" | "SPECIAL";
 export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type PayrollStatus = "DRAFT" | "APPROVED" | "PAID";
@@ -143,6 +147,17 @@ export interface DemoEmployee {
   secondaryAccessKeyUpdatedBy?: string | null;
 }
 
+export function employeeAppliesToPeriod(
+  employee: Pick<DemoEmployee, "hireDate" | "terminationDate">,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return (
+    employee.hireDate <= periodEnd &&
+    (!employee.terminationDate || employee.terminationDate >= periodStart)
+  );
+}
+
 export interface DemoPayrollModuleDefinition {
   id: PayrollModule;
   name: string;
@@ -203,7 +218,20 @@ export interface DemoScheme {
   active: boolean;
   effectiveFrom?: string;
   createdAt?: string;
+  deactivatedAt?: string | null;
   tiers: CommissionTier[];
+}
+
+export function schemeAppliesToPeriod(
+  scheme: DemoScheme,
+  periodStart: string,
+  periodEnd: string,
+) {
+  const started = (scheme.effectiveFrom ?? "0000-01-01") <= periodEnd;
+  const remainsAvailable =
+    scheme.active ||
+    Boolean(scheme.deactivatedAt && scheme.deactivatedAt >= periodStart);
+  return started && remainsAvailable;
 }
 
 export interface DemoSchemeAssignment {
@@ -378,6 +406,108 @@ export interface DemoPeriodTaxInclusion {
   updatedByEmployeeId: string;
 }
 
+export type SpecialPayrollStatus = "DRAFT" | "APPROVED" | "PAID";
+
+export interface DemoSettlementConcept {
+  id: string;
+  key:
+    | "PENDING_SALARY"
+    | "PROPORTIONAL_CHRISTMAS_BONUS"
+    | "PROPORTIONAL_VACATION"
+    | "VACATION_PREMIUM"
+    | "PENDING_VARIABLE_PAY"
+    | "SENIORITY_PREMIUM"
+    | "CONSTITUTIONAL_INDEMNITY"
+    | "TWENTY_DAYS_PER_YEAR"
+    | "OTHER_AGREEMENT";
+  label: string;
+  amount: number;
+  enabled: boolean;
+  legalNote: string;
+}
+
+export interface DemoTerminationSettlement {
+  id: string;
+  employeeId: string;
+  kind: "FINIQUITO" | "LIQUIDACION";
+  applies: boolean;
+  status: SpecialPayrollStatus;
+  hireDate: string;
+  terminationDate: string;
+  paymentDate: string;
+  costBranchIds: string[];
+  concepts: DemoSettlementConcept[];
+  includeSocialCost: boolean;
+  socialCostRate: number;
+  includeIsr: boolean;
+  isrRate: number;
+  agreementNotes: string;
+  caseClosed: boolean;
+  outcome: "PENDING" | "WON" | "SETTLED";
+  closedAt: string | null;
+  receiptPreparedAt: string | null;
+  updatedAt: string;
+}
+
+export interface DemoChristmasBonusPaymentPeriod {
+  id: string;
+  year: number;
+  name: string;
+  paymentDate: string;
+  percentage: number;
+  active: boolean;
+}
+
+export interface DemoChristmasBonus {
+  id: string;
+  employeeId: string;
+  year: number;
+  applies: boolean;
+  status: SpecialPayrollStatus;
+  daysGranted: number;
+  grossAmount: number;
+  paymentDate: string;
+  costBranchIds: string[];
+  includeSocialCost: boolean;
+  socialCostRate: number;
+  includeIsr: boolean;
+  isrRate: number;
+  paidPeriodIds: string[];
+  notes: string;
+  updatedAt: string;
+}
+
+export function christmasBonusPaidAmountForRange(
+  bonus: DemoChristmasBonus,
+  periods: DemoChristmasBonusPaymentPeriod[],
+  periodStart: string,
+  periodEnd: string,
+) {
+  if (!bonus.applies) return 0;
+  const paidPeriodIds = new Set(bonus.paidPeriodIds);
+  return periods
+    .filter(
+      (period) =>
+        period.year === bonus.year &&
+        period.active &&
+        paidPeriodIds.has(period.id) &&
+        period.paymentDate >= periodStart &&
+        period.paymentDate <= periodEnd,
+    )
+    .reduce(
+      (sum, period) => sum + bonus.grossAmount * period.percentage,
+      0,
+    );
+}
+
+export function terminationSettlementTotal(
+  settlement: DemoTerminationSettlement,
+) {
+  return settlement.concepts
+    .filter((concept) => concept.enabled)
+    .reduce((sum, concept) => sum + concept.amount, 0);
+}
+
 export function periodTaxInclusionForRange(
   inclusions: DemoPeriodTaxInclusion[],
   periodStart: string,
@@ -454,6 +584,9 @@ export interface DemoState {
   periodConfigs: DemoPayrollPeriodConfig[];
   taxAssignments: DemoPayrollTaxAssignment[];
   periodTaxInclusions: DemoPeriodTaxInclusion[];
+  terminationSettlements: DemoTerminationSettlement[];
+  christmasBonuses: DemoChristmasBonus[];
+  christmasBonusPaymentPeriods: DemoChristmasBonusPaymentPeriod[];
   decisions: DemoEmployeeDecision[];
   kioskReceiptDecisions: DemoKioskReceiptDecision[];
   viaticsConcepts: DemoViaticsConcept[];
@@ -488,6 +621,8 @@ export interface EmployeePayrollLine {
   externalDeductions: number;
   viaticsAdditions: number;
   viaticsDeductions: number;
+  settlementPayment: number;
+  christmasBonusPayment: number;
   baseSalaryOverride: number | null;
   total: number;
   socialCost: number;
@@ -573,6 +708,18 @@ export const modulePermissionCatalog = [
     label: "Dispersión de nómina",
     section: "Nómina",
     paths: ["/dispersion-nomina"],
+  },
+  {
+    permission: "module.settlements",
+    label: "Liquidaciones y finiquitos",
+    section: "Nómina",
+    paths: ["/liquidaciones-finiquitos"],
+  },
+  {
+    permission: "module.christmas_bonus",
+    label: "Aguinaldos",
+    section: "Nómina",
+    paths: ["/aguinaldos"],
   },
   {
     permission: "module.commission_calculation",
@@ -706,6 +853,12 @@ export const modulePermissionCatalog = [
     section: "Reportes",
     paths: ["/recibos-kiosco"],
   },
+  {
+    permission: "module.settlement_reports",
+    label: "Reporte de liquidaciones",
+    section: "Reportes",
+    paths: ["/reportes/liquidaciones"],
+  },
 ] as const;
 
 export function customPayrollModulePermission(moduleId: string) {
@@ -787,6 +940,8 @@ export const payrollModuleLabels: Record<string, string> = {
   SPECIALIST: "ESPECIALISTAS",
   COMMISSION: "VENDEDORES",
   CONTRACTOR: "HONORARIOS",
+  SETTLEMENT: "LIQUIDACIONES Y FINIQUITOS",
+  CHRISTMAS_BONUS: "AGUINALDOS",
 };
 
 export function payrollModuleLabel(
@@ -1514,9 +1669,9 @@ function createInitialState(): DemoState {
       account: "•••• 1313",
       clabe: "000000000000001313",
       roleId: "role-employee",
-      active: true,
+      active: false,
       hireDate: "2025-08-04",
-      terminationDate: null,
+      terminationDate: isoDate(new Date()),
       socialCostRate: 0.2,
       isrCostRate: 0.1,
       ivaRate: 0,
@@ -1870,6 +2025,28 @@ function createInitialState(): DemoState {
         active: true,
         custom: false,
         createdAt: "2025-01-01",
+      },
+      {
+        id: "SETTLEMENT",
+        name: "LIQUIDACIONES Y FINIQUITOS",
+        description:
+          "Bajas de personal, acuerdos y prestaciones pendientes con costo dirigido por sucursal.",
+        concepts: ["SETTLEMENT"],
+        positionIds: [],
+        active: true,
+        custom: false,
+        createdAt: "2026-09-17",
+      },
+      {
+        id: "CHRISTMAS_BONUS",
+        name: "AGUINALDOS",
+        description:
+          "Aguinaldo anual por días otorgados, proporcionalidad y cargas configurables.",
+        concepts: ["CHRISTMAS_BONUS"],
+        positionIds: [],
+        active: true,
+        custom: false,
+        createdAt: "2026-09-17",
       },
     ],
     kioskTargets,
@@ -2544,6 +2721,8 @@ function createInitialState(): DemoState {
         "SPECIALIST",
         "COMMISSION",
         "CONTRACTOR",
+        "SETTLEMENT",
+        "CHRISTMAS_BONUS",
       ] as PayrollModule[]
     ).map((module) => ({
       id: `run-${module.toLocaleLowerCase()}`,
@@ -2562,17 +2741,26 @@ function createInitialState(): DemoState {
         "SPECIALIST",
         "COMMISSION",
         "CONTRACTOR",
+        "SETTLEMENT",
+        "CHRISTMAS_BONUS",
       ] as PayrollModule[]
     ).map((module) => ({
       id: `period-${module.toLocaleLowerCase()}`,
       module,
-      frequency: module === "CONTRACTOR" ? "SPECIAL" : "BIWEEKLY",
+      frequency:
+        module === "CONTRACTOR" ||
+        module === "SETTLEMENT" ||
+        module === "CHRISTMAS_BONUS"
+          ? "SPECIAL"
+          : "BIWEEKLY",
       periodStart: period.start,
       periodEnd: period.end,
       cutoffDate: period.end,
       active: true,
       label:
-        module === "CONTRACTOR"
+        module === "CONTRACTOR" ||
+        module === "SETTLEMENT" ||
+        module === "CHRISTMAS_BONUS"
           ? `Nómina especial · ${period.start} — ${period.end}`
           : period.label,
       updatedAt: new Date().toISOString(),
@@ -2598,6 +2786,137 @@ function createInitialState(): DemoState {
         includeIsr: true,
         updatedAt: new Date().toISOString(),
         updatedByEmployeeId: "emp-monica",
+      },
+    ],
+    terminationSettlements: [
+      {
+        id: "settlement-demo-13",
+        employeeId: "emp-demo-13",
+        kind: "FINIQUITO",
+        applies: true,
+        status: "DRAFT",
+        hireDate: "2025-08-04",
+        terminationDate: isoDate(new Date()),
+        paymentDate: isoDate(new Date()),
+        costBranchIds: ["branch-demo-perisur"],
+        concepts: [
+          {
+            id: "settlement-demo-13-salary",
+            key: "PENDING_SALARY",
+            label: "SUELDO PENDIENTE HASTA LA FECHA DE BAJA",
+            amount: 0,
+            enabled: false,
+            legalNote:
+              "Activar solo si existen días no incluidos en la nómina ordinaria.",
+          },
+          {
+            id: "settlement-demo-13-christmas",
+            key: "PROPORTIONAL_CHRISTMAS_BONUS",
+            label: "AGUINALDO PROPORCIONAL",
+            amount: Math.round((14800 / 30) * 15 * 0.71 * 100) / 100,
+            enabled: true,
+            legalNote: "LFT, artículo 87. Ajustar al tiempo laborado.",
+          },
+          {
+            id: "settlement-demo-13-vacation",
+            key: "PROPORTIONAL_VACATION",
+            label: "VACACIONES PROPORCIONALES PENDIENTES",
+            amount: Math.round((14800 / 30) * 8.5 * 100) / 100,
+            enabled: true,
+            legalNote: "LFT, artículos 76 y 79. Validar saldo real.",
+          },
+          {
+            id: "settlement-demo-13-premium",
+            key: "VACATION_PREMIUM",
+            label: "PRIMA VACACIONAL",
+            amount: Math.round((14800 / 30) * 8.5 * 0.25 * 100) / 100,
+            enabled: true,
+            legalNote: "LFT, artículo 80. Mínimo legal de 25%.",
+          },
+          {
+            id: "settlement-demo-13-variable",
+            key: "PENDING_VARIABLE_PAY",
+            label: "COMISIONES, BONOS U OTRAS PERCEPCIONES PENDIENTES",
+            amount: 0,
+            enabled: false,
+            legalNote: "Capturar únicamente lo devengado y pendiente.",
+          },
+          {
+            id: "settlement-demo-13-seniority",
+            key: "SENIORITY_PREMIUM",
+            label: "PRIMA DE ANTIGÜEDAD · CUANDO PROCEDA",
+            amount: 0,
+            enabled: false,
+            legalNote:
+              "LFT, artículo 162. Requiere validar procedencia y tope.",
+          },
+          {
+            id: "settlement-demo-13-indemnity",
+            key: "CONSTITUTIONAL_INDEMNITY",
+            label: "INDEMNIZACIÓN CONSTITUCIONAL · CUANDO PROCEDA",
+            amount: 0,
+            enabled: false,
+            legalNote:
+              "Configurable según motivo de terminación y asesoría laboral.",
+          },
+          {
+            id: "settlement-demo-13-twenty-days",
+            key: "TWENTY_DAYS_PER_YEAR",
+            label: "20 DÍAS POR AÑO · CUANDO PROCEDA",
+            amount: 0,
+            enabled: false,
+            legalNote: "No aplica automáticamente; validar el supuesto legal.",
+          },
+          {
+            id: "settlement-demo-13-other",
+            key: "OTHER_AGREEMENT",
+            label: "OTRO CONCEPTO O ACUERDO",
+            amount: 0,
+            enabled: false,
+            legalNote: "Campo editable para acuerdo documentado.",
+          },
+        ],
+        includeSocialCost: false,
+        socialCostRate: 0,
+        includeIsr: true,
+        isrRate: 0.1,
+        agreementNotes:
+          "CASO DEMO. REVISAR MOTIVO DE BAJA Y CÁLCULO CON EL ÁREA LEGAL.",
+        caseClosed: false,
+        outcome: "PENDING",
+        closedAt: null,
+        receiptPreparedAt: null,
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+    christmasBonuses: [
+      {
+        id: "christmas-emp-monica-2026",
+        employeeId: "emp-monica",
+        year: new Date().getFullYear(),
+        applies: true,
+        status: "DRAFT",
+        daysGranted: 20,
+        grossAmount: Math.round((28000 / 30) * 20 * 100) / 100,
+        paymentDate: `${new Date().getFullYear()}-12-15`,
+        costBranchIds: branches.map((branch) => branch.id),
+        includeSocialCost: true,
+        socialCostRate: 0.25,
+        includeIsr: true,
+        isrRate: 0.16,
+        paidPeriodIds: [],
+        notes: "20 DÍAS OTORGADOS POR POLÍTICA INTERNA · REGISTRO DEMO.",
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+    christmasBonusPaymentPeriods: [
+      {
+        id: `christmas-payment-${new Date().getFullYear()}-1`,
+        year: new Date().getFullYear(),
+        name: "PAGO ÚNICO DE AGUINALDO",
+        paymentDate: `${new Date().getFullYear()}-12-15`,
+        percentage: 1,
+        active: true,
       },
     ],
     viaticsConcepts: [
@@ -2872,6 +3191,12 @@ interface DemoPayrollContextValue {
       Pick<DemoPeriodTaxInclusion, "includeSocialCost" | "includeIsr">
     >,
   ) => void;
+  upsertTerminationSettlement: (settlement: DemoTerminationSettlement) => void;
+  upsertChristmasBonus: (bonus: DemoChristmasBonus) => void;
+  replaceChristmasBonusPaymentPeriods: (
+    year: number,
+    periods: DemoChristmasBonusPaymentPeriod[],
+  ) => void;
   setEmployeeViatics: (
     employeeId: string,
     enabled: boolean,
@@ -2997,12 +3322,35 @@ export function PayrollDemoProvider({
         payrollModule === "CONSOLIDATED" ||
         Boolean(moduleDefinition?.concepts.includes(concept));
       return state.employees
-        .filter(
-          (employee) =>
-            employee.hireDate <= configuredEnd &&
-            (!employee.terminationDate ||
-              employee.terminationDate >= periodStart),
-        )
+        .filter((employee) => {
+          const hasSettlementPayment = state.terminationSettlements.some(
+            (settlement) =>
+              settlement.employeeId === employee.id &&
+              settlement.applies &&
+              settlement.status === "PAID" &&
+              settlement.paymentDate >= periodStart &&
+              settlement.paymentDate <= configuredEnd &&
+              (payrollModule === "CONSOLIDATED" ||
+                payrollModule === "SETTLEMENT"),
+          );
+          const hasChristmasBonusPayment = state.christmasBonuses.some(
+            (bonus) =>
+              bonus.employeeId === employee.id &&
+              christmasBonusPaidAmountForRange(
+                bonus,
+                state.christmasBonusPaymentPeriods,
+                periodStart,
+                configuredEnd,
+              ) > 0 &&
+              (payrollModule === "CONSOLIDATED" ||
+                payrollModule === "CHRISTMAS_BONUS"),
+          );
+          return (
+            employeeAppliesToPeriod(employee, periodStart, configuredEnd) ||
+            hasSettlementPayment ||
+            hasChristmasBonusPayment
+          );
+        })
         .map((employee) => {
           const employmentStart =
             employee.hireDate > periodStart ? employee.hireDate : periodStart;
@@ -3022,8 +3370,8 @@ export function PayrollDemoProvider({
             .filter(
               (sale) =>
                 sale.employeeId === employee.id &&
-                sale.date >= periodStart &&
-                sale.date <= configuredEnd,
+                sale.date >= employmentStart &&
+                sale.date <= employmentEnd,
             )
             .reduce((sum, sale) => sum + sale.amount, 0);
           const calculationMode =
@@ -3043,8 +3391,7 @@ export function PayrollDemoProvider({
             (item) =>
               item.id ===
                 (applicableAssignment?.schemeId ?? employee.schemeId) &&
-              item.active &&
-              (item.effectiveFrom ?? "0000-01-01") <= configuredEnd,
+              schemeAppliesToPeriod(item, periodStart, configuredEnd),
           );
           const tier = scheme?.tiers.find(
             (item) =>
@@ -3247,6 +3594,39 @@ export function PayrollDemoProvider({
             baseSalaryOverride === null
               ? calculatedFixedSalary
               : baseSalaryOverride * (workedDays / periodDays);
+          const settlementRecord = state.terminationSettlements.find(
+            (settlement) =>
+              settlement.employeeId === employee.id &&
+              settlement.applies &&
+              settlement.status === "PAID" &&
+              settlement.paymentDate >= periodStart &&
+              settlement.paymentDate <= configuredEnd &&
+              (payrollModule === "CONSOLIDATED" ||
+                payrollModule === "SETTLEMENT"),
+          );
+          const christmasBonusRecord = state.christmasBonuses.find(
+            (bonus) =>
+              bonus.employeeId === employee.id &&
+              christmasBonusPaidAmountForRange(
+                bonus,
+                state.christmasBonusPaymentPeriods,
+                periodStart,
+                configuredEnd,
+              ) > 0 &&
+              (payrollModule === "CONSOLIDATED" ||
+                payrollModule === "CHRISTMAS_BONUS"),
+          );
+          const settlementPayment = settlementRecord
+            ? terminationSettlementTotal(settlementRecord)
+            : 0;
+          const christmasBonusPayment = christmasBonusRecord
+            ? christmasBonusPaidAmountForRange(
+                christmasBonusRecord,
+                state.christmasBonusPaymentPeriods,
+                periodStart,
+                configuredEnd,
+              )
+            : 0;
           const ordinaryNet =
             fixedSalary +
             commission +
@@ -3272,8 +3652,10 @@ export function PayrollDemoProvider({
                 loanDeduction -
                 totalExternalDeductions
               : 0;
-          const total =
+          const ordinaryTotal =
             employee.category === "CONTRACTOR" ? invoicePayable : ordinaryNet;
+          const total =
+            ordinaryTotal + settlementPayment + christmasBonusPayment;
           const employeePayrollModule =
             payrollModule === "CONSOLIDATED"
               ? (commissionModuleId ??
@@ -3288,27 +3670,47 @@ export function PayrollDemoProvider({
               assignment.payrollModule === employeePayrollModule &&
               assignment.employeeId === employee.id,
           );
-          const taxableBase = Math.max(total, 0);
-          const socialCost =
+          const taxableBase = Math.max(ordinaryTotal, 0);
+          const ordinarySocialCost =
             !includeSocialCost || taxAssignment?.socialCostEnabled === false
               ? 0
               : taxAssignment?.socialCostMode === "FIXED"
                 ? taxAssignment.socialCostValue
                 : taxableBase *
                   (taxAssignment?.socialCostValue ?? employee.socialCostRate);
-          const isrCost =
+          const ordinaryIsrCost =
             !includeIsr || taxAssignment?.isrCostEnabled === false
               ? 0
               : taxAssignment?.isrCostMode === "FIXED"
                 ? taxAssignment.isrCostValue
                 : taxableBase *
                   (taxAssignment?.isrCostValue ?? employee.isrCostRate);
+          const specialSocialCost = !includeSocialCost
+            ? 0
+            : (settlementRecord?.includeSocialCost
+                ? settlementPayment * settlementRecord.socialCostRate
+                : 0) +
+              (christmasBonusRecord?.includeSocialCost
+                ? christmasBonusPayment * christmasBonusRecord.socialCostRate
+                : 0);
+          const specialIsrCost = !includeIsr
+            ? 0
+            : (settlementRecord?.includeIsr
+                ? settlementPayment * settlementRecord.isrRate
+                : 0) +
+              (christmasBonusRecord?.includeIsr
+                ? christmasBonusPayment * christmasBonusRecord.isrRate
+                : 0);
+          const socialCost = ordinarySocialCost + specialSocialCost;
+          const isrCost = ordinaryIsrCost + specialIsrCost;
           const includedInModule =
             payrollModule === "CONSOLIDATED" ||
             salaryModuleId === payrollModule ||
             commissionModuleId === payrollModule ||
             payrollAdjustments.length > 0 ||
             approvedViatics.length > 0 ||
+            settlementPayment > 0 ||
+            christmasBonusPayment > 0 ||
             state.loans.some(
               (loan) =>
                 loan.employeeId === employee.id &&
@@ -3332,6 +3734,8 @@ export function PayrollDemoProvider({
             externalDeductions: totalExternalDeductions,
             viaticsAdditions,
             viaticsDeductions,
+            settlementPayment,
+            christmasBonusPayment,
             baseSalaryOverride,
             total,
             socialCost,
@@ -3751,8 +4155,7 @@ export function PayrollDemoProvider({
                   terminationDate,
                   active:
                     hireDate <= isoDate(new Date()) &&
-                    (!terminationDate ||
-                      terminationDate >= isoDate(new Date())),
+                    !terminationDate,
                 }
               : employee,
           ),
@@ -3768,6 +4171,7 @@ export function PayrollDemoProvider({
               active: true,
               effectiveFrom,
               createdAt: isoDate(new Date()),
+              deactivatedAt: null,
               tiers: tiers.map((tier) => ({ ...tier, id: id("tier") })),
             },
           ],
@@ -3792,14 +4196,14 @@ export function PayrollDemoProvider({
       deleteScheme: (schemeId) =>
         update((current) => ({
           ...current,
-          schemes: current.schemes.filter((scheme) => scheme.id !== schemeId),
-          schemeAssignments: current.schemeAssignments.filter(
-            (assignment) => assignment.schemeId !== schemeId,
-          ),
-          employees: current.employees.map((employee) =>
-            employee.schemeId === schemeId
-              ? { ...employee, schemeId: null }
-              : employee,
+          schemes: current.schemes.map((scheme) =>
+            scheme.id === schemeId
+              ? {
+                  ...scheme,
+                  active: false,
+                  deactivatedAt: currentPeriod.end,
+                }
+              : scheme,
           ),
         })),
       assignScheme: (
@@ -4452,6 +4856,52 @@ export function PayrollDemoProvider({
             ],
           };
         }),
+      upsertTerminationSettlement: (settlement) =>
+        update((current) => ({
+          ...current,
+          terminationSettlements: current.terminationSettlements.some(
+            (item) => item.id === settlement.id,
+          )
+            ? current.terminationSettlements.map((item) =>
+                item.id === settlement.id
+                  ? { ...settlement, updatedAt: new Date().toISOString() }
+                  : item,
+              )
+            : [
+                ...current.terminationSettlements,
+                { ...settlement, updatedAt: new Date().toISOString() },
+              ],
+        })),
+      upsertChristmasBonus: (bonus) =>
+        update((current) => ({
+          ...current,
+          christmasBonuses: current.christmasBonuses.some(
+            (item) => item.id === bonus.id,
+          )
+            ? current.christmasBonuses.map((item) =>
+                item.id === bonus.id
+                  ? { ...bonus, updatedAt: new Date().toISOString() }
+                  : item,
+              )
+            : [
+                ...current.christmasBonuses,
+                { ...bonus, updatedAt: new Date().toISOString() },
+              ],
+        })),
+      replaceChristmasBonusPaymentPeriods: (year, periods) =>
+        update((current) => ({
+          ...current,
+          christmasBonusPaymentPeriods: [
+            ...current.christmasBonusPaymentPeriods.filter(
+              (period) => period.year !== year,
+            ),
+            ...periods.map((period) => ({
+              ...period,
+              year,
+              percentage: Math.min(Math.max(period.percentage, 0), 1),
+            })),
+          ],
+        })),
       setEmployeeViatics: (employeeId, enabled, conceptIds) =>
         update((current) => ({
           ...current,

@@ -59,6 +59,7 @@ import {
   periodFromFrequency,
   usePayrollDemo,
 } from "./payroll-demo-context";
+import { PayrollChristmasPaymentSettings } from "./payroll-christmas-payment-settings";
 
 function SchemeDialog({
   open,
@@ -482,6 +483,8 @@ function CostConfigDialog({
   } = usePayrollDemo();
   const [module, setModule] = useState<TaxPayrollModule>("FIXED");
   const [search, setSearch] = useState("");
+  const [employeePageSize, setEmployeePageSize] = useState("20");
+  const [employeePage, setEmployeePage] = useState(1);
   const [rows, setRows] = useState<Record<string, TaxRowState>>({});
   const [copyToAll, setCopyToAll] = useState(false);
   const [bulkRow, setBulkRow] = useState<TaxRowState>({
@@ -561,12 +564,25 @@ function CostConfigDialog({
         employeeCommissionPayrollModule(employee) === module),
   );
   const normalizedSearch = search.trim().toLocaleLowerCase("es-MX");
-  const visibleEmployees = employees.filter(
+  const filteredEmployees = employees.filter(
     (employee) =>
       !normalizedSearch ||
       `${employee.name} ${employee.position}`
         .toLocaleLowerCase("es-MX")
         .includes(normalizedSearch),
+  );
+  const effectiveEmployeePageSize =
+    employeePageSize === "ALL"
+      ? Math.max(filteredEmployees.length, 1)
+      : Number(employeePageSize);
+  const employeeTotalPages = Math.max(
+    1,
+    Math.ceil(filteredEmployees.length / effectiveEmployeePageSize),
+  );
+  const safeEmployeePage = Math.min(employeePage, employeeTotalPages);
+  const visibleEmployees = filteredEmployees.slice(
+    (safeEmployeePage - 1) * effectiveEmployeePageSize,
+    safeEmployeePage * effectiveEmployeePageSize,
   );
   const allSocial =
     employees.length > 0 &&
@@ -583,6 +599,8 @@ function CostConfigDialog({
   const isMixed =
     (selectedSocial > 0 && selectedSocial < employees.length) ||
     (selectedIsr > 0 && selectedIsr < employees.length);
+
+  useEffect(() => setEmployeePage(1), [employeePageSize, module, search]);
 
   function patchRow(employeeId: string, patch: Partial<TaxRowState>) {
     setRows((current) => ({
@@ -888,7 +906,7 @@ function CostConfigDialog({
                 return (
                   <div
                     key={employee.id}
-                    className="grid gap-3 p-3 md:grid-cols-[minmax(220px,1fr)_minmax(250px,1fr)_minmax(250px,1fr)] md:items-center"
+                    className="grid gap-3 p-3 [contain-intrinsic-size:76px] [content-visibility:auto] md:grid-cols-[minmax(220px,1fr)_minmax(250px,1fr)_minmax(250px,1fr)] md:items-center"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#c3a583]/40 bg-[#342b23] text-[10px] font-bold text-[#f0d9b8]">
@@ -966,6 +984,55 @@ function CostConfigDialog({
                 </div>
               )}
             </div>
+            {filteredEmployees.length > 0 && (
+              <div className="flex flex-col gap-3 border-t border-[color:var(--border-color)] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[10px] text-[color:var(--text-muted)]">
+                  Mostrando {(safeEmployeePage - 1) * effectiveEmployeePageSize + 1}–
+                  {Math.min(
+                    safeEmployeePage * effectiveEmployeePageSize,
+                    filteredEmployees.length,
+                  )} de {filteredEmployees.length}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Label className="text-[10px]">Filas</Label>
+                  <Select
+                    value={employeePageSize}
+                    onValueChange={setEmployeePageSize}
+                  >
+                    <SelectTrigger className="h-8 w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="40">40</SelectItem>
+                      <SelectItem value="60">60</SelectItem>
+                      <SelectItem value="ALL">TODOS</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={safeEmployeePage <= 1}
+                    onClick={() => setEmployeePage((current) => current - 1)}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="min-w-16 text-center text-[10px] font-semibold">
+                    {safeEmployeePage} / {employeeTotalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={safeEmployeePage >= employeeTotalPages}
+                    onClick={() => setEmployeePage((current) => current + 1)}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
           {module === "CONTRACTOR" && (
             <div className="flex gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100">
@@ -1463,6 +1530,8 @@ export function PayrollSettingsDemo() {
           </CardContent>
         </Card>
       </div>
+
+      <PayrollChristmasPaymentSettings />
 
       <Card className="border-[color:var(--border-color)]">
         <CardHeader className="pb-3">

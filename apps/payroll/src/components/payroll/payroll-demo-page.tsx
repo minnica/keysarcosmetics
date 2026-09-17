@@ -729,18 +729,38 @@ function PayrollTable({
           (concept === "BONUS" && !showCommission),
       ),
     );
+  const showChristmasBonus =
+    (view === "CONSOLIDATED" || view === "CHRISTMAS_BONUS") &&
+    state.christmasBonusPaymentPeriods.some(
+      (payment) =>
+        payment.active &&
+        payment.paymentDate >= periodStart &&
+        payment.paymentDate <= periodEnd,
+    );
+  const showSettlement =
+    (view === "CONSOLIDATED" || view === "SETTLEMENT") &&
+    lines.some((line) => line.settlementPayment > 0);
+  const settlementTotal = lines.reduce(
+    (sum, line) => sum + line.settlementPayment,
+    0,
+  );
+  const christmasBonusTotal = lines.reduce(
+    (sum, line) => sum + line.christmasBonusPayment,
+    0,
+  );
   const approvedEmployeeIds = useMemo(
     () =>
       new Set(
         state.decisions
           .filter(
             (decision) =>
-              decision.periodStart === periodStart &&
+              decision.periodStart >= periodStart &&
+              decision.periodStart <= periodEnd &&
               decision.status === "AUTHORIZED",
           )
           .map((decision) => decision.employeeId),
       ),
-    [periodStart, state.decisions],
+    [periodEnd, periodStart, state.decisions],
   );
   const reportRows = lines.map((line) => ({
     employee: line.employee.name,
@@ -759,6 +779,9 @@ function PayrollTable({
     bonuses: line.bonuses,
     deductions: line.fines + line.loanDeduction,
     adjustments: line.externalAdditions - line.externalDeductions,
+    settlement: line.settlementPayment > 0 ? line.settlementPayment : null,
+    christmasBonus:
+      line.christmasBonusPayment > 0 ? line.christmasBonusPayment : null,
     payroll: line.total,
     socialCost: includeSocialCost ? line.socialCost : 0,
     isr: includeIsr ? line.isrCost : 0,
@@ -882,6 +905,27 @@ function PayrollTable({
         format: "currency" as const,
         width: 14,
       },
+      ...(showChristmasBonus
+        ? [
+            {
+              header: "AGUINALDO",
+              accessor: (row: (typeof reportRows)[number]) =>
+                row.christmasBonus,
+              format: "currency" as const,
+              width: 16,
+            },
+          ]
+        : []),
+      ...(showSettlement
+        ? [
+            {
+              header: "LIQUIDACIÓN / FINIQUITO",
+              accessor: (row: (typeof reportRows)[number]) => row.settlement,
+              format: "currency" as const,
+              width: 20,
+            },
+          ]
+        : []),
       {
         header: "NÓMINA",
         accessor: (row: (typeof reportRows)[number]) => row.payroll,
@@ -976,6 +1020,14 @@ function PayrollTable({
                 )}
                 {showAdjustments && (
                   <TableHead className="text-right">AJUSTES</TableHead>
+                )}
+                {showChristmasBonus && (
+                  <TableHead className="text-right">AGUINALDO</TableHead>
+                )}
+                {showSettlement && (
+                  <TableHead className="text-right">
+                    LIQUIDACIÓN / FINIQUITO
+                  </TableHead>
                 )}
                 <TableHead className="text-right">NÓMINA</TableHead>
                 <TableHead className="text-right">COSTO SOCIAL</TableHead>
@@ -1101,6 +1153,20 @@ function PayrollTable({
                       )}
                     </TableCell>
                   )}
+                  {showChristmasBonus && (
+                    <TableCell className="number-display text-right font-semibold text-emerald-700 dark:text-emerald-300">
+                      {line.christmasBonusPayment > 0
+                        ? money.format(line.christmasBonusPayment)
+                        : "—"}
+                    </TableCell>
+                  )}
+                  {showSettlement && (
+                    <TableCell className="number-display text-right font-semibold text-sky-700 dark:text-sky-300">
+                      {line.settlementPayment > 0
+                        ? money.format(line.settlementPayment)
+                        : "—"}
+                    </TableCell>
+                  )}
                   <TableCell className="number-display text-right text-base">
                     {money.format(line.total)}
                   </TableCell>
@@ -1158,6 +1224,16 @@ function PayrollTable({
                 >
                   TOTALES
                 </TableCell>
+                {showChristmasBonus && (
+                  <TableCell className="number-display text-right font-semibold text-emerald-700 dark:text-emerald-300">
+                    {money.format(christmasBonusTotal)}
+                  </TableCell>
+                )}
+                {showSettlement && (
+                  <TableCell className="number-display text-right font-semibold text-sky-700 dark:text-sky-300">
+                    {money.format(settlementTotal)}
+                  </TableCell>
+                )}
                 <TableCell className="number-display text-right">
                   {money.format(payrollTotal)}
                 </TableCell>
@@ -1294,7 +1370,8 @@ function ConsolidatedDashboard({
   );
   const authorized = state.decisions.filter(
     (decision) =>
-      decision.periodStart === config.periodStart &&
+      decision.periodStart >= config.periodStart &&
+      decision.periodStart <= config.periodEnd &&
       decision.status === "AUTHORIZED",
   ).length;
   const costAllocations = lines.flatMap((line) => {
