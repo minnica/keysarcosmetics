@@ -728,6 +728,61 @@
       "nextStep": "Reanudar RV10-P4 únicamente cuando estén disponibles Windows, terminal/canal privados y acceso del PO; seguir íntegramente docs/POS_WINDOWS_API_DEMO.md y registrar la evidencia en un nuevo checkpoint.",
       "report": "docs/pos-automation/runs/2026-09-17T20-09-37-222Z-RV10-P4.md",
       "updatedAt": "2026-09-17T20:13:09.773Z"
+    },
+    "RV10-P7": {
+      "id": "RV10-P7",
+      "runId": "2026-09-17T20-13-12-758Z-RV10-P7",
+      "base": "06f9f6f7741b733bda7770e3b67b714daa59a40b",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Se actualizaron las guías visual/API y se publicó evidencia durable. El baseline 12fb804 conserva 208/208 hashes válidos; la comparación completa sigue identificada como histórica de db58fda. RV10-P7 permanece abierto porque faltan Windows, API/terminal autorizadas, recorrido del PO y comparación completa del candidato 06f9f6f.",
+      "checks": [
+        {
+          "command": "pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Confirmó 25 pantallas, 10 secciones de Settings, 11 reportes, 10 vistas de bodega y 208 capturas."
+        },
+        {
+          "command": "node -e \"<verificación SHA-256 de capture-index.json y sus capturas>\"",
+          "result": "passed",
+          "evidence": "Referencia 12fb804: 208 entradas, 208 PNG y cero archivos ausentes o hashes discrepantes."
+        },
+        {
+          "command": "node --test scripts/verify-pos-windows-demo.test.mjs && node --check scripts/verify-pos-windows-demo.mjs",
+          "result": "passed",
+          "evidence": "Aprobaron 4/4 pruebas de configuración/redacción y la sintaxis del verificador."
+        },
+        {
+          "command": "pnpm exec prettier --check GUIA_PRUEBA_PO_POS_WINDOWS.md PROMPT_CODEX_PRUEBA_PO_POS_WINDOWS.md PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/POS_MVP_ONLINE_DELIVERY.md CLAUDE.md docs/pos-automation/runs/2026-09-17T20-13-12-758Z-RV10-P7.md",
+          "result": "passed",
+          "evidence": "Todos los documentos modificados cumplen el formato de Prettier."
+        },
+        {
+          "command": "git diff --check",
+          "result": "passed",
+          "evidence": "El diff no contiene errores de whitespace; RV10-P7 permanece [ ] y sólo se actualizó su checkpoint en el plan."
+        },
+        {
+          "command": "node scripts/verify-pos-windows-demo.mjs check && node scripts/verify-pos-windows-demo.mjs probe && pnpm --filter @cosmetics/pos dev",
+          "result": "not_run",
+          "evidence": "No están disponibles el equipo Windows objetivo, API/terminal autorizadas, canal privado ni acceso del PO."
+        },
+        {
+          "command": "pnpm pos:visual:capture && pnpm pos:visual:compare",
+          "result": "not_run",
+          "evidence": "No se ejecutó una comparación completa nueva de 06f9f6f; la comparación 208/208 documentada corresponde históricamente a db58fda."
+        }
+      ],
+      "independentChecks": [],
+      "remaining": [
+        "Ejecutar y registrar la revisión visual desde el equipo Windows objetivo, incluyendo runtime, inicio y parada.",
+        "Ejecutar la revisión funcional desde Windows cuando existan API/BD sintética accesible, terminal activa, canal privado y credenciales autorizadas.",
+        "Publicar una comparación durable del candidato vigente si se requiere acreditar el conjunto actual contra el baseline, sin reutilizar los artefactos históricos de /tmp."
+      ],
+      "followUps": [],
+      "nextStep": "Cuando exista el entorno autorizado, validar el SHA con las guardas de la guía, seguir docs/POS_WINDOWS_API_DEMO.md, ejecutar check/probe y registrar por separado los recorridos visual y API sin secretos ni aprobación inferida.",
+      "report": "docs/pos-automation/runs/2026-09-17T20-13-12-758Z-RV10-P7.md",
+      "updatedAt": "2026-09-17T20:22:49.830Z"
     }
   },
   "history": [
@@ -2386,6 +2441,61 @@
       "nextStep": "Reanudar RV10-P4 únicamente cuando estén disponibles Windows, terminal/canal privados y acceso del PO; seguir íntegramente docs/POS_WINDOWS_API_DEMO.md y registrar la evidencia en un nuevo checkpoint.",
       "report": "docs/pos-automation/runs/2026-09-17T20-09-37-222Z-RV10-P4.md",
       "updatedAt": "2026-09-17T20:13:09.773Z"
+    },
+    {
+      "id": "RV10-P7",
+      "runId": "2026-09-17T20-13-12-758Z-RV10-P7",
+      "base": "06f9f6f7741b733bda7770e3b67b714daa59a40b",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Se actualizaron las guías visual/API y se publicó evidencia durable. El baseline 12fb804 conserva 208/208 hashes válidos; la comparación completa sigue identificada como histórica de db58fda. RV10-P7 permanece abierto porque faltan Windows, API/terminal autorizadas, recorrido del PO y comparación completa del candidato 06f9f6f.",
+      "checks": [
+        {
+          "command": "pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Confirmó 25 pantallas, 10 secciones de Settings, 11 reportes, 10 vistas de bodega y 208 capturas."
+        },
+        {
+          "command": "node -e \"<verificación SHA-256 de capture-index.json y sus capturas>\"",
+          "result": "passed",
+          "evidence": "Referencia 12fb804: 208 entradas, 208 PNG y cero archivos ausentes o hashes discrepantes."
+        },
+        {
+          "command": "node --test scripts/verify-pos-windows-demo.test.mjs && node --check scripts/verify-pos-windows-demo.mjs",
+          "result": "passed",
+          "evidence": "Aprobaron 4/4 pruebas de configuración/redacción y la sintaxis del verificador."
+        },
+        {
+          "command": "pnpm exec prettier --check GUIA_PRUEBA_PO_POS_WINDOWS.md PROMPT_CODEX_PRUEBA_PO_POS_WINDOWS.md PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/POS_MVP_ONLINE_DELIVERY.md CLAUDE.md docs/pos-automation/runs/2026-09-17T20-13-12-758Z-RV10-P7.md",
+          "result": "passed",
+          "evidence": "Todos los documentos modificados cumplen el formato de Prettier."
+        },
+        {
+          "command": "git diff --check",
+          "result": "passed",
+          "evidence": "El diff no contiene errores de whitespace; RV10-P7 permanece [ ] y sólo se actualizó su checkpoint en el plan."
+        },
+        {
+          "command": "node scripts/verify-pos-windows-demo.mjs check && node scripts/verify-pos-windows-demo.mjs probe && pnpm --filter @cosmetics/pos dev",
+          "result": "not_run",
+          "evidence": "No están disponibles el equipo Windows objetivo, API/terminal autorizadas, canal privado ni acceso del PO."
+        },
+        {
+          "command": "pnpm pos:visual:capture && pnpm pos:visual:compare",
+          "result": "not_run",
+          "evidence": "No se ejecutó una comparación completa nueva de 06f9f6f; la comparación 208/208 documentada corresponde históricamente a db58fda."
+        }
+      ],
+      "independentChecks": [],
+      "remaining": [
+        "Ejecutar y registrar la revisión visual desde el equipo Windows objetivo, incluyendo runtime, inicio y parada.",
+        "Ejecutar la revisión funcional desde Windows cuando existan API/BD sintética accesible, terminal activa, canal privado y credenciales autorizadas.",
+        "Publicar una comparación durable del candidato vigente si se requiere acreditar el conjunto actual contra el baseline, sin reutilizar los artefactos históricos de /tmp."
+      ],
+      "followUps": [],
+      "nextStep": "Cuando exista el entorno autorizado, validar el SHA con las guardas de la guía, seguir docs/POS_WINDOWS_API_DEMO.md, ejecutar check/probe y registrar por separado los recorridos visual y API sin secretos ni aprobación inferida.",
+      "report": "docs/pos-automation/runs/2026-09-17T20-13-12-758Z-RV10-P7.md",
+      "updatedAt": "2026-09-17T20:22:49.830Z"
     }
   ]
 }

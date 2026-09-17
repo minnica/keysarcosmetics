@@ -28,6 +28,15 @@ Los diálogos de mutación esperan la respuesta del servidor antes de cerrar o a
 
 La captura candidata quedó temporalmente en `/tmp/keysar-pos-mvp-final-candidate-2` y la comparación en `/tmp/keysar-pos-mvp-final-diff-2/comparison.json`. El baseline versionado no se regeneró ni modificó.
 
+> Aclaración durable RV10-P7 (2026-09-17): esas dos rutas temporales no son
+> recuperables desde otro equipo y no deben usarse como precondición de la
+> revisión. Este documento conserva únicamente el resumen histórico de la
+> comparación asociada a `db58fda`. El baseline de referencia sí está
+> versionado bajo `docs/artifacts/pos-visual-baseline/`; su índice y 208 hashes
+> se revalidaron en RV10-P7. El candidato ejecutable vigente es `06f9f6f` y no
+> recibió en esa sesión una nueva comparación completa ni validación Windows.
+> Evidencia: `docs/pos-automation/runs/2026-09-17T20-13-12-758Z-RV10-P7.md`.
+
 ## Backend conservado, adaptado y retirado
 
 - Conservado: motor autoritativo de cotización/tickets, idempotencia, ledger, compensación de cancelación, tarjetones, Agenda interna, datasets/exportaciones y notificaciones.
