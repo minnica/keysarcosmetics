@@ -671,31 +671,31 @@
     },
     "RV10-P4": {
       "id": "RV10-P4",
-      "runId": "2026-09-17T19-30-40-620Z-RV10-P4",
-      "base": "f3d4db30a66dbb75410d2deb1ac3a841e8493a32",
-      "status": "partial",
-      "attempts": 1,
-      "summary": "Preparación local completada: se añadió verificación segura para Windows, guía PowerShell y una corrección al primer login API. Electron 35.7.5 inició, autenticó y repitió el login tras reinicio contra PostgreSQL/API sintéticos. Falta comprobarlo en Windows con terminal real y acceso del PO.",
+      "runId": "2026-09-17T20-09-37-222Z-RV10-P4",
+      "base": "2bca5e409c3bdf817f77546a6c69dd7d66af31dc",
+      "status": "blocked",
+      "attempts": 2,
+      "summary": "La preparación local permanece válida, segura y detenida. Sólo se actualizaron plan, handoff e informe; RV10-P4 continúa abierto porque no están disponibles el equipo Windows objetivo, la terminal/canal privados ni el acceso del PO.",
       "checks": [
         {
-          "command": "node --test scripts/verify-pos-windows-demo.test.mjs",
+          "command": "git branch --show-current && git status --short && git rev-parse HEAD",
           "result": "passed",
-          "evidence": "4/4 pruebas aprobaron guardas de modo API, URLs, SHA, placeholders y redacción de secretos."
+          "evidence": "Rama feature/pos-frontend-clean y SHA inicial 2bca5e409c3bdf817f77546a6c69dd7d66af31dc; únicamente quedaron modificados los tres documentos autorizados."
         },
         {
-          "command": "prepare-pos-local-demo.sh up; provision-pos-local-demo.ts provision|verify; provision-pos-terminal-local.ts provision|verify; node scripts/verify-pos-windows-demo.mjs probe",
+          "command": "git show -s --format='commit=%H%ntree=%T' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
           "result": "passed",
-          "evidence": "PostgreSQL 16 aplicó 46/46 migraciones; dataset y terminal sintéticos verificados; health.release, /ready y CORS aprobaron."
+          "evidence": "Referencia presente con árbol 6f61e86a90927dd19d63c557d65376e0b1eaabed."
         },
         {
-          "command": "pnpm --filter @cosmetics/pos type-check && VITE_POS_DATA_MODE=api VITE_API_URL=http://127.0.0.1:4413 pnpm --filter @cosmetics/pos build:web",
+          "command": "uname -srm; comprobar powershell.exe/pwsh/cmd.exe/wsl.exe/wine/wine64 y WSLInterop",
           "result": "passed",
-          "evidence": "TypeScript y builds de renderer, main y preload aprobaron después de corregir la sucursal inicial."
+          "evidence": "Host Fedora Linux 44; Windows, PowerShell, WSL, Wine y WSLInterop están ausentes."
         },
         {
-          "command": "pnpm --filter @cosmetics/pos dev; cerrar; comprobar puerto/proceso; pnpm --filter @cosmetics/pos dev",
+          "command": "node --test scripts/verify-pos-windows-demo.test.mjs && node --check scripts/verify-pos-windows-demo.mjs",
           "result": "passed",
-          "evidence": "Electron 35.7.5 abrió dos veces; login y relogin alcanzaron Conteo inicial de inventario con la sucursal fija y Terminal conectada."
+          "evidence": "4/4 pruebas aprobaron las guardas y redacción de secretos; sintaxis válida."
         },
         {
           "command": "pnpm pos:visual:manifest",
@@ -703,38 +703,31 @@
           "evidence": "Referencia 12fb804 intacta: 25 pantallas, 10 secciones, 11 reportes, 10 vistas de bodega y 208 capturas."
         },
         {
-          "command": "pnpm exec prettier --check <archivos RV10-P4> && node --check scripts/verify-pos-windows-demo.mjs && git diff --check",
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-17T20-09-37-222Z-RV10-P4.md && git diff --check",
           "result": "passed",
-          "evidence": "Código/documentación formateados, helper sintácticamente válido y diff sin errores."
+          "evidence": "Documentación formateada y diff sin errores de whitespace."
         },
         {
-          "command": "prepare-pos-local-demo.sh down; prepare-pos-local-demo.sh status; revisar listeners 3005/4413/55473/9223",
+          "command": "node scripts/verify-pos-windows-demo.mjs check && node scripts/verify-pos-windows-demo.mjs probe && pnpm --filter @cosmetics/pos dev",
+          "result": "not_run",
+          "evidence": "Requiere el equipo Windows objetivo, API/terminal autorizados, canal privado y acceso del PO, no disponibles en esta sesión."
+        },
+        {
+          "command": "ss -ltn '( sport = :3005 or sport = :4413 or sport = :55473 or sport = :9223 )'",
           "result": "passed",
-          "evidence": "API, PostgreSQL, Vite y Electron quedaron detenidos; contenedor, BD sintética y estado privado se conservaron sin listeners."
+          "evidence": "No quedaron listeners temporales; el contenedor PostgreSQL sintético permanece detenido."
         }
       ],
-      "independentChecks": [
-        {
-          "command": "node --test scripts/verify-pos-windows-demo.test.mjs",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/pos type-check",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/pos build:web",
-          "result": "passed"
-        }
-      ],
+      "independentChecks": [],
       "remaining": [
-        "Ejecutar docs/POS_WINDOWS_API_DEMO.md en el equipo Windows objetivo con el SHA/API/terminal autorizados y registrar inicio, reinicio y parada.",
-        "Comprobar desde Windows que el PO puede abrir Electron e ingresar con actores master y operador, sucursal fija y permisos correctos, sin exponer credenciales."
+        "Ejecutar docs/POS_WINDOWS_API_DEMO.md en el equipo Windows objetivo con SHA, API y terminal autorizados.",
+        "Registrar inicio y reinicio de Electron, login master/operador, sucursal, permisos, autorización master, parada y ausencia de listeners sin exponer credenciales.",
+        "Demostrar que el PO puede abrir e ingresar a la demo funcional."
       ],
       "followUps": [],
-      "nextStep": "Publicar la preparación local y registrar RV10-P4 como bloqueado hasta disponer de Windows, terminal/canal privados y acceso del PO; continuar después con RV10-P7.",
-      "report": "docs/pos-automation/runs/2026-09-17T19-30-40-620Z-RV10-P4.md",
-      "updatedAt": "2026-09-17T20:05:44.955Z"
+      "nextStep": "Reanudar RV10-P4 únicamente cuando estén disponibles Windows, terminal/canal privados y acceso del PO; seguir íntegramente docs/POS_WINDOWS_API_DEMO.md y registrar la evidencia en un nuevo checkpoint.",
+      "report": "docs/pos-automation/runs/2026-09-17T20-09-37-222Z-RV10-P4.md",
+      "updatedAt": "2026-09-17T20:13:09.773Z"
     }
   },
   "history": [
@@ -2333,6 +2326,66 @@
       "nextStep": "Publicar la preparación local y registrar RV10-P4 como bloqueado hasta disponer de Windows, terminal/canal privados y acceso del PO; continuar después con RV10-P7.",
       "report": "docs/pos-automation/runs/2026-09-17T19-30-40-620Z-RV10-P4.md",
       "updatedAt": "2026-09-17T20:05:44.955Z"
+    },
+    {
+      "id": "RV10-P4",
+      "runId": "2026-09-17T20-09-37-222Z-RV10-P4",
+      "base": "2bca5e409c3bdf817f77546a6c69dd7d66af31dc",
+      "status": "blocked",
+      "attempts": 2,
+      "summary": "La preparación local permanece válida, segura y detenida. Sólo se actualizaron plan, handoff e informe; RV10-P4 continúa abierto porque no están disponibles el equipo Windows objetivo, la terminal/canal privados ni el acceso del PO.",
+      "checks": [
+        {
+          "command": "git branch --show-current && git status --short && git rev-parse HEAD",
+          "result": "passed",
+          "evidence": "Rama feature/pos-frontend-clean y SHA inicial 2bca5e409c3bdf817f77546a6c69dd7d66af31dc; únicamente quedaron modificados los tres documentos autorizados."
+        },
+        {
+          "command": "git show -s --format='commit=%H%ntree=%T' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+          "result": "passed",
+          "evidence": "Referencia presente con árbol 6f61e86a90927dd19d63c557d65376e0b1eaabed."
+        },
+        {
+          "command": "uname -srm; comprobar powershell.exe/pwsh/cmd.exe/wsl.exe/wine/wine64 y WSLInterop",
+          "result": "passed",
+          "evidence": "Host Fedora Linux 44; Windows, PowerShell, WSL, Wine y WSLInterop están ausentes."
+        },
+        {
+          "command": "node --test scripts/verify-pos-windows-demo.test.mjs && node --check scripts/verify-pos-windows-demo.mjs",
+          "result": "passed",
+          "evidence": "4/4 pruebas aprobaron las guardas y redacción de secretos; sintaxis válida."
+        },
+        {
+          "command": "pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Referencia 12fb804 intacta: 25 pantallas, 10 secciones, 11 reportes, 10 vistas de bodega y 208 capturas."
+        },
+        {
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-17T20-09-37-222Z-RV10-P4.md && git diff --check",
+          "result": "passed",
+          "evidence": "Documentación formateada y diff sin errores de whitespace."
+        },
+        {
+          "command": "node scripts/verify-pos-windows-demo.mjs check && node scripts/verify-pos-windows-demo.mjs probe && pnpm --filter @cosmetics/pos dev",
+          "result": "not_run",
+          "evidence": "Requiere el equipo Windows objetivo, API/terminal autorizados, canal privado y acceso del PO, no disponibles en esta sesión."
+        },
+        {
+          "command": "ss -ltn '( sport = :3005 or sport = :4413 or sport = :55473 or sport = :9223 )'",
+          "result": "passed",
+          "evidence": "No quedaron listeners temporales; el contenedor PostgreSQL sintético permanece detenido."
+        }
+      ],
+      "independentChecks": [],
+      "remaining": [
+        "Ejecutar docs/POS_WINDOWS_API_DEMO.md en el equipo Windows objetivo con SHA, API y terminal autorizados.",
+        "Registrar inicio y reinicio de Electron, login master/operador, sucursal, permisos, autorización master, parada y ausencia de listeners sin exponer credenciales.",
+        "Demostrar que el PO puede abrir e ingresar a la demo funcional."
+      ],
+      "followUps": [],
+      "nextStep": "Reanudar RV10-P4 únicamente cuando estén disponibles Windows, terminal/canal privados y acceso del PO; seguir íntegramente docs/POS_WINDOWS_API_DEMO.md y registrar la evidencia en un nuevo checkpoint.",
+      "report": "docs/pos-automation/runs/2026-09-17T20-09-37-222Z-RV10-P4.md",
+      "updatedAt": "2026-09-17T20:13:09.773Z"
     }
   ]
 }
