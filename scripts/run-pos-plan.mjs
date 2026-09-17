@@ -89,6 +89,37 @@ export function planChecks(text) {
   return result;
 }
 
+export function reconcileCompletedFollowUps(result, task, before, after) {
+  if (
+    result?.outcome !== "completed" ||
+    !Array.isArray(result.remaining) ||
+    result.remaining.length === 0 ||
+    !Array.isArray(result.checks)
+  )
+    return result;
+  const oldChecks = planChecks(before);
+  const newChecks = planChecks(after);
+  if (
+    oldChecks.get(task.id) === false &&
+    newChecks.get(task.id) === true &&
+    result.checks.length > 0 &&
+    result.checks.some((check) => check.result === "passed") &&
+    result.checks.every((check) =>
+      ["passed", "failed_unrelated"].includes(check.result),
+    )
+  ) {
+    console.log(
+      `[POS] ${task.id}: el criterio quedó cerrado; ${result.remaining.length} seguimiento(s) externo(s) se conservarán como followUps.`,
+    );
+    return {
+      ...result,
+      followUps: [...result.remaining],
+      remaining: [],
+    };
+  }
+  return result;
+}
+
 export function validateQueue(queue, plan, state) {
   assert(
     queue.branch === BRANCH &&
@@ -688,7 +719,7 @@ export async function execute(options, dependencies = {}) {
       console.log(
         `[POS] Iniciando sesión nueva: ${task.id} (${step + 1}/${options.steps})`,
       );
-      const result = await (dependencies.sessionRunner ?? runSession)(
+      let result = await (dependencies.sessionRunner ?? runSession)(
         context,
         options,
       );
@@ -698,6 +729,12 @@ export async function execute(options, dependencies = {}) {
         "La sesión modificó el historial Git; detener.",
       );
       const files = changedFiles(root);
+      result = reconcileCompletedFollowUps(
+        result,
+        task,
+        before,
+        read(root, PLAN),
+      );
       validateResult(result, task, before, read(root, PLAN), files, report);
       assert(
         read(root, HANDOFF).includes(task.id) &&
@@ -743,6 +780,7 @@ export async function execute(options, dependencies = {}) {
         checks: result.checks,
         independentChecks,
         remaining: result.remaining,
+        followUps: result.followUps ?? [],
         nextStep: result.nextStep,
         report,
         updatedAt: new Date().toISOString(),

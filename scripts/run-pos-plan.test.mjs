@@ -22,6 +22,7 @@ import {
   verificationCommands,
   publish,
   retryTimedOut,
+  reconcileCompletedFollowUps,
   PLAN,
   HANDOFF,
   CONFIG,
@@ -260,6 +261,39 @@ test("rechaza documentación incompleta, pruebas fallidas y cierre de otro check
   assert.throws(() =>
     validateResult(result(), task, before, before, files, report),
   );
+});
+test("conserva seguimientos externos sin detener un criterio ya cerrado", () => {
+  const before = plan([task, task2]);
+  const after = before.replace("[ ]", "[x]");
+  const reconciled = reconcileCompletedFollowUps(
+    {
+      ...result(),
+      remaining: ["RV8 y la aceptación humana continúan diferidas."],
+    },
+    task,
+    before,
+    after,
+  );
+  assert.deepEqual(reconciled.remaining, []);
+  assert.deepEqual(reconciled.followUps, [
+    "RV8 y la aceptación humana continúan diferidas.",
+  ]);
+  validateResult(
+    reconciled,
+    task,
+    before,
+    after,
+    [PLAN, HANDOFF, "docs/pos-automation/runs/test.md"],
+    "docs/pos-automation/runs/test.md",
+  );
+
+  const stillOpen = reconcileCompletedFollowUps(
+    { ...result(), remaining: ["Falta trabajo del criterio."] },
+    task,
+    before,
+    before,
+  );
+  assert.equal(stillOpen.remaining.length, 1);
 });
 test("selecciona verificaciones según consumidores", () => {
   assert.equal(verificationCommands([PLAN]).length, 0);

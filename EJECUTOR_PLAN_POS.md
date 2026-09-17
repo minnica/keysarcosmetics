@@ -103,6 +103,8 @@ El esquema distingue:
 - `blocked`: sólo actualización documental de un impedimento, check abierto; se salta esa tarea en la próxima selección automática.
 - `failed_unrelated` es un resultado de una comprobación, no un estado de tarea: permite conservar una suite amplia fallida sólo cuando las pruebas pertinentes aprobaron y la causa pertenece demostrablemente a otro módulo/check. Debe quedar asignada y documentada; `failed` sigue deteniendo la publicación.
 
+`remaining` se reserva para trabajo faltante dentro del check actual. Los requisitos de otros IDs, PO, Operación o ambientes externos se documentan como seguimientos. Si una sesión devuelve `completed` con esos seguimientos en `remaining`, el check cambió correctamente a `[x]` y todas las pruebas pertinentes aprobaron, el controlador los conserva como `followUps` en el estado y continúa. Un check abierto, una prueba fallida o un cierre sin evidencia no se normalizan.
+
 Un trabajo probado que aún requiere algo externo se publica primero como parcial; una sesión posterior puede registrar sólo su bloqueo. Se permiten tres checkpoints por tarea por defecto. Después de resolver el impedimento, reintento explícito:
 
 ```bash

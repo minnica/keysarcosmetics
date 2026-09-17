@@ -32,7 +32,11 @@
         }
       }
     },
-    "remaining": { "type": "array", "items": { "type": "string" } },
+    "remaining": {
+      "description": "Trabajo todavía faltante dentro del criterio asignado. Debe ser [] cuando outcome es completed; seguimientos externos van en informe y nextStep.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "nextStep": { "type": "string" }
   }
 }
