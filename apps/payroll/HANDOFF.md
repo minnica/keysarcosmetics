@@ -146,6 +146,7 @@ negocio definitiva.
 - Reglas y validaciones observadas: el empleado no puede seleccionar ni autorizar otra quincena; al autorizar, el recibo sale de la bandeja pendiente y entra al historial anual. La gerencia solo autoriza el último mes cerrado. Los recibos gerenciales de kiosco nunca sustituyen ni se mezclan con los recibos personales de venta. Al cambiar de año, el portal personal muestra únicamente documentos del nuevo año en curso.
 - Estados posibles: pendiente de revisión, aclaración abierta, autorizado y consulta histórica de solo lectura.
 - Acciones y permisos esperados: cada empleado consulta, descarga, aclara y autoriza exclusivamente sus propios recibos; el usuario máster conserva la vista general por periodo. Producción deberá validar la autorización contra la corrida de corte vigente y rechazar periodos arbitrarios desde el servidor.
+- Control gerencial máster: la vista de `Recibos gerenciales` replica el control ejecutivo de recibos personales con periodo, búsqueda, filtro de estatus, paginación, importe, comprobante completo y alerta de faltantes. La decisión se guarda por `managerId + month` y nunca reutiliza ni modifica la aprobación quincenal personal del gerente.
 - Dudas por resolver: política legal de conservación documental fuera del portal anual, acceso a constancias de ejercicios anteriores y momento exacto en que el cierre mensual gerencial queda disponible.
 
 ## Autorización de acceso por módulo
@@ -157,6 +158,17 @@ negocio definitiva.
 - Acciones y permisos esperados: sólo el usuario máster puede administrar Roles y accesos. Producción deberá validar cada permiso también en servidor, consultas, exportaciones y acciones; ocultar el menú no constituye autorización suficiente.
 - Dudas por resolver: definir si se permitirán plantillas de permisos por familia de puestos y si una autorización tendrá vigencia por fecha o sucursal.
 
+## Permisos jerárquicos por menú y submenú
+
+- Información que necesita mostrar: rol seleccionado, menús principales `Personal`, `Nómina`, `Operación`, `Configuración` y `Reportes`, número de permisos habilitados por sección, submenús disponibles y acciones específicas dentro de cada módulo.
+- Información que captura o modifica: el usuario máster puede habilitar o retirar un menú completo en un solo control, o combinar submenús y acciones individuales para entregar acceso parcial.
+- Reglas y validaciones observadas: el usuario máster conserva todos los accesos sin excepción y sus controles permanecen bloqueados; un menú se muestra como completo, parcial o sin acceso; las rutas no autorizadas se ocultan y deben rechazarse también por URL directa; los módulos personalizados de nómina se agregan automáticamente dentro de la sección `Nómina`.
+- Separación funcional: `Bonos y multas` de Operación cuenta con un permiso distinto al catálogo de `Bonos y multas` en Configuración, para permitir registrar movimientos sin autorizar cambios de catálogo.
+- Estados posibles: menú completo, acceso parcial, sin acceso y acceso total protegido para máster.
+- Acciones y permisos esperados: cambiar el control de menú aplica todos sus submenús y acciones; cambiar una casilla individual afecta únicamente ese acceso. Producción deberá aplicar la misma jerarquía en navegación, endpoints, exportaciones y acciones del servidor.
+- Persistencia actual: estado React en memoria. El backend futuro deberá guardar permisos atómicos por rol, resolver herencia por menú y mantener una bitácora de quién modificó cada autorización y cuándo.
+- Dudas por resolver: definir si en producción existirán permisos de sólo lectura, edición y aprobación separados dentro de cada submenú, además de las acciones actuales.
+
 ## Inclusión fiscal global por periodo
 
 - Información que necesita mostrar: periodo exacto, estado global de costo social e ISR y confirmación de que la regla alcanza nóminas, consolidado, recibos, dispersión y reportes.
@@ -165,3 +177,117 @@ negocio definitiva.
 - Estados posibles: ambas cargas activas, sólo costo social, sólo ISR o ambas excluidas.
 - Acciones y permisos esperados: sólo un usuario máster configura o vuelve a autorizar la inclusión fiscal del periodo. La fuente central del prototipo rechaza cambios de perfiles no máster aunque intenten ejecutarlos desde otro módulo. Producción deberá persistir la regla con vigencia, usuario, fecha y bitácora, y usarla como entrada única de todos los cálculos y exportaciones.
 - Dudas por resolver: definir si la reapertura con código máster también habilitará esta configuración y si un periodo mensual debe heredar o consolidar reglas distintas de sus dos quincenas.
+
+## Resolución de préstamos, adelantos y alertas de aclaración
+
+- Información que necesita mostrar: importe originalmente solicitado, importe final autorizado, estatus, fecha, nómina de aplicación, empleado solicitante y bitácora de cambios; para aclaraciones, tipo de recibo, persona, periodo, detalle y fecha de actualización.
+- Información que captura o modifica: antes de autorizar, el usuario máster puede reducir o ajustar el monto de una solicitud pendiente; el empleado ve en su portal si fue autorizada o rechazada y, cuando cambió, compara el monto solicitado contra el resuelto. La campana del encabezado muestra únicamente al usuario máster las aclaraciones personales y gerenciales abiertas y enlaza con el registro relacionado.
+- Reglas y validaciones observadas: sólo el rol `USUARIO MASTER` puede editar o resolver solicitudes; sólo se edita una solicitud pendiente y ligada a una corrida en borrador; el monto ajustado vuelve a validar los topes de adelantos y préstamos; una autorización usa el importe final y conserva el original; una aclaración deja de aparecer en la campana cuando su decisión cambia de `CLARIFICATION`.
+- Estados posibles: solicitud pendiente, autorizada o rechazada; aclaración abierta, recibo autorizado o pendiente de decisión.
+- Persistencia actual: todo vive en estado React en memoria. Producción deberá guardar `requestedAmount`, `approvedAmount`, actor, fecha, motivo obligatorio del ajuste, decisión, lectura/notificación del empleado y un evento inmutable de auditoría.
+- Notificaciones futuras: el backend deberá generar un evento dirigido al empleado al autorizar o rechazar un préstamo/adelanto y un evento dirigido a usuarios máster al recibir una aclaración. La bandeja necesita estado leído/no leído por usuario, vínculo estable al recibo o movimiento, control de acceso en servidor y entrega idempotente; el contador visual del prototipo representa abiertas, no mensajes persistidos.
+- Dudas por resolver: definir si el empleado debe aceptar expresamente un monto menor antes del pago, si un ajuste requiere motivo obligatorio y si las alertas se enviarán también por correo, WhatsApp o notificación móvil.
+
+## Récord personal de venta
+
+- Información que necesita mostrar: venta individual más alta de todo el historial del vendedor o gerente, fecha, sucursal, marca vigente y diferencia contra el récord anterior.
+- Información que captura o modifica: ninguna en el perfil; una nueva venta aceptada actualiza automáticamente el récord cuando su importe es estrictamente mayor.
+- Reglas y validaciones observadas: el récord es individual y no corresponde al acumulado del periodo; una igualdad no crea una nueva marca; al romperlo se muestra un mensaje motivador y el nuevo importe se convierte inmediatamente en la siguiente cifra que deberá superarse. El recibo y la comisión conservan sus cálculos normales.
+- Estados posibles: sin ventas, récord histórico vigente y nuevo récord dentro del periodo actual.
+- Acciones y permisos esperados: vendedores y gerentes consultan únicamente su propia marca. Producción deberá calcularla sobre ventas aceptadas e inmutables, conservar el evento de superación y actualizarlo de forma transaccional al recibir ventas del POS.
+- Dudas por resolver: definir si una venta cancelada conserva el récord histórico o lo recalcula, y si la motivación también debe enviarse como notificación fuera del portal.
+
+## Desglose diario del recibo gerencial
+
+- Información que necesita mostrar: ventas y número de transacciones por día dentro de cada semana del mes seleccionado.
+- Información que captura o modifica: ninguna; el detalle se consulta desde el recibo gerencial mensual.
+- Reglas y validaciones observadas: la suma diaria debe coincidir exactamente con el total semanal y la suma de las semanas con el total mensual.
+- Estados posibles: semana contraída o desplegada.
+- Acciones y permisos esperados: el gerente consulta únicamente su propio recibo; el usuario master puede consultar todos los recibos gerenciales.
+- Dudas por resolver: definir si las devoluciones o cancelaciones deben mostrarse como renglones negativos o descontarse directamente de la venta diaria.
+
+## Ruta quincenal de escala de comisión
+
+- Información que necesita mostrar: esquema variable asignado, niveles ordenados, porcentaje de cada nivel, venta acumulada de la quincena, nivel vigente, importe faltante para la siguiente escala, días restantes y meta diaria para alcanzar cada nivel.
+- Información que captura o modifica: ninguna; el contador se recalcula automáticamente con las ventas aceptadas del empleado y la vigencia efectiva de su esquema.
+- Reglas y validaciones observadas: sólo aparece cuando el esquema tiene dos o más niveles con porcentajes distintos; utiliza exclusivamente el periodo quincenal activo; un nivel se marca como logrado cuando la venta acumulada alcanza su límite inferior; la meta diaria divide el faltante entre los días naturales restantes, incluido el día actual; al alcanzar el último nivel muestra `Nivel máximo alcanzado`.
+- Estados posibles: primer nivel activo, avance al siguiente nivel, nivel logrado, escala completa y corte finalizado sin alcanzar la meta.
+- Acciones y permisos esperados: cada empleado consulta únicamente su progreso personal; el usuario máster lo visualiza al entrar al perfil autorizado. Producción deberá calcularlo con ventas validadas por POS y resolver cambios de esquema por vigencia sin reescribir periodos cerrados.
+- Dudas por resolver: confirmar si la meta diaria debe considerar días naturales o sólo días laborales de la sucursal, y si devoluciones o cancelaciones deben reducir el avance inmediatamente.
+
+## Datos maestros desde RH y felicitación de cumpleaños
+
+- Información de RH preparada: identificador externo, sistema origen, fecha de última sincronización, nombre y apellidos, fecha de nacimiento, código de puesto, código de sucursal, sueldo mensual, banco, cuenta, CLABE de 18 dígitos, fecha de alta, fecha de baja y estado laboral.
+- Contrato de integración: `payroll-hr-employee-contract.ts` normaliza texto, cuenta bancaria y CLABE, y rechaza fechas o montos inválidos antes de incorporar información. El vínculo idempotente deberá usar `source + externalId`; los códigos de puesto y sucursal se resolverán contra los catálogos unificados del portal.
+- Propiedad de datos: nombre, fecha de nacimiento, sueldo, cuenta bancaria y vigencia laboral serán datos maestros de RH. El alta y la edición manual conservan la fecha de nacimiento como respaldo autorizado hasta conectar la fuente externa.
+- Cumpleaños: el perfil personal compara únicamente mes y día de `birthDate` contra la fecha local. Cuando coinciden muestra una tarjeta de felicitación con el primer nombre; la fecha completa no se expone en el mensaje.
+- Historial: una sincronización actualiza el perfil vigente y crea una bitácora; nunca recalcula ni modifica recibos, costos o periodos cerrados. Los cambios de sueldo, puesto, sucursal y vigencia deben aplicarse con fecha efectiva a periodos futuros o abiertos.
+- Seguridad esperada: la conexión real debe ejecutarse en servidor con autenticación de servicio, transporte cifrado, mínimo privilegio, bitácora de cada alta/cambio/baja y sin enviar CLABE ni fecha de nacimiento al navegador salvo donde sea estrictamente necesario.
+- Pendientes para conexión real: definir proveedor de RH, URL/API o mecanismo de archivos, autenticación, frecuencia de sincronización, tabla de equivalencias de puestos y sucursales, política de conflictos y responsable de reintentos.
+
+## Catálogo y operación de bonos y multas
+
+- Información de configuración: tipo de concepto, nombre unificado, regla de monto fijo o meta de venta, importe sugerido, nómina destino, inicio y fin de vigencia y estado activo. Una multa es siempre un descuento de nómina por incidencia o política autorizada y nunca se interpreta como bono/percepción; el catálogo presenta su importe como `monto del descuento`. En bonos de venta se elige una meta con premio único o una escala con varios rangos `desde/hasta` y un importe distinto por nivel; también se define si participa todo el personal vendedor elegible o una selección explícita buscable por nombre y apellido. Bonos permanentes y multas admiten el interruptor `vigencia por tiempo indeterminado`, representado por `validUntil = null`; el bono temporal exige fecha de cierre. El usuario máster puede registrar una nueva multa, un nuevo bono permanente o un bono temporal desde Configuración. Estos botones crean conceptos del catálogo; no asignan el pago a una persona.
+- Información operativa: empleado, concepto vigente elegido desde lista, fecha de aplicación, periodo, sucursales de costo, importe y estatus. Cada registro conserva una referencia al concepto que lo originó y la nómina definida en ese catálogo.
+- Bonos temporales: requieren inicio, fin, importe del premio, nómina destino y una condición medible. La condición puede ser una meta de venta acumulada —con premio único o escala por niveles— o una cantidad de bonos registrados. El perfil y el recibo muestran avance, siguiente meta, faltante y premio del nivel alcanzado; al cierre, quienes cumplen reciben el premio automático y un mensaje emergente de felicitación.
+- Reglas y validaciones observadas: los desplegables dependientes sólo muestran conceptos activos cuya vigencia se cruza con el periodo, tipo, nómina y personal elegible; los conceptos temporales se identifican explícitamente. Los niveles no admiten rangos inválidos o traslapados y cada uno exige un premio mayor a cero. Al corregir un registro vuelve a borrador; un registro aprobado usa el importe del nivel realmente alcanzado y suma el bono o descuenta la multa en su nómina destino, recibo, portal personal, consolidado y reportes por sucursal; desactivar un concepto lo retira de altas nuevas sin borrar el historial.
+- Eliminación segura: cada concepto tiene una acción de borrado disponible sólo para el usuario máster. Si nunca fue utilizado, la confirmación lo elimina de forma definitiva. Si ya tiene movimientos, ajustes o premios automáticos, primero se muestra un inventario con origen, empleado, sucursal, nómina, fecha, periodo, importe y estatus; sólo después de reconocer ese inventario se permite retirarlo del catálogo. En este segundo caso la baja es lógica: desaparece de altas y listas nuevas, pero todos los registros permanecen en recibos, nóminas, costos y reportes.
+- Historial y análisis: Configuración separa los catálogos de bonos, multas y bonos temporales. Cada catálogo conserva activos, inactivos, programados, finalizados y retirados; permite buscar por nombre/regla/nómina, filtrar por estatus y nómina, navegar en páginas de 20, 40, 60 o todos y usar edición, apagado y eliminación lógica con historial protegido. Impresión, PDF y Excel incluyen únicamente el catálogo y los filtros seleccionados, con nombre, efecto contable, regla, nómina, fecha de registro, vigencia y estatus. La vista operativa conserva la consulta mensual, permite filtrar por empleado, fecha, tipo y texto, muestra importes aprobados y pendientes, grafica el número de aplicaciones por bono e identifica el más aplicado y el menos logrado. Cuando termina un bono temporal, el reporte de bonos conserva la competencia y muestra un Top 5 ordenado por cumplimiento con posición, resultado y premio.
+- Exportaciones: PDF y Excel usan exactamente el mes y los filtros visibles; incluyen fecha, tipo, concepto, empleado, nómina, monto y estatus.
+- Estados posibles: concepto activo, inactivo o eliminado del catálogo con historial conservado; movimiento en borrador, pendiente, aprobado, rechazado o cancelado.
+- Acciones y permisos esperados: Configuración administra el catálogo y sus vigencias; Operación asigna un concepto existente a una persona. El usuario máster puede crear, editar o desactivar conceptos y aprobar, corregir o eliminar movimientos. Los demás perfiles requieren autorización explícita del módulo y no pueden ejecutar acciones master.
+- Persistencia actual: estado React en memoria. Producción deberá usar identificadores estables para niveles y participantes, vigencias efectivas, baja lógica del catálogo, motivo y actor obligatorios al eliminar, auditoría inmutable de cambios y una fotografía inmutable del Top 5 al cierre. La API deberá rechazar el borrado físico cuando existan relaciones y resolver la revisión de dependencias dentro de la misma transacción. La generación del premio deberá ser idempotente para no duplicarlo en nómina, costos o reportes al recalcular, y un periodo cerrado deberá conservar la escala y elegibilidad vigentes aunque el catálogo cambie después.
+- Dudas por resolver: confirmar si una corrección de monto requerirá motivo y segunda clave; definir si los empates comparten posición; precisar si el conteo de bonos considera sólo aprobados y si el mensaje de felicitación debe registrar fecha de lectura por empleado.
+
+## Reportes operativos de movimientos, préstamos, bonos y multas
+
+- Información que necesita mostrar: periodo inicial y final, empleado, sucursal o empresa completa, estatus, concepto, nómina afectada, importe, costo asignado, totales aprobados, impacto contable, frecuencia por concepto y persona con mayor número de registros.
+- Información que captura o modifica: ninguna; son vistas analíticas de solo lectura alimentadas por movimientos, solicitudes de préstamos/adelantos y bonos o multas ya registrados.
+- Reglas y validaciones observadas: cada familia tiene un módulo independiente; los filtros afectan simultáneamente indicadores, gráficas, costo por sucursal, detalle y exportaciones; cuando un registro se reparte entre varias sucursales, el costo se divide en partes iguales para evitar duplicar el total; únicamente los registros aprobados generan costo e impacto, aunque los demás estatus permanecen visibles para control operativo.
+- Totales y análisis: la opción `EMPRESA COMPLETA` muestra la suma consolidada; al elegir una sucursal sólo se presenta su participación asignada. Cada módulo identifica el concepto de mayor uso, el de menor uso —incluidos conceptos configurados sin aplicación— y la persona con más registros.
+- Exportaciones: PDF y Excel descargan exclusivamente el módulo, fechas, empleado, sucursal y estatus seleccionados. El archivo incluye detalle contable y una sección adicional con el impacto por sucursal.
+- Estados posibles: borrador, pendiente, aprobado/autorizado, rechazado y cancelado, según la fuente del registro.
+- Acciones y permisos esperados: cada uno de los cuatro reportes tiene un permiso independiente asignable por rol; el usuario máster conserva acceso obligatorio a todos. Producción deberá aplicar la misma autorización en consultas y generación de archivos del servidor.
+- Persistencia actual: estado React en memoria. Producción necesitará consultas históricas paginadas, fotografías de periodos cerrados, asignaciones de costo efectivas por fecha y una fuente contable única para evitar diferencias entre pantalla, PDF y Excel.
+- Dudas por resolver: confirmar si adelantos deben mantenerse dentro del reporte de préstamos o contar con un quinto módulo, y si el análisis de menor uso debe considerar sólo registros creados o también personal elegible que nunca recibió el concepto.
+
+## Impresión y exportación ejecutiva de reportes
+
+- Información que muestra: nombre exacto del reporte, periodo seleccionado, alcance aplicado —empresa completa, sucursal, empleado o vendedor—, indicadores del dashboard, análisis ejecutivo y tabla de resultados.
+- Reglas de impresión: el botón `Imprimir` genera un documento aislado del módulo activo; nunca incluye navegación, encabezado de sesión, filtros, controles ni botones de la aplicación. La hoja cambia automáticamente entre A4 y A3, vertical u horizontal, según la cantidad de columnas.
+- Reglas de PDF y Excel: ambos archivos usan los mismos filtros y datos visibles del módulo. Incluyen título, periodo, alcance y condición de reporte general cuando no existe una selección individual. Los reportes anchos usan tipografía compacta, celdas con ajuste de línea, encabezados centrados y cifras alineadas para impedir texto o importes encimados.
+- Fuente común: impresión, PDF y Excel consumen la misma configuración `ReportExportConfig`, con metadatos, métricas y análisis, para evitar diferencias entre formatos.
+- Validación realizada: el consolidado de 19 columnas se verificó en PDF A3 horizontal y en Excel; el contenido cabe en la hoja, conserva sus celdas y muestra título, periodo, resumen y análisis antes del detalle.
+
+## Catálogo y aprobación de notificaciones push
+
+- Información que necesita mostrar: módulo de origen, evento disparador, título, mensaje con variables, perfiles destinatarios, fecha de última edición, responsable y estado de aprobación.
+- Información que captura o modifica: usuarios con `notifications.manage` editan el título y mensaje de cada plantilla y aprueban o pausan todas las notificaciones de un módulo en un solo control.
+- Reglas y validaciones observadas: ninguna plantilla pendiente se considera habilitada; editar cualquier mensaje retira la aprobación de todo su módulo y exige una nueva revisión; los tokens como `{nombre}`, `{monto}`, `{sucursal}` y `{periodo}` se resuelven con datos del evento y nunca con texto introducido por el destinatario.
+- Estados posibles: módulo aprobado con envío habilitado o módulo pendiente con envío detenido. El prototipo conserva plantillas, cambios y aprobaciones únicamente en estado React durante la sesión.
+- Acciones y permisos esperados: `module.notifications` permite abrir el submódulo de Configuración y `notifications.manage` permite editar y aprobar. El usuario máster conserva ambos permisos; otros roles requieren autorización explícita.
+- Integración futura: producción necesitará eventos idempotentes de ventas, bonos, nómina, recibos y préstamos; almacenamiento de plantillas versionadas; auditoría de cada aprobación; registro y revocación de tokens por dispositivo; Service Worker; proveedor Web Push; expiración y reintentos; estado enviado/entregado/leído y enlaces profundos protegidos hacia el registro correspondiente.
+- Seguridad y privacidad: con la aplicación abierta se puede mostrar una alerta interna; con el navegador cerrado se requiere permiso push del dispositivo. La pantalla bloqueada debe usar texto genérico sin importes, datos bancarios ni conceptos confidenciales; el detalle sólo se revela tras autenticar el portal y validar permisos en servidor.
+- Dudas por resolver: definir quién puede aprobar además del usuario máster, qué módulos disparan avisos obligatorios, horarios silenciosos, vigencia de tokens y si cada empleado podrá desactivar categorías no críticas.
+
+## Centro de control ejecutivo
+
+- Información que necesita mostrar: ventas, nómina, costo social, ISR, costo integral, costo sobre venta, autorizaciones de recibos, conciliación, cuentas bancarias incompletas, centros de costo inválidos, movimientos pendientes y estado de cada corrida; el alcance se filtra por mes, tipo de nómina y sucursal.
+- Alimentación continua: el prototipo recalcula la vista desde la fuente React compartida cada vez que cambia una venta, empleado, corrida, recibo, movimiento, préstamo, impuesto o centro de costo. Producción deberá publicar eventos idempotentes y mantener una proyección analítica actualizada sin duplicar importes.
+- Pronóstico trazable: usa un promedio móvil ponderado sobre tres meses históricos completos —20%, 30% y 50%, dando mayor peso al más reciente—. La interfaz conserva y muestra cada periodo fuente, importe, peso, fórmula, alcance y resultado. Producción deberá versionar el método, registrar fecha de cálculo, moneda, filtros y fotografía de los datos usados; los periodos cerrados no se recalculan silenciosamente.
+- Preparación de cierre: el indicador se compone de seis controles visibles: recibos autorizados, conciliación sin diferencia, centros de costo completos, CLABE válida, operación pendiente resuelta y corridas fuera de borrador. No es una probabilidad; es la proporción de controles cumplidos.
+- Escalabilidad: los agregados deben calcularse en servidor o vistas materializadas; el detalle por sucursal requiere búsqueda y paginación de 20, 40, 60 o todas, con índices por periodo, módulo, sucursal, empleado y estado. Las respuestas deben devolver totales consolidados además de la página visible.
+- Seguridad y permisos: `module.control_center` controla el acceso; el usuario máster entra siempre y los demás roles requieren autorización explícita. La API futura debe volver a validar el permiso en cada consulta y exportación, aplicar mínimo privilegio, cifrado, bitácora de acceso, ocultamiento de CLABE y límites de consulta.
+- Protección en reunión: el botón global de privacidad, siempre visible en todos los módulos protegidos, activa el difuminado inmediato de la información; es una protección visual de emergencia y no sustituye controles del sistema operativo contra capturas. Tras tres minutos sin actividad se bloquean los datos y sólo el código privado máster puede mostrarlos nuevamente; a los cinco minutos se cierra la sesión completa.
+- Estados posibles: actualizado, con excepciones, parcialmente preparado, listo para cierre, visualmente protegido y bloqueado por inactividad.
+- Dudas por resolver: aprobar el método de pronóstico antes de usarlo para decisiones financieras, definir umbrales oficiales de costo sobre venta, responsables de cada excepción y si el modo reunión debe ocultar también nombres de sucursales.
+
+## Privacidad global e inactividad de sesión
+
+- Alcance visible: todas las rutas autenticadas del sistema quedan cubiertas por un único control global, incluidos los módulos de nómina, sueldos, comisiones, condiciones, esquemas, recibos, reportes, costos y configuración. El botón flotante `Privacidad` permanece disponible en escritorio y celular sin depender del módulo abierto.
+- Regla de tres minutos: al cumplirse tres minutos sin interacción, toda la interfaz autenticada se difumina, deja de aceptar acciones y muestra una pantalla segura. El mismo bloqueo puede activarse manualmente; la pantalla indica si el origen fue manual o por inactividad.
+- Desbloqueo: únicamente se acepta el código privado secundario del empleado que tiene el rol `USUARIO MASTER`. El código se captura con teclado numérico seguro, no se autocompleta, no se muestra y un intento incorrecto mantiene la información bloqueada. Desbloquear reinicia los relojes de privacidad y sesión.
+- Regla de cinco minutos: si la inactividad alcanza cinco minutos, aun cuando la pantalla esté bloqueada, se elimina la sesión React, se regresa al acceso y se exige usuario, contraseña y segundo código nuevamente. La actividad sobre la pantalla de privacidad no prolonga este plazo.
+- Estados posibles: sesión activa, privacidad manual, privacidad por inactividad, código master incorrecto, información desbloqueada y sesión expirada.
+- Persistencia actual: el prototipo usa temporizadores del navegador y el código secundario de los datos demo (`2580` para `MASTER DEMO`). Producción deberá verificar el código exclusivamente en servidor, almacenar sólo un hash, aplicar límites y enfriamiento de intentos, revocar la sesión en servidor a los cinco minutos y registrar en una bitácora inmutable cada bloqueo, desbloqueo y expiración.
+- Seguridad adicional: el difuminado evita exposición casual en pantalla, pero no puede impedir capturas del sistema operativo. La implementación productiva debe combinarla con permisos de módulo, expiración real del token, reautenticación, cifrado, ocultamiento de datos bancarios y encabezados de seguridad.

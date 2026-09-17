@@ -280,6 +280,30 @@ export function PayrollBranchReportDemo() {
   const exportConfig = {
     title: "Desglose analítico de nómina por sucursal",
     subtitle: `${selectedPeriod.label} · ${selectedPeriod.start} — ${selectedPeriod.end} · Datos mock`,
+    metadata: [
+      { label: "Periodo", value: `${selectedPeriod.start} — ${selectedPeriod.end}` },
+      {
+        label: "Frecuencia",
+        value: scope === "MONTHLY" ? "MENSUAL" : scope === "QUARTERLY" ? "TRIMESTRAL" : "ANUAL",
+      },
+      { label: "Alcance", value: "REPORTE GENERAL · EMPRESA COMPLETA" },
+      { label: "Sucursales", value: String(rows.length) },
+    ],
+    metrics: [
+      { label: "Ventas", value: money.format(totalSales), detail: "Venta acumulada" },
+      { label: "Costo integral", value: money.format(totalCost), detail: "Nómina + social + ISR" },
+      { label: "Costo / venta", value: `${totalSales > 0 ? (totalCost / totalSales * 100).toFixed(1) : "0.0"}%`, detail: "Participación integral" },
+      { label: "Personal", value: String(totalEmployees), detail: "Empleados vigentes" },
+    ],
+    analysis: [
+      analysis.issues.length === 0
+        ? "La asignación de costos está completa; no existen movimientos sin sucursal."
+        : `${analysis.issues.length} registros requieren corrección de su centro de costo.`,
+      efficiencyRows[0]
+        ? `${efficiencyRows[0].branch} presenta la mejor relación entre ventas y costo laboral del periodo.`
+        : "No existe información suficiente para comparar eficiencia por sucursal.",
+      `${rows.length} sucursales integran salario fijo, especialistas, comisiones, kiosco, honorarios y movimientos.`,
+    ],
     filename: `nomina-por-sucursal-${scope.toLocaleLowerCase("es-MX")}-${selectedPeriod.key}`,
     sheetName: "Por sucursal",
     rows,

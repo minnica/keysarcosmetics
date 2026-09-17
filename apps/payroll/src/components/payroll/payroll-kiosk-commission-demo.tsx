@@ -227,6 +227,25 @@ export function PayrollKioskCommissionDemo() {
   const exportConfig = {
     title: "Comisión de kiosco",
     subtitle: `${monthLabel(selectedMonth)} · Meta y venta mensual por punto de venta`,
+    metadata: [
+      { label: "Periodo", value: monthLabel(selectedMonth) },
+      { label: "Tipo de nómina", value: "COMISIÓN DE KIOSCO" },
+      { label: "Alcance", value: "REPORTE GENERAL · TODAS LAS SUCURSALES" },
+      { label: "Sucursales", value: String(rows.length) },
+    ],
+    metrics: [
+      { label: "Venta kioscos", value: money.format(totalSales), detail: "Venta mensual consolidada" },
+      { label: "Meta consolidada", value: money.format(totalTarget), detail: percent.format(totalTarget ? totalSales / totalTarget : 0) },
+      { label: "Metas alcanzadas", value: `${achievedBranches} / ${rows.length}`, detail: "Puntos con comisión" },
+      { label: "Comisión generada", value: money.format(totalCommission), detail: "Recibos gerenciales" },
+    ],
+    analysis: [
+      overallRecord?.record
+        ? `${overallRecord.branch.name} conserva el récord histórico más alto con ${money.format(overallRecord.record.sales)}.`
+        : "Aún no existe un récord histórico de venta disponible.",
+      `${achievedBranches} de ${rows.length} sucursales alcanzaron la meta en el mes seleccionado.`,
+      "La comisión se presenta por punto de venta y conserva al gerente responsable del periodo.",
+    ],
     filename: `comision-kiosco-${selectedMonth}`,
     sheetName: "Comision kiosco",
     rows: exportRows,

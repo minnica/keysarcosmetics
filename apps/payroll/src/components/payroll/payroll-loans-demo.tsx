@@ -214,11 +214,12 @@ function LoanDialog({
       <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {loan ? "Editar préstamo" : "Nueva solicitud"}
+            {loan ? "Ajustar solicitud antes de autorizar" : "Nueva solicitud"}
           </DialogTitle>
           <DialogDescription>
-            Las cuotas se arrastran automáticamente entre quincenas hasta
-            liquidar el saldo.
+            {loan
+              ? "El usuario máster puede autorizar un monto distinto. El empleado verá el importe final y el estatus en su portal."
+              : "Las cuotas se arrastran automáticamente entre quincenas hasta liquidar el saldo."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -358,7 +359,9 @@ function LoanDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="loan-amount">Monto solicitado</Label>
+              <Label htmlFor="loan-amount">
+                {loan ? "Monto que se autorizará" : "Monto solicitado"}
+              </Label>
               <Input
                 id="loan-amount"
                 type="number"
@@ -367,6 +370,12 @@ function LoanDialog({
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
               />
+              {loan && (
+                <p className="text-[10px] text-[color:var(--text-muted)]">
+                  Solicitado originalmente:{" "}
+                  {money.format(loan.requestedAmount ?? loan.amount)}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="loan-installments">Parcialidades</Label>
@@ -463,7 +472,7 @@ function LoanDialog({
               !selectedRun || parsedAmount <= 0 || !policyEvaluation.allowed
             }
           >
-            {loan ? "Guardar cambios" : "Crear solicitud"}
+            {loan ? "Guardar monto autorizado" : "Crear solicitud"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -818,8 +827,17 @@ export function PayrollLoansDemo() {
                           DESDE {loan.firstPeriod}
                         </p>
                       </TableCell>
-                      <TableCell className="number-display text-right">
-                        {money.format(loan.amount)}
+                      <TableCell className="text-right">
+                        <p className="number-display">
+                          {money.format(loan.amount)}
+                        </p>
+                        {(loan.requestedAmount ?? loan.amount) !==
+                          loan.amount && (
+                          <p className="text-[10px] text-[color:var(--text-muted)]">
+                            SOLICITADO{" "}
+                            {money.format(loan.requestedAmount ?? loan.amount)}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         {loan.paidInstallments} PAGADAS / {loan.installments}
@@ -849,33 +867,36 @@ export function PayrollLoansDemo() {
                           >
                             <History className="h-4 w-4" />
                           </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Editar préstamo"
-                            onClick={() => setEditing(loan)}
-                          >
-                            <Edit3 className="h-4 w-4" />
-                          </Button>
                           {loan.status === "PENDING" && (
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                if (!policyEvaluation.allowed) {
-                                  toast.error(
-                                    policyEvaluation.message ??
-                                      "La solicitud no cumple la política vigente.",
+                            <>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                aria-label={`Ajustar monto de ${requestLabel.toLocaleLowerCase("es-MX")}`}
+                                title="Ajustar monto antes de autorizar"
+                                onClick={() => setEditing(loan)}
+                              >
+                                <Edit3 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  if (!policyEvaluation.allowed) {
+                                    toast.error(
+                                      policyEvaluation.message ??
+                                        "La solicitud no cumple la política vigente.",
+                                    );
+                                    return;
+                                  }
+                                  setLoanStatus(loan.id, "APPROVED");
+                                  toast.success(
+                                    `${requestLabel} autorizado por ${money.format(loan.amount)}. El empleado ya puede verlo en su portal.`,
                                   );
-                                  return;
-                                }
-                                setLoanStatus(loan.id, "APPROVED");
-                                toast.success(
-                                  `${requestLabel} autorizado y agregado al arrastre.`,
-                                );
-                              }}
-                            >
-                              Autorizar
-                            </Button>
+                                }}
+                              >
+                                Autorizar
+                              </Button>
+                            </>
                           )}
                           <Button
                             size="icon"

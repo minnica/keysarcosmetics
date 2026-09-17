@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  BarChart3,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -9,12 +10,17 @@ import {
   KeyRound,
   LockKeyhole,
   LogIn,
+  MonitorCheck,
+  Minus,
   Plus,
   Search,
+  Settings2,
   ShieldCheck,
   UserCog,
   UserRoundCheck,
   UsersRound,
+  WalletCards,
+  Workflow,
 } from "lucide-react";
 import {
   Badge,
@@ -62,7 +68,66 @@ const permissionLabels: Record<string, string> = {
   "portal.view": "Entrar al portal personal",
   "movements.master": "Modificar bonos y multas",
   "viatics.master": "Configurar y autorizar viáticos",
+  "notifications.manage": "Editar y aprobar notificaciones",
   "security.second_key.manage": "Supervisar credenciales personales",
+};
+
+const permissionSectionOrder = [
+  "Dirección",
+  "Personal",
+  "Nómina",
+  "Operación",
+  "Configuración",
+  "Reportes",
+] as const;
+
+type PermissionSection = (typeof permissionSectionOrder)[number];
+
+const permissionSectionMeta: Record<
+  PermissionSection,
+  {
+    icon: typeof ShieldCheck;
+    description: string;
+  }
+> = {
+  Dirección: {
+    icon: MonitorCheck,
+    description: "Visión ejecutiva, pronósticos y control integral de cierre.",
+  },
+  Personal: {
+    icon: UsersRound,
+    description: "Directorio y portal individual del personal.",
+  },
+  Nómina: {
+    icon: WalletCards,
+    description: "Corridas, cálculos y preparación del pago.",
+  },
+  Operación: {
+    icon: Workflow,
+    description: "Movimientos y procesos operativos del periodo.",
+  },
+  Configuración: {
+    icon: Settings2,
+    description: "Catálogos, reglas y estructura del sistema.",
+  },
+  Reportes: {
+    icon: BarChart3,
+    description: "Consultas, recibos y análisis ejecutivos.",
+  },
+};
+
+const actionPermissionsBySection: Record<PermissionSection, string[]> = {
+  Dirección: ["dashboard.view", "reports.view"],
+  Personal: ["portal.view"],
+  Nómina: ["dashboard.view", "payroll.create", "payroll.approve"],
+  Operación: ["loans.manage", "loans.approve", "movements.master"],
+  Configuración: [
+    "settings.manage",
+    "viatics.master",
+    "notifications.manage",
+    "security.second_key.manage",
+  ],
+  Reportes: ["reports.view", "receipts.view"],
 };
 
 function initials(name: string) {
@@ -206,9 +271,31 @@ export function PayrollAccessDemo() {
       .map((module) => ({
         permission: customPayrollModulePermission(module.id),
         label: module.name,
-        section: "Nómina personalizada",
+        section: "Nómina",
       })),
   ];
+  const permissionGroups = permissionSectionOrder
+    .map((section) => {
+      const modules = modulePermissions.filter(
+        (item) => item.section === section,
+      );
+      const actions = actionPermissionsBySection[section].map((permission) => ({
+        permission,
+        label: permissionLabels[permission] ?? permission,
+      }));
+      return {
+        section,
+        modules,
+        actions,
+        permissions: Array.from(
+          new Set([
+            ...modules.map((item) => item.permission),
+            ...actions.map((item) => item.permission),
+          ]),
+        ),
+      };
+    })
+    .filter((group) => group.permissions.length > 0);
   const activeUsers = state.employees.filter(
     (employee) => employee.active,
   ).length;
@@ -245,6 +332,25 @@ export function PayrollAccessDemo() {
     employeePageStart,
     employeePageStart + effectiveEmployeePageSize,
   );
+
+  function setPermissionGroup(
+    section: PermissionSection,
+    permissions: string[],
+    enabled: boolean,
+  ) {
+    if (!selectedRole || selectedIsMaster) return;
+    permissions.forEach((permission) => {
+      const currentlyEnabled = selectedRole.permissions.includes(permission);
+      if (currentlyEnabled !== enabled) {
+        togglePermission(selectedRole.id, permission);
+      }
+    });
+    toast.success(
+      enabled
+        ? `${section}: acceso completo habilitado.`
+        : `${section}: accesos retirados.`,
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -389,74 +495,197 @@ export function PayrollAccessDemo() {
             </div>
           </CardHeader>
           <CardContent className="space-y-5 p-4">
-            <section>
-              <div className="mb-2 flex items-center justify-between gap-3">
+            <section className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h3 className="text-[10px] font-semibold uppercase tracking-[0.13em] text-[#9a744c]">
-                    Acceso a módulos
+                    Permisos por menú y submenú
                   </h3>
-                  <p className="mt-0.5 text-[10px] text-[color:var(--text-muted)]">
-                    Los módulos no autorizados se ocultan y tampoco abren por
-                    URL directa.
+                  <p className="mt-0.5 max-w-2xl text-[10px] leading-4 text-[color:var(--text-muted)]">
+                    Activa un menú completo o selecciona únicamente los submenús
+                    y acciones que necesita el rol. Lo no autorizado se oculta y
+                    tampoco abre por URL directa.
                   </p>
                 </div>
-                {selectedIsMaster && (
-                  <Badge
-                    variant="outline"
-                    className="border-emerald-300 text-emerald-700 dark:text-emerald-300"
-                  >
-                    {modulePermissions.length} DE {modulePermissions.length}{" "}
-                    ACTIVOS
-                  </Badge>
-                )}
+                <Badge
+                  variant="outline"
+                  className={
+                    selectedIsMaster
+                      ? "w-fit border-emerald-300 text-emerald-700 dark:text-emerald-300"
+                      : "w-fit"
+                  }
+                >
+                  {selectedIsMaster
+                    ? "ACCESO TOTAL PROTEGIDO"
+                    : `${permissionGroups.length} MENÚS CONFIGURABLES`}
+                </Badge>
               </div>
-              <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
-                {modulePermissions.map(({ permission, label, section }) => (
-                  <PermissionSwitch
-                    key={permission}
-                    checked={
-                      selectedIsMaster ||
-                      (selectedRole?.permissions.includes(permission) ?? false)
-                    }
-                    disabled={selectedIsMaster}
-                    label={label}
-                    detail={
-                      selectedIsMaster
-                        ? `ACCESO TOTAL · ${section}`
-                        : section.toLocaleUpperCase("es-MX")
-                    }
-                    onClick={() =>
-                      selectedRole &&
-                      togglePermission(selectedRole.id, permission)
-                    }
-                  />
-                ))}
-              </div>
-            </section>
 
-            <section className="border-t border-[color:var(--border-color)] pt-4">
-              <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.13em] text-[#9a744c]">
-                Acciones autorizadas
-              </h3>
-              <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
-                {permissionCatalog.map((permission) => (
-                  <PermissionSwitch
-                    key={permission}
-                    checked={
-                      selectedIsMaster ||
-                      (selectedRole?.permissions.includes(permission) ?? false)
-                    }
-                    disabled={selectedIsMaster}
-                    label={permissionLabels[permission] ?? permission}
-                    detail={
-                      selectedIsMaster ? "PROTEGIDO PARA EL MÁSTER" : permission
-                    }
-                    onClick={() =>
-                      selectedRole &&
-                      togglePermission(selectedRole.id, permission)
-                    }
-                  />
-                ))}
+              <div className="grid gap-4 xl:grid-cols-2">
+                {permissionGroups.map((group) => {
+                  const meta = permissionSectionMeta[group.section];
+                  const Icon = meta.icon;
+                  const enabledCount = selectedIsMaster
+                    ? group.permissions.length
+                    : group.permissions.filter((permission) =>
+                        selectedRole?.permissions.includes(permission),
+                      ).length;
+                  const complete = enabledCount === group.permissions.length;
+                  const partial = enabledCount > 0 && !complete;
+
+                  return (
+                    <article
+                      key={group.section}
+                      className="overflow-hidden rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)]"
+                    >
+                      <div className="flex flex-col gap-3 border-b border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/18 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${complete ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200" : partial ? "border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)] text-[color:var(--text-muted)]"}`}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-sm font-semibold uppercase tracking-[0.06em]">
+                                {group.section}
+                              </h4>
+                              <Badge
+                                variant="outline"
+                                className="px-1.5 py-0 text-[8px]"
+                              >
+                                {enabledCount}/{group.permissions.length}
+                              </Badge>
+                            </div>
+                            <p className="mt-0.5 text-[10px] text-[color:var(--text-muted)]">
+                              {meta.description}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          aria-pressed={complete}
+                          aria-label={`${complete ? "Desactivar" : "Activar"} el menú completo de ${group.section}`}
+                          disabled={selectedIsMaster}
+                          onClick={() =>
+                            setPermissionGroup(
+                              group.section,
+                              group.permissions,
+                              !complete,
+                            )
+                          }
+                          className={`flex min-h-10 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed ${complete ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-200" : partial ? "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/25 dark:text-amber-200" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)]"}`}
+                        >
+                          <span
+                            className={`flex h-6 w-6 items-center justify-center rounded-lg ${complete ? "bg-emerald-600 text-white" : partial ? "bg-amber-500 text-white" : "bg-[color:var(--accent-hover)] text-[color:var(--text-muted)]"}`}
+                          >
+                            {complete ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : partial ? (
+                              <Minus className="h-3.5 w-3.5" />
+                            ) : (
+                              <LockKeyhole className="h-3.5 w-3.5" />
+                            )}
+                          </span>
+                          <span>
+                            <span className="block text-[10px] font-semibold">
+                              MENÚ COMPLETO
+                            </span>
+                            <span className="block text-[8px] opacity-75">
+                              {complete
+                                ? "TODOS LOS ACCESOS"
+                                : partial
+                                  ? "ACCESO PARCIAL"
+                                  : "SIN ACCESO"}
+                            </span>
+                          </span>
+                          <span
+                            aria-hidden="true"
+                            className={`relative ml-1 h-4 w-8 rounded-full ${complete ? "bg-emerald-600" : partial ? "bg-amber-500" : "bg-stone-300 dark:bg-stone-700"}`}
+                          >
+                            <span
+                              className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${complete || partial ? "translate-x-[17px]" : "translate-x-0.5"}`}
+                            />
+                          </span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 p-4">
+                        <div>
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                              Submenús
+                            </p>
+                            <span className="text-[9px] text-[color:var(--text-muted)]">
+                              {group.modules.length} disponibles
+                            </span>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {group.modules.map(({ permission, label }) => (
+                              <PermissionSwitch
+                                key={permission}
+                                checked={
+                                  selectedIsMaster ||
+                                  (selectedRole?.permissions.includes(
+                                    permission,
+                                  ) ??
+                                    false)
+                                }
+                                disabled={selectedIsMaster}
+                                label={label}
+                                detail={
+                                  selectedIsMaster
+                                    ? "ACCESO TOTAL"
+                                    : "SUBMENÚ DEL MÓDULO"
+                                }
+                                onClick={() =>
+                                  selectedRole &&
+                                  togglePermission(selectedRole.id, permission)
+                                }
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        {group.actions.length > 0 && (
+                          <div className="border-t border-[color:var(--border-color)] pt-3">
+                            <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                              Acciones dentro del módulo
+                            </p>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {group.actions.map(({ permission, label }) => (
+                                <PermissionSwitch
+                                  key={permission}
+                                  checked={
+                                    selectedIsMaster ||
+                                    (selectedRole?.permissions.includes(
+                                      permission,
+                                    ) ??
+                                      false)
+                                  }
+                                  disabled={selectedIsMaster}
+                                  label={label}
+                                  detail={
+                                    selectedIsMaster
+                                      ? "ACCESO TOTAL"
+                                      : "ACCIÓN ESPECÍFICA"
+                                  }
+                                  onClick={() =>
+                                    selectedRole &&
+                                    togglePermission(
+                                      selectedRole.id,
+                                      permission,
+                                    )
+                                  }
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             </section>
           </CardContent>

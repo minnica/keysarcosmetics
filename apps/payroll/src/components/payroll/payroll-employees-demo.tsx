@@ -179,6 +179,7 @@ function EmployeeDialog({
   >("NONE");
   const [bank, setBank] = useState("");
   const [clabe, setClabe] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [hireDate, setHireDate] = useState(localDate());
   const [attempted, setAttempted] = useState(false);
   const [generatedCredentials, setGeneratedCredentials] = useState<{
@@ -200,6 +201,7 @@ function EmployeeDialog({
     setCommissionPayrollModuleId("NONE");
     setBank("");
     setClabe("");
+    setBirthDate("");
     setHireDate(localDate());
     setAttempted(false);
     setGeneratedCredentials(null);
@@ -245,6 +247,7 @@ function EmployeeDialog({
       !branchId ||
       !costBranchIds.length ||
       !roleId ||
+      !birthDate ||
       !hireDate ||
       !bank.trim() ||
       normalizedClabe.length !== CLABE_LENGTH ||
@@ -262,6 +265,7 @@ function EmployeeDialog({
     const temporaryPassword = createTemporaryPassword();
     addEmployee({
       name: name.trim(),
+      birthDate,
       username,
       accessPassword: temporaryPassword,
       mustChangeCredentials: true,
@@ -588,6 +592,21 @@ function EmployeeDialog({
                 </p>
               </div>
               <div className="space-y-2">
+                <Label htmlFor="employee-birth-date">Fecha de nacimiento</Label>
+                <Input
+                  id="employee-birth-date"
+                  type="date"
+                  max={localDate()}
+                  value={birthDate}
+                  onChange={(event) => setBirthDate(event.target.value)}
+                  aria-invalid={attempted && !birthDate}
+                  required
+                />
+                <p className="text-[10px] text-[color:var(--text-muted)]">
+                  Puede llegar desde RH; se usa para la felicitación personal.
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="employee-hire-date">Vigente desde</Label>
                 <Input
                   id="employee-hire-date"
@@ -808,6 +827,7 @@ function EmployeeProfileDialog({
   >(employee?.commissionPayrollModuleId ?? "NONE");
   const [bank, setBank] = useState(employee?.bank ?? "");
   const [clabe, setClabe] = useState(employee?.clabe ?? "");
+  const [birthDate, setBirthDate] = useState(employee?.birthDate ?? "");
   const [attempted, setAttempted] = useState(false);
 
   if (!employee) return null;
@@ -831,6 +851,7 @@ function EmployeeProfileDialog({
       !branchId ||
       !costBranchIds.length ||
       !roleId ||
+      !birthDate ||
       !bank.trim() ||
       normalizedClabe.length !== CLABE_LENGTH ||
       !Number.isFinite(salary) ||
@@ -843,6 +864,7 @@ function EmployeeProfileDialog({
     }
     updateEmployeeProfile(employeeId, {
       name: name.trim(),
+      birthDate,
       position: position.trim(),
       category,
       branchId,
@@ -883,6 +905,20 @@ function EmployeeProfileDialog({
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="profile-birth-date">Fecha de nacimiento</Label>
+            <Input
+              id="profile-birth-date"
+              type="date"
+              max={localDate()}
+              value={birthDate}
+              onChange={(event) => setBirthDate(event.target.value)}
+              aria-invalid={attempted && !birthDate}
+            />
+            <p className="text-[10px] text-[color:var(--text-muted)]">
+              Dato maestro de RH o respaldo manual autorizado.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="profile-position">Puesto</Label>

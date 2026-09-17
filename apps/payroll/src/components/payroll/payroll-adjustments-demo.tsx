@@ -53,13 +53,16 @@ import {
   toast,
 } from "@cosmetics/ui";
 import {
+  bonusFineConceptAllowsEmployee,
   type DemoPayrollAdjustment,
   type PayrollAdjustmentStatus,
   type PayrollAdjustmentType,
   type PayrollModule,
   type PayrollReportTarget,
+  employeeSalesForRange,
   payrollModuleLabel,
   payrollModuleForCategory,
+  resolveBonusConceptAward,
   usePayrollDemo,
 } from "./payroll-demo-context";
 import {
@@ -186,6 +189,12 @@ function AdjustmentDialog({
       new Date().toISOString().slice(0, 10),
   );
   const [concept, setConcept] = useState(adjustment?.concept ?? "");
+  const [catalogConceptId, setCatalogConceptId] = useState(
+    state.bonusFineConcepts.find(
+      (item) =>
+        item.type === adjustment?.type && item.name === adjustment?.concept,
+    )?.id ?? "",
+  );
   const [amount, setAmount] = useState(String(adjustment?.amount ?? ""));
   const [comments, setComments] = useState(adjustment?.comments ?? "");
   const [reportTargets, setReportTargets] = useState<PayrollReportTarget[]>(
@@ -206,6 +215,16 @@ function AdjustmentDialog({
   const selectedRun = state.runs.find(
     (run) =>
       run.module === payrollModule && run.periodStart === selectedPeriodStart,
+  );
+  const availableCatalogConcepts = state.bonusFineConcepts.filter(
+    (item) =>
+      item.active &&
+      item.type === type &&
+      item.payrollModule === payrollModule &&
+      bonusFineConceptAllowsEmployee(item, employeeId) &&
+      (!selectedPeriod ||
+        (item.validFrom <= selectedPeriod.end &&
+          (!item.validUntil || item.validUntil >= selectedPeriod.start))),
   );
   const masterEmployee = state.employees.find(
     (employee) =>
@@ -228,6 +247,11 @@ function AdjustmentDialog({
     setPayrollModule(
       normalizedModule as Exclude<PayrollModule, "CONSOLIDATED">,
     );
+    if (type === "BONUS" || type === "FINE") {
+      setCatalogConceptId("");
+      setConcept("");
+      setAmount("");
+    }
     if (nextRun) {
       setSelectedPeriodStart(nextRun.periodStart);
       setPayrollDate(nextRun.periodEnd);
@@ -356,6 +380,11 @@ function AdjustmentDialog({
                 onValueChange={(value) => {
                   const next = value as PayrollAdjustmentType;
                   setType(next);
+                  if (next === "BONUS" || next === "FINE") {
+                    setCatalogConceptId("");
+                    setConcept("");
+                    setAmount("");
+                  }
                   if (next !== "FINE") {
                     setSharedFine(false);
                     setParticipantIds([employeeId]);
@@ -378,12 +407,63 @@ function AdjustmentDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="adjustment-concept">Concepto</Label>
-              <Input
-                id="adjustment-concept"
-                value={concept}
-                onChange={(event) => setConcept(event.target.value)}
-                placeholder="MOTIVO DEL MOVIMIENTO"
-              />
+              {type === "BONUS" || type === "FINE" ? (
+                <Select
+                  value={catalogConceptId}
+                  onValueChange={(value) => {
+                    const selectedConcept = state.bonusFineConcepts.find(
+                      (item) => item.id === value,
+                    );
+                    setCatalogConceptId(value);
+                    setConcept(selectedConcept?.name ?? "");
+                    if (selectedConcept && selectedPeriod) {
+                      const sales = employeeSalesForRange(
+                        state,
+                        employeeId,
+                        selectedPeriod.start,
+                        selectedPeriod.end,
+                      );
+                      const award = resolveBonusConceptAward(
+                        selectedConcept,
+                        sales,
+                      );
+                      setAmount(
+                        String(
+                          selectedConcept.mode === "SCALE"
+                            ? award.amount
+                            : selectedConcept.defaultAmount,
+                        ),
+                      );
+                    }
+                  }}
+                >
+                  <SelectTrigger id="adjustment-concept">
+                    <SelectValue placeholder="SELECCIONA UN CONCEPTO" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCatalogConcepts.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                        {item.temporary ? " · TEMPORAL" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="adjustment-concept"
+                  value={concept}
+                  onChange={(event) => setConcept(event.target.value)}
+                  placeholder="MOTIVO DEL MOVIMIENTO"
+                />
+              )}
+              {(type === "BONUS" || type === "FINE") &&
+                availableCatalogConcepts.length === 0 && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    No hay conceptos vigentes para esta nómina y periodo.
+                    Configúralos en Bonos y multas.
+                  </p>
+                )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="adjustment-amount">Monto total</Label>
@@ -421,6 +501,11 @@ function AdjustmentDialog({
                       (item) => item.module === next,
                     );
                     setPayrollModule(next);
+                    if (type === "BONUS" || type === "FINE") {
+                      setCatalogConceptId("");
+                      setConcept("");
+                      setAmount("");
+                    }
                     if (nextRun) {
                       setSelectedPeriodStart(nextRun.periodStart);
                       setPayrollDate(nextRun.periodEnd);
@@ -456,6 +541,11 @@ function AdjustmentDialog({
                       (item) => item.start === periodStart,
                     );
                     setSelectedPeriodStart(periodStart);
+                    if (type === "BONUS" || type === "FINE") {
+                      setCatalogConceptId("");
+                      setConcept("");
+                      setAmount("");
+                    }
                     if (period) setPayrollDate(period.end);
                   }}
                 >

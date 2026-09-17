@@ -263,6 +263,25 @@ export function PayrollDisbursementDemo() {
   const exportConfig: ReportExportConfig<DisbursementRow> = {
     title: `DISPERSIÓN DE NÓMINA · ${moduleCopy[module].label}`,
     subtitle: run ? `PERIODO ${run.periodStart} — ${run.periodEnd} · CORRIDA ${run.status === "PAID" ? "PAGADA" : "CERRADA PARA PAGO"} · DATOS DEMOSTRATIVOS` : "SIN CORRIDA CERRADA",
+    metadata: [
+      { label: "Periodo", value: run ? `${run.periodStart} — ${run.periodEnd}` : "SIN PERIODO CERRADO" },
+      { label: "Tipo de nómina", value: moduleCopy[module].label },
+      { label: "Alcance", value: "REPORTE GENERAL · PERSONAL INCLUIDO" },
+      { label: "Estado", value: run ? (run.status === "PAID" ? "PAGADA" : "CERRADA PARA PAGO") : "NO DISPONIBLE" },
+    ],
+    metrics: [
+      { label: "Personal", value: String(rows.length), detail: "Registros para dispersión" },
+      { label: "Monto de pago", value: money.format(totals.payment), detail: "Neto a transferir" },
+      { label: "Cargas", value: money.format(totals.isr + totals.socialCost), detail: "ISR + costo social" },
+      { label: "Costo total", value: money.format(totals.total), detail: "Pago + cargas" },
+    ],
+    analysis: [
+      `La dispersión corresponde exclusivamente a ${moduleCopy[module].label.toLocaleLowerCase("es-MX")}.`,
+      run
+        ? `La corrida ${run.id.toLocaleUpperCase("es-MX")} está ${run.status === "PAID" ? "pagada" : "cerrada para pago"}.`
+        : "No existe una corrida cerrada disponible para exportar.",
+      "El personal se ordena por apellido paterno, apellido materno y nombre para control bancario.",
+    ],
     filename: `dispersion-${module.toLocaleLowerCase()}-${run?.periodStart ?? "sin-periodo"}`,
     sheetName: `Dispersión ${moduleCopy[module].label}`,
     orientation: "landscape",

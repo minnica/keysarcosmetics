@@ -131,6 +131,27 @@ export function PayrollPositionExpenseReport() {
   const exportConfig = {
     title: "Reporte ejecutivo de gastos por puesto",
     subtitle: `${dateFrom} — ${dateTo} · Comparativo ${previousFrom} — ${previousTo}`,
+    metadata: [
+      { label: "Periodo", value: `${dateFrom} — ${dateTo}` },
+      { label: "Empleado", value: nameQuery.trim() || "TODOS LOS EMPLEADOS" },
+      { label: "Puesto", value: positionFilter === "ALL" ? "TODOS LOS PUESTOS" : positionFilter },
+      { label: "Alcance", value: nameQuery.trim() || positionFilter !== "ALL" ? "SELECCIÓN FILTRADA" : "REPORTE GENERAL" },
+    ],
+    metrics: [
+      { label: "Nómina neta", value: money.format(totalPayroll), detail: `${total > 0 ? (totalPayroll / total * 100).toFixed(1) : "0.0"}% del gasto` },
+      { label: "Cargas e ISR", value: money.format(totalSocial + totalIsr), detail: `${total > 0 ? ((totalSocial + totalIsr) / total * 100).toFixed(1) : "0.0"}% del gasto` },
+      { label: "Cambio mensual", value: costChange === null ? "SIN BASE" : `${costChange >= 0 ? "+" : ""}${costChange.toFixed(1)}%`, detail: money.format(previousTotal) },
+      { label: "Personal", value: String(headcount), detail: `${analysis.positions.length} puestos` },
+    ],
+    analysis: [
+      analysis.positions[0]
+        ? `${analysis.positions[0].position} representa la mayor participación del costo con ${analysis.positions[0].percentage.toFixed(1)}%.`
+        : "No existen puestos para analizar con los filtros seleccionados.",
+      costChange === null
+        ? "No existe una base comparable del periodo anterior."
+        : `El costo total ${costChange >= 0 ? "aumentó" : "disminuyó"} ${Math.abs(costChange).toFixed(1)}% respecto del periodo comparable.`,
+      `El reporte incluye ${headcount} personas y ${analysis.positions.length} puestos.`,
+    ],
     filename: `gastos-por-puesto-${dateFrom}-${dateTo}`,
     sheetName: "Detalle por empleado",
     orientation: "landscape" as const,

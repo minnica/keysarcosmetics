@@ -8,6 +8,7 @@ import {
   FileText,
   ReceiptText,
   Send,
+  Trophy,
 } from "lucide-react";
 import {
   Badge,
@@ -35,9 +36,9 @@ import {
   type EmployeePayrollLine,
   type PayrollModule,
   type PayrollModuleConcept,
-  employeeCommissionPayrollModule,
-  employeeSalaryPayrollModule,
   payrollModuleLabel,
+  temporaryBonusAwardsForPeriod,
+  temporaryBonusStandings,
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
@@ -65,17 +66,39 @@ export function Receipt({
   const includesConcept = (concept: PayrollModuleConcept) =>
     module === "CONSOLIDATED" ||
     Boolean(moduleDefinition?.concepts.includes(concept));
-  const movementModule =
-    employeeCommissionPayrollModule(line.employee) ??
-    employeeSalaryPayrollModule(line.employee);
   const movements = state.movements.filter(
     (movement) =>
       movement.employeeId === line.employee.id &&
       movement.periodStart === periodStart &&
       movement.status === "APPROVED" &&
-      (module === "CONSOLIDATED" || movementModule === module) &&
+      (module === "CONSOLIDATED" || movement.payrollModule === module) &&
       includesConcept(movement.type === "BONUS" ? "BONUS" : "FINE"),
   );
+  const automaticTemporaryAwards = temporaryBonusAwardsForPeriod(
+    state,
+    periodStart,
+    periodEnd,
+  ).filter(
+    (award) =>
+      award.employee.id === line.employee.id &&
+      (module === "CONSOLIDATED" || award.concept.payrollModule === module),
+  );
+  const temporaryChallenges = state.bonusFineConcepts
+    .filter(
+      (concept) =>
+        concept.type === "BONUS" &&
+        concept.temporary &&
+        Boolean(concept.validUntil) &&
+        concept.validFrom <= periodEnd &&
+        concept.validUntil! >= periodStart &&
+        (module === "CONSOLIDATED" || concept.payrollModule === module),
+    )
+    .flatMap((concept) => {
+      const standing = temporaryBonusStandings(state, concept).find(
+        (item) => item.employee.id === line.employee.id,
+      );
+      return standing ? [standing] : [];
+    });
   const adjustments = state.adjustments.filter(
     (adjustment) =>
       adjustment.participantIds.includes(line.employee.id) &&
@@ -230,6 +253,14 @@ export function Receipt({
               </strong>
             </div>
           ))}
+          {automaticTemporaryAwards.map((award) => (
+            <div key={award.id} className="flex justify-between gap-4">
+              <span>{award.concept.name} · premio al cierre</span>
+              <strong className="text-emerald-700 dark:text-emerald-300">
+                +{money.format(award.amount)}
+              </strong>
+            </div>
+          ))}
           {adjustments
             .filter(
               (adjustment) =>
@@ -298,6 +329,49 @@ export function Receipt({
             </div>
           )}
         </div>
+        {temporaryChallenges.length > 0 && (
+          <div className="space-y-3 rounded-xl border border-amber-300/60 bg-amber-50/50 p-4 dark:bg-amber-950/20">
+            <div className="flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-amber-600" />
+              <p className="text-xs font-semibold uppercase tracking-wider">
+                Avance de bonos temporales
+              </p>
+            </div>
+            {temporaryChallenges.map((standing) => {
+              const percent = Math.min(
+                (standing.value / standing.target) * 100,
+                100,
+              );
+              return (
+                <div key={standing.concept.id}>
+                  <div className="flex flex-wrap items-end justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold">
+                        {standing.concept.name}
+                      </p>
+                      <p className="text-[10px] text-[color:var(--text-muted)]">
+                        {standing.achieved
+                          ? `LOGRADO · POSICIÓN ${standing.rank}`
+                          : standing.concept.condition === "BONUS_COUNT"
+                            ? `TE FALTAN ${standing.remaining} BONOS`
+                            : `TE FALTAN ${money.format(standing.remaining)}`}
+                      </p>
+                    </div>
+                    <span className="number-display text-sm">
+                      {percent.toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100 dark:bg-amber-950/50">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-emerald-600"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <Separator />
         <div className="flex items-end justify-between gap-4">
           <div>

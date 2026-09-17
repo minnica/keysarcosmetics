@@ -774,6 +774,32 @@ function PayrollTable({
         ? "Consolidado general de nómina"
         : `Detalle de ${payrollModuleLabel(state, view)}`,
     subtitle: `${periodStart} — ${periodEnd} · Costo social ${includeSocialCost ? "incluido" : "excluido"} · ISR ${includeIsr ? "incluido" : "excluido"}`,
+    metadata: [
+      { label: "Periodo", value: `${periodStart} — ${periodEnd}` },
+      {
+        label: "Reporte",
+        value:
+          view === "CONSOLIDATED"
+            ? "CONSOLIDADO GENERAL"
+            : payrollModuleLabel(state, view),
+      },
+      { label: "Alcance", value: "REPORTE GENERAL · EMPRESA COMPLETA" },
+      {
+        label: "Cargas incluidas",
+        value: `COSTO SOCIAL ${includeSocialCost ? "SÍ" : "NO"} · ISR ${includeIsr ? "SÍ" : "NO"}`,
+      },
+    ],
+    metrics: [
+      { label: "Personal", value: String(lines.length), detail: "Registros incluidos" },
+      { label: "Nómina", value: money.format(payrollTotal), detail: "Pago del periodo" },
+      { label: "Cargas", value: money.format(socialTotal + isrTotal), detail: "Costo social + ISR" },
+      { label: "Costo total", value: money.format(total), detail: "Nómina + cargas" },
+    ],
+    analysis: [
+      `${approvedEmployeeIds.size} de ${lines.length} recibos del periodo aparecen aprobados por el personal.`,
+      `El costo social está ${includeSocialCost ? "incluido" : "excluido"} y el ISR está ${includeIsr ? "incluido" : "excluido"} en esta salida.`,
+      "La exportación contiene únicamente la nómina seleccionada y no incluye filtros, navegación ni controles del sistema.",
+    ],
     filename: `nomina-${view.toLocaleLowerCase()}-${periodStart}`,
     sheetName: "Nómina",
     orientation: "landscape" as const,
@@ -1500,6 +1526,30 @@ function ConsolidatedDashboard({
   const reconciliationReportConfig = {
     title: "Conciliación de nómina por punto de venta y puesto",
     subtitle: `${config.periodStart} — ${config.periodEnd} · ${reconciliationSuccessful ? "Comparación exitosa" : "Requiere revisión"}`,
+    metadata: [
+      { label: "Periodo", value: `${config.periodStart} — ${config.periodEnd}` },
+      { label: "Reporte", value: "CONCILIACIÓN FINAL" },
+      { label: "Alcance", value: "REPORTE GENERAL · EMPRESA COMPLETA" },
+      {
+        label: "Estado",
+        value: reconciliationSuccessful ? "COMPARACIÓN EXITOSA" : "REQUIERE REVISIÓN",
+      },
+    ],
+    metrics: [
+      { label: "Ventas", value: money.format(totalSales), detail: "Periodo conciliado" },
+      { label: "Nómina base", value: money.format(payrollBase), detail: "Antes de cargas" },
+      { label: "Cargas", value: money.format(socialCost + isrCost), detail: "Social + ISR" },
+      { label: "Costo general", value: money.format(totalPayroll), detail: `${lines.length} empleados` },
+    ],
+    analysis: [
+      reconciliationSuccessful
+        ? "La suma por puesto, tipo de nómina y punto de venta coincide con el consolidado general."
+        : `La conciliación presenta una diferencia de ${money.format(comparisonDelta)}.`,
+      reconciliationIssues.length === 0
+        ? "No existen movimientos del periodo sin sucursal de costo."
+        : `${reconciliationIssues.length} movimientos requieren asignación o corrección de sucursal.`,
+      `${payrollTypeColumns.length} tipos de nómina alimentan esta conciliación.`,
+    ],
     filename: `conciliacion-nomina-${config.periodStart}`,
     sheetName: "Conciliación",
     rows: reconciliationReportRows,

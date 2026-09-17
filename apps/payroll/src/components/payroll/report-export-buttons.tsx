@@ -6,6 +6,7 @@ import { Button, toast } from "@cosmetics/ui";
 import {
   exportReportToExcel,
   exportReportToPdf,
+  printReport,
   type ReportExportConfig,
 } from "@/lib/report-export";
 
@@ -37,6 +38,14 @@ export function ReportExportButtons<T>({
     }
   }
 
+  function printSelectedReport() {
+    try {
+      printReport(config);
+    } catch {
+      toast.error("No se pudo preparar la impresión del reporte.");
+    }
+  }
+
   return (
     <div className="flex flex-wrap gap-2" aria-label="Exportar reporte">
       <Button
@@ -45,7 +54,7 @@ export function ReportExportButtons<T>({
         size={iconOnly ? "icon" : "sm"}
         className={appearance === "on-dark" ? "border-white/40 bg-[#f7efe7] text-[#2d241d] shadow-[0_5px_16px_rgba(0,0,0,0.2)] hover:border-white hover:bg-white hover:text-[#17130f]" : undefined}
         disabled={disabled || exporting !== null}
-        onClick={() => window.print()}
+        onClick={printSelectedReport}
         aria-label="Imprimir reporte ejecutivo"
         title="Imprimir reporte"
       >

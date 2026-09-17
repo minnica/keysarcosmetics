@@ -4,21 +4,27 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { toast } from "@cosmetics/ui";
 import {
   ArrowLeftRight,
   BarChart2,
+  BellRing,
   BriefcaseBusiness,
   Calculator,
   ChevronDown,
   CircleDollarSign,
+  Delete,
+  EyeOff,
   FileText,
+  Gavel,
   HandCoins,
   Landmark,
   Layers3,
   LayoutDashboard,
+  LockKeyhole,
+  MonitorCheck,
   LogOut,
   Menu,
+  MessageSquareText,
   Moon,
   Network,
   PlaneTakeoff,
@@ -29,24 +35,46 @@ import {
   Sun,
   TrendingUp,
   UserCircle2,
+  KeyRound,
   UserRoundCheck,
   UsersRound,
   WalletCards,
   X,
 } from "lucide-react";
 import {
+  Button,
+  Input,
+  Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  toast,
+} from "@cosmetics/ui";
+import {
   requiredModulePermission,
   roleHasPermission,
   usePayrollDemo,
 } from "./payroll-demo-context";
 
-type SectionId = "people" | "payroll" | "operations" | "settings" | "reports";
+type SectionId = "direction" | "people" | "payroll" | "operations" | "settings" | "reports";
 type NavItem = { href: string; label: string; icon: React.ElementType };
 type NavSection = { id: SectionId; label: string; items: NavItem[] };
 
-const SESSION_IDLE_LIMIT_MS = 3 * 60 * 1000;
+const PRIVACY_IDLE_LIMIT_MS = 3 * 60 * 1000;
+const SESSION_IDLE_LIMIT_MS = 5 * 60 * 1000;
 
 const sections: NavSection[] = [
+  {
+    id: "direction",
+    label: "Dirección",
+    items: [
+      {
+        href: "/centro-control",
+        label: "Centro de control",
+        icon: MonitorCheck,
+      },
+    ],
+  },
   {
     id: "people",
     label: "Personal",
@@ -95,6 +123,11 @@ const sections: NavSection[] = [
         icon: Calculator,
       },
       { href: "/movimientos", label: "Movimientos", icon: ArrowLeftRight },
+      {
+        href: "/operacion-bonos-multas",
+        label: "Bonos y multas",
+        icon: Sparkles,
+      },
       { href: "/prestamos-adelantos", label: "Préstamos", icon: HandCoins },
     ],
   },
@@ -118,6 +151,7 @@ const sections: NavSection[] = [
       },
       { href: "/bonos-multas", label: "Bonos y multas", icon: Sparkles },
       { href: "/viaticos", label: "Viáticos", icon: PlaneTakeoff },
+      { href: "/notificaciones", label: "Notificaciones", icon: BellRing },
       { href: "/accesos", label: "Roles y accesos", icon: ShieldCheck },
     ],
   },
@@ -135,6 +169,18 @@ const sections: NavSection[] = [
         label: "Desglose por sucursal",
         icon: BarChart2,
       },
+      {
+        href: "/reportes/movimientos",
+        label: "Movimientos",
+        icon: ArrowLeftRight,
+      },
+      {
+        href: "/reportes/prestamos",
+        label: "Préstamos",
+        icon: HandCoins,
+      },
+      { href: "/reportes/bonos", label: "Bonos", icon: Sparkles },
+      { href: "/reportes/multas", label: "Multas", icon: Gavel },
       { href: "/recibos", label: "Recibos", icon: FileText },
       {
         href: "/recibos-kiosco",
@@ -149,6 +195,115 @@ function isRouteActive(pathname: string, href: string): boolean {
   return href === "/"
     ? pathname === "/"
     : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function MasterClarificationBell({ mobile = false }: { mobile?: boolean }) {
+  const { state } = usePayrollDemo();
+  const activeEmployee = state.employees.find(
+    (employee) => employee.id === state.activeEmployeeId,
+  );
+  const activeRole = state.roles.find(
+    (role) => role.id === activeEmployee?.roleId,
+  );
+
+  if (activeRole?.id !== "role-admin") return null;
+
+  const notifications = [
+    ...state.decisions
+      .filter((decision) => decision.status === "CLARIFICATION")
+      .map((decision) => ({
+        id: `receipt-${decision.employeeId}-${decision.periodStart}`,
+        employeeName:
+          state.employees.find(
+            (employee) => employee.id === decision.employeeId,
+          )?.name ?? "EMPLEADO",
+        title: "Aclaración de recibo",
+        detail: decision.note || "Solicitud sin detalle",
+        period: decision.periodStart,
+        updatedAt: decision.updatedAt,
+        href: `/recibos#aclaracion-${decision.employeeId}-${decision.periodStart}`,
+      })),
+    ...state.kioskReceiptDecisions
+      .filter((decision) => decision.status === "CLARIFICATION")
+      .map((decision) => ({
+        id: `kiosk-${decision.managerId}-${decision.month}`,
+        employeeName:
+          state.employees.find((employee) => employee.id === decision.managerId)
+            ?.name ?? "GERENCIA",
+        title: "Aclaración gerencial",
+        detail: decision.note || "Solicitud sin detalle",
+        period: decision.month,
+        updatedAt: decision.updatedAt,
+        href: `/recibos#aclaracion-gerencial-${decision.managerId}-${decision.month}`,
+      })),
+  ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={`relative flex shrink-0 items-center justify-center border text-[#efd9bf] transition-colors hover:border-[#caa177]/55 hover:bg-[#caa177]/14 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4b28c] ${mobile ? "h-10 w-10 rounded-xl border-white/10" : "h-9 w-9 rounded-lg border-white/10 bg-white/[0.04]"}`}
+          aria-label={`${notifications.length} aclaraciones pendientes`}
+          title="Aclaraciones pendientes"
+        >
+          <BellRing className="h-4 w-4" />
+          {notifications.length > 0 && (
+            <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full border border-[#211b17] bg-rose-500 px-1 text-[8px] font-bold leading-none text-white">
+              {notifications.length > 9 ? "9+" : notifications.length}
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[min(390px,calc(100vw-24px))] overflow-hidden rounded-2xl border-[#b98d62]/35 bg-[#211b17] p-0 text-[#f6ecdf] shadow-2xl"
+      >
+        <div className="border-b border-white/10 px-4 py-3">
+          <p className="text-sm font-semibold">Aclaraciones pendientes</p>
+          <p className="mt-0.5 text-[10px] text-[#b8a99a]">
+            Exclusivo para usuario máster · {notifications.length} abiertas
+          </p>
+        </div>
+        {notifications.length ? (
+          <div className="max-h-80 divide-y divide-white/10 overflow-y-auto">
+            {notifications.slice(0, 8).map((notification) => (
+              <Link
+                key={notification.id}
+                href={notification.href}
+                className="flex gap-3 px-4 py-3 transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#d4b28c]"
+              >
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#d4b28c]/25 bg-[#d4b28c]/10 text-[#efc99e]">
+                  <MessageSquareText className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#d7ab7f]">
+                    {notification.title} · {notification.period}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs font-medium text-white">
+                    {notification.employeeName}
+                  </span>
+                  <span className="mt-1 block line-clamp-2 text-[10px] leading-4 text-[#b8a99a]">
+                    {notification.detail}
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="px-5 py-8 text-center">
+            <BellRing className="mx-auto h-6 w-6 text-[#8f8175]" />
+            <p className="mt-2 text-xs font-medium">
+              Sin aclaraciones abiertas
+            </p>
+            <p className="mt-1 text-[10px] text-[#9f9185]">
+              Las nuevas solicitudes aparecerán aquí.
+            </p>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function TopNavigation() {
@@ -353,6 +508,7 @@ function TopNavigation() {
         </nav>
 
         <div className="ml-auto hidden items-center gap-1.5 md:flex">
+          <MasterClarificationBell />
           <button
             type="button"
             onClick={() => setTheme(!dark)}
@@ -486,6 +642,7 @@ function TopNavigation() {
                 </span>
               </Link>
             )}
+            <MasterClarificationBell mobile />
             <button
               type="button"
               onClick={() => setTheme(!dark)}
@@ -513,11 +670,24 @@ function TopNavigation() {
   );
 }
 
-function SessionTimeoutGuard() {
+function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, endSession } = usePayrollDemo();
+  const { state, isAuthenticated, endSession } = usePayrollDemo();
+  const [privacyLocked, setPrivacyLocked] = useState(false);
+  const [privacyReason, setPrivacyReason] = useState<"MANUAL" | "INACTIVITY">(
+    "MANUAL",
+  );
+  const [privateCode, setPrivateCode] = useState("");
+  const [unlockError, setUnlockError] = useState("");
+  const [securityCycle, setSecurityCycle] = useState(0);
   const lastActivityRef = useRef(Date.now());
   const expiredRef = useRef(false);
+  const privacyLockedRef = useRef(false);
+  const masterEmployee = state.employees.find(
+    (employee) =>
+      employee.roleId === "role-admin" && employee.secondaryAccessKey,
+  );
+  const masterPrivateCode = masterEmployee?.secondaryAccessKey ?? null;
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -525,40 +695,75 @@ function SessionTimeoutGuard() {
       return;
     }
 
-    let timeoutId: number | null = null;
+    let privacyTimeoutId: number | null = null;
+    let sessionTimeoutId: number | null = null;
+
+    function clearTimers() {
+      if (privacyTimeoutId !== null) window.clearTimeout(privacyTimeoutId);
+      if (sessionTimeoutId !== null) window.clearTimeout(sessionTimeoutId);
+    }
 
     function expireSession() {
       if (expiredRef.current) return;
       expiredRef.current = true;
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      clearTimers();
       endSession();
       router.replace("/login");
       toast.warning(
-        "Sesión cerrada por 3 minutos sin actividad. Vuelve a ingresar.",
+        "Sesión cerrada por 5 minutos sin actividad. Vuelve a ingresar.",
       );
     }
 
-    function scheduleExpiration() {
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
+    function lockSensitiveInformation() {
+      if (privacyLockedRef.current || expiredRef.current) return;
+      privacyLockedRef.current = true;
+      setPrivacyReason("INACTIVITY");
+      setPrivateCode("");
+      setUnlockError("");
+      setPrivacyLocked(true);
+      if (privacyTimeoutId !== null) window.clearTimeout(privacyTimeoutId);
+      toast.warning(
+        "Información protegida por 3 minutos sin actividad. Ingresa el código privado master para continuar.",
+      );
+    }
+
+    function scheduleSecurityTimers() {
+      clearTimers();
       const elapsed = Date.now() - lastActivityRef.current;
-      const remaining = SESSION_IDLE_LIMIT_MS - elapsed;
-      if (remaining <= 0) {
+      const sessionRemaining = SESSION_IDLE_LIMIT_MS - elapsed;
+      if (sessionRemaining <= 0) {
         expireSession();
         return;
       }
-      timeoutId = window.setTimeout(() => {
+      sessionTimeoutId = window.setTimeout(() => {
         if (Date.now() - lastActivityRef.current >= SESSION_IDLE_LIMIT_MS) {
           expireSession();
         } else {
-          scheduleExpiration();
+          scheduleSecurityTimers();
         }
-      }, remaining);
+      }, sessionRemaining);
+
+      if (privacyLockedRef.current) return;
+      const privacyRemaining = PRIVACY_IDLE_LIMIT_MS - elapsed;
+      if (privacyRemaining <= 0) {
+        lockSensitiveInformation();
+        return;
+      }
+      privacyTimeoutId = window.setTimeout(() => {
+        if (
+          Date.now() - lastActivityRef.current >= PRIVACY_IDLE_LIMIT_MS
+        ) {
+          lockSensitiveInformation();
+        } else {
+          scheduleSecurityTimers();
+        }
+      }, privacyRemaining);
     }
 
     function registerActivity() {
-      if (expiredRef.current) return;
+      if (expiredRef.current || privacyLockedRef.current) return;
       lastActivityRef.current = Date.now();
-      scheduleExpiration();
+      scheduleSecurityTimers();
     }
 
     function registerPointerMovement() {
@@ -567,16 +772,26 @@ function SessionTimeoutGuard() {
 
     function checkElapsedTime() {
       if (document.visibilityState !== "visible") return;
-      if (Date.now() - lastActivityRef.current >= SESSION_IDLE_LIMIT_MS) {
+      const elapsed = Date.now() - lastActivityRef.current;
+      if (elapsed >= SESSION_IDLE_LIMIT_MS) {
         expireSession();
+      } else if (
+        elapsed >= PRIVACY_IDLE_LIMIT_MS &&
+        !privacyLockedRef.current
+      ) {
+        lockSensitiveInformation();
       } else {
-        scheduleExpiration();
+        scheduleSecurityTimers();
       }
     }
 
     expiredRef.current = false;
+    privacyLockedRef.current = false;
     lastActivityRef.current = Date.now();
-    scheduleExpiration();
+    setPrivacyLocked(false);
+    setPrivateCode("");
+    setUnlockError("");
+    scheduleSecurityTimers();
     window.addEventListener("pointerdown", registerActivity, { passive: true });
     window.addEventListener("mousemove", registerPointerMovement, {
       passive: true,
@@ -590,7 +805,7 @@ function SessionTimeoutGuard() {
     document.addEventListener("visibilitychange", checkElapsedTime);
 
     return () => {
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      clearTimers();
       window.removeEventListener("pointerdown", registerActivity);
       window.removeEventListener("mousemove", registerPointerMovement);
       window.removeEventListener("keydown", registerActivity);
@@ -598,9 +813,193 @@ function SessionTimeoutGuard() {
       window.removeEventListener("touchstart", registerActivity);
       document.removeEventListener("visibilitychange", checkElapsedTime);
     };
-  }, [endSession, isAuthenticated, router]);
+  }, [endSession, isAuthenticated, router, securityCycle]);
 
-  return null;
+  function lockManually() {
+    privacyLockedRef.current = true;
+    setPrivacyReason("MANUAL");
+    setPrivateCode("");
+    setUnlockError("");
+    setPrivacyLocked(true);
+  }
+
+  function addPrivateCodeDigit(digit: string) {
+    setPrivateCode((current) =>
+      current.length < 4 ? `${current}${digit}` : current,
+    );
+    setUnlockError("");
+  }
+
+  function unlockInformation() {
+    if (!masterPrivateCode || privateCode !== masterPrivateCode) {
+      setUnlockError(
+        masterPrivateCode
+          ? "Código privado master incorrecto. Intenta nuevamente."
+          : "No existe un código privado master configurado.",
+      );
+      setPrivateCode("");
+      return;
+    }
+    privacyLockedRef.current = false;
+    setPrivacyLocked(false);
+    setPrivateCode("");
+    setUnlockError("");
+    setSecurityCycle((current) => current + 1);
+    toast.success("Información desbloqueada por autorización master.");
+  }
+
+  return (
+    <>
+      <div
+        className={`min-h-screen transition duration-200 ${privacyLocked ? "pointer-events-none select-none blur-xl" : ""}`}
+        aria-hidden={privacyLocked}
+      >
+        {children}
+      </div>
+
+      {privacyLocked && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-[#17120f]/75 p-4 backdrop-blur-md"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="privacy-lock-title"
+          aria-describedby="privacy-lock-description"
+          onKeyDown={(event) => {
+            if (/^\d$/.test(event.key)) addPrivateCodeDigit(event.key);
+            if (event.key === "Backspace")
+              setPrivateCode((current) => current.slice(0, -1));
+            if (event.key === "Enter" && privateCode.length === 4)
+              unlockInformation();
+          }}
+        >
+          <section className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#241c17] p-5 text-white shadow-[0_28px_90px_rgba(0,0,0,0.55)] sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#d1a779]/30 bg-[#d1a779]/10 text-[#edcfaa]">
+                <LockKeyhole className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#d2a77c]">
+                  Protección de nómina
+                </p>
+                <h2 id="privacy-lock-title" className="mt-1 text-lg font-semibold">
+                  Información bloqueada
+                </h2>
+                <p
+                  id="privacy-lock-description"
+                  className="mt-1 text-xs leading-5 text-white/60"
+                >
+                  {privacyReason === "INACTIVITY"
+                    ? "Se activó la privacidad después de 3 minutos sin actividad."
+                    : "La privacidad se activó manualmente para ocultar datos sensibles."}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <Label
+                  htmlFor="master-privacy-code"
+                  className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/75"
+                >
+                  <KeyRound className="h-3.5 w-3.5" /> Código privado master
+                </Label>
+                <span className="text-[8px] font-semibold uppercase tracking-[0.1em] text-[#d2a77c]">
+                  No autocompletable
+                </span>
+              </div>
+              <Input
+                id="master-privacy-code"
+                name="master-privacy-verification"
+                type="password"
+                value={privateCode}
+                readOnly
+                autoFocus
+                autoComplete="off"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                className="mt-3 h-11 border-white/15 bg-black/20 text-center text-lg tracking-[0.5em] text-white"
+                aria-label="Código privado master capturado con teclado seguro"
+              />
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(
+                  (digit) => (
+                    <button
+                      key={digit}
+                      type="button"
+                      onClick={() => addPrivateCodeDigit(digit)}
+                      className="h-9 rounded-xl border border-white/10 bg-white/[0.04] text-sm font-semibold transition-colors hover:border-[#d2a77c]/55 hover:bg-white/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d2a77c]"
+                    >
+                      {digit}
+                    </button>
+                  ),
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPrivateCode("")}
+                  className="h-9 rounded-xl border border-white/10 text-[9px] font-semibold uppercase tracking-[0.08em] text-white/60 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d2a77c]"
+                >
+                  Limpiar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addPrivateCodeDigit("0")}
+                  className="h-9 rounded-xl border border-white/10 bg-white/[0.04] text-sm font-semibold hover:border-[#d2a77c]/55 hover:bg-white/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d2a77c]"
+                >
+                  0
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPrivateCode((current) => current.slice(0, -1))
+                  }
+                  className="flex h-9 items-center justify-center rounded-xl border border-white/10 text-white/60 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d2a77c]"
+                  aria-label="Borrar último dígito"
+                >
+                  <Delete className="h-4 w-4" />
+                </button>
+              </div>
+              {unlockError && (
+                <p className="mt-3 text-xs font-medium text-rose-300" role="alert">
+                  {unlockError}
+                </p>
+              )}
+            </div>
+
+            <Button
+              type="button"
+              className="mt-4 h-11 w-full bg-[#8a603d] text-white hover:bg-[#704a2e]"
+              disabled={privateCode.length !== 4}
+              onClick={unlockInformation}
+            >
+              <KeyRound className="mr-2 h-4 w-4" /> Desbloquear información
+            </Button>
+            <p className="mt-3 text-center text-[10px] leading-4 text-white/45">
+              Si la inactividad llega a 5 minutos, la sesión se cerrará por completo.
+            </p>
+          </section>
+        </div>
+      )}
+
+      <Button
+        type="button"
+        onClick={lockManually}
+        disabled={privacyLocked}
+        className="fixed bottom-5 right-5 z-[80] h-11 rounded-full bg-[#35281f] px-4 text-white shadow-[0_16px_45px_rgba(30,20,14,0.35)] hover:bg-[#4a3527] disabled:bg-[#35281f] disabled:text-white/70 disabled:opacity-100"
+        aria-label={
+          privacyLocked
+            ? "La información está bloqueada"
+            : "Activar privacidad y ocultar información sensible"
+        }
+      >
+        {privacyLocked ? (
+          <LockKeyhole className="mr-2 h-4 w-4" />
+        ) : (
+          <EyeOff className="mr-2 h-4 w-4" />
+        )}
+        {privacyLocked ? "Bloqueado" : "Privacidad"}
+      </Button>
+    </>
+  );
 }
 
 function ConfidentialContent({ children }: { children: React.ReactNode }) {
@@ -665,12 +1064,13 @@ function ConfidentialContent({ children }: { children: React.ReactNode }) {
 
 export function PayrollShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen min-w-0 overflow-x-hidden">
-      <SessionTimeoutGuard />
-      <TopNavigation />
-      <main className="min-w-0 w-full max-w-none p-4 md:p-6 xl:px-8 xl:py-7">
-        <ConfidentialContent>{children}</ConfidentialContent>
-      </main>
-    </div>
+    <PayrollSecurityGuard>
+      <div className="min-h-screen min-w-0 overflow-x-hidden">
+        <TopNavigation />
+        <main className="min-w-0 w-full max-w-none p-4 md:p-6 xl:px-8 xl:py-7">
+          <ConfidentialContent>{children}</ConfidentialContent>
+        </main>
+      </div>
+    </PayrollSecurityGuard>
   );
 }

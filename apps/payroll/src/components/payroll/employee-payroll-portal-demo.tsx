@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   AlertCircle,
   BadgeCheck,
+  CakeSlice,
   CalendarCheck2,
   CheckCircle2,
   CircleDollarSign,
@@ -14,6 +15,8 @@ import {
   ReceiptText,
   ShieldX,
   Store,
+  Target,
+  Trophy,
   TrendingUp,
   UserRound,
   WalletCards,
@@ -52,6 +55,8 @@ import {
   type PayrollModule,
   payrollModuleLabel,
   payrollModuleForCategory,
+  temporaryBonusAwardsForPeriod,
+  temporaryBonusStandings,
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
@@ -66,6 +71,41 @@ const money = new Intl.NumberFormat("es-MX", {
 
 function localIsoDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function inclusiveDayCount(start: string, end: string) {
+  const startDate = new Date(`${start}T12:00:00`);
+  const endDate = new Date(`${end}T12:00:00`);
+  return Math.max(
+    Math.floor((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1,
+    0,
+  );
+}
+
+function BirthdayGreeting({ name }: { name: string }) {
+  return (
+    <Card className="overflow-hidden border-fuchsia-300/70 bg-[linear-gradient(120deg,rgba(253,242,248,.96),rgba(255,251,235,.96),rgba(255,255,255,.92))] shadow-[0_16px_40px_rgba(168,85,247,.09)] dark:border-fuchsia-800 dark:bg-[linear-gradient(120deg,rgba(88,28,61,.3),rgba(69,52,20,.25),rgba(28,25,23,.82))]">
+      <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-fuchsia-500/12 text-fuchsia-700 ring-1 ring-fuchsia-300/70 dark:text-fuchsia-200 dark:ring-fuchsia-800">
+          <CakeSlice className="h-6 w-6" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700 dark:text-fuchsia-200">
+            Celebración del día
+          </p>
+          <p className="mt-1 font-brand text-2xl tracking-wide">
+            ¡Feliz cumpleaños, {name}!
+          </p>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+            Todo el equipo de Keysar Cosmetics te desea un día extraordinario.
+          </p>
+        </div>
+        <Badge className="w-fit border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
+          FELICIDADES
+        </Badge>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function EmployeePayrollPortalDemo() {
@@ -129,6 +169,7 @@ export function EmployeePayrollPortalDemo() {
     periodStart: string;
     periodEnd: string;
   } | null>(null);
+  const [celebrationDismissed, setCelebrationDismissed] = useState(false);
   const sales = useMemo(
     () =>
       activeConfig
@@ -142,6 +183,51 @@ export function EmployeePayrollPortalDemo() {
             .sort((a, b) => b.date.localeCompare(a.date))
         : [],
     [activeConfig, employee?.id, state.sales],
+  );
+  const personalSalesHistory = useMemo(
+    () =>
+      state.sales
+        .filter((sale) => sale.employeeId === employee?.id)
+        .sort(
+          (left, right) =>
+            left.date.localeCompare(right.date) ||
+            left.id.localeCompare(right.id),
+        ),
+    [employee?.id, state.sales],
+  );
+  const personalRecordSale = personalSalesHistory.reduce<
+    (typeof personalSalesHistory)[number] | undefined
+  >(
+    (record, sale) => (!record || sale.amount > record.amount ? sale : record),
+    undefined,
+  );
+  const personalRecordIndex = personalRecordSale
+    ? personalSalesHistory.findIndex(
+        (sale) => sale.id === personalRecordSale.id,
+      )
+    : -1;
+  const previousPersonalRecord = personalSalesHistory
+    .slice(0, Math.max(personalRecordIndex, 0))
+    .reduce<
+      (typeof personalSalesHistory)[number] | undefined
+    >((record, sale) => (!record || sale.amount > record.amount ? sale : record), undefined);
+  const recordBrokenInCurrentPeriod = Boolean(
+    activeConfig &&
+    personalRecordSale &&
+    personalRecordSale.date >= activeConfig.periodStart &&
+    personalRecordSale.date <= activeConfig.periodEnd &&
+    personalRecordSale.amount > (previousPersonalRecord?.amount ?? 0),
+  );
+  const recordBranch = state.branches.find(
+    (branch) => branch.id === personalRecordSale?.branchId,
+  );
+  const periodHighestSale = sales.reduce<(typeof sales)[number] | undefined>(
+    (record, sale) => (!record || sale.amount > record.amount ? sale : record),
+    undefined,
+  );
+  const amountToRecord = Math.max(
+    (personalRecordSale?.amount ?? 0) - (periodHighestSale?.amount ?? 0),
+    0,
   );
   const movements = activeConfig
     ? state.movements.filter(
@@ -193,9 +279,48 @@ export function EmployeePayrollPortalDemo() {
     .filter((loan) => loan.employeeId === employee?.id)
     .slice()
     .reverse();
+  const latestResolvedRequest = personalRequests.find(
+    (request) => request.status !== "PENDING",
+  );
   const today = localIsoDate();
+  const birthdayName =
+    employee?.firstName?.trim() || employee?.name.split(/\s+/)[0] || "";
+  const isBirthday = Boolean(
+    employee?.birthDate && employee.birthDate.slice(5) === today.slice(5),
+  );
   const currentMonth = today.slice(0, 7);
   const currentYear = today.slice(0, 4);
+  const personalTemporaryChallenges = state.bonusFineConcepts
+    .filter(
+      (concept) =>
+        concept.type === "BONUS" &&
+        concept.temporary &&
+        concept.validUntil &&
+        concept.validUntil >= `${currentYear}-01-01`,
+    )
+    .flatMap((concept) => {
+      const standing = temporaryBonusStandings(state, concept).find(
+        (item) => item.employee.id === employee?.id,
+      );
+      return standing ? [standing] : [];
+    })
+    .sort((left, right) =>
+      (right.concept.validUntil ?? "").localeCompare(
+        left.concept.validUntil ?? "",
+      ),
+    );
+  const newestTemporaryAchievement = personalTemporaryChallenges.find(
+    (standing) =>
+      standing.achieved && (standing.concept.validUntil ?? "") <= today,
+  );
+  const automaticTemporaryAwards =
+    activeConfig && employee
+      ? temporaryBonusAwardsForPeriod(
+          state,
+          activeConfig.periodStart,
+          activeConfig.periodEnd,
+        ).filter((award) => award.employee.id === employee.id)
+      : [];
   const previousMonthDate = new Date(`${currentMonth}-01T12:00:00`);
   previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
   const managerReceiptMonth = localIsoDate(previousMonthDate).slice(0, 7);
@@ -373,6 +498,7 @@ export function EmployeePayrollPortalDemo() {
             </p>
           </div>
         </header>
+        {isBirthday && <BirthdayGreeting name={birthdayName} />}
         <Card className="border-dashed border-[color:var(--border-color)]">
           <CardContent className="flex flex-col items-center px-6 py-16 text-center">
             <CalendarCheck2 className="h-10 w-10 text-[color:var(--text-muted)]" />
@@ -387,6 +513,57 @@ export function EmployeePayrollPortalDemo() {
         </Card>
       </div>
     );
+  const variableSellerTiers = sellerScheme
+    ? [...sellerScheme.tiers].sort((left, right) => left.from - right.from)
+    : [];
+  const hasVariableSellerScale =
+    variableSellerTiers.length > 1 &&
+    new Set(variableSellerTiers.map((tier) => tier.rate)).size > 1;
+  const scalePeriodSales = line.sales;
+  const currentScaleTierIndex = Math.max(
+    variableSellerTiers.findIndex(
+      (tier) =>
+        scalePeriodSales >= tier.from &&
+        (tier.to === null || scalePeriodSales <= tier.to),
+    ),
+    0,
+  );
+  const currentScaleTier = variableSellerTiers[currentScaleTierIndex];
+  const nextScaleTier = variableSellerTiers.find(
+    (tier) => tier.from > scalePeriodSales,
+  );
+  const remainingToNextScale = Math.max(
+    (nextScaleTier?.from ?? scalePeriodSales) - scalePeriodSales,
+    0,
+  );
+  const scalePeriodDays = inclusiveDayCount(
+    activeConfig.periodStart,
+    activeConfig.periodEnd,
+  );
+  const scaleDaysRemaining =
+    today > activeConfig.periodEnd
+      ? 0
+      : inclusiveDayCount(
+          today < activeConfig.periodStart ? activeConfig.periodStart : today,
+          activeConfig.periodEnd,
+        );
+  const nextScaleProgress = nextScaleTier
+    ? Math.min((scalePeriodSales / Math.max(nextScaleTier.from, 1)) * 100, 100)
+    : 100;
+  const scaleTierGoals = variableSellerTiers.map((tier, index) => {
+    const achieved = scalePeriodSales >= tier.from;
+    const remaining = Math.max(tier.from - scalePeriodSales, 0);
+    return {
+      tier,
+      level: index + 1,
+      achieved,
+      remaining,
+      dailyGoal:
+        achieved || scaleDaysRemaining === 0
+          ? 0
+          : remaining / scaleDaysRemaining,
+    };
+  });
   const employeeId = employee.id;
   const activePeriodStart = activeConfig.periodStart;
   const requestedAmount = Number(requestAmount || 0);
@@ -529,6 +706,7 @@ export function EmployeePayrollPortalDemo() {
           </p>
         </div>
       </header>
+      {isBirthday && <BirthdayGreeting name={birthdayName} />}
       {decision?.status === "AUTHORIZED" ? (
         <Card className="border-emerald-300 bg-emerald-50/70 dark:bg-emerald-950/20">
           <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -853,6 +1031,161 @@ export function EmployeePayrollPortalDemo() {
           </CardContent>
         </Card>
       )}
+      {hasVariableSellerScale && sellerScheme && currentScaleTier && (
+        <Card className="overflow-hidden border-[color:var(--accent)]/45">
+          <CardHeader className="border-b border-[color:var(--border-color)] bg-[linear-gradient(135deg,rgba(170,111,55,.12),rgba(255,255,255,.55))] dark:bg-[linear-gradient(135deg,rgba(124,79,39,.2),rgba(24,21,18,.45))]">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base uppercase">
+                  <Target className="h-5 w-5 text-[color:var(--text-secondary)]" />
+                  Ruta de escala quincenal
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Consulta cuánto te falta para subir de nivel y la venta diaria
+                  necesaria para alcanzar cada escala antes del cierre.
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">
+                  {activeConfig.periodStart} — {activeConfig.periodEnd}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-100"
+                >
+                  {scaleDaysRemaining} DE {scalePeriodDays} DÍAS RESTANTES
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5 p-5">
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1.35fr]">
+              <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-4">
+                <p className="label-caps">VENTA DE LA QUINCENA</p>
+                <p className="number-display mt-2 text-2xl">
+                  {money.format(scalePeriodSales)}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                  {sellerScheme.name}
+                </p>
+              </div>
+              <div className="rounded-xl border border-emerald-300/70 bg-emerald-50/65 p-4 dark:border-emerald-800 dark:bg-emerald-950/25">
+                <p className="label-caps">NIVEL ACTUAL</p>
+                <p className="number-display mt-2 text-2xl text-emerald-800 dark:text-emerald-200">
+                  NIVEL {currentScaleTierIndex + 1} ·{" "}
+                  {(currentScaleTier.rate * 100).toFixed(1)}%
+                </p>
+                <p className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                  Escala aplicada a tu comisión actual
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-300/70 bg-amber-50/65 p-4 dark:border-amber-800 dark:bg-amber-950/25">
+                <p className="label-caps">
+                  {nextScaleTier ? "PARA SUBIR DE NIVEL" : "ESCALA COMPLETA"}
+                </p>
+                <p className="number-display mt-2 text-2xl">
+                  {nextScaleTier
+                    ? money.format(remainingToNextScale)
+                    : "NIVEL MÁXIMO ALCANZADO"}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                  {nextScaleTier
+                    ? `Meta diaria sugerida: ${money.format(
+                        scaleDaysRemaining > 0
+                          ? remainingToNextScale / scaleDaysRemaining
+                          : remainingToNextScale,
+                      )}`
+                    : "Mantén tu venta para cerrar la quincena en la escala superior."}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                <span className="font-semibold uppercase tracking-[0.1em]">
+                  {nextScaleTier
+                    ? `Avance al nivel ${currentScaleTierIndex + 2}`
+                    : "Escala superior completada"}
+                </span>
+                <span className="number-display">
+                  {nextScaleProgress.toFixed(0)}%
+                </span>
+              </div>
+              <div
+                className="h-2.5 overflow-hidden rounded-full bg-[color:var(--accent-hover)]"
+                role="progressbar"
+                aria-label="Avance al siguiente nivel de comisión"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(nextScaleProgress)}
+              >
+                <div
+                  className="h-full rounded-full bg-[linear-gradient(90deg,#9a6030,#d5a15e)] transition-[width]"
+                  style={{ width: `${nextScaleProgress}%` }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="label-caps mb-3">META DIARIA POR NIVEL</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                {scaleTierGoals.map((goal) => (
+                  <article
+                    key={goal.tier.id}
+                    className={`rounded-xl border p-4 ${goal.achieved ? "border-emerald-300 bg-emerald-50/55 dark:border-emerald-800 dark:bg-emerald-950/20" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)]"}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">
+                          NIVEL {goal.level}
+                        </p>
+                        <p className="mt-0.5 text-xs text-[color:var(--text-muted)]">
+                          Comisión {(goal.tier.rate * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                      <Badge variant="outline">
+                        {goal.achieved ? "LOGRADO" : "PENDIENTE"}
+                      </Badge>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="label-caps">META QUINCENAL</p>
+                        <p className="number-display mt-1 text-sm">
+                          {goal.tier.from === 0
+                            ? "PRIMERA VENTA"
+                            : money.format(goal.tier.from)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="label-caps">
+                          {goal.achieved ? "RESULTADO" : "FALTA"}
+                        </p>
+                        <p className="number-display mt-1 text-sm">
+                          {goal.achieved
+                            ? "ALCANZADO"
+                            : money.format(goal.remaining)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 rounded-lg bg-[color:var(--accent-hover)]/35 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-[0.08em] text-[color:var(--text-muted)]">
+                        Meta diaria desde hoy
+                      </p>
+                      <p className="number-display mt-1 text-sm">
+                        {goal.achieved
+                          ? "NIVEL ALCANZADO"
+                          : scaleDaysRemaining > 0
+                            ? `${money.format(goal.dailyGoal)} / DÍA`
+                            : "CORTE FINALIZADO"}
+                      </p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Card>
           <CardContent className="p-5">
@@ -929,6 +1262,45 @@ export function EmployeePayrollPortalDemo() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {latestResolvedRequest && (
+            <div
+              className={`m-4 flex gap-3 rounded-xl border p-4 ${latestResolvedRequest.status === "APPROVED" ? "border-emerald-300 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100" : "border-rose-300 bg-rose-50 text-rose-950 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-100"}`}
+              role="status"
+              aria-live="polite"
+            >
+              {latestResolvedRequest.status === "APPROVED" ? (
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+              ) : (
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+              )}
+              <div>
+                <p className="text-sm font-semibold">
+                  {latestResolvedRequest.requestType === "ADVANCE"
+                    ? "Tu adelanto"
+                    : "Tu préstamo"}{" "}
+                  {latestResolvedRequest.status === "APPROVED"
+                    ? "fue autorizado"
+                    : "no fue autorizado"}
+                </p>
+                <p className="mt-1 text-xs leading-5">
+                  Importe resuelto: {money.format(latestResolvedRequest.amount)}
+                  {(latestResolvedRequest.requestedAmount ??
+                    latestResolvedRequest.amount) !==
+                    latestResolvedRequest.amount && (
+                    <>
+                      {" "}
+                      · Solicitaste{" "}
+                      {money.format(
+                        latestResolvedRequest.requestedAmount ??
+                          latestResolvedRequest.amount,
+                      )}
+                    </>
+                  )}
+                  . Consulta el detalle y la nómina de aplicación en el listado.
+                </p>
+              </div>
+            </div>
+          )}
           {personalRequests.length ? (
             <Table>
               <TableHeader>
@@ -960,15 +1332,41 @@ export function EmployeePayrollPortalDemo() {
                         DESDE {request.firstPeriod}
                       </p>
                     </TableCell>
-                    <TableCell className="number-display text-right">
-                      {money.format(request.amount)}
+                    <TableCell className="text-right">
+                      <p className="number-display">
+                        {money.format(request.amount)}
+                      </p>
+                      {(request.requestedAmount ?? request.amount) !==
+                        request.amount && (
+                        <p className="text-[10px] text-[color:var(--text-muted)]">
+                          SOLICITADO{" "}
+                          {money.format(
+                            request.requestedAmount ?? request.amount,
+                          )}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell>
                       {request.installments}{" "}
                       {request.installments === 1 ? "PAGO" : "PARCIALIDADES"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{request.status}</Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          request.status === "APPROVED"
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                            : request.status === "REJECTED"
+                              ? "border-rose-300 bg-rose-50 text-rose-800"
+                              : undefined
+                        }
+                      >
+                        {request.status === "APPROVED"
+                          ? "AUTORIZADO"
+                          : request.status === "REJECTED"
+                            ? "NO AUTORIZADO"
+                            : "PENDIENTE"}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -981,17 +1379,194 @@ export function EmployeePayrollPortalDemo() {
           )}
         </CardContent>
       </Card>
+      {personalTemporaryChallenges.length > 0 && (
+        <Card className="overflow-hidden border-amber-300/70 bg-[linear-gradient(135deg,rgba(255,250,238,.96),rgba(255,255,255,.9))] dark:bg-[linear-gradient(135deg,rgba(79,53,22,.48),rgba(37,31,27,.78))]">
+          <CardHeader className="border-b border-amber-200/70">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                <Trophy className="h-5 w-5" />
+              </span>
+              <div>
+                <CardTitle className="section-heading uppercase">
+                  Mis retos y bonos temporales
+                </CardTitle>
+                <CardDescription>
+                  Consulta tu avance, lo que falta y el premio al cierre de cada
+                  competencia.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-4 p-5 lg:grid-cols-2">
+            {personalTemporaryChallenges.map((standing) => {
+              const isCount = standing.concept.condition === "BONUS_COUNT";
+              const progress = Math.min(
+                100,
+                standing.target > 0
+                  ? (standing.value / standing.target) * 100
+                  : 0,
+              );
+              const closed =
+                (standing.concept.validUntil ?? "9999-12-31") <= today;
+
+              return (
+                <article
+                  key={standing.concept.id}
+                  className="rounded-2xl border border-amber-200/80 bg-white/70 p-4 dark:bg-black/15"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{standing.concept.name}</p>
+                      <p className="mt-1 text-[11px] text-[color:var(--text-muted)]">
+                        {standing.concept.validFrom} —{" "}
+                        {standing.concept.validUntil}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={
+                        standing.achieved
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+                          : undefined
+                      }
+                    >
+                      {standing.achieved
+                        ? `LOGRADO · #${standing.rank}`
+                        : closed
+                          ? "FINALIZADO"
+                          : "EN CURSO"}
+                    </Badge>
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-amber-100 dark:bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,#a96d34,#d3a05f)] transition-[width]"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="label-caps">AVANCE</p>
+                      <p className="number-display mt-1">
+                        {isCount
+                          ? standing.value
+                          : money.format(standing.value)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="label-caps">META</p>
+                      <p className="number-display mt-1">
+                        {isCount
+                          ? standing.target
+                          : money.format(standing.target)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="label-caps">
+                        {standing.achieved ? "PREMIO" : "FALTA"}
+                      </p>
+                      <p className="number-display mt-1">
+                        {standing.achieved
+                          ? money.format(standing.awardAmount)
+                          : isCount
+                            ? standing.remaining
+                            : money.format(standing.remaining)}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="overflow-hidden border-[color:var(--border-color)]">
-          <CardHeader>
-            <CardTitle className="section-heading uppercase">
-              Mis ventas del periodo
-            </CardTitle>
-            <CardDescription>
-              Únicamente movimientos ligados a tu usuario.
-            </CardDescription>
+          <CardHeader className="border-b border-[color:var(--border-color)]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="section-heading uppercase">
+                  Mis ventas del periodo
+                </CardTitle>
+                <CardDescription>
+                  Únicamente movimientos ligados a tu usuario.
+                </CardDescription>
+              </div>
+              {personalRecordSale && (
+                <Badge
+                  variant="outline"
+                  className="w-fit border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-100"
+                >
+                  <Trophy className="mr-1.5 h-3.5 w-3.5" />
+                  MARCA A SUPERAR · {money.format(personalRecordSale.amount)}
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
+            {personalRecordSale && (
+              <div className="border-b border-[color:var(--border-color)] p-4">
+                <div className="grid gap-4 rounded-2xl border border-amber-300/70 bg-[linear-gradient(135deg,rgba(255,248,230,.92),rgba(255,255,255,.76))] p-4 dark:bg-[linear-gradient(135deg,rgba(82,57,26,.55),rgba(37,31,27,.7))] sm:grid-cols-[auto_1fr_auto] sm:items-center">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                    <Trophy className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-amber-800 dark:text-amber-200">
+                      Récord personal de venta
+                    </p>
+                    <p className="number-display mt-1 text-2xl">
+                      {money.format(personalRecordSale.amount)}
+                    </p>
+                    <p className="mt-1 text-[11px] text-[color:var(--text-muted)]">
+                      {personalRecordSale.date} · {recordBranch?.name}
+                    </p>
+                  </div>
+                  <div className="sm:text-right">
+                    <p className="label-caps">SIGUIENTE RETO</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      Superar {money.format(personalRecordSale.amount)}
+                    </p>
+                  </div>
+                </div>
+                {recordBrokenInCurrentPeriod ? (
+                  <div
+                    className="mt-3 flex gap-3 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold">
+                        ¡Nuevo récord personal! Sigue elevando la meta.
+                      </p>
+                      <p className="mt-1 text-xs leading-5">
+                        Superaste tu marca anterior de{" "}
+                        {money.format(previousPersonalRecord?.amount ?? 0)} por{" "}
+                        {money.format(
+                          personalRecordSale.amount -
+                            (previousPersonalRecord?.amount ?? 0),
+                        )}
+                        . Desde ahora deberás superar{" "}
+                        {money.format(personalRecordSale.amount)}.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 flex gap-3 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/20 p-4">
+                    <TrendingUp className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--text-secondary)]" />
+                    <div>
+                      <p className="text-sm font-semibold">
+                        Tu récord sigue vigente
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-[color:var(--text-muted)]">
+                        {amountToRecord > 0
+                          ? `A tu venta más alta del periodo le faltan ${money.format(amountToRecord)} para igualarlo. La nueva venta deberá superar ${money.format(personalRecordSale.amount)}.`
+                          : `La siguiente venta deberá superar ${money.format(personalRecordSale.amount)} para establecer una nueva marca.`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1011,8 +1586,17 @@ export function EmployeePayrollPortalDemo() {
                         )?.name
                       }
                     </TableCell>
-                    <TableCell className="number-display text-right">
-                      {money.format(sale.amount)}
+                    <TableCell className="text-right">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <span className="number-display">
+                          {money.format(sale.amount)}
+                        </span>
+                        {sale.id === personalRecordSale?.id && (
+                          <Badge className="border-emerald-300 bg-emerald-50 text-[9px] text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                            NUEVO RÉCORD
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1030,56 +1614,86 @@ export function EmployeePayrollPortalDemo() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {movements.length ? (
-              movements.map((movement) => (
-                <div
-                  key={movement.id}
-                  className="rounded-xl border border-[color:var(--border-color)] p-4"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">
-                          {movement.type === "BONUS" ? "BONO" : "MULTA"}
-                        </Badge>
-                        <Badge variant="outline">{movement.status}</Badge>
+            {movements.length || automaticTemporaryAwards.length ? (
+              <>
+                {movements.map((movement) => (
+                  <div
+                    key={movement.id}
+                    className="rounded-xl border border-[color:var(--border-color)] p-4"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">
+                            {movement.type === "BONUS" ? "BONO" : "MULTA"}
+                          </Badge>
+                          <Badge variant="outline">{movement.status}</Badge>
+                        </div>
+                        <p className="mt-2 font-semibold">{movement.concept}</p>
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          {movement.mode === "SCALE"
+                            ? `ACTIVO DESDE ${money.format(movement.threshold ?? 0)} EN VENTAS`
+                            : "MONTO FIJO"}
+                        </p>
                       </div>
-                      <p className="mt-2 font-semibold">{movement.concept}</p>
-                      <p className="text-xs text-[color:var(--text-muted)]">
-                        {movement.mode === "SCALE"
-                          ? `ACTIVO DESDE ${money.format(movement.threshold ?? 0)} EN VENTAS`
-                          : "MONTO FIJO"}
+                      <p
+                        className={`number-display ${movement.type === "FINE" ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}`}
+                      >
+                        {movement.type === "FINE" ? "−" : "+"}
+                        {money.format(movement.amount)}
                       </p>
                     </div>
-                    <p
-                      className={`number-display ${movement.type === "FINE" ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}`}
-                    >
-                      {movement.type === "FINE" ? "−" : "+"}
-                      {money.format(movement.amount)}
-                    </p>
+                    {movement.status === "PENDING" && (
+                      <div className="mt-3 flex gap-2 border-t border-[color:var(--border-color)] pt-3">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setMovementStatus(movement.id, "APPROVED");
+                            toast.success("Movimiento aceptado.");
+                          }}
+                        >
+                          Aceptar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setClarificationOpen(true)}
+                        >
+                          Solicitar aclaración
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  {movement.status === "PENDING" && (
-                    <div className="mt-3 flex gap-2 border-t border-[color:var(--border-color)] pt-3">
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setMovementStatus(movement.id, "APPROVED");
-                          toast.success("Movimiento aceptado.");
-                        }}
-                      >
-                        Aceptar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setClarificationOpen(true)}
-                      >
-                        Solicitar aclaración
-                      </Button>
+                ))}
+                {automaticTemporaryAwards.map((award) => (
+                  <div
+                    key={`temporary-${award.concept.id}`}
+                    className="rounded-xl border border-amber-300/80 bg-amber-50/70 p-4 dark:bg-amber-950/20"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className="border-amber-300 bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                            BONO TEMPORAL
+                          </Badge>
+                          <Badge variant="outline">
+                            LOGRADO · #{award.standing.rank}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 font-semibold">
+                          {award.concept.name}
+                        </p>
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          PREMIO AUTOMÁTICO AL CIERRE · {award.appliedAt}
+                        </p>
+                      </div>
+                      <p className="number-display text-emerald-700 dark:text-emerald-300">
+                        +{money.format(award.amount)}
+                      </p>
                     </div>
-                  )}
-                </div>
-              ))
+                  </div>
+                ))}
+              </>
             ) : (
               <p className="rounded-xl border border-dashed border-[color:var(--border-color)] p-6 text-center text-sm text-[color:var(--text-muted)]">
                 No hay bonos ni multas en esta quincena.
@@ -1259,6 +1873,51 @@ export function EmployeePayrollPortalDemo() {
               periodStart={historicReceipt.periodStart}
               periodEnd={historicReceipt.periodEnd}
             />
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(newestTemporaryAchievement) && !celebrationDismissed}
+        onOpenChange={(open) => {
+          if (!open) setCelebrationDismissed(true);
+        }}
+      >
+        <DialogContent className="max-w-lg overflow-hidden border-amber-300 p-0">
+          <div className="bg-[linear-gradient(135deg,#2b241d,#795433)] px-6 py-8 text-center text-white">
+            <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/30 bg-white/10">
+              <Trophy className="h-8 w-8 text-amber-200" />
+            </span>
+            <DialogHeader className="mt-4">
+              <DialogTitle className="text-center font-brand text-3xl text-white">
+                ¡Felicidades, lo lograste!
+              </DialogTitle>
+              <DialogDescription className="text-center text-white/75">
+                Cerraste el reto y tu premio ya forma parte de la nómina del
+                periodo.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          {newestTemporaryAchievement && (
+            <div className="space-y-4 p-6">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-center dark:bg-amber-950/20">
+                <p className="text-sm font-semibold">
+                  {newestTemporaryAchievement.concept.name}
+                </p>
+                <p className="number-display mt-2 text-3xl text-emerald-700 dark:text-emerald-300">
+                  {money.format(newestTemporaryAchievement.awardAmount)}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                  POSICIÓN #{newestTemporaryAchievement.rank} · CIERRE{" "}
+                  {newestTemporaryAchievement.concept.validUntil}
+                </p>
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => setCelebrationDismissed(true)}
+              >
+                Continuar a mi perfil
+              </Button>
+            </div>
           )}
         </DialogContent>
       </Dialog>

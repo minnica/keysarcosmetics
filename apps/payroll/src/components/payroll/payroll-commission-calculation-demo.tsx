@@ -189,6 +189,23 @@ export function PayrollCommissionCalculationDemo() {
   const exportConfig = {
     title: "Cálculo de comisiones",
     subtitle: `${period.start} — ${period.end} · Base global ${state.calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"}`,
+    metadata: [
+      { label: "Periodo", value: `${period.start} — ${period.end}` },
+      { label: "Tipo de nómina", value: "COMISIONES" },
+      { label: "Alcance", value: "REPORTE GENERAL · TODOS LOS VENDEDORES" },
+      { label: "Base de cálculo", value: state.calculationMode === "WITH_VAT" ? "CON IVA" : "SIN IVA" },
+    ],
+    metrics: [
+      { label: "Ventas calculadas", value: money.format(selectedSales), detail: "Base global y excepciones" },
+      { label: "Nómina total", value: money.format(payrollTotal), detail: `${detailRows.length} vendedores` },
+      { label: "Deducciones", value: money.format(deductions), detail: "Multas, préstamos y ajustes" },
+      { label: "Ajuste neto", value: money.format(adjustments), detail: "Movimientos del periodo" },
+    ],
+    analysis: [
+      `${detailRows.filter((row) => row.approvalStatus === "AUTHORIZED").length} de ${detailRows.length} recibos aparecen aprobados por el personal.`,
+      `La nómina de comisiones suma ${money.format(payrollTotal)} para el periodo seleccionado.`,
+      `El archivo incluye ventas con IVA y sin IVA para auditar la base aplicada a cada vendedor.`,
+    ],
     filename: `calculo-comisiones-${period.start}`,
     sheetName: "Comisiones",
     orientation: "landscape" as const,

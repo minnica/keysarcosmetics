@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   Banknote,
@@ -168,6 +169,55 @@ export function PayrollReceiptsExecutiveDemo() {
       ),
   );
   const allApproved = lines.length > 0 && pendingLines.length === 0;
+  const openClarifications = useMemo(
+    () =>
+      [
+        ...state.decisions
+          .filter((decision) => decision.status === "CLARIFICATION")
+          .map((decision) => ({
+            id: `aclaracion-${decision.employeeId}-${decision.periodStart}`,
+            kind: "PERSONAL" as const,
+            employeeId: decision.employeeId,
+            employeeName:
+              state.employees.find(
+                (employee) => employee.id === decision.employeeId,
+              )?.name ?? "EMPLEADO",
+            period: decision.periodStart,
+            note: decision.note,
+            updatedAt: decision.updatedAt,
+          })),
+        ...state.kioskReceiptDecisions
+          .filter((decision) => decision.status === "CLARIFICATION")
+          .map((decision) => ({
+            id: `aclaracion-gerencial-${decision.managerId}-${decision.month}`,
+            kind: "GERENCIAL" as const,
+            employeeId: decision.managerId,
+            employeeName:
+              state.employees.find(
+                (employee) => employee.id === decision.managerId,
+              )?.name ?? "GERENCIA",
+            period: decision.month,
+            note: decision.note,
+            updatedAt: decision.updatedAt,
+          })),
+      ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [state.decisions, state.employees, state.kioskReceiptDecisions],
+  );
+
+  function openPersonalClarification(
+    employeeId: string,
+    employeeName: string,
+    clarificationPeriod: string,
+  ) {
+    setPeriodStart(clarificationPeriod);
+    setSearch(employeeName);
+    setPage(1);
+    window.setTimeout(() => {
+      document
+        .getElementById(`recibo-${employeeId}-${clarificationPeriod}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  }
 
   const authorizeOwnReceipt = () => {
     if (!activeEmployee || !cutoffLine) return;
@@ -472,6 +522,72 @@ export function PayrollReceiptsExecutiveDemo() {
         />
       </header>
 
+      {openClarifications.length > 0 && (
+        <section className="overflow-hidden rounded-2xl border border-amber-300 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20">
+          <div className="flex items-center justify-between gap-3 border-b border-amber-300/70 px-4 py-3 dark:border-amber-900">
+            <div className="flex items-center gap-2">
+              <MessageSquareText className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+              <div>
+                <p className="text-sm font-semibold">Aclaraciones abiertas</p>
+                <p className="text-[10px] text-[color:var(--text-muted)]">
+                  Bandeja exclusiva del usuario máster
+                </p>
+              </div>
+            </div>
+            <Badge className="bg-amber-600 text-white">
+              {openClarifications.length}
+            </Badge>
+          </div>
+          <div className="divide-y divide-amber-200 dark:divide-amber-900">
+            {openClarifications.map((clarification) => (
+              <article
+                id={clarification.id}
+                key={clarification.id}
+                className="flex flex-col gap-3 px-4 py-3 target:bg-amber-100 dark:target:bg-amber-950/50 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold">
+                      {clarification.employeeName}
+                    </p>
+                    <Badge variant="outline">
+                      {clarification.kind === "PERSONAL"
+                        ? "RECIBO PERSONAL"
+                        : "RECIBO GERENCIAL"}
+                    </Badge>
+                    <span className="text-[10px] text-[color:var(--text-muted)]">
+                      {clarification.period}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[color:var(--text-muted)]">
+                    {clarification.note || "Solicitud sin detalle"}
+                  </p>
+                </div>
+                {clarification.kind === "PERSONAL" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      openPersonalClarification(
+                        clarification.employeeId,
+                        clarification.employeeName,
+                        clarification.period,
+                      )
+                    }
+                  >
+                    Ver recibo relacionado
+                  </Button>
+                ) : (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/recibos-kiosco">Abrir recibo gerencial</Link>
+                  </Button>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-3">
         <Metric
           icon={<ReceiptText className="h-5 w-5" />}
@@ -585,6 +701,7 @@ export function PayrollReceiptsExecutiveDemo() {
               return (
                 <div
                   key={line.employee.id}
+                  id={`recibo-${line.employee.id}-${periodStart}`}
                   className="grid gap-3 px-4 py-3 transition-colors hover:bg-[color:var(--accent-hover)]/20 md:grid-cols-[minmax(220px,1.35fr)_minmax(190px,1fr)_140px_185px_132px] md:items-center md:gap-4 md:px-5"
                 >
                   <div className="flex min-w-0 items-center gap-3">

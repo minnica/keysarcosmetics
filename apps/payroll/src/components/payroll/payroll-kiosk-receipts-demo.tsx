@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
   BadgeCheck,
   Building2,
   CalendarDays,
@@ -44,6 +45,7 @@ import {
 } from "@cosmetics/ui";
 import { usePayrollDemo } from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
+import { PayrollKioskReceiptsMasterDemo } from "./payroll-kiosk-receipts-master-demo";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -69,6 +71,57 @@ function monthLabel(month: string) {
 }
 
 export function PayrollKioskReceiptsDemo() {
+  const { state } = usePayrollDemo();
+  const [showOwnReceipt, setShowOwnReceipt] = useState(false);
+  const employee = state.employees.find(
+    (item) => item.id === state.activeEmployeeId,
+  );
+  const role = state.roles.find((item) => item.id === employee?.roleId);
+  const isMaster = role?.id === "role-admin";
+  const currentMonth = localIsoDate().slice(0, 7);
+  const latestClosedMonth = Array.from(
+    new Set(state.kioskMonthlySales.map((sale) => sale.month)),
+  )
+    .filter((month) => month < currentMonth)
+    .sort()
+    .reverse()[0];
+  const hasOwnManagerReceipt = Boolean(
+    employee?.category === "MANAGEMENT" &&
+    latestClosedMonth &&
+    state.kioskTargets.some(
+      (target) =>
+        resolveBranchCommission({
+          branchId: target.branchId,
+          month: latestClosedMonth,
+          schemes: state.branchCommissionSchemes,
+          sales: state.kioskMonthlySales,
+          fallbackTarget: target,
+        }).managerId === employee.id,
+    ),
+  );
+
+  if (isMaster && !showOwnReceipt) {
+    return (
+      <PayrollKioskReceiptsMasterDemo
+        onOpenOwnReceipt={
+          hasOwnManagerReceipt ? () => setShowOwnReceipt(true) : undefined
+        }
+      />
+    );
+  }
+
+  return (
+    <ManagerKioskReceiptPortal
+      onBackToMaster={isMaster ? () => setShowOwnReceipt(false) : undefined}
+    />
+  );
+}
+
+function ManagerKioskReceiptPortal({
+  onBackToMaster,
+}: {
+  onBackToMaster?: (() => void) | undefined;
+}) {
   const { state, setKioskReceiptDecision } = usePayrollDemo();
   const employee = state.employees.find(
     (item) => item.id === state.activeEmployeeId,
@@ -265,6 +318,12 @@ export function PayrollKioskReceiptsDemo() {
 
   return (
     <div className="space-y-7">
+      {onBackToMaster && (
+        <Button variant="outline" size="sm" onClick={onBackToMaster}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Volver al control gerencial
+        </Button>
+      )}
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2">

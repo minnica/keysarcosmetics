@@ -36,6 +36,7 @@ export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type PayrollStatus = "DRAFT" | "APPROVED" | "PAID";
 export type MovementType = "BONUS" | "FINE";
 export type MovementMode = "FIXED" | "SCALE";
+export type BonusCondition = "SALES" | "BONUS_COUNT";
 export type MovementStatus =
   | "DRAFT"
   | "PENDING"
@@ -104,6 +105,10 @@ export interface DemoKioskMonthlySale {
 export interface DemoEmployee {
   id: string;
   name: string;
+  birthDate?: string | null;
+  hrEmployeeId?: string | null;
+  hrSource?: string | null;
+  hrSyncedAt?: string | null;
   username?: string;
   accessPassword?: string;
   mustChangeCredentials?: boolean;
@@ -219,6 +224,7 @@ export interface DemoSale {
 
 export interface DemoMovement {
   id: string;
+  catalogId: string | null;
   employeeId: string;
   costBranchIds: string[];
   type: MovementType;
@@ -226,9 +232,38 @@ export interface DemoMovement {
   concept: string;
   amount: number;
   threshold: number | null;
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED">;
   periodStart: string;
   status: MovementStatus;
+  appliedAt: string;
   createdAt: string;
+}
+
+export interface DemoBonusFineConcept {
+  id: string;
+  type: MovementType;
+  name: string;
+  mode: MovementMode;
+  defaultAmount: number;
+  threshold: number | null;
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED">;
+  validFrom: string;
+  validUntil: string | null;
+  temporary?: boolean;
+  condition?: BonusCondition | null;
+  salesScale?: boolean;
+  salesTiers?: BonusSalesTier[];
+  eligibleEmployeeIds?: string[] | null;
+  active: boolean;
+  createdAt: string;
+  deletedAt?: string | null;
+}
+
+export interface BonusSalesTier {
+  id: string;
+  from: number;
+  to: number | null;
+  amount: number;
 }
 
 export interface DemoPayrollAdjustment {
@@ -264,6 +299,7 @@ export interface DemoLoan {
   payrollModule: Exclude<PayrollModule, "CONSOLIDATED">;
   payrollRunId: string;
   requestedAt: string;
+  requestedAmount?: number;
   amount: number;
   installments: number;
   paidInstallments: number;
@@ -278,6 +314,19 @@ export interface DemoFinancialRequestPolicy {
   maxMonthlyAdvances: number;
   maxLoanInstallments: number;
   maxQuarterlyLoans: number;
+}
+
+export interface DemoNotificationTemplate {
+  id: string;
+  moduleId: string;
+  moduleLabel: string;
+  eventLabel: string;
+  title: string;
+  message: string;
+  audience: Array<"EMPLOYEE" | "MANAGER" | "MASTER">;
+  approved: boolean;
+  updatedAt: string;
+  updatedBy: string;
 }
 
 export interface DemoRole {
@@ -394,10 +443,12 @@ export interface DemoState {
   schemes: DemoScheme[];
   schemeAssignments: DemoSchemeAssignment[];
   sales: DemoSale[];
+  bonusFineConcepts: DemoBonusFineConcept[];
   movements: DemoMovement[];
   adjustments: DemoPayrollAdjustment[];
   loans: DemoLoan[];
   financialRequestPolicy: DemoFinancialRequestPolicy;
+  notificationTemplates: DemoNotificationTemplate[];
   roles: DemoRole[];
   runs: DemoPayrollRun[];
   periodConfigs: DemoPayrollPeriodConfig[];
@@ -464,10 +515,17 @@ export const permissionCatalog = [
   "portal.view",
   "movements.master",
   "viatics.master",
+  "notifications.manage",
   "security.second_key.manage",
 ] as const;
 
 export const modulePermissionCatalog = [
+  {
+    permission: "module.control_center",
+    label: "Centro de control",
+    section: "Dirección",
+    paths: ["/centro-control"],
+  },
   {
     permission: "module.employees",
     label: "Empleados",
@@ -535,6 +593,12 @@ export const modulePermissionCatalog = [
     paths: ["/prestamos-adelantos"],
   },
   {
+    permission: "module.bonus_fine_operations",
+    label: "Bonos y multas",
+    section: "Operación",
+    paths: ["/operacion-bonos-multas", "/bonos", "/multas"],
+  },
+  {
     permission: "module.period_settings",
     label: "Periodos y conceptos",
     section: "Configuración",
@@ -574,13 +638,19 @@ export const modulePermissionCatalog = [
     permission: "module.bonuses_fines",
     label: "Bonos y multas",
     section: "Configuración",
-    paths: ["/bonos-multas", "/bonos", "/multas"],
+    paths: ["/bonos-multas"],
   },
   {
     permission: "module.viaticos",
     label: "Viáticos",
     section: "Configuración",
     paths: ["/viaticos"],
+  },
+  {
+    permission: "module.notifications",
+    label: "Notificaciones",
+    section: "Configuración",
+    paths: ["/notificaciones"],
   },
   {
     permission: "module.access_control",
@@ -599,6 +669,30 @@ export const modulePermissionCatalog = [
     label: "Desglose por sucursal",
     section: "Reportes",
     paths: ["/reportes/desglose-sucursal"],
+  },
+  {
+    permission: "module.movement_reports",
+    label: "Reporte de movimientos",
+    section: "Reportes",
+    paths: ["/reportes/movimientos"],
+  },
+  {
+    permission: "module.loan_reports",
+    label: "Reporte de préstamos",
+    section: "Reportes",
+    paths: ["/reportes/prestamos"],
+  },
+  {
+    permission: "module.bonus_reports",
+    label: "Reporte de bonos",
+    section: "Reportes",
+    paths: ["/reportes/bonos"],
+  },
+  {
+    permission: "module.fine_reports",
+    label: "Reporte de multas",
+    section: "Reportes",
+    paths: ["/reportes/multas"],
   },
   {
     permission: "module.receipts",
@@ -735,6 +829,204 @@ export function payrollModuleForCategory(
   return "FIXED";
 }
 
+export interface TemporaryBonusStanding {
+  concept: DemoBonusFineConcept;
+  employee: DemoEmployee;
+  value: number;
+  target: number;
+  remaining: number;
+  achieved: boolean;
+  awardAmount: number;
+  tier: BonusSalesTier | null;
+  rank: number;
+}
+
+export function bonusFineConceptAllowsEmployee(
+  concept: DemoBonusFineConcept,
+  employeeId: string,
+) {
+  return (
+    !concept.eligibleEmployeeIds ||
+    concept.eligibleEmployeeIds.includes(employeeId)
+  );
+}
+
+export function employeeCanReceiveConcept(
+  employee: DemoEmployee,
+  concept: DemoBonusFineConcept,
+) {
+  return (
+    bonusFineConceptAllowsEmployee(concept, employee.id) &&
+    (employeeSalaryPayrollModule(employee) === concept.payrollModule ||
+      employeeCommissionPayrollModule(employee) === concept.payrollModule ||
+      payrollModuleForCategory(employee.category) === concept.payrollModule)
+  );
+}
+
+export function employeeSalesForRange(
+  state: DemoState,
+  employeeId: string,
+  start: string,
+  end: string,
+) {
+  return state.sales
+    .filter(
+      (sale) =>
+        sale.employeeId === employeeId &&
+        sale.date >= start &&
+        sale.date <= end,
+    )
+    .reduce((sum, sale) => sum + sale.amount, 0);
+}
+
+export function resolveBonusConceptAward(
+  concept: DemoBonusFineConcept,
+  sales: number,
+) {
+  const tiers = [...(concept.salesTiers ?? [])].sort(
+    (left, right) => left.from - right.from,
+  );
+  if (concept.salesScale && tiers.length > 0) {
+    const tier =
+      [...tiers]
+        .reverse()
+        .find(
+          (item) =>
+            sales >= item.from && (item.to === null || sales <= item.to),
+        ) ?? null;
+    return {
+      amount: tier?.amount ?? 0,
+      threshold: tiers[0]?.from ?? 0,
+      tier,
+    };
+  }
+  const threshold = Math.max(concept.threshold ?? 0, 0);
+  return {
+    amount: sales >= threshold ? concept.defaultAmount : 0,
+    threshold,
+    tier: null,
+  };
+}
+
+export function temporaryBonusStandings(
+  state: DemoState,
+  concept: DemoBonusFineConcept,
+): TemporaryBonusStanding[] {
+  if (!concept.temporary || !concept.validUntil) return [];
+  const defaultTarget = Math.max(concept.threshold ?? 0, 1);
+  const condition = concept.condition ?? "SALES";
+  const standings = state.employees
+    .filter(
+      (employee) =>
+        employee.hireDate <= concept.validUntil! &&
+        (!employee.terminationDate ||
+          employee.terminationDate >= concept.validFrom) &&
+        employeeCanReceiveConcept(employee, concept),
+    )
+    .map((employee) => {
+      const value =
+        condition === "SALES"
+          ? employeeSalesForRange(
+              state,
+              employee.id,
+              concept.validFrom,
+              concept.validUntil!,
+            )
+          : state.movements.filter(
+              (movement) =>
+                movement.employeeId === employee.id &&
+                movement.type === "BONUS" &&
+                movement.catalogId !== concept.id &&
+                movement.status === "APPROVED" &&
+                movement.appliedAt >= concept.validFrom &&
+                movement.appliedAt <= concept.validUntil!,
+            ).length +
+            state.adjustments.filter(
+              (adjustment) =>
+                adjustment.participantIds.includes(employee.id) &&
+                adjustment.type === "BONUS" &&
+                adjustment.status === "APPROVED" &&
+                adjustment.payrollDate >= concept.validFrom &&
+                adjustment.payrollDate <= concept.validUntil!,
+            ).length;
+      const award =
+        condition === "SALES"
+          ? resolveBonusConceptAward(concept, value)
+          : {
+              amount: value >= defaultTarget ? concept.defaultAmount : 0,
+              threshold: defaultTarget,
+              tier: null,
+            };
+      const target = award.threshold;
+      return {
+        concept,
+        employee,
+        value,
+        target,
+        remaining: Math.max(target - value, 0),
+        achieved: award.amount > 0,
+        awardAmount: award.amount,
+        tier: award.tier,
+        rank: 0,
+      };
+    })
+    .sort(
+      (left, right) =>
+        Number(right.achieved) - Number(left.achieved) ||
+        right.value - left.value ||
+        left.employee.name.localeCompare(right.employee.name, "es-MX"),
+    );
+  return standings.map((standing, index) => ({
+    ...standing,
+    rank: index + 1,
+  }));
+}
+
+export function temporaryBonusAwardsForPeriod(
+  state: DemoState,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return state.bonusFineConcepts.flatMap((concept) => {
+    if (
+      concept.type !== "BONUS" ||
+      !concept.temporary ||
+      !concept.validUntil ||
+      concept.validUntil < periodStart ||
+      concept.validUntil > periodEnd
+    )
+      return [];
+    return temporaryBonusStandings(state, concept)
+      .filter((standing) => standing.achieved)
+      .filter(
+        (standing) =>
+          !state.movements.some(
+            (movement) =>
+              movement.catalogId === concept.id &&
+              movement.employeeId === standing.employee.id &&
+              movement.status === "APPROVED",
+          ),
+      )
+      .map((standing) => ({
+        id: `temporary-${concept.id}-${standing.employee.id}`,
+        concept,
+        employee: standing.employee,
+        amount: standing.awardAmount,
+        standing,
+        appliedAt: concept.validUntil!,
+        costBranchIds: Array.from(
+          new Set(
+            standing.employee.costBranchIds.length
+              ? standing.employee.costBranchIds
+              : [standing.employee.branchId],
+          ),
+        ).filter((branchId) =>
+          state.branches.some((branch) => branch.id === branchId),
+        ),
+      }));
+  });
+}
+
 export function periodFromFrequency(
   frequency: PayrollPeriodFrequency,
   referenceDate: string,
@@ -775,6 +1067,9 @@ function addDays(date: string, days: number) {
 
 function createInitialState(): DemoState {
   const period = periodForDate(new Date());
+  const previousMonthDate = new Date(`${period.start}T12:00:00`);
+  previousMonthDate.setMonth(previousMonthDate.getMonth() - 1, 1);
+  const previousMonthStart = isoDate(previousMonthDate);
   const branches: DemoBranch[] = [
     {
       id: "branch-polanco",
@@ -847,6 +1142,10 @@ function createInitialState(): DemoState {
     {
       id: "emp-ana",
       name: "ANA SOFÍA MARTÍNEZ",
+      birthDate: "1994-09-17",
+      hrEmployeeId: "RH-0001",
+      hrSource: "SISTEMA RH",
+      hrSyncedAt: "2026-09-17T08:00:00-06:00",
       username: "VENDEDOR DEMO",
       accessPassword: "VENTAS2026",
       mustChangeCredentials: false,
@@ -1004,6 +1303,10 @@ function createInitialState(): DemoState {
     {
       id: "emp-ricardo",
       name: "RICARDO LUNA",
+      username: "GERENTE DEMO",
+      accessPassword: "GERENCIA2026",
+      mustChangeCredentials: false,
+      credentialsUpdatedAt: "2026-09-03T09:00:00.000Z",
       firstName: "RICARDO",
       paternalSurname: "LUNA",
       maternalSurname: "CASTRO",
@@ -1027,6 +1330,9 @@ function createInitialState(): DemoState {
       ivaRate: 0,
       isrRetentionRate: 0,
       ivaRetentionRate: 0,
+      secondaryAccessKey: "3690",
+      secondaryAccessKeyUpdatedAt: "2026-09-03T09:00:00.000Z",
+      secondaryAccessKeyUpdatedBy: "RICARDO LUNA",
     },
     {
       id: "emp-paola",
@@ -1291,7 +1597,7 @@ function createInitialState(): DemoState {
   ] as const;
   const currentSales: DemoSale[] = saleSeeds.flatMap(
     ([employeeId, branchId, total], index) =>
-      [0.42, 0.33, 0.25].map((share, dayIndex) => ({
+      [0.68, 0.2, 0.12].map((share, dayIndex) => ({
         id: `sale-${index}-${dayIndex}`,
         employeeId,
         branchId,
@@ -1717,9 +2023,124 @@ function createInitialState(): DemoState {
       },
     ],
     sales,
+    bonusFineConcepts: [
+      {
+        id: "concept-bonus-temporary-sales",
+        type: "BONUS",
+        name: "RETO TEMPORAL DE VENTAS",
+        mode: "SCALE",
+        defaultAmount: 1200,
+        threshold: 40000,
+        payrollModule: "COMMISSION",
+        validFrom: previousMonthStart,
+        validUntil: period.start,
+        temporary: true,
+        condition: "SALES",
+        active: true,
+        createdAt: previousMonthStart,
+      },
+      {
+        id: "concept-bonus-temporary-count",
+        type: "BONUS",
+        name: "RETO TEMPORAL DE DOS BONOS",
+        mode: "FIXED",
+        defaultAmount: 500,
+        threshold: 2,
+        payrollModule: "COMMISSION",
+        validFrom: period.start,
+        validUntil: period.end,
+        temporary: true,
+        condition: "BONUS_COUNT",
+        active: true,
+        createdAt: period.start,
+      },
+      {
+        id: "concept-bonus-goal",
+        type: "BONUS",
+        name: "BONO POR META DE VENTA",
+        mode: "SCALE",
+        defaultAmount: 1800,
+        threshold: 60000,
+        salesScale: true,
+        salesTiers: [
+          {
+            id: "goal-tier-1",
+            from: 40000,
+            to: 59999.99,
+            amount: 1000,
+          },
+          {
+            id: "goal-tier-2",
+            from: 60000,
+            to: 79999.99,
+            amount: 1800,
+          },
+          { id: "goal-tier-3", from: 80000, to: null, amount: 2500 },
+        ],
+        eligibleEmployeeIds: null,
+        payrollModule: "COMMISSION",
+        validFrom: "2026-01-01",
+        validUntil: "2026-12-31",
+        active: true,
+        createdAt: "2026-01-01",
+      },
+      {
+        id: "concept-bonus-punctuality",
+        type: "BONUS",
+        name: "BONO DE PUNTUALIDAD",
+        mode: "FIXED",
+        defaultAmount: 750,
+        threshold: null,
+        payrollModule: "COMMISSION",
+        validFrom: "2026-01-01",
+        validUntil: null,
+        active: true,
+        createdAt: "2026-01-01",
+      },
+      {
+        id: "concept-fine-incidence",
+        type: "FINE",
+        name: "DESCUENTO POR INCIDENCIA",
+        mode: "FIXED",
+        defaultAmount: 350,
+        threshold: null,
+        payrollModule: "SPECIALIST",
+        validFrom: "2026-01-01",
+        validUntil: null,
+        active: true,
+        createdAt: "2026-01-01",
+      },
+      {
+        id: "concept-bonus-opening",
+        type: "BONUS",
+        name: "BONO DEMO DE APERTURA",
+        mode: "FIXED",
+        defaultAmount: 600,
+        threshold: null,
+        payrollModule: "COMMISSION",
+        validFrom: "2026-09-01",
+        validUntil: "2026-09-30",
+        active: true,
+        createdAt: "2026-09-01",
+      },
+      {
+        id: "concept-bonus-productivity",
+        type: "BONUS",
+        name: "BONO DEMO DE PRODUCTIVIDAD",
+        mode: "FIXED",
+        defaultAmount: 800,
+        threshold: null,
+        payrollModule: "CONTRACTOR",
+        validFrom: "2026-01-01",
+        validUntil: null,
+        active: true,
+        createdAt: "2026-01-01",
+      },
+    ],
     movements: [
       {
         id: "move-1",
+        catalogId: "concept-bonus-goal",
         employeeId: "emp-ana",
         costBranchIds: ["branch-polanco"],
         type: "BONUS",
@@ -1727,12 +2148,15 @@ function createInitialState(): DemoState {
         concept: "BONO META $60,000",
         amount: 1800,
         threshold: 60000,
+        payrollModule: "COMMISSION",
         periodStart: period.start,
         status: "APPROVED",
+        appliedAt: period.start,
         createdAt: period.start,
       },
       {
         id: "move-2",
+        catalogId: "concept-bonus-punctuality",
         employeeId: "emp-daniela",
         costBranchIds: ["branch-satelite"],
         type: "BONUS",
@@ -1740,12 +2164,15 @@ function createInitialState(): DemoState {
         concept: "BONO DE PUNTUALIDAD",
         amount: 750,
         threshold: null,
+        payrollModule: "COMMISSION",
         periodStart: period.start,
         status: "PENDING",
+        appliedAt: isoDate(new Date()),
         createdAt: isoDate(new Date()),
       },
       {
         id: "move-3",
+        catalogId: "concept-fine-incidence",
         employeeId: "emp-carla",
         costBranchIds: ["branch-polanco"],
         type: "FINE",
@@ -1753,12 +2180,15 @@ function createInitialState(): DemoState {
         concept: "DESCUENTO POR INCIDENCIA",
         amount: 350,
         threshold: null,
+        payrollModule: "SPECIALIST",
         periodStart: period.start,
         status: "APPROVED",
+        appliedAt: addDays(period.start, 2),
         createdAt: addDays(period.start, 2),
       },
       {
         id: "move-demo-santa-fe",
+        catalogId: "concept-bonus-opening",
         employeeId: "emp-demo-10",
         costBranchIds: ["branch-demo-santa-fe"],
         type: "BONUS",
@@ -1766,12 +2196,15 @@ function createInitialState(): DemoState {
         concept: "BONO DEMO DE APERTURA",
         amount: 600,
         threshold: null,
+        payrollModule: "COMMISSION",
         periodStart: period.start,
         status: "APPROVED",
+        appliedAt: addDays(period.start, 3),
         createdAt: addDays(period.start, 3),
       },
       {
         id: "move-demo-perisur",
+        catalogId: "concept-fine-incidence",
         employeeId: "emp-demo-12",
         costBranchIds: ["branch-demo-perisur"],
         type: "FINE",
@@ -1779,12 +2212,15 @@ function createInitialState(): DemoState {
         concept: "AJUSTE DEMO DE INCIDENCIA",
         amount: 250,
         threshold: null,
+        payrollModule: "SPECIALIST",
         periodStart: period.start,
         status: "APPROVED",
+        appliedAt: addDays(period.start, 4),
         createdAt: addDays(period.start, 4),
       },
       {
         id: "move-demo-lindavista",
+        catalogId: "concept-bonus-productivity",
         employeeId: "emp-demo-14",
         costBranchIds: ["branch-demo-lindavista"],
         type: "BONUS",
@@ -1792,8 +2228,10 @@ function createInitialState(): DemoState {
         concept: "BONO DEMO DE PRODUCTIVIDAD",
         amount: 800,
         threshold: null,
+        payrollModule: "CONTRACTOR",
         periodStart: period.start,
         status: "APPROVED",
+        appliedAt: addDays(period.start, 5),
         createdAt: addDays(period.start, 5),
       },
     ],
@@ -1970,6 +2408,99 @@ function createInitialState(): DemoState {
       maxLoanInstallments: 6,
       maxQuarterlyLoans: 2,
     },
+    notificationTemplates: [
+      {
+        id: "notification-sale-recorded",
+        moduleId: "sales",
+        moduleLabel: "VENTAS Y COMISIONES",
+        eventLabel: "VENTA REGISTRADA",
+        title: "Venta registrada",
+        message:
+          "Hola {nombre}, se registró una venta por {monto} en {sucursal}. Tu acumulado del periodo es {acumulado}.",
+        audience: ["EMPLOYEE", "MANAGER"],
+        approved: true,
+        updatedAt: "2026-09-17T09:10:00.000Z",
+        updatedBy: "USUARIO MASTER DEMO",
+      },
+      {
+        id: "notification-sales-record",
+        moduleId: "sales",
+        moduleLabel: "VENTAS Y COMISIONES",
+        eventLabel: "NUEVO RÉCORD",
+        title: "¡Nuevo récord de ventas!",
+        message:
+          "{nombre}, superaste tu mejor venta histórica. Tu nuevo récord es {monto}. ¡Sigue avanzando!",
+        audience: ["EMPLOYEE", "MANAGER"],
+        approved: true,
+        updatedAt: "2026-09-17T09:10:00.000Z",
+        updatedBy: "USUARIO MASTER DEMO",
+      },
+      {
+        id: "notification-bonus-earned",
+        moduleId: "bonuses",
+        moduleLabel: "BONOS Y MULTAS",
+        eventLabel: "BONO OBTENIDO",
+        title: "Bono obtenido",
+        message:
+          "¡Felicidades {nombre}! Lograste el bono {concepto} por {monto}. Se reflejará en la nómina {periodo}.",
+        audience: ["EMPLOYEE", "MANAGER"],
+        approved: false,
+        updatedAt: "2026-09-17T09:25:00.000Z",
+        updatedBy: "USUARIO MASTER DEMO",
+      },
+      {
+        id: "notification-bonus-progress",
+        moduleId: "bonuses",
+        moduleLabel: "BONOS Y MULTAS",
+        eventLabel: "AVANCE DE BONO TEMPORAL",
+        title: "Estás cerca de lograr tu bono",
+        message:
+          "{nombre}, te faltan {faltante} para alcanzar {concepto}. La vigencia termina el {fecha_fin}.",
+        audience: ["EMPLOYEE"],
+        approved: false,
+        updatedAt: "2026-09-17T09:25:00.000Z",
+        updatedBy: "USUARIO MASTER DEMO",
+      },
+      {
+        id: "notification-payroll-ready",
+        moduleId: "payroll",
+        moduleLabel: "NÓMINA",
+        eventLabel: "RECIBO DISPONIBLE",
+        title: "Tu recibo está listo",
+        message:
+          "{nombre}, tu recibo del periodo {periodo} está disponible para revisión y autorización en tu portal.",
+        audience: ["EMPLOYEE", "MANAGER"],
+        approved: true,
+        updatedAt: "2026-09-17T09:40:00.000Z",
+        updatedBy: "USUARIO MASTER DEMO",
+      },
+      {
+        id: "notification-receipt-authorized",
+        moduleId: "receipts",
+        moduleLabel: "RECIBOS",
+        eventLabel: "RECIBO AUTORIZADO",
+        title: "Recibo autorizado",
+        message:
+          "{nombre}, confirmamos la autorización de tu recibo del periodo {periodo}. Folio {folio}.",
+        audience: ["EMPLOYEE", "MANAGER", "MASTER"],
+        approved: true,
+        updatedAt: "2026-09-17T09:55:00.000Z",
+        updatedBy: "USUARIO MASTER DEMO",
+      },
+      {
+        id: "notification-loan-decision",
+        moduleId: "loans",
+        moduleLabel: "PRÉSTAMOS Y ADELANTOS",
+        eventLabel: "SOLICITUD RESUELTA",
+        title: "Actualización de tu solicitud",
+        message:
+          "{nombre}, tu solicitud de {concepto} por {monto} fue {estatus}. Consulta el detalle en tu portal.",
+        audience: ["EMPLOYEE"],
+        approved: false,
+        updatedAt: "2026-09-17T10:15:00.000Z",
+        updatedBy: "USUARIO MASTER DEMO",
+      },
+    ],
     roles: [
       {
         id: "role-admin",
@@ -2187,6 +2718,7 @@ interface DemoPayrollContextValue {
     input: Pick<
       DemoEmployee,
       | "name"
+      | "birthDate"
       | "position"
       | "category"
       | "branchId"
@@ -2237,7 +2769,17 @@ interface DemoPayrollContextValue {
     movementId: string,
     patch: Omit<DemoMovement, "id" | "createdAt" | "status">,
   ) => void;
+  deleteMovement: (movementId: string) => void;
   setMovementStatus: (movementId: string, status: MovementStatus) => void;
+  addBonusFineConcept: (
+    concept: Omit<DemoBonusFineConcept, "id" | "createdAt">,
+  ) => void;
+  updateBonusFineConcept: (
+    conceptId: string,
+    patch: Omit<DemoBonusFineConcept, "id" | "createdAt">,
+  ) => void;
+  setBonusFineConceptActive: (conceptId: string, active: boolean) => void;
+  deleteBonusFineConcept: (conceptId: string) => void;
   addPayrollAdjustment: (
     adjustment: Omit<DemoPayrollAdjustment, "id" | "createdAt">,
   ) => void;
@@ -2268,6 +2810,11 @@ interface DemoPayrollContextValue {
   deleteLoan: (loanId: string) => void;
   setLoanStatus: (loanId: string, status: ApprovalStatus) => void;
   updateFinancialRequestPolicy: (policy: DemoFinancialRequestPolicy) => void;
+  setNotificationModuleApproval: (moduleId: string, approved: boolean) => void;
+  updateNotificationTemplate: (
+    templateId: string,
+    input: Pick<DemoNotificationTemplate, "title" | "message">,
+  ) => void;
   createRun: (
     module: PayrollModule,
     periodStart: string,
@@ -2512,10 +3059,6 @@ export function PayrollDemoProvider({
           const commissionAssignedHere =
             payrollModule === "CONSOLIDATED" ||
             commissionModuleId === payrollModule;
-          const movementModuleId = commissionModuleId ?? salaryModuleId;
-          const movementsAssignedHere =
-            payrollModule === "CONSOLIDATED" ||
-            movementModuleId === payrollModule;
           const commission =
             commissionAssignedHere && includesConcept("COMMISSION")
               ? sales * rate
@@ -2526,9 +3069,10 @@ export function PayrollDemoProvider({
               movement.periodStart >= periodStart &&
               movement.periodStart <= configuredEnd &&
               movement.status === "APPROVED" &&
-              movementsAssignedHere,
+              (payrollModule === "CONSOLIDATED" ||
+                movement.payrollModule === payrollModule),
           );
-          const bonuses = periodMovements
+          const movementBonuses = periodMovements
             .filter(
               (movement) =>
                 includesConcept("BONUS") &&
@@ -2537,6 +3081,17 @@ export function PayrollDemoProvider({
                   sales >= (movement.threshold ?? 0)),
             )
             .reduce((sum, movement) => sum + movement.amount, 0);
+          const temporaryBonuses = includesConcept("BONUS")
+            ? temporaryBonusAwardsForPeriod(state, periodStart, configuredEnd)
+                .filter(
+                  (award) =>
+                    award.employee.id === employee.id &&
+                    (payrollModule === "CONSOLIDATED" ||
+                      award.concept.payrollModule === payrollModule),
+                )
+                .reduce((sum, award) => sum + award.amount, 0)
+            : 0;
+          const bonuses = movementBonuses + temporaryBonuses;
           const fines = periodMovements
             .filter(
               (movement) => includesConcept("FINE") && movement.type === "FINE",
@@ -2794,23 +3349,7 @@ export function PayrollDemoProvider({
         })
         .filter((line) => line.includedInModule);
     },
-    [
-      currentPeriod,
-      periodOptions,
-      state.adjustments,
-      state.commissionModeOverrides,
-      state.employees,
-      state.loans,
-      state.movements,
-      state.payrollModules,
-      state.periodTaxInclusions,
-      state.sales,
-      state.schemeAssignments,
-      state.schemes,
-      state.taxAssignments,
-      state.viaticsConcepts,
-      state.viaticsEntries,
-    ],
+    [currentPeriod, periodOptions, state],
   );
 
   const value = useMemo<DemoPayrollContextValue>(
@@ -3312,6 +3851,13 @@ export function PayrollDemoProvider({
               : movement,
           ),
         })),
+      deleteMovement: (movementId) =>
+        update((current) => ({
+          ...current,
+          movements: current.movements.filter(
+            (movement) => movement.id !== movementId,
+          ),
+        })),
       setMovementStatus: (movementId, status) =>
         update((current) => ({
           ...current,
@@ -3319,6 +3865,83 @@ export function PayrollDemoProvider({
             movement.id === movementId ? { ...movement, status } : movement,
           ),
         })),
+      addBonusFineConcept: (concept) =>
+        update((current) => ({
+          ...current,
+          bonusFineConcepts: [
+            ...current.bonusFineConcepts,
+            {
+              ...concept,
+              id: id("bonus-fine-concept"),
+              name: concept.name.toLocaleUpperCase("es-MX"),
+              createdAt: isoDate(new Date()),
+            },
+          ],
+        })),
+      updateBonusFineConcept: (conceptId, patch) =>
+        update((current) => ({
+          ...current,
+          bonusFineConcepts: current.bonusFineConcepts.map((concept) =>
+            concept.id === conceptId
+              ? {
+                  ...concept,
+                  ...patch,
+                  name: patch.name.toLocaleUpperCase("es-MX"),
+                }
+              : concept,
+          ),
+        })),
+      setBonusFineConceptActive: (conceptId, active) =>
+        update((current) => ({
+          ...current,
+          bonusFineConcepts: current.bonusFineConcepts.map((concept) =>
+            concept.id === conceptId ? { ...concept, active } : concept,
+          ),
+        })),
+      deleteBonusFineConcept: (conceptId) =>
+        update((current) => {
+          const concept = current.bonusFineConcepts.find(
+            (item) => item.id === conceptId,
+          );
+          if (!concept) return current;
+
+          const hasLinkedMovement = current.movements.some(
+            (movement) => movement.catalogId === conceptId,
+          );
+          const hasLinkedAdjustment = current.adjustments.some(
+            (adjustment) =>
+              adjustment.type === concept.type &&
+              adjustment.concept.trim().toLocaleUpperCase("es-MX") ===
+                concept.name.trim().toLocaleUpperCase("es-MX"),
+          );
+          const hasClosedAutomaticAward = Boolean(
+            concept.temporary &&
+            concept.validUntil &&
+            concept.validUntil <= isoDate(new Date()) &&
+            temporaryBonusStandings(current, concept).some(
+              (standing) => standing.achieved,
+            ),
+          );
+          const hasHistory =
+            hasLinkedMovement || hasLinkedAdjustment || hasClosedAutomaticAward;
+
+          return {
+            ...current,
+            bonusFineConcepts: hasHistory
+              ? current.bonusFineConcepts.map((item) =>
+                  item.id === conceptId
+                    ? {
+                        ...item,
+                        active: false,
+                        deletedAt: isoDate(new Date()),
+                      }
+                    : item,
+                )
+              : current.bonusFineConcepts.filter(
+                  (item) => item.id !== conceptId,
+                ),
+          };
+        }),
       addPayrollAdjustment: (adjustment) =>
         update((current) => {
           const run = current.runs.find(
@@ -3393,6 +4016,7 @@ export function PayrollDemoProvider({
               {
                 ...loan,
                 id: id("loan"),
+                requestedAmount: loan.amount,
                 paidInstallments: 0,
                 history: [
                   {
@@ -3411,11 +4035,22 @@ export function PayrollDemoProvider({
         }),
       updateLoan: (loanId, patch) =>
         update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          if (activeEmployee?.roleId !== "role-admin") return current;
           const selected = current.loans.find((loan) => loan.id === loanId);
           const run = selected
             ? current.runs.find((item) => item.id === selected.payrollRunId)
             : undefined;
-          if (run && run.status !== "DRAFT") return current;
+          if (
+            !selected ||
+            selected.status !== "PENDING" ||
+            (run && run.status !== "DRAFT")
+          )
+            return current;
+          const amountChanged =
+            Math.abs(selected.amount - patch.amount) > 0.005;
           return {
             ...current,
             loans: current.loans.map((loan) =>
@@ -3428,8 +4063,10 @@ export function PayrollDemoProvider({
                       {
                         id: id("history"),
                         date: isoDate(new Date()),
-                        action: "SOLICITUD EDITADA",
-                        by: "ADMINISTRACIÓN",
+                        action: amountChanged
+                          ? `MONTO AJUSTADO DE ${selected.amount.toLocaleString("es-MX", { style: "currency", currency: "MXN" })} A ${patch.amount.toLocaleString("es-MX", { style: "currency", currency: "MXN" })}`
+                          : "SOLICITUD EDITADA",
+                        by: activeEmployee.name,
                       },
                     ],
                   }
@@ -3452,6 +4089,10 @@ export function PayrollDemoProvider({
         }),
       setLoanStatus: (loanId, status) =>
         update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          if (activeEmployee?.roleId !== "role-admin") return current;
           const selected = current.loans.find((loan) => loan.id === loanId);
           const run = selected
             ? current.runs.find((item) => item.id === selected.payrollRunId)
@@ -3475,7 +4116,7 @@ export function PayrollDemoProvider({
                             : status === "REJECTED"
                               ? "SOLICITUD RECHAZADA"
                               : "SOLICITUD REABIERTA",
-                        by: "ADMINISTRACIÓN",
+                        by: activeEmployee.name,
                       },
                     ],
                   }
@@ -3488,6 +4129,70 @@ export function PayrollDemoProvider({
           ...current,
           financialRequestPolicy: policy,
         })),
+      setNotificationModuleApproval: (moduleId, approved) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          const activeRole = current.roles.find(
+            (role) => role.id === activeEmployee?.roleId,
+          );
+          if (!roleHasPermission(activeRole, "notifications.manage")) {
+            return current;
+          }
+          const updatedAt = new Date().toISOString();
+          return {
+            ...current,
+            notificationTemplates: current.notificationTemplates.map(
+              (template) =>
+                template.moduleId === moduleId
+                  ? {
+                      ...template,
+                      approved,
+                      updatedAt,
+                      updatedBy: activeEmployee?.name ?? "USUARIO MASTER",
+                    }
+                  : template,
+            ),
+          };
+        }),
+      updateNotificationTemplate: (templateId, input) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          const activeRole = current.roles.find(
+            (role) => role.id === activeEmployee?.roleId,
+          );
+          if (!roleHasPermission(activeRole, "notifications.manage")) {
+            return current;
+          }
+          const selected = current.notificationTemplates.find(
+            (template) => template.id === templateId,
+          );
+          if (!selected) return current;
+          const updatedAt = new Date().toISOString();
+          return {
+            ...current,
+            notificationTemplates: current.notificationTemplates.map(
+              (template) =>
+                template.moduleId === selected.moduleId
+                  ? {
+                      ...template,
+                      ...(template.id === templateId
+                        ? {
+                            title: input.title.trim(),
+                            message: input.message.trim(),
+                            updatedAt,
+                            updatedBy: activeEmployee?.name ?? "USUARIO MASTER",
+                          }
+                        : {}),
+                      approved: false,
+                    }
+                  : template,
+            ),
+          };
+        }),
       createRun: (module, periodStart, periodEnd, mode, payDate) =>
         update((current) => {
           const existing = current.runs.find(

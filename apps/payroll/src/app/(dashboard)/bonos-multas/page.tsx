@@ -1,5 +1,5 @@
-import { PayrollBonusesFinesDemo } from "@/components/payroll/payroll-bonuses-fines-demo";
+import { PayrollBonusFineCatalogDemo } from "@/components/payroll/payroll-bonus-fine-catalog-demo";
 
 export default function Page() {
-  return <PayrollBonusesFinesDemo />;
+  return <PayrollBonusFineCatalogDemo />;
 }
