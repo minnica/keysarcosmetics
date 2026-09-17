@@ -616,90 +616,58 @@
     },
     "RV10-P3": {
       "id": "RV10-P3",
-      "runId": "2026-09-17T19-12-25-154Z-RV10-P3",
-      "base": "c2bc9c46eacf4e414de677275407cdf12d485a9d",
-      "status": "partial",
-      "attempts": 1,
-      "summary": "Preparación local completada y probada sin publicar secretos. Se añadió un helper opt-in que registra, activa y verifica una terminal sintética mediante las rutas canónicas. RV10-P3 permanece abierto porque faltan la terminal real, la entrega privada al PO y la validación desde Electron/Windows.",
+      "runId": "2026-09-17T19-25-59-775Z-RV10-P3",
+      "base": "1aae14428a90133401726cfe25b1faf45f778042",
+      "status": "blocked",
+      "attempts": 2,
+      "summary": "La preparación local sintética ya estaba completada y probada. Esta reanudación confirmó que el cierre depende exclusivamente de una terminal real del PO, un canal privado autorizado y validación desde Electron/Windows. Sólo se actualizaron plan, handoff e informe; RV10-P3 permanece abierto.",
       "checks": [
         {
-          "command": "git status --short --branch && git rev-parse HEAD && git show -s --format='%H %T %s' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+          "command": "git status --short --branch && git rev-parse HEAD && git show -s --format='%H%n%T%n%s' HEAD && git show -s --format='%H%n%T%n%s' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
           "result": "passed",
-          "evidence": "SHA inicial c2bc9c46eacf4e414de677275407cdf12d485a9d y referencia fija 12fb8045cc264b565cb6e764d95ad7b2447fbfa1 confirmados."
+          "evidence": "SHA inicial 1aae14428a90133401726cfe25b1faf45f778042 y referencia fija 12fb8045cc264b565cb6e764d95ad7b2447fbfa1, árbol 6f61e86a90927dd19d63c557d65376e0b1eaabed, confirmados."
         },
         {
-          "command": "provision-pos-terminal-local.ts verify sin confirmación y con POS_TERMINAL_API_URL=https://example.invalid",
+          "command": "uname -srmo; command -v powershell.exe; command -v cmd.exe; command -v wsl.exe; command -v wine; command -v electron",
           "result": "passed",
-          "evidence": "El helper rechazó la falta de confirmación y la API remota antes de leer credenciales."
+          "evidence": "El host es Fedora Linux nativo y no dispone de Windows/WSL, Wine ni Electron del sistema para producir la evidencia externa restante."
         },
         {
-          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY POS_DEMO_EXPECTED_SHA=c2bc9c46eacf4e414de677275407cdf12d485a9d ... backend/api/scripts/prepare-pos-local-demo.sh up",
+          "command": "POS_DEMO_STATE_DIR=\"$PWD/.pos-runner/rv10-p3-local\" POS_DEMO_POSTGRES_CONTAINER=keysar-rv10-p1-rv10-p3 POS_DEMO_DB_PORT=55472 POS_DEMO_API_PORT=4412 backend/api/scripts/prepare-pos-local-demo.sh status && stat -c '%a %F %n' .pos-runner/rv10-p3-local .pos-runner/rv10-p3-local/config.env .pos-runner/rv10-p3-local/credentials.json .pos-runner/rv10-p3-local/terminal.json && podman inspect --format '{{.Name}} status={{.State.Status}} ports={{json .HostConfig.PortBindings}}' keysar-rv10-p1-rv10-p3 && ss -H -ltn '( sport = :4412 or sport = :55472 )'",
           "result": "passed",
-          "evidence": "PostgreSQL 16 aplicó 46/46 migraciones; health.release, readiness, CORS y bindings loopback aprobaron."
+          "evidence": "API detenida, PostgreSQL exited, estado 0700, archivos sensibles 0600, binding exclusivo 127.0.0.1:55472 y puertos 4412/55472 libres."
         },
         {
-          "command": "provision-pos-local-demo.ts provision|verify && provision-pos-terminal-local.ts provision|verify, repetidos",
+          "command": "rg -n 'POS_TERMINAL_CONFIRMATION|POS_TERMINAL_API_URL|api/pos/(terminals|auth/login|authorizations|auth/verify)' backend/api/scripts/provision-pos-terminal-local.ts && rg -n 'POS_API_URL|POS_TERMINAL_CODE|POS_TERMINAL_SECRET|posLogin' apps/pos/src/main apps/pos/src/preload apps/pos/src/renderer/src && git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/App.tsx | rg -n 'Código master|Código incorrecto|código incorrecto'",
           "result": "passed",
-          "evidence": "Terminal ACTIVE y reentrante; misma sucursal, login master/operador, permisos 69/35, rechazo de código incorrecto y autorización master emitida y consumida. Archivos sensibles modo 0600."
+          "evidence": "Las guardas, rutas canónicas, variables privadas del proceso principal, IPC de login y controles aprobados siguen presentes sin exponer secretos."
         },
         {
-          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=\"$pos_demo_url\" DIRECT_URL=\"$pos_demo_url\" pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "command": "pnpm pos:visual:manifest",
           "result": "passed",
-          "evidence": "10/10 pruebas HTTP/BD POS aprobaron, incluidas terminal pendiente/activa, permisos, autorizaciones y revocación."
+          "evidence": "Referencia 12fb804 intacta; manifiesto con 25 pantallas, 10 secciones de Settings, 11 reportes, 10 vistas de bodega y 208 capturas."
         },
         {
-          "command": "pnpm --dir backend/api exec tsc --noEmit --target ES2022 --module Node16 --moduleResolution Node16 --esModuleInterop --skipLibCheck scripts/provision-pos-terminal-local.ts && pnpm --dir backend/api exec eslint scripts/provision-pos-terminal-local.ts --max-warnings=0",
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-17T19-25-59-775Z-RV10-P3.md && git diff --check",
           "result": "passed",
-          "evidence": "El helper nuevo compiló aisladamente y no produjo warnings de lint."
+          "evidence": "Documentación formateada y diff sin errores de whitespace; sólo cambiaron plan, handoff e informe, y RV10-P3 continúa [ ]."
         },
         {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api build",
-          "result": "passed",
-          "evidence": "Schemas sincronizados y válidos, tipos/lint/build correctos y 136/136 pruebas unitarias aprobadas."
-        },
-        {
-          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
-          "result": "passed",
-          "evidence": "Renderer, main y preload compilaron; referencia intacta con matriz 25/10/11/10 y 208 capturas programadas."
-        },
-        {
-          "command": "pnpm exec prettier --check backend/api/scripts/provision-pos-terminal-local.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-17T19-12-25-154Z-RV10-P3.md && git diff --check",
-          "result": "passed",
-          "evidence": "Código y documentación tienen formato válido y el diff no contiene errores de whitespace; RV10-P3 continúa sin marcar."
-        },
-        {
-          "command": "backend/api/scripts/prepare-pos-local-demo.sh down && backend/api/scripts/prepare-pos-local-demo.sh status",
-          "result": "passed",
-          "evidence": "API detenida, PostgreSQL exited y estado sintético conservado en .pos-runner/rv10-p3-local/."
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api test:unit && RUN_DATABASE_TESTS=true pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "result": "not_run",
+          "evidence": "Checkpoint bloqueado exclusivamente documental; no cambió código, contrato, schema, migración ni superficie visible. Las pruebas del provisionamiento pertenecen al checkpoint parcial anterior y no se presentan como nuevas."
         }
       ],
-      "independentChecks": [
-        {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api type-check",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api lint",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api test:unit",
-          "result": "passed"
-        }
-      ],
+      "independentChecks": [],
       "remaining": [
         "Registrar y activar una terminal distinta y real para el PO en el entorno autorizado, conservando su secreto fuera del repositorio y renderer.",
         "Entregar las credenciales de terminal, master y operador únicamente mediante un canal privado autorizado.",
         "Comprobar desde Electron/Windows los logins master/operador, sucursal, permisos y autorización con código incorrecto/correcto mediante los controles aprobados."
       ],
       "followUps": [],
-      "nextStep": "Cuando se habiliten el equipo y canal autorizados, provisionar allí una terminal distinta con el helper, cargar sus secretos privadamente en el proceso principal de Electron y registrar la evidencia del recorrido sin reutilizar la terminal local PO-PREP.",
-      "report": "docs/pos-automation/runs/2026-09-17T19-12-25-154Z-RV10-P3.md",
-      "updatedAt": "2026-09-17T19:25:56.452Z"
+      "nextStep": "Cuando existan equipo y canal autorizados, provisionar allí una terminal distinta con el helper, cargar sus secretos privadamente en el proceso principal de Electron y registrar el recorrido sin reutilizar la terminal sintética local PO-PREP.",
+      "report": "docs/pos-automation/runs/2026-09-17T19-25-59-775Z-RV10-P3.md",
+      "updatedAt": "2026-09-17T19:30:37.632Z"
     }
   },
   "history": [
@@ -2176,6 +2144,61 @@
       "nextStep": "Cuando se habiliten el equipo y canal autorizados, provisionar allí una terminal distinta con el helper, cargar sus secretos privadamente en el proceso principal de Electron y registrar la evidencia del recorrido sin reutilizar la terminal local PO-PREP.",
       "report": "docs/pos-automation/runs/2026-09-17T19-12-25-154Z-RV10-P3.md",
       "updatedAt": "2026-09-17T19:25:56.452Z"
+    },
+    {
+      "id": "RV10-P3",
+      "runId": "2026-09-17T19-25-59-775Z-RV10-P3",
+      "base": "1aae14428a90133401726cfe25b1faf45f778042",
+      "status": "blocked",
+      "attempts": 2,
+      "summary": "La preparación local sintética ya estaba completada y probada. Esta reanudación confirmó que el cierre depende exclusivamente de una terminal real del PO, un canal privado autorizado y validación desde Electron/Windows. Sólo se actualizaron plan, handoff e informe; RV10-P3 permanece abierto.",
+      "checks": [
+        {
+          "command": "git status --short --branch && git rev-parse HEAD && git show -s --format='%H%n%T%n%s' HEAD && git show -s --format='%H%n%T%n%s' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+          "result": "passed",
+          "evidence": "SHA inicial 1aae14428a90133401726cfe25b1faf45f778042 y referencia fija 12fb8045cc264b565cb6e764d95ad7b2447fbfa1, árbol 6f61e86a90927dd19d63c557d65376e0b1eaabed, confirmados."
+        },
+        {
+          "command": "uname -srmo; command -v powershell.exe; command -v cmd.exe; command -v wsl.exe; command -v wine; command -v electron",
+          "result": "passed",
+          "evidence": "El host es Fedora Linux nativo y no dispone de Windows/WSL, Wine ni Electron del sistema para producir la evidencia externa restante."
+        },
+        {
+          "command": "POS_DEMO_STATE_DIR=\"$PWD/.pos-runner/rv10-p3-local\" POS_DEMO_POSTGRES_CONTAINER=keysar-rv10-p1-rv10-p3 POS_DEMO_DB_PORT=55472 POS_DEMO_API_PORT=4412 backend/api/scripts/prepare-pos-local-demo.sh status && stat -c '%a %F %n' .pos-runner/rv10-p3-local .pos-runner/rv10-p3-local/config.env .pos-runner/rv10-p3-local/credentials.json .pos-runner/rv10-p3-local/terminal.json && podman inspect --format '{{.Name}} status={{.State.Status}} ports={{json .HostConfig.PortBindings}}' keysar-rv10-p1-rv10-p3 && ss -H -ltn '( sport = :4412 or sport = :55472 )'",
+          "result": "passed",
+          "evidence": "API detenida, PostgreSQL exited, estado 0700, archivos sensibles 0600, binding exclusivo 127.0.0.1:55472 y puertos 4412/55472 libres."
+        },
+        {
+          "command": "rg -n 'POS_TERMINAL_CONFIRMATION|POS_TERMINAL_API_URL|api/pos/(terminals|auth/login|authorizations|auth/verify)' backend/api/scripts/provision-pos-terminal-local.ts && rg -n 'POS_API_URL|POS_TERMINAL_CODE|POS_TERMINAL_SECRET|posLogin' apps/pos/src/main apps/pos/src/preload apps/pos/src/renderer/src && git show 12fb8045cc264b565cb6e764d95ad7b2447fbfa1:apps/pos/src/renderer/src/App.tsx | rg -n 'Código master|Código incorrecto|código incorrecto'",
+          "result": "passed",
+          "evidence": "Las guardas, rutas canónicas, variables privadas del proceso principal, IPC de login y controles aprobados siguen presentes sin exponer secretos."
+        },
+        {
+          "command": "pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Referencia 12fb804 intacta; manifiesto con 25 pantallas, 10 secciones de Settings, 11 reportes, 10 vistas de bodega y 208 capturas."
+        },
+        {
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-17T19-25-59-775Z-RV10-P3.md && git diff --check",
+          "result": "passed",
+          "evidence": "Documentación formateada y diff sin errores de whitespace; sólo cambiaron plan, handoff e informe, y RV10-P3 continúa [ ]."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api test:unit && RUN_DATABASE_TESTS=true pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "result": "not_run",
+          "evidence": "Checkpoint bloqueado exclusivamente documental; no cambió código, contrato, schema, migración ni superficie visible. Las pruebas del provisionamiento pertenecen al checkpoint parcial anterior y no se presentan como nuevas."
+        }
+      ],
+      "independentChecks": [],
+      "remaining": [
+        "Registrar y activar una terminal distinta y real para el PO en el entorno autorizado, conservando su secreto fuera del repositorio y renderer.",
+        "Entregar las credenciales de terminal, master y operador únicamente mediante un canal privado autorizado.",
+        "Comprobar desde Electron/Windows los logins master/operador, sucursal, permisos y autorización con código incorrecto/correcto mediante los controles aprobados."
+      ],
+      "followUps": [],
+      "nextStep": "Cuando existan equipo y canal autorizados, provisionar allí una terminal distinta con el helper, cargar sus secretos privadamente en el proceso principal de Electron y registrar el recorrido sin reutilizar la terminal sintética local PO-PREP.",
+      "report": "docs/pos-automation/runs/2026-09-17T19-25-59-775Z-RV10-P3.md",
+      "updatedAt": "2026-09-17T19:30:37.632Z"
     }
   ]
 }
