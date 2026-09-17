@@ -495,68 +495,51 @@
     },
     "RV10-P1": {
       "id": "RV10-P1",
-      "runId": "2026-09-17T18-28-31-657Z-RV10-P1",
-      "base": "27b92cacc195f48020033940166a9f5f6460522b",
-      "status": "partial",
-      "attempts": 1,
-      "summary": "Preparación local reproducible completada para el SHA 27b92cacc195f48020033940166a9f5f6460522b: PostgreSQL 16 aislado, 46 migraciones, API compilada, identidad de release, readiness y CORS verificados. El check permanece abierto por falta de Windows o development autorizado para comprobar acceso desde el entorno objetivo.",
+      "runId": "2026-09-17T18-42-54-135Z-RV10-P1",
+      "base": "f7fc12037fe0c8815b78315cf8ac9d9f86c57c44",
+      "status": "blocked",
+      "attempts": 2,
+      "summary": "La preparación local previa permanece válida, detenida y aislada. RV10-P1 sigue abierto porque este host Fedora no dispone de Windows/WSL ni de un development autorizado para verificar acceso, release, readiness y CORS. Sólo se actualizaron plan, handoff e informe.",
       "checks": [
         {
-          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY POS_DEMO_EXPECTED_SHA=27b92cacc195f48020033940166a9f5f6460522b backend/api/scripts/prepare-pos-local-demo.sh up && backend/api/scripts/prepare-pos-local-demo.sh verify",
+          "command": "git status --short --branch && git rev-parse HEAD && git show -s --format='%H %T %s' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
           "result": "passed",
-          "evidence": "Creación y reentrada aprobaron con 46 migraciones, SHA exacto, /ready conectado, CORS permitido/rechazado y listeners limitados a loopback."
+          "evidence": "SHA inicial f7fc12037fe0c8815b78315cf8ac9d9f86c57c44; referencia visual 12fb8045cc264b565cb6e764d95ad7b2447fbfa1 confirmada."
         },
         {
-          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=<local-desechable> DIRECT_URL=<misma-BD> pnpm --filter @cosmetics/api exec vitest run src/app.integration.test.ts",
+          "command": "uname -a && sed -n '1,3p' /proc/version && command -v powershell.exe || true && command -v cmd.exe || true && command -v wsl.exe || true",
           "result": "passed",
-          "evidence": "1 archivo y 5/5 pruebas HTTP/BD aprobadas sobre keysar_pos_demo."
+          "evidence": "El entorno es Fedora Linux nativo y no ofrece ejecutables Windows/WSL."
         },
         {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit",
+          "command": "backend/api/scripts/prepare-pos-local-demo.sh status && bash -n backend/api/scripts/prepare-pos-local-demo.sh && stat -c '%a %n' .pos-runner/rv10-p1-local/config.env .pos-runner/rv10-p1-local/empty.env",
           "result": "passed",
-          "evidence": "Schemas sincronizados/válidos, tipos y lint aprobados; 25 archivos y 136/136 pruebas unitarias."
+          "evidence": "API y PostgreSQL anteriores detenidos, sintaxis válida y archivos locales con permisos 0600."
         },
         {
-          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "command": "podman inspect --format '<nombre estado binding>' keysar-rv10-p1-pg && ss -H -ltn 'sport = :4410 or sport = :55470'",
           "result": "passed",
-          "evidence": "Renderer, main y preload compilaron correctamente."
+          "evidence": "Contenedor detenido, binding configurado exclusivamente en 127.0.0.1:55470 y puertos 4410/55470 libres."
         },
         {
-          "command": "backend/api/scripts/prepare-pos-local-demo.sh down && backend/api/scripts/prepare-pos-local-demo.sh status",
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-17T18-42-54-135Z-RV10-P1.md && bash -n backend/api/scripts/prepare-pos-local-demo.sh && git diff --check",
           "result": "passed",
-          "evidence": "API y PostgreSQL quedaron detenidos; puertos 4410/55470 libres. El contenedor y la BD sintética se conservaron."
+          "evidence": "Documentación y Bash válidos; diff sin errores. Sólo cambiaron plan, handoff e informe, y RV10-P1 permanece sin marcar."
         },
         {
-          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md && bash -n backend/api/scripts/prepare-pos-local-demo.sh && git diff --check",
-          "result": "passed",
-          "evidence": "Documentación, sintaxis Bash y diff aprobaron; RV10-P1 permanece sin marcar y el estado del ejecutor quedó intacto."
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "result": "not_run",
+          "evidence": "Ejecución bloqueada exclusivamente documental; no cambió código, contratos, schemas, migraciones ni superficies visibles. La evidencia anterior no se atribuyó a esta corrida."
         }
       ],
-      "independentChecks": [
-        {
-          "command": "pnpm --filter @cosmetics/api prisma:schemas",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api type-check",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api lint",
-          "result": "passed"
-        },
-        {
-          "command": "pnpm --filter @cosmetics/api test:unit",
-          "result": "passed"
-        }
-      ],
+      "independentChecks": [],
       "remaining": [
-        "Verificar desde Windows/WSL autorizado, o desde un development aislado autorizado, la URL/configuración, health.release, /ready y CORS del mismo candidato."
+        "Verificar desde Windows/WSL autorizado, o desde un development aislado autorizado, la URL/configuración del candidato, health.release, /ready y CORS."
       ],
       "followUps": [],
-      "nextStep": "Ejecutar la comprobación externa descrita en docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md; no ampliar bindings ni desplegar sin autorización.",
-      "report": "docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md",
-      "updatedAt": "2026-09-17T18:42:50.778Z"
+      "nextStep": "Preparar el SHA f7fc12037fe0c8815b78315cf8ac9d9f86c57c44 en un estado/contenedor dedicado dentro del entorno autorizado, registrar la evidencia externa y detener los recursos sin ampliar bindings ni desplegar sin autorización.",
+      "report": "docs/pos-automation/runs/2026-09-17T18-42-54-135Z-RV10-P1.md",
+      "updatedAt": "2026-09-17T18:46:22.294Z"
     }
   },
   "history": [
@@ -1825,6 +1808,54 @@
       "nextStep": "Ejecutar la comprobación externa descrita en docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md; no ampliar bindings ni desplegar sin autorización.",
       "report": "docs/pos-automation/runs/2026-09-17T18-28-31-657Z-RV10-P1.md",
       "updatedAt": "2026-09-17T18:42:50.778Z"
+    },
+    {
+      "id": "RV10-P1",
+      "runId": "2026-09-17T18-42-54-135Z-RV10-P1",
+      "base": "f7fc12037fe0c8815b78315cf8ac9d9f86c57c44",
+      "status": "blocked",
+      "attempts": 2,
+      "summary": "La preparación local previa permanece válida, detenida y aislada. RV10-P1 sigue abierto porque este host Fedora no dispone de Windows/WSL ni de un development autorizado para verificar acceso, release, readiness y CORS. Sólo se actualizaron plan, handoff e informe.",
+      "checks": [
+        {
+          "command": "git status --short --branch && git rev-parse HEAD && git show -s --format='%H %T %s' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+          "result": "passed",
+          "evidence": "SHA inicial f7fc12037fe0c8815b78315cf8ac9d9f86c57c44; referencia visual 12fb8045cc264b565cb6e764d95ad7b2447fbfa1 confirmada."
+        },
+        {
+          "command": "uname -a && sed -n '1,3p' /proc/version && command -v powershell.exe || true && command -v cmd.exe || true && command -v wsl.exe || true",
+          "result": "passed",
+          "evidence": "El entorno es Fedora Linux nativo y no ofrece ejecutables Windows/WSL."
+        },
+        {
+          "command": "backend/api/scripts/prepare-pos-local-demo.sh status && bash -n backend/api/scripts/prepare-pos-local-demo.sh && stat -c '%a %n' .pos-runner/rv10-p1-local/config.env .pos-runner/rv10-p1-local/empty.env",
+          "result": "passed",
+          "evidence": "API y PostgreSQL anteriores detenidos, sintaxis válida y archivos locales con permisos 0600."
+        },
+        {
+          "command": "podman inspect --format '<nombre estado binding>' keysar-rv10-p1-pg && ss -H -ltn 'sport = :4410 or sport = :55470'",
+          "result": "passed",
+          "evidence": "Contenedor detenido, binding configurado exclusivamente en 127.0.0.1:55470 y puertos 4410/55470 libres."
+        },
+        {
+          "command": "pnpm exec prettier --check PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md docs/pos-automation/runs/2026-09-17T18-42-54-135Z-RV10-P1.md && bash -n backend/api/scripts/prepare-pos-local-demo.sh && git diff --check",
+          "result": "passed",
+          "evidence": "Documentación y Bash válidos; diff sin errores. Sólo cambiaron plan, handoff e informe, y RV10-P1 permanece sin marcar."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web",
+          "result": "not_run",
+          "evidence": "Ejecución bloqueada exclusivamente documental; no cambió código, contratos, schemas, migraciones ni superficies visibles. La evidencia anterior no se atribuyó a esta corrida."
+        }
+      ],
+      "independentChecks": [],
+      "remaining": [
+        "Verificar desde Windows/WSL autorizado, o desde un development aislado autorizado, la URL/configuración del candidato, health.release, /ready y CORS."
+      ],
+      "followUps": [],
+      "nextStep": "Preparar el SHA f7fc12037fe0c8815b78315cf8ac9d9f86c57c44 en un estado/contenedor dedicado dentro del entorno autorizado, registrar la evidencia externa y detener los recursos sin ampliar bindings ni desplegar sin autorización.",
+      "report": "docs/pos-automation/runs/2026-09-17T18-42-54-135Z-RV10-P1.md",
+      "updatedAt": "2026-09-17T18:46:22.294Z"
     }
   ]
 }

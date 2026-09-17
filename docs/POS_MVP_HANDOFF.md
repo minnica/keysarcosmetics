@@ -8,7 +8,7 @@
 
 - MVP online RV0–RV7 y RV9 bloqueante: implementado.
 - RV10 técnica: 208/208 visual, builds, tipos, lint, unitarias e integración PostgreSQL en `PASS`.
-- Checkpoint actual: `RV10-P1`, parcial sobre el SHA inicial `27b92cacc195f48020033940166a9f5f6460522b`. La preparación local reproducible de API/PostgreSQL está implementada y probada, pero no hubo un Windows autorizado ni un development aislado desde el cual verificar la URL; el check permanece abierto.
+- Checkpoint actual: `RV10-P1`, bloqueado externamente sobre el SHA inicial `f7fc12037fe0c8815b78315cf8ac9d9f86c57c44`. La preparación local reproducible de API/PostgreSQL permanece implementada y probada por el checkpoint anterior, pero este host Fedora no ofrece Windows/WSL y no se proporcionó un development aislado autorizado desde el cual verificar la URL; el check permanece abierto.
 - Limpieza RV9-P4: el alta de personal ya no admite teclear códigos nuevos de 5–12 dígitos que REF y `posEmployeeWriteSchema` rechazan; se limita y normaliza a cuatro. La compatibilidad de lectura 4–12 para credenciales históricas se conserva en login, autorización y asistencia hasta que exista inventario/rotación real. No se retiraron contratos, providers, tablas, proyecciones, outboxes, datos ni fixtures.
 - Siguiente acción general: ejecutar RV9-P1 con inventario autorizado antes de retirar R10–R12 y ejecutar RV9-P2 antes de cualquier retiro persistente; decidir RV6-P3 según el uso/rollback de `AGENDA_PROVIDER=http`. RV5-P1 sigue bloqueado hasta que exista una definición aprobada que identifique la unidad/composición/Agenda afectada. RV6-P1 y B01–B03 continúan aplazados; no implementar esas operaciones por inferencia.
 - Pendiente visual explícito: RV3-B01 (copy de cierre/gasto). RV7-P1/R03 quedó cerrado sin modificar `REGISTRO MOCK · CASH MANAGER`. No equiparar 208 capturas históricas con cobertura universal del modo API.
@@ -16,6 +16,14 @@
 - Referencia reconfirmada por GitHub MCP el 2026-09-16: `feature/pos` sigue en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`. La presentación aprobada gobierna la adaptación del backend; no se rediseña para ajustar contratos.
 
 ## Checkpoint RV10-P1 (2026-09-17, ejecución actual)
+
+- Reanudación bloqueada sobre el SHA inicial `f7fc12037fe0c8815b78315cf8ac9d9f86c57c44`; referencia de presentación/interacción y manifiestos confirmados en `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`. No cambiaron renderer, CSS, baseline, capturador, comparador, API, schema, migraciones ni helper.
+- El entorno es Fedora Linux nativo y no contiene `powershell.exe`, `cmd.exe` o `wsl.exe`; tampoco existe un environment development autorizado en el alcance. Por ello no es posible aportar la evidencia pendiente desde Windows ni ampliar de forma segura el listener más allá de loopback.
+- Se revalidó sin mutar datos el recurso del checkpoint anterior: `prepare-pos-local-demo.sh status` informa release `27b92cacc195f48020033940166a9f5f6460522b`, API detenida y PostgreSQL detenido; el contenedor conserva `127.0.0.1:55470`, los archivos locales conservan modo `0600`, los puertos `4410`/`55470` están libres y la sintaxis Bash pasa.
+- Resultado `blocked`: sólo se actualizaron plan, handoff e informe. No se repitieron tipos, builds, unitarias, integración HTTP/BD o matriz visual porque no cambió código ni una superficie visible; sus resultados pertenecen al checkpoint parcial anterior y no se presentan como ejecución actual.
+- Siguiente acción precisa: desde Windows/WSL autorizado o un development aislado autorizado, preparar el SHA candidato en un estado/contenedor dedicado, verificar la URL desde el entorno consumidor y registrar `health.release`, `/ready` y el preflight CORS. No usar el estado local anterior con otro SHA ni abrir `0.0.0.0` sin definir antes una interfaz/red privada confiable y sus controles. Informe: `docs/pos-automation/runs/2026-09-17T18-42-54-135Z-RV10-P1.md`.
+
+### Evidencia histórica del checkpoint parcial anterior
 
 - SHA inicial/candidato verificado: `27b92cacc195f48020033940166a9f5f6460522b`; referencia de presentación e interacción: árbol completo `12fb8045cc264b565cb6e764d95ad7b2447fbfa1`. No cambió renderer, CSS, baseline, capturador ni comparador.
 - Se añadió `backend/api/scripts/prepare-pos-local-demo.sh`, helper POS/API opt-in con acciones `up`, `verify`, `status` y `down`. Sólo acepta API y PostgreSQL en loopback, exige `POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY`, un contenedor con prefijo dedicado y un estado dentro de `.pos-runner/`; no lee `.env`, no descarga imágenes, no ejecuta seeds y no elimina la BD al detenerse.
