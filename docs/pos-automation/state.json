@@ -613,6 +613,93 @@
       "nextStep": "Continuar con RV10-P3 únicamente en el entorno autorizado: registrar la terminal del PO, mantener su secreto fuera del repositorio y entregar credenciales por canal privado. RV10-P1 conserva separadamente su comprobación externa Windows/development.",
       "report": "docs/pos-automation/runs/2026-09-17T18-46-25-737Z-RV10-P2.md",
       "updatedAt": "2026-09-17T19:12:21.731Z"
+    },
+    "RV10-P3": {
+      "id": "RV10-P3",
+      "runId": "2026-09-17T19-12-25-154Z-RV10-P3",
+      "base": "c2bc9c46eacf4e414de677275407cdf12d485a9d",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Preparación local completada y probada sin publicar secretos. Se añadió un helper opt-in que registra, activa y verifica una terminal sintética mediante las rutas canónicas. RV10-P3 permanece abierto porque faltan la terminal real, la entrega privada al PO y la validación desde Electron/Windows.",
+      "checks": [
+        {
+          "command": "git status --short --branch && git rev-parse HEAD && git show -s --format='%H %T %s' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+          "result": "passed",
+          "evidence": "SHA inicial c2bc9c46eacf4e414de677275407cdf12d485a9d y referencia fija 12fb8045cc264b565cb6e764d95ad7b2447fbfa1 confirmados."
+        },
+        {
+          "command": "provision-pos-terminal-local.ts verify sin confirmación y con POS_TERMINAL_API_URL=https://example.invalid",
+          "result": "passed",
+          "evidence": "El helper rechazó la falta de confirmación y la API remota antes de leer credenciales."
+        },
+        {
+          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY POS_DEMO_EXPECTED_SHA=c2bc9c46eacf4e414de677275407cdf12d485a9d ... backend/api/scripts/prepare-pos-local-demo.sh up",
+          "result": "passed",
+          "evidence": "PostgreSQL 16 aplicó 46/46 migraciones; health.release, readiness, CORS y bindings loopback aprobaron."
+        },
+        {
+          "command": "provision-pos-local-demo.ts provision|verify && provision-pos-terminal-local.ts provision|verify, repetidos",
+          "result": "passed",
+          "evidence": "Terminal ACTIVE y reentrante; misma sucursal, login master/operador, permisos 69/35, rechazo de código incorrecto y autorización master emitida y consumida. Archivos sensibles modo 0600."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=\"$pos_demo_url\" DIRECT_URL=\"$pos_demo_url\" pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "10/10 pruebas HTTP/BD POS aprobaron, incluidas terminal pendiente/activa, permisos, autorizaciones y revocación."
+        },
+        {
+          "command": "pnpm --dir backend/api exec tsc --noEmit --target ES2022 --module Node16 --moduleResolution Node16 --esModuleInterop --skipLibCheck scripts/provision-pos-terminal-local.ts && pnpm --dir backend/api exec eslint scripts/provision-pos-terminal-local.ts --max-warnings=0",
+          "result": "passed",
+          "evidence": "El helper nuevo compiló aisladamente y no produjo warnings de lint."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "Schemas sincronizados y válidos, tipos/lint/build correctos y 136/136 pruebas unitarias aprobadas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Renderer, main y preload compilaron; referencia intacta con matriz 25/10/11/10 y 208 capturas programadas."
+        },
+        {
+          "command": "pnpm exec prettier --check backend/api/scripts/provision-pos-terminal-local.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-17T19-12-25-154Z-RV10-P3.md && git diff --check",
+          "result": "passed",
+          "evidence": "Código y documentación tienen formato válido y el diff no contiene errores de whitespace; RV10-P3 continúa sin marcar."
+        },
+        {
+          "command": "backend/api/scripts/prepare-pos-local-demo.sh down && backend/api/scripts/prepare-pos-local-demo.sh status",
+          "result": "passed",
+          "evidence": "API detenida, PostgreSQL exited y estado sintético conservado en .pos-runner/rv10-p3-local/."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Registrar y activar una terminal distinta y real para el PO en el entorno autorizado, conservando su secreto fuera del repositorio y renderer.",
+        "Entregar las credenciales de terminal, master y operador únicamente mediante un canal privado autorizado.",
+        "Comprobar desde Electron/Windows los logins master/operador, sucursal, permisos y autorización con código incorrecto/correcto mediante los controles aprobados."
+      ],
+      "followUps": [],
+      "nextStep": "Cuando se habiliten el equipo y canal autorizados, provisionar allí una terminal distinta con el helper, cargar sus secretos privadamente en el proceso principal de Electron y registrar la evidencia del recorrido sin reutilizar la terminal local PO-PREP.",
+      "report": "docs/pos-automation/runs/2026-09-17T19-12-25-154Z-RV10-P3.md",
+      "updatedAt": "2026-09-17T19:25:56.452Z"
     }
   },
   "history": [
@@ -2002,6 +2089,93 @@
       "nextStep": "Continuar con RV10-P3 únicamente en el entorno autorizado: registrar la terminal del PO, mantener su secreto fuera del repositorio y entregar credenciales por canal privado. RV10-P1 conserva separadamente su comprobación externa Windows/development.",
       "report": "docs/pos-automation/runs/2026-09-17T18-46-25-737Z-RV10-P2.md",
       "updatedAt": "2026-09-17T19:12:21.731Z"
+    },
+    {
+      "id": "RV10-P3",
+      "runId": "2026-09-17T19-12-25-154Z-RV10-P3",
+      "base": "c2bc9c46eacf4e414de677275407cdf12d485a9d",
+      "status": "partial",
+      "attempts": 1,
+      "summary": "Preparación local completada y probada sin publicar secretos. Se añadió un helper opt-in que registra, activa y verifica una terminal sintética mediante las rutas canónicas. RV10-P3 permanece abierto porque faltan la terminal real, la entrega privada al PO y la validación desde Electron/Windows.",
+      "checks": [
+        {
+          "command": "git status --short --branch && git rev-parse HEAD && git show -s --format='%H %T %s' 12fb8045cc264b565cb6e764d95ad7b2447fbfa1",
+          "result": "passed",
+          "evidence": "SHA inicial c2bc9c46eacf4e414de677275407cdf12d485a9d y referencia fija 12fb8045cc264b565cb6e764d95ad7b2447fbfa1 confirmados."
+        },
+        {
+          "command": "provision-pos-terminal-local.ts verify sin confirmación y con POS_TERMINAL_API_URL=https://example.invalid",
+          "result": "passed",
+          "evidence": "El helper rechazó la falta de confirmación y la API remota antes de leer credenciales."
+        },
+        {
+          "command": "POS_DEMO_CONFIRMATION=LOCAL_SYNTHETIC_ONLY POS_DEMO_EXPECTED_SHA=c2bc9c46eacf4e414de677275407cdf12d485a9d ... backend/api/scripts/prepare-pos-local-demo.sh up",
+          "result": "passed",
+          "evidence": "PostgreSQL 16 aplicó 46/46 migraciones; health.release, readiness, CORS y bindings loopback aprobaron."
+        },
+        {
+          "command": "provision-pos-local-demo.ts provision|verify && provision-pos-terminal-local.ts provision|verify, repetidos",
+          "result": "passed",
+          "evidence": "Terminal ACTIVE y reentrante; misma sucursal, login master/operador, permisos 69/35, rechazo de código incorrecto y autorización master emitida y consumida. Archivos sensibles modo 0600."
+        },
+        {
+          "command": "RUN_DATABASE_TESTS=true DATABASE_URL=\"$pos_demo_url\" DIRECT_URL=\"$pos_demo_url\" pnpm --filter @cosmetics/api exec vitest run src/pos.integration.test.ts",
+          "result": "passed",
+          "evidence": "10/10 pruebas HTTP/BD POS aprobaron, incluidas terminal pendiente/activa, permisos, autorizaciones y revocación."
+        },
+        {
+          "command": "pnpm --dir backend/api exec tsc --noEmit --target ES2022 --module Node16 --moduleResolution Node16 --esModuleInterop --skipLibCheck scripts/provision-pos-terminal-local.ts && pnpm --dir backend/api exec eslint scripts/provision-pos-terminal-local.ts --max-warnings=0",
+          "result": "passed",
+          "evidence": "El helper nuevo compiló aisladamente y no produjo warnings de lint."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas && pnpm --filter @cosmetics/api prisma:validate && pnpm --filter @cosmetics/api type-check && pnpm --filter @cosmetics/api lint && pnpm --filter @cosmetics/api test:unit && pnpm --filter @cosmetics/api build",
+          "result": "passed",
+          "evidence": "Schemas sincronizados y válidos, tipos/lint/build correctos y 136/136 pruebas unitarias aprobadas."
+        },
+        {
+          "command": "pnpm --filter @cosmetics/pos type-check && pnpm --filter @cosmetics/pos build:web && pnpm pos:visual:manifest",
+          "result": "passed",
+          "evidence": "Renderer, main y preload compilaron; referencia intacta con matriz 25/10/11/10 y 208 capturas programadas."
+        },
+        {
+          "command": "pnpm exec prettier --check backend/api/scripts/provision-pos-terminal-local.ts PLAN_RESTAURACION_VISUAL_POS.md docs/POS_MVP_HANDOFF.md CLAUDE.md docs/pos-automation/runs/2026-09-17T19-12-25-154Z-RV10-P3.md && git diff --check",
+          "result": "passed",
+          "evidence": "Código y documentación tienen formato válido y el diff no contiene errores de whitespace; RV10-P3 continúa sin marcar."
+        },
+        {
+          "command": "backend/api/scripts/prepare-pos-local-demo.sh down && backend/api/scripts/prepare-pos-local-demo.sh status",
+          "result": "passed",
+          "evidence": "API detenida, PostgreSQL exited y estado sintético conservado en .pos-runner/rv10-p3-local/."
+        }
+      ],
+      "independentChecks": [
+        {
+          "command": "pnpm --filter @cosmetics/api prisma:schemas",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api type-check",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api lint",
+          "result": "passed"
+        },
+        {
+          "command": "pnpm --filter @cosmetics/api test:unit",
+          "result": "passed"
+        }
+      ],
+      "remaining": [
+        "Registrar y activar una terminal distinta y real para el PO en el entorno autorizado, conservando su secreto fuera del repositorio y renderer.",
+        "Entregar las credenciales de terminal, master y operador únicamente mediante un canal privado autorizado.",
+        "Comprobar desde Electron/Windows los logins master/operador, sucursal, permisos y autorización con código incorrecto/correcto mediante los controles aprobados."
+      ],
+      "followUps": [],
+      "nextStep": "Cuando se habiliten el equipo y canal autorizados, provisionar allí una terminal distinta con el helper, cargar sus secretos privadamente en el proceso principal de Electron y registrar la evidencia del recorrido sin reutilizar la terminal local PO-PREP.",
+      "report": "docs/pos-automation/runs/2026-09-17T19-12-25-154Z-RV10-P3.md",
+      "updatedAt": "2026-09-17T19:25:56.452Z"
     }
   ]
 }
