@@ -446,6 +446,7 @@ export interface DemoTerminationSettlement {
   outcome: "PENDING" | "WON" | "SETTLED";
   closedAt: string | null;
   receiptPreparedAt: string | null;
+  archivedAt?: string | null;
   updatedAt: string;
 }
 
@@ -3192,6 +3193,12 @@ interface DemoPayrollContextValue {
     >,
   ) => void;
   upsertTerminationSettlement: (settlement: DemoTerminationSettlement) => void;
+  approveTerminationSettlement: (
+    settlement: DemoTerminationSettlement,
+  ) => void;
+  archiveTerminationSettlement: (
+    settlement: DemoTerminationSettlement,
+  ) => void;
   upsertChristmasBonus: (bonus: DemoChristmasBonus) => void;
   replaceChristmasBonusPaymentPeriods: (
     year: number,
@@ -3327,7 +3334,8 @@ export function PayrollDemoProvider({
             (settlement) =>
               settlement.employeeId === employee.id &&
               settlement.applies &&
-              settlement.status === "PAID" &&
+              !settlement.archivedAt &&
+              settlement.status !== "DRAFT" &&
               settlement.paymentDate >= periodStart &&
               settlement.paymentDate <= configuredEnd &&
               (payrollModule === "CONSOLIDATED" ||
@@ -3598,7 +3606,8 @@ export function PayrollDemoProvider({
             (settlement) =>
               settlement.employeeId === employee.id &&
               settlement.applies &&
-              settlement.status === "PAID" &&
+              !settlement.archivedAt &&
+              settlement.status !== "DRAFT" &&
               settlement.paymentDate >= periodStart &&
               settlement.paymentDate <= configuredEnd &&
               (payrollModule === "CONSOLIDATED" ||
@@ -4857,21 +4866,95 @@ export function PayrollDemoProvider({
           };
         }),
       upsertTerminationSettlement: (settlement) =>
-        update((current) => ({
-          ...current,
-          terminationSettlements: current.terminationSettlements.some(
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          if (activeEmployee?.roleId !== "role-admin") return current;
+          const existing = current.terminationSettlements.find(
             (item) => item.id === settlement.id,
-          )
-            ? current.terminationSettlements.map((item) =>
-                item.id === settlement.id
-                  ? { ...settlement, updatedAt: new Date().toISOString() }
-                  : item,
-              )
-            : [
-                ...current.terminationSettlements,
-                { ...settlement, updatedAt: new Date().toISOString() },
-              ],
-        })),
+          );
+          const protectedSettlement =
+            existing && existing.status !== "DRAFT"
+              ? { ...settlement, kind: existing.kind }
+              : settlement;
+          return {
+            ...current,
+            terminationSettlements: existing
+              ? current.terminationSettlements.map((item) =>
+                  item.id === settlement.id
+                    ? {
+                        ...protectedSettlement,
+                        updatedAt: new Date().toISOString(),
+                      }
+                    : item,
+                )
+              : [
+                  ...current.terminationSettlements,
+                  {
+                    ...protectedSettlement,
+                    updatedAt: new Date().toISOString(),
+                  },
+                ],
+          };
+        }),
+      approveTerminationSettlement: (settlement) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          const activeRole = current.roles.find(
+            (role) => role.id === activeEmployee?.roleId,
+          );
+          if (!roleHasPermission(activeRole, "payroll.approve")) return current;
+          const existing = current.terminationSettlements.find(
+            (item) => item.id === settlement.id,
+          );
+          if (existing && existing.status !== "DRAFT") return current;
+          const approvedSettlement = {
+            ...settlement,
+            status: "APPROVED" as const,
+            updatedAt: new Date().toISOString(),
+          };
+          return {
+            ...current,
+            terminationSettlements: existing
+              ? current.terminationSettlements.map((item) =>
+                  item.id === settlement.id ? approvedSettlement : item,
+                )
+              : [...current.terminationSettlements, approvedSettlement],
+          };
+        }),
+      archiveTerminationSettlement: (settlement) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          if (activeEmployee?.roleId !== "role-admin") return current;
+          return {
+            ...current,
+            terminationSettlements: current.terminationSettlements.some(
+              (item) => item.id === settlement.id,
+            )
+              ? current.terminationSettlements.map((item) =>
+                  item.id === settlement.id
+                    ? {
+                        ...item,
+                        archivedAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                      }
+                    : item,
+                )
+              : [
+                  ...current.terminationSettlements,
+                  {
+                    ...settlement,
+                    archivedAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  },
+                ],
+          };
+        }),
       upsertChristmasBonus: (bonus) =>
         update((current) => ({
           ...current,

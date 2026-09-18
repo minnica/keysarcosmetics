@@ -11,9 +11,11 @@ import {
   ChevronUp,
   Gift,
   FileSignature,
+  Pencil,
   Scale,
   Search,
   ShieldPlus,
+  Trash2,
   UserMinus,
   WalletCards,
 } from "lucide-react";
@@ -45,6 +47,7 @@ import {
   employeeAppliesToPeriod,
   christmasBonusPaidAmountForRange,
   periodTaxInclusionForRange,
+  roleHasPermission,
   terminationSettlementTotal,
   type DemoChristmasBonus,
   type DemoChristmasBonusPaymentPeriod,
@@ -256,10 +259,12 @@ function Toggle({
   checked,
   onCheckedChange,
   label,
+  disabled = false,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -267,8 +272,9 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
-      className={`relative h-6 w-11 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a744c] ${checked ? "border-emerald-600 bg-emerald-600" : "border-[color:var(--border-color)] bg-[color:var(--accent-hover)]"}`}
+      className={`relative h-6 w-11 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a744c] disabled:cursor-not-allowed disabled:opacity-50 ${checked ? "border-emerald-600 bg-emerald-600" : "border-[color:var(--border-color)] bg-[color:var(--accent-hover)]"}`}
     >
       <span
         className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-1"}`}
@@ -448,6 +454,27 @@ function Metric({
   );
 }
 
+function DashboardValue({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 xl:block xl:text-right">
+      <span className="label-caps xl:hidden">{label}</span>
+      <span
+        className={`number-display text-xs ${emphasis ? "font-bold text-[#805b3c]" : "font-semibold"}`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function taxFlags(inclusions: DemoPeriodTaxInclusion[], paymentDate: string) {
   const inclusion = periodTaxInclusionForRange(
     inclusions,
@@ -617,7 +644,12 @@ function settlementReceiptConfig(
 }
 
 export function PayrollTerminationSettlementsDemo() {
-  const { state, upsertTerminationSettlement } = usePayrollDemo();
+  const {
+    state,
+    upsertTerminationSettlement,
+    approveTerminationSettlement,
+    archiveTerminationSettlement,
+  } = usePayrollDemo();
   const currentYear = new Date().getFullYear();
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState(`${currentYear}-01-01`);
@@ -627,6 +659,14 @@ export function PayrollTerminationSettlementsDemo() {
   const [pageSize, setPageSize] = useState<PageSize>("20");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const activeEmployee = state.employees.find(
+    (employee) => employee.id === state.activeEmployeeId,
+  );
+  const activeRole = state.roles.find(
+    (role) => role.id === activeEmployee?.roleId,
+  );
+  const isMaster = activeRole?.id === "role-admin";
+  const canApprove = roleHasPermission(activeRole, "payroll.approve");
   const employeeMap = useMemo(
     () => new Map(state.employees.map((employee) => [employee.id, employee])),
     [state.employees],
@@ -635,12 +675,13 @@ export function PayrollTerminationSettlementsDemo() {
     () =>
       state.employees
         .filter((employee) => Boolean(employee.terminationDate))
-        .map(
-          (employee) =>
-            state.terminationSettlements.find(
-              (item) => item.employeeId === employee.id,
-            ) ?? defaultSettlement(employee),
-        )
+        .flatMap((employee) => {
+          const saved = state.terminationSettlements.find(
+            (item) => item.employeeId === employee.id,
+          );
+          if (saved?.archivedAt) return [];
+          return [saved ?? defaultSettlement(employee)];
+        })
         .filter((settlement) => {
           const employee = employeeMap.get(settlement.employeeId);
           const term = search.trim().toLocaleUpperCase("es-MX");
@@ -650,10 +691,7 @@ export function PayrollTerminationSettlementsDemo() {
             settlement.terminationDate <= dateTo &&
             (branchFilter === "ALL" ||
               settlement.costBranchIds.includes(branchFilter)) &&
-            (statusFilter === "ALL" ||
-              (statusFilter === "PENDING"
-                ? settlement.status !== "PAID"
-                : settlement.status === "PAID")) &&
+            (statusFilter === "ALL" || settlement.status === statusFilter) &&
             (!term ||
               `${employee.name} ${employee.position}`
                 .toLocaleUpperCase("es-MX")
@@ -771,7 +809,7 @@ export function PayrollTerminationSettlementsDemo() {
       },
     ],
     analysis: [
-      `${applicableRows.filter((row) => row.status !== "PAID").length} registros aplicables continúan pendientes de pago.`,
+      `${applicableRows.filter((row) => row.status === "DRAFT").length} registros aplicables requieren aprobación y ${applicableRows.filter((row) => row.status === "APPROVED").length} ya están integrados y pendientes de pago.`,
       `${applicableRows.filter((row) => row.caseClosed).length} casos aplicables están cerrados y ${applicableRows.filter((row) => !row.caseClosed).length} siguen abiertos.`,
       "Los importes son editables y requieren revisión del motivo de baja y documentos laborales.",
     ],
@@ -860,6 +898,10 @@ export function PayrollTerminationSettlementsDemo() {
     settlement: DemoTerminationSettlement,
     message = "Cambios guardados en el prototipo.",
   ) {
+    if (!isMaster) {
+      toast.error("Sólo el usuario máster puede editar este registro.");
+      return;
+    }
     upsertTerminationSettlement(settlement);
     toast.success(message);
   }
@@ -989,7 +1031,8 @@ export function PayrollTerminationSettlementsDemo() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">TODOS</SelectItem>
-                <SelectItem value="PENDING">PENDIENTES</SelectItem>
+                <SelectItem value="DRAFT">PENDIENTES</SelectItem>
+                <SelectItem value="APPROVED">APROBADOS</SelectItem>
                 <SelectItem value="PAID">PAGADOS</SelectItem>
               </SelectContent>
             </Select>
@@ -1016,9 +1059,23 @@ export function PayrollTerminationSettlementsDemo() {
                   state.periodTaxInclusions,
                 );
                 const expanded = expandedId === settlement.id;
+                const integrated =
+                  settlement.applies &&
+                  settlement.status !== "DRAFT" &&
+                  costs.gross > 0;
                 return (
-                  <article key={settlement.id} className="px-4 py-4">
-                    <div className="grid gap-3 xl:grid-cols-[minmax(220px,1.25fr)_150px_150px_145px_145px_100px] xl:items-center">
+                  <article
+                    key={settlement.id}
+                    className={`border-l-4 px-4 py-4 ${
+                      settlement.status === "PAID"
+                        ? "border-l-emerald-500 bg-emerald-50/45 dark:bg-emerald-950/10"
+                        : settlement.status === "APPROVED"
+                          ? "border-l-sky-500 bg-sky-50/55 dark:bg-sky-950/10"
+                          : "border-l-transparent"
+                    }`}
+                    style={{ contentVisibility: "auto", containIntrinsicSize: "104px" }}
+                  >
+                    <div className="grid gap-3 xl:grid-cols-[minmax(220px,1.25fr)_140px_145px_135px_140px_240px] xl:items-center">
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-semibold">
@@ -1044,6 +1101,11 @@ export function PayrollTerminationSettlementsDemo() {
                           {employee.position} · ALTA {settlement.hireDate} ·
                           BAJA {settlement.terminationDate}
                         </p>
+                        {integrated ? (
+                          <Badge className="mt-2 border border-emerald-300 bg-emerald-100 text-emerald-900">
+                            INTEGRADO · {settlement.status === "PAID" ? "PAGADO" : "APROBADO"}
+                          </Badge>
+                        ) : null}
                       </div>
                       <div>
                         <p className="label-caps">APLICA</p>
@@ -1051,6 +1113,7 @@ export function PayrollTerminationSettlementsDemo() {
                           <Toggle
                             checked={settlement.applies}
                             label={`Aplicar liquidación a ${employee.name}`}
+                            disabled={!isMaster}
                             onCheckedChange={(applies) =>
                               save({ ...settlement, applies })
                             }
@@ -1061,9 +1124,17 @@ export function PayrollTerminationSettlementsDemo() {
                         </div>
                       </div>
                       <div>
-                        <p className="label-caps">TIPO</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="label-caps">TIPO</p>
+                          {settlement.status !== "DRAFT" ? (
+                            <Badge variant="outline" className="text-[8px]">
+                              BLOQUEADO
+                            </Badge>
+                          ) : null}
+                        </div>
                         <Select
                           value={settlement.kind}
+                          disabled={!isMaster || settlement.status !== "DRAFT"}
                           onValueChange={(kind) =>
                             save({
                               ...settlement,
@@ -1094,22 +1165,93 @@ export function PayrollTerminationSettlementsDemo() {
                           {money.format(costs.total)}
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setExpandedId(expanded ? null : settlement.id)
-                        }
-                        aria-expanded={expanded}
-                      >
-                        {expanded ? (
-                          <ChevronUp className="mr-1 h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="mr-1 h-4 w-4" />
-                        )}
-                        Detalle
-                      </Button>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {settlement.status === "DRAFT" && canApprove ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              if (!settlement.applies) {
+                                toast.error("Activa Aplica antes de aprobar el registro.");
+                                return;
+                              }
+                              if (!settlement.costBranchIds.length) {
+                                toast.error("Selecciona al menos una sucursal de costo.");
+                                return;
+                              }
+                              if (costs.gross <= 0) {
+                                toast.error("Agrega al menos un concepto con monto mayor a cero.");
+                                return;
+                              }
+                              approveTerminationSettlement(settlement);
+                              toast.success(
+                                `Registro aprobado e integrado a la nómina y consolidado del ${settlement.paymentDate}.`,
+                              );
+                            }}
+                          >
+                            <CheckCircle2 className="mr-1 h-4 w-4" />
+                            Aprobar
+                          </Button>
+                        ) : null}
+                        {isMaster ? (
+                          <>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              title="Editar liquidación o finiquito"
+                              aria-label={`Editar registro de ${employee.name}`}
+                              onClick={() =>
+                                setExpandedId(expanded ? null : settlement.id)
+                              }
+                              aria-expanded={expanded}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              title="Eliminar registro"
+                              aria-label={`Eliminar registro de ${employee.name}`}
+                              className="text-rose-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+                              onClick={() => {
+                                if (
+                                  !window.confirm(
+                                    `¿Eliminar el registro de ${employee.name}? Se conservará archivado para auditoría y dejará de afectar nómina y reportes.`,
+                                  )
+                                ) {
+                                  return;
+                                }
+                                archiveTerminationSettlement(settlement);
+                                setExpandedId(null);
+                                toast.success(
+                                  "Registro archivado; se retiró de nómina y reportes sin borrar su trazabilidad.",
+                                );
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title={expanded ? "Cerrar detalle" : "Ver detalle"}
+                          aria-label={expanded ? "Cerrar detalle" : "Ver detalle"}
+                          onClick={() =>
+                            setExpandedId(expanded ? null : settlement.id)
+                          }
+                          aria-expanded={expanded}
+                        >
+                          {expanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
                     </div>
                     {expanded ? (
                       <div className="space-y-3">
@@ -1149,6 +1291,7 @@ export function PayrollTerminationSettlementsDemo() {
                           settlement={settlement}
                           save={save}
                           updateNotes={upsertTerminationSettlement}
+                          readOnly={!isMaster}
                         />
                       </div>
                     ) : null}
@@ -1185,13 +1328,24 @@ function SettlementEditor({
   settlement,
   save,
   updateNotes,
+  readOnly,
 }: {
   settlement: DemoTerminationSettlement;
   save: (settlement: DemoTerminationSettlement, message?: string) => void;
   updateNotes: (settlement: DemoTerminationSettlement) => void;
+  readOnly: boolean;
 }) {
   return (
-    <div className="mt-4 space-y-5 rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/10 p-4">
+    <fieldset
+      disabled={readOnly}
+      aria-label={readOnly ? "Detalle de liquidación en modo consulta" : "Editor de liquidación"}
+      className="mt-4 space-y-5 rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/10 p-4 disabled:opacity-75"
+    >
+      {readOnly ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+          MODO CONSULTA · Sólo el usuario máster puede editar o eliminar este registro.
+        </div>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <div className="space-y-2">
           <Label>Fecha de pago</Label>
@@ -1220,7 +1374,7 @@ function SettlementEditor({
                   ? "Registro en borrador."
                   : status === "PAID"
                     ? "Pago registrado; ya alimenta consolidado y reportes."
-                    : "Autorizado y pendiente de pago.",
+                    : `Autorizado e integrado a nómina y consolidado del ${settlement.paymentDate}; queda pendiente registrar el pago.`,
               );
             }}
           >
@@ -1228,7 +1382,12 @@ function SettlementEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="DRAFT">BORRADOR</SelectItem>
+              <SelectItem
+                value="DRAFT"
+                disabled={settlement.status !== "DRAFT"}
+              >
+                BORRADOR
+              </SelectItem>
               <SelectItem value="APPROVED">AUTORIZADO</SelectItem>
               <SelectItem
                 value="PAID"
@@ -1384,7 +1543,7 @@ function SettlementEditor({
           onBlur={() => toast.success("Notas guardadas.")}
         />
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -1552,6 +1711,99 @@ export function PayrollChristmasBonusDemo() {
     },
     { gross: 0, social: 0, isr: 0 },
   );
+  const branchCostRows = useMemo(() => {
+    const branchNames = new Map(
+      state.branches.map((branch) => [branch.id, branch.name]),
+    );
+    const byBranch = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        employeeIds: Set<string>;
+        scheduled: number;
+        gross: number;
+        social: number;
+        isr: number;
+      }
+    >();
+
+    applicableRows.forEach((bonus) => {
+      const scheduled = christmasScheduledAmount(
+        bonus,
+        state.christmasBonusPaymentPeriods,
+        paymentFrom,
+        paymentTo,
+      );
+      const paid = christmasPaidCosts(
+        bonus,
+        state.christmasBonusPaymentPeriods,
+        state.periodTaxInclusions,
+        paymentFrom,
+        paymentTo,
+      );
+      const assignedBranchIds = bonus.costBranchIds.filter((branchId) =>
+        branchNames.has(branchId),
+      );
+      const destinations = assignedBranchIds.length
+        ? assignedBranchIds
+        : ["UNASSIGNED"];
+      const divisor = destinations.length;
+
+      destinations.forEach((branchId) => {
+        const current = byBranch.get(branchId) ?? {
+          id: branchId,
+          name: branchNames.get(branchId) ?? "SIN SUCURSAL",
+          employeeIds: new Set<string>(),
+          scheduled: 0,
+          gross: 0,
+          social: 0,
+          isr: 0,
+        };
+        current.employeeIds.add(bonus.employeeId);
+        current.scheduled += scheduled / divisor;
+        current.gross += paid.gross / divisor;
+        current.social += paid.social / divisor;
+        current.isr += paid.isr / divisor;
+        byBranch.set(branchId, current);
+      });
+    });
+
+    const allBranches = Array.from(byBranch.values())
+      .map((branch) => ({
+        id: branch.id,
+        name: branch.name,
+        employeeCount: branch.employeeIds.size,
+        scheduled: branch.scheduled,
+        gross: branch.gross,
+        social: branch.social,
+        isr: branch.isr,
+        total: branch.gross + branch.social + branch.isr,
+      }))
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es-MX"));
+    const allCost = allBranches.reduce((sum, branch) => sum + branch.total, 0);
+
+    return allBranches
+      .map((branch) => ({
+        ...branch,
+        percentage: allCost > 0 ? (branch.total / allCost) * 100 : 0,
+      }))
+      .filter(
+        (branch) => branchFilter === "ALL" || branch.id === branchFilter,
+      );
+  }, [
+    applicableRows,
+    branchFilter,
+    paymentFrom,
+    paymentTo,
+    state.branches,
+    state.christmasBonusPaymentPeriods,
+    state.periodTaxInclusions,
+  ]);
+  const topCostBranch = branchCostRows.reduce<(typeof branchCostRows)[number] | null>(
+    (top, branch) => (!top || branch.total > top.total ? branch : top),
+    null,
+  );
   useEffect(
     () => setPage(1),
     [branchFilter, pageSize, paymentFrom, paymentTo, search, year],
@@ -1695,6 +1947,10 @@ export function PayrollChristmasBonusDemo() {
       `${applicableRows.length} empleados participan en el reporte seleccionado.`,
       `${applicableRows.filter((row) => row.status === "PAID").length} registros aplicables están pagados por completo.`,
       `${paymentPeriods.length} periodo(s) de pago activo(s) distribuyen ${(paymentPeriods.reduce((sum, period) => sum + period.percentage, 0) * 100).toFixed(0)}% del aguinaldo.`,
+      topCostBranch
+        ? `${topCostBranch.name} concentra el mayor costo integrado de la selección: ${money.format(topCostBranch.total)} (${topCostBranch.percentage.toFixed(1)}%).`
+        : "Aún no existen pagos integrados para analizar por sucursal.",
+      `${branchCostRows.length} sucursal(es) participan en la carga de costo seleccionada.`,
       "El cálculo usa salario diario, días otorgados y tiempo laborado; los importes y cargas son editables.",
     ],
     filename: `aguinaldos-${year}`,
@@ -1839,6 +2095,88 @@ export function PayrollChristmasBonusDemo() {
           detail="Pagado por sucursal"
         />
       </div>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-[color:var(--border-color)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Building2 className="h-4 w-4" /> Carga de aguinaldo por sucursal
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Compara lo programado con pagos integrados al consolidado del periodo seleccionado.
+                Si una persona tiene varias sucursales, el costo se reparte en partes iguales.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[10px]">
+              <Badge variant="outline">
+                {branchCostRows.length} SUCURSAL(ES)
+              </Badge>
+              {topCostBranch ? (
+                <Badge className="border border-amber-300 bg-amber-50 text-amber-900">
+                  MAYOR CARGA · {topCostBranch.name}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {branchCostRows.length ? (
+            <div className="max-h-[420px] overflow-auto">
+              <div className="sticky top-0 z-10 hidden grid-cols-[minmax(170px,1.4fr)_90px_repeat(5,minmax(120px,1fr))] gap-3 border-b border-[color:var(--border-color)] bg-[color:var(--bg-card)] px-4 py-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-muted)] xl:grid">
+                <span>Sucursal / participación</span>
+                <span>Personal</span>
+                <span className="text-right">Programado</span>
+                <span className="text-right">Integrado</span>
+                <span className="text-right">Costo social</span>
+                <span className="text-right">ISR</span>
+                <span className="text-right">Costo total</span>
+              </div>
+              <div className="divide-y divide-[color:var(--border-color)]">
+                {branchCostRows.map((branch) => (
+                  <div
+                    key={branch.id}
+                    className={`grid gap-3 px-4 py-3 xl:grid-cols-[minmax(170px,1.4fr)_90px_repeat(5,minmax(120px,1fr))] xl:items-center ${
+                      branch.id === "UNASSIGNED"
+                        ? "bg-rose-50/70 dark:bg-rose-950/10"
+                        : "bg-[color:var(--bg-card)]"
+                    }`}
+                    style={{ contentVisibility: "auto", containIntrinsicSize: "76px" }}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold">{branch.name}</p>
+                        <span className="number-display text-[10px]">
+                          {branch.percentage.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--accent-hover)]">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,#9b704d,#d3a36d)]"
+                          style={{ width: `${Math.min(branch.percentage, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <DashboardValue label="PERSONAL" value={String(branch.employeeCount)} />
+                    <DashboardValue label="PROGRAMADO" value={money.format(branch.scheduled)} />
+                    <DashboardValue label="INTEGRADO" value={money.format(branch.gross)} />
+                    <DashboardValue label="COSTO SOCIAL" value={money.format(branch.social)} />
+                    <DashboardValue label="ISR" value={money.format(branch.isr)} />
+                    <DashboardValue label="COSTO TOTAL" value={money.format(branch.total)} emphasis />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="px-6 py-10 text-center">
+              <Building2 className="mx-auto h-7 w-7 text-[color:var(--text-muted)]" />
+              <p className="mt-3 text-sm font-semibold">Sin carga de costo en esta selección</p>
+              <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                Configura una sucursal y registra al menos una parcialidad para alimentar el análisis.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader className="border-b border-[color:var(--border-color)]">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -2200,14 +2538,12 @@ export function PayrollSettlementReportDemo() {
           return Boolean(
             employee &&
             settlement.applies &&
+            !settlement.archivedAt &&
             settlement.terminationDate >= dateFrom &&
             settlement.terminationDate <= dateTo &&
             (branchFilter === "ALL" ||
               settlement.costBranchIds.includes(branchFilter)) &&
-            (statusFilter === "ALL" ||
-              (statusFilter === "PENDING"
-                ? settlement.status !== "PAID"
-                : settlement.status === "PAID")) &&
+            (statusFilter === "ALL" || settlement.status === statusFilter) &&
             (!term ||
               `${employee.name} ${employee.position}`
                 .toLocaleUpperCase("es-MX")
@@ -2486,7 +2822,8 @@ export function PayrollSettlementReportDemo() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">TODOS</SelectItem>
-                <SelectItem value="PENDING">PENDIENTES</SelectItem>
+                <SelectItem value="DRAFT">PENDIENTES</SelectItem>
+                <SelectItem value="APPROVED">APROBADOS</SelectItem>
                 <SelectItem value="PAID">PAGADOS</SelectItem>
               </SelectContent>
             </Select>
@@ -2517,7 +2854,16 @@ export function PayrollSettlementReportDemo() {
                     state.periodTaxInclusions,
                   );
                   return (
-                    <TableRow key={settlement.id}>
+                    <TableRow
+                      key={settlement.id}
+                      className={
+                        settlement.status === "PAID"
+                          ? "bg-emerald-50/60 dark:bg-emerald-950/10"
+                          : settlement.status === "APPROVED"
+                            ? "bg-sky-50/70 dark:bg-sky-950/10"
+                            : undefined
+                      }
+                    >
                       <TableCell>
                         <p className="font-semibold">{employee?.name}</p>
                         <p className="text-[10px] text-[color:var(--text-muted)]">

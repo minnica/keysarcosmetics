@@ -351,7 +351,8 @@ export function PayrollBranchReportDemo() {
               (item) =>
                 item.employeeId === line.employee.id &&
                 item.applies &&
-                item.status === "PAID" &&
+                !item.archivedAt &&
+                item.status !== "DRAFT" &&
                 item.paymentDate >= bounds.start &&
                 item.paymentDate <= bounds.end,
             );
@@ -461,7 +462,8 @@ export function PayrollBranchReportDemo() {
             .filter(
               (item) =>
                 item.applies &&
-                item.status === "PAID" &&
+                !item.archivedAt &&
+                item.status !== "DRAFT" &&
                 item.paymentDate >= bounds.start &&
                 item.paymentDate <= bounds.end,
             )
@@ -693,7 +695,8 @@ export function PayrollBranchReportDemo() {
       .filter(
         (item) =>
           item.applies &&
-          item.status === "PAID" &&
+          !item.archivedAt &&
+          item.status !== "DRAFT" &&
           item.paymentDate >= selectedPeriod.start &&
           item.paymentDate <= selectedPeriod.end,
       )

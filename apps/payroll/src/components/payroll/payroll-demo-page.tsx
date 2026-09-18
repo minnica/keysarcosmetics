@@ -1038,7 +1038,14 @@ function PayrollTable({
             </TableHeader>
             <TableBody>
               {pagedLines.map((line) => (
-                <TableRow key={line.employee.id}>
+                <TableRow
+                  key={line.employee.id}
+                  className={
+                    line.settlementPayment > 0
+                      ? "bg-sky-50/80 ring-1 ring-inset ring-sky-200/70 dark:bg-sky-950/15 dark:ring-sky-800/50"
+                      : undefined
+                  }
+                >
                   <TableCell>
                     <p className="font-semibold text-[color:var(--text-primary)]">
                       {line.employee.name}
@@ -1049,6 +1056,11 @@ function PayrollTable({
                       )?.name ?? "SIN SUCURSAL"}{" "}
                       · ID {line.employee.id.toLocaleUpperCase("es-MX")}
                     </p>
+                    {line.settlementPayment > 0 ? (
+                      <Badge className="mt-1 border border-sky-300 bg-sky-100 text-[9px] text-sky-900">
+                        LIQUIDACIÓN INTEGRADA
+                      </Badge>
+                    ) : null}
                   </TableCell>
                   <TableCell className="min-w-44">
                     <p className="text-xs font-semibold">
