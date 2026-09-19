@@ -313,6 +313,17 @@ export interface DemoPayrollAdjustment {
   createdAt: string;
 }
 
+export interface DemoDoublePayDay {
+  id: string;
+  employeeId: string;
+  payrollModule: "FIXED" | "SPECIALIST";
+  date: string;
+  reason: string;
+  multiplier: 2;
+  createdAt: string;
+  createdByEmployeeId: string;
+}
+
 export interface DemoLoanHistory {
   id: string;
   date: string;
@@ -331,6 +342,7 @@ export interface DemoLoan {
   amount: number;
   installments: number;
   paidInstallments: number;
+  appliedPeriodStarts?: string[];
   firstPeriod: string;
   status: ApprovalStatus;
   notes: string;
@@ -404,6 +416,14 @@ export interface DemoPeriodTaxInclusion {
   includeIsr: boolean;
   updatedAt: string;
   updatedByEmployeeId: string;
+}
+
+export interface DemoNegativeBalance {
+  employeeId: string;
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED">;
+  amount: number;
+  originPeriodStart: string;
+  updatedAt: string;
 }
 
 export type SpecialPayrollStatus = "DRAFT" | "APPROVED" | "PAID";
@@ -585,6 +605,8 @@ export interface DemoState {
   periodConfigs: DemoPayrollPeriodConfig[];
   taxAssignments: DemoPayrollTaxAssignment[];
   periodTaxInclusions: DemoPeriodTaxInclusion[];
+  doublePayDays: DemoDoublePayDay[];
+  negativeBalances: DemoNegativeBalance[];
   terminationSettlements: DemoTerminationSettlement[];
   christmasBonuses: DemoChristmasBonus[];
   christmasBonusPaymentPeriods: DemoChristmasBonusPaymentPeriod[];
@@ -615,6 +637,11 @@ export interface EmployeePayrollLine {
   rate: number;
   commission: number;
   fixedSalary: number;
+  doublePayDays: DemoDoublePayDay[];
+  doublePayDayCount: number;
+  doublePayAmount: number;
+  carriedNegativeBalance: number;
+  newNegativeBalance: number;
   bonuses: number;
   fines: number;
   loanDeduction: number;
@@ -930,6 +957,15 @@ export function buildPeriodOptions(monthCount = 12): PeriodOption[] {
     );
     options.push(
       periodForDate(new Date(month.getFullYear(), month.getMonth(), 1)),
+    );
+  }
+  for (let offset = 1; offset <= 3; offset += 1) {
+    const month = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    options.push(
+      periodForDate(new Date(month.getFullYear(), month.getMonth(), 1)),
+    );
+    options.push(
+      periodForDate(new Date(month.getFullYear(), month.getMonth(), 16)),
     );
   }
   return options;
@@ -2789,6 +2825,8 @@ function createInitialState(): DemoState {
         updatedByEmployeeId: "emp-monica",
       },
     ],
+    doublePayDays: [],
+    negativeBalances: [],
     terminationSettlements: [
       {
         id: "settlement-demo-13",
@@ -3143,6 +3181,16 @@ interface DemoPayrollContextValue {
     payDate: string,
   ) => void;
   setRunStatus: (runId: string, status: PayrollStatus) => void;
+  closeRunAndOpenNextPeriod: (
+    runId: string,
+    nextPeriod: {
+      start: string;
+      end: string;
+      payDate: string;
+      label: string;
+    },
+    balances: Array<{ employeeId: string; amount: number }>,
+  ) => void;
   setCalculationMode: (mode: DemoPayrollRun["mode"]) => void;
   setCommissionModeOverride: (
     employeeId: string,
@@ -3192,6 +3240,13 @@ interface DemoPayrollContextValue {
       Pick<DemoPeriodTaxInclusion, "includeSocialCost" | "includeIsr">
     >,
   ) => void;
+  addDoublePayDay: (
+    entry: Pick<
+      DemoDoublePayDay,
+      "employeeId" | "payrollModule" | "date" | "reason"
+    >,
+  ) => void;
+  deleteDoublePayDay: (entryId: string) => void;
   upsertTerminationSettlement: (settlement: DemoTerminationSettlement) => void;
   approveTerminationSettlement: (
     settlement: DemoTerminationSettlement,
@@ -3602,6 +3657,22 @@ export function PayrollDemoProvider({
             baseSalaryOverride === null
               ? calculatedFixedSalary
               : baseSalaryOverride * (workedDays / periodDays);
+          const doublePayDays = state.doublePayDays.filter(
+            (entry) =>
+              entry.employeeId === employee.id &&
+              entry.date >= employmentStart &&
+              entry.date <= employmentEnd &&
+              entry.payrollModule === salaryModuleId &&
+              (payrollModule === "CONSOLIDATED" ||
+                entry.payrollModule === payrollModule),
+          );
+          const doublePayAmount = doublePayDays.reduce(
+            (sum, entry) =>
+              sum +
+              (employee.monthlySalary / 30) *
+                Math.max(entry.multiplier - 1, 0),
+            0,
+          );
           const settlementRecord = state.terminationSettlements.find(
             (settlement) =>
               settlement.employeeId === employee.id &&
@@ -3638,6 +3709,7 @@ export function PayrollDemoProvider({
             : 0;
           const ordinaryNet =
             fixedSalary +
+            doublePayAmount +
             commission +
             bonuses +
             totalExternalAdditions -
@@ -3661,8 +3733,21 @@ export function PayrollDemoProvider({
                 loanDeduction -
                 totalExternalDeductions
               : 0;
-          const ordinaryTotal =
+          const ordinaryBeforeCarry =
             employee.category === "CONTRACTOR" ? invoicePayable : ordinaryNet;
+          const carriedNegativeBalance = state.negativeBalances
+            .filter(
+              (balance) =>
+                balance.employeeId === employee.id &&
+                balance.originPeriodStart < periodStart &&
+                (payrollModule === "CONSOLIDATED" ||
+                  balance.payrollModule === payrollModule),
+            )
+            .reduce((sum, balance) => sum + balance.amount, 0);
+          const balanceAdjustedTotal =
+            ordinaryBeforeCarry - carriedNegativeBalance;
+          const ordinaryTotal = Math.max(balanceAdjustedTotal, 0);
+          const newNegativeBalance = Math.max(-balanceAdjustedTotal, 0);
           const total =
             ordinaryTotal + settlementPayment + christmasBonusPayment;
           const employeePayrollModule =
@@ -3716,6 +3801,8 @@ export function PayrollDemoProvider({
             payrollModule === "CONSOLIDATED" ||
             salaryModuleId === payrollModule ||
             commissionModuleId === payrollModule ||
+            doublePayDays.length > 0 ||
+            carriedNegativeBalance > 0 ||
             payrollAdjustments.length > 0 ||
             approvedViatics.length > 0 ||
             settlementPayment > 0 ||
@@ -3736,6 +3823,11 @@ export function PayrollDemoProvider({
             rate,
             commission,
             fixedSalary,
+            doublePayDays,
+            doublePayDayCount: doublePayDays.length,
+            doublePayAmount,
+            carriedNegativeBalance,
+            newNegativeBalance,
             bonuses,
             fines,
             loanDeduction,
@@ -4645,6 +4737,112 @@ export function PayrollDemoProvider({
             run.id === runId ? { ...run, status } : run,
           ),
         })),
+      closeRunAndOpenNextPeriod: (runId, nextPeriod, balances) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          const activeRole = current.roles.find(
+            (role) => role.id === activeEmployee?.roleId,
+          );
+          const run = current.runs.find((item) => item.id === runId);
+          if (
+            !run ||
+            run.status !== "DRAFT" ||
+            run.module === "CONSOLIDATED" ||
+            !roleHasPermission(activeRole, "payroll.approve")
+          )
+            return current;
+          const payrollModule = run.module as Exclude<
+            PayrollModule,
+            "CONSOLIDATED"
+          >;
+          const balanceEmployeeIds = new Set(
+            balances.map((balance) => balance.employeeId),
+          );
+          const negativeBalances = [
+            ...current.negativeBalances.filter(
+              (balance) =>
+                balance.payrollModule !== payrollModule ||
+                !balanceEmployeeIds.has(balance.employeeId),
+            ),
+            ...balances
+              .filter((balance) => balance.amount > 0.005)
+              .map((balance) => ({
+                employeeId: balance.employeeId,
+                payrollModule,
+                amount: balance.amount,
+                originPeriodStart: run.periodStart,
+                updatedAt: new Date().toISOString(),
+              })),
+          ];
+          const nextRun = current.runs.find(
+            (item) =>
+              item.module === run.module &&
+              item.periodStart === nextPeriod.start &&
+              item.periodEnd === nextPeriod.end,
+          );
+          const runs = current.runs.map((item) =>
+            item.id === runId ? { ...item, status: "APPROVED" as const } : item,
+          );
+          if (!nextRun)
+            runs.push({
+              id: id("run"),
+              module: run.module,
+              periodStart: nextPeriod.start,
+              periodEnd: nextPeriod.end,
+              payDate: nextPeriod.payDate,
+              mode: run.mode,
+              status: "DRAFT",
+              createdAt: isoDate(new Date()),
+            });
+          return {
+            ...current,
+            runs,
+            negativeBalances,
+            loans: current.loans.map((loan) => {
+              const appliedPeriods = loan.appliedPeriodStarts ?? [];
+              if (
+                loan.status !== "APPROVED" ||
+                loan.payrollModule !== run.module ||
+                loan.firstPeriod > run.periodStart ||
+                loan.paidInstallments >= loan.installments ||
+                appliedPeriods.includes(run.periodStart)
+              )
+                return loan;
+              const nextPaidInstallments = Math.min(
+                loan.paidInstallments + 1,
+                loan.installments,
+              );
+              return {
+                ...loan,
+                paidInstallments: nextPaidInstallments,
+                appliedPeriodStarts: [...appliedPeriods, run.periodStart],
+                history: [
+                  ...loan.history,
+                  {
+                    id: id("history"),
+                    date: isoDate(new Date()),
+                    action: `CUOTA ${nextPaidInstallments} APLICADA EN EL CIERRE ${run.periodStart}`,
+                    by: activeEmployee?.name ?? "SISTEMA MOCK",
+                  },
+                ],
+              };
+            }),
+            periodConfigs: current.periodConfigs.map((config) =>
+              config.module === run.module
+                ? {
+                    ...config,
+                    periodStart: nextPeriod.start,
+                    periodEnd: nextPeriod.end,
+                    cutoffDate: nextPeriod.end,
+                    label: nextPeriod.label,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : config,
+            ),
+          };
+        }),
       setCalculationMode: (mode) =>
         update((current) => ({
           ...current,
@@ -4863,6 +5061,66 @@ export function PayrollDemoProvider({
               ),
               nextInclusion,
             ],
+          };
+        }),
+      addDoublePayDay: (entry) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          const activeRole = current.roles.find(
+            (role) => role.id === activeEmployee?.roleId,
+          );
+          const employee = current.employees.find(
+            (item) => item.id === entry.employeeId,
+          );
+          if (
+            !activeEmployee ||
+            !roleHasPermission(activeRole, "payroll.create") ||
+            !employee ||
+            employee.monthlySalary <= 0 ||
+            employeeSalaryPayrollModule(employee) !== entry.payrollModule ||
+            entry.date < employee.hireDate ||
+            (employee.terminationDate && entry.date > employee.terminationDate) ||
+            current.doublePayDays.some(
+              (item) =>
+                item.employeeId === entry.employeeId &&
+                item.payrollModule === entry.payrollModule &&
+                item.date === entry.date,
+            )
+          )
+            return current;
+          return {
+            ...current,
+            doublePayDays: [
+              ...current.doublePayDays,
+              {
+                ...entry,
+                id: id("double-pay-day"),
+                reason:
+                  entry.reason.trim().toLocaleUpperCase("es-MX") ||
+                  "DÍA FESTIVO / FERIADO",
+                multiplier: 2,
+                createdAt: new Date().toISOString(),
+                createdByEmployeeId: activeEmployee.id,
+              },
+            ],
+          };
+        }),
+      deleteDoublePayDay: (entryId) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          const activeRole = current.roles.find(
+            (role) => role.id === activeEmployee?.roleId,
+          );
+          if (!roleHasPermission(activeRole, "payroll.create")) return current;
+          return {
+            ...current,
+            doublePayDays: current.doublePayDays.filter(
+              (entry) => entry.id !== entryId,
+            ),
           };
         }),
       upsertTerminationSettlement: (settlement) =>

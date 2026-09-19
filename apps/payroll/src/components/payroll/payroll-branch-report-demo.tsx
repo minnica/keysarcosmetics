@@ -66,6 +66,8 @@ interface BranchSummaryRow {
   sales: number;
   fixedPayroll: number;
   specialistPayroll: number;
+  doublePayPayroll: number;
+  negativeBalanceApplied: number;
   commissionPayroll: number;
   kioskPayroll: number;
   contractorPayroll: number;
@@ -279,6 +281,8 @@ export function PayrollBranchReportDemo() {
           let branchSales = 0;
           let fixedPayroll = 0;
           let specialistPayroll = 0;
+          let doublePayPayroll = 0;
+          let negativeBalanceApplied = 0;
           let commissionPayroll = 0;
           let kioskPayroll = 0;
           let contractorPayroll = 0;
@@ -342,6 +346,9 @@ export function PayrollBranchReportDemo() {
               fixedPayroll += modulePayroll * costShare;
             if (payrollKind === "SPECIALIST")
               specialistPayroll += modulePayroll * costShare;
+            doublePayPayroll += line.doublePayAmount * costShare;
+            negativeBalanceApplied +=
+              line.carriedNegativeBalance * costShare;
             if (payrollKind === "COMMISSION")
               commissionPayroll += modulePayroll * costShare;
             if (payrollKind === "CONTRACTOR")
@@ -545,6 +552,8 @@ export function PayrollBranchReportDemo() {
             sales: branchSales,
             fixedPayroll,
             specialistPayroll,
+            doublePayPayroll,
+            negativeBalanceApplied,
             commissionPayroll,
             kioskPayroll,
             contractorPayroll,
@@ -591,6 +600,14 @@ export function PayrollBranchReportDemo() {
         fixedPayroll: entries.reduce((sum, row) => sum + row.fixedPayroll, 0),
         specialistPayroll: entries.reduce(
           (sum, row) => sum + row.specialistPayroll,
+          0,
+        ),
+        doublePayPayroll: entries.reduce(
+          (sum, row) => sum + row.doublePayPayroll,
+          0,
+        ),
+        negativeBalanceApplied: entries.reduce(
+          (sum, row) => sum + row.negativeBalanceApplied,
           0,
         ),
         commissionPayroll: entries.reduce(
@@ -778,6 +795,11 @@ export function PayrollBranchReportDemo() {
   const payrollByModule = {
     fixed: rows.reduce((sum, row) => sum + row.fixedPayroll, 0),
     specialist: rows.reduce((sum, row) => sum + row.specialistPayroll, 0),
+    doublePay: rows.reduce((sum, row) => sum + row.doublePayPayroll, 0),
+    negativeBalances: rows.reduce(
+      (sum, row) => sum + row.negativeBalanceApplied,
+      0,
+    ),
     commission: rows.reduce((sum, row) => sum + row.commissionPayroll, 0),
     kiosk: rows.reduce((sum, row) => sum + row.kioskPayroll, 0),
     contractor: rows.reduce((sum, row) => sum + row.contractorPayroll, 0),
@@ -852,6 +874,7 @@ export function PayrollBranchReportDemo() {
         ? `${efficiencyRows[0].branch} presenta la mejor relación entre ventas y costo laboral del periodo.`
         : "No existe información suficiente para comparar eficiencia por sucursal.",
       `${rows.length} sucursales integran salario fijo, especialistas, comisiones, kiosco, honorarios y movimientos.`,
+      `Los días festivos o feriados pagados al doble representan ${money.format(payrollByModule.doublePay)} del costo de nómina y permanecen incluidos dentro de Salario fijo o Especialistas.`,
     ],
     filename: `nomina-por-sucursal-${scope.toLocaleLowerCase("es-MX")}-${selectedPeriod.key}`,
     sheetName: "Por sucursal",
@@ -885,6 +908,18 @@ export function PayrollBranchReportDemo() {
         accessor: (row: BranchSummaryRow) => row.specialistPayroll,
         format: "currency" as const,
         width: 16,
+      },
+      {
+        header: "PAGO DOBLE · INFORMATIVO",
+        accessor: (row: BranchSummaryRow) => row.doublePayPayroll,
+        format: "currency" as const,
+        width: 20,
+      },
+      {
+        header: "SALDO ARRASTRADO · INFORMATIVO",
+        accessor: (row: BranchSummaryRow) => row.negativeBalanceApplied,
+        format: "currency" as const,
+        width: 22,
       },
       {
         header: "COMISIONES",
@@ -1393,6 +1428,8 @@ export function PayrollBranchReportDemo() {
                   <TableHead>SUCURSAL</TableHead>
                   <TableHead className="text-right">FIJO</TableHead>
                   <TableHead className="text-right">ESPECIALISTAS</TableHead>
+                  <TableHead className="text-right">PAGO DOBLE</TableHead>
+                  <TableHead className="text-right">SALDO ARRASTRADO</TableHead>
                   <TableHead className="text-right">COMISIONES</TableHead>
                   <TableHead className="text-right">KIOSCO</TableHead>
                   <TableHead className="text-right">HONORARIOS</TableHead>
@@ -1419,6 +1456,12 @@ export function PayrollBranchReportDemo() {
                     </TableCell>
                     <TableCell className="number-display text-right">
                       {money.format(row.specialistPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display bg-amber-50/60 text-right font-semibold text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+                      {money.format(row.doublePayPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display bg-rose-50/60 text-right font-semibold text-rose-800 dark:bg-rose-950/20 dark:text-rose-200">
+                      {money.format(row.negativeBalanceApplied)}
                     </TableCell>
                     <TableCell className="number-display text-right">
                       {money.format(row.commissionPayroll)}
@@ -1463,6 +1506,12 @@ export function PayrollBranchReportDemo() {
                   </TableCell>
                   <TableCell className="number-display text-right">
                     {money.format(payrollByModule.specialist)}
+                  </TableCell>
+                  <TableCell className="number-display bg-amber-50/60 text-right text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+                    {money.format(payrollByModule.doublePay)}
+                  </TableCell>
+                  <TableCell className="number-display bg-rose-50/60 text-right text-rose-800 dark:bg-rose-950/20 dark:text-rose-200">
+                    {money.format(payrollByModule.negativeBalances)}
                   </TableCell>
                   <TableCell className="number-display text-right">
                     {money.format(payrollByModule.commission)}

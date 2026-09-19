@@ -328,6 +328,24 @@ export function Receipt({
               </strong>
             </div>
           )}
+          {line.carriedNegativeBalance > 0 && (
+            <div className="flex justify-between gap-4">
+              <span>Saldo negativo del periodo anterior</span>
+              <strong className="text-rose-700 dark:text-rose-300">
+                −{money.format(line.carriedNegativeBalance)}
+              </strong>
+            </div>
+          )}
+          {line.newNegativeBalance > 0 && (
+            <div className="flex justify-between gap-4 rounded-lg border border-rose-300 bg-rose-50/70 px-3 py-2 dark:border-rose-900 dark:bg-rose-950/20">
+              <span className="font-semibold">
+                Saldo pendiente para el siguiente periodo
+              </span>
+              <strong className="number-display text-rose-700 dark:text-rose-300">
+                {money.format(line.newNegativeBalance)}
+              </strong>
+            </div>
+          )}
         </div>
         {temporaryChallenges.length > 0 && (
           <div className="space-y-3 rounded-xl border border-amber-300/60 bg-amber-50/50 p-4 dark:bg-amber-950/20">

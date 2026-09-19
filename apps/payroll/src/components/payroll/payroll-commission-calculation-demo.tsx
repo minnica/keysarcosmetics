@@ -159,7 +159,8 @@ export function PayrollCommissionCalculationDemo() {
       row.line.fines +
       row.line.loanDeduction +
       row.line.externalDeductions +
-      row.line.viaticsDeductions,
+      row.line.viaticsDeductions +
+      row.line.carriedNegativeBalance,
     0,
   );
   const adjustments = detailRows.reduce(
@@ -183,6 +184,8 @@ export function PayrollCommissionCalculationDemo() {
     bonus: row.line.bonuses,
     fine: row.line.fines,
     loan: row.line.loanDeduction,
+    carriedBalance: row.line.carriedNegativeBalance,
+    pendingBalance: row.line.newNegativeBalance,
     approval: row.approvalStatus === "AUTHORIZED" ? "APROBADO" : "",
     total: row.line.total,
   }));
@@ -272,6 +275,18 @@ export function PayrollCommissionCalculationDemo() {
         accessor: (row: (typeof exportRows)[number]) => row.loan,
         format: "currency" as const,
         width: 14,
+      },
+      {
+        header: "SALDO ANTERIOR",
+        accessor: (row: (typeof exportRows)[number]) => row.carriedBalance,
+        format: "currency" as const,
+        width: 17,
+      },
+      {
+        header: "SALDO PENDIENTE",
+        accessor: (row: (typeof exportRows)[number]) => row.pendingBalance,
+        format: "currency" as const,
+        width: 18,
       },
       {
         header: "APROBACIÓN",
@@ -625,7 +640,10 @@ export function PayrollCommissionCalculationDemo() {
                       row.line.externalAdditions - row.line.externalDeductions;
                     const viatics =
                       row.line.viaticsAdditions - row.line.viaticsDeductions;
-                    const deductions = row.line.fines + row.line.loanDeduction;
+                    const deductions =
+                      row.line.fines +
+                      row.line.loanDeduction +
+                      row.line.carriedNegativeBalance;
                     return (
                       <TableRow
                         key={row.line.employee.id}
@@ -712,6 +730,12 @@ export function PayrollCommissionCalculationDemo() {
                           className={`number-display px-2 py-2 text-right ${deductions ? "text-rose-700 dark:text-rose-300" : ""}`}
                         >
                           {money.format(deductions)}
+                          {row.line.newNegativeBalance > 0 ? (
+                            <span className="mt-0.5 block text-[7px] font-semibold uppercase tracking-wide">
+                              PASA{" "}
+                              {money.format(row.line.newNegativeBalance)}
+                            </span>
+                          ) : null}
                         </TableCell>
                         <TableCell
                           className={`number-display px-2 py-2 text-right ${adjustment < 0 ? "text-rose-700 dark:text-rose-300" : adjustment > 0 ? "text-emerald-700 dark:text-emerald-300" : ""}`}

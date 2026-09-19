@@ -18,6 +18,7 @@ import {
   Plus,
   Settings2,
   Sparkles,
+  Trash2,
   TrendingUp,
   UsersRound,
   WalletCards,
@@ -65,6 +66,7 @@ import {
   periodTaxInclusionForRange,
   payrollModuleLabel,
   payrollModuleLabels,
+  roleHasPermission,
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { PayrollModuleAnalytics } from "./payroll-module-analytics";
@@ -656,6 +658,233 @@ function RunDialog({
   );
 }
 
+function DoublePayDaysPanel({
+  lines,
+  view,
+  periodStart,
+  periodEnd,
+  payrollLocked,
+}: {
+  lines: EmployeePayrollLine[];
+  view: "FIXED" | "SPECIALIST";
+  periodStart: string;
+  periodEnd: string;
+  payrollLocked: boolean;
+}) {
+  const { state, addDoublePayDay, deleteDoublePayDay } = usePayrollDemo();
+  const eligibleLines = lines.filter(
+    (line) => employeeSalaryPayrollModule(line.employee) === view,
+  );
+  const [employeeId, setEmployeeId] = useState("");
+  const [paymentDate, setPaymentDate] = useState(periodStart);
+  const [reason, setReason] = useState("DÍA FESTIVO / FERIADO");
+  const selectedEmployee =
+    eligibleLines.find((line) => line.employee.id === employeeId)?.employee ??
+    eligibleLines[0]?.employee;
+  const effectiveDate =
+    paymentDate >= periodStart && paymentDate <= periodEnd
+      ? paymentDate
+      : periodStart;
+  const periodEntries = state.doublePayDays
+    .filter(
+      (entry) =>
+        entry.payrollModule === view &&
+        entry.date >= periodStart &&
+        entry.date <= periodEnd,
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const activeEmployee = state.employees.find(
+    (employee) => employee.id === state.activeEmployeeId,
+  );
+  const activeRole = state.roles.find(
+    (role) => role.id === activeEmployee?.roleId,
+  );
+  const canManage = roleHasPermission(activeRole, "payroll.create");
+  const controlsDisabled = payrollLocked || !canManage;
+  const dailySalary = (selectedEmployee?.monthlySalary ?? 0) / 30;
+
+  function submit() {
+    if (!selectedEmployee) {
+      toast.error("Selecciona un empleado con sueldo en esta nómina.");
+      return;
+    }
+    if (effectiveDate < periodStart || effectiveDate > periodEnd) {
+      toast.error("La fecha debe pertenecer al periodo seleccionado.");
+      return;
+    }
+    if (
+      periodEntries.some(
+        (entry) =>
+          entry.employeeId === selectedEmployee.id &&
+          entry.date === effectiveDate,
+      )
+    ) {
+      toast.error("Ese empleado ya tiene pago doble en la fecha seleccionada.");
+      return;
+    }
+    addDoublePayDay({
+      employeeId: selectedEmployee.id,
+      payrollModule: view,
+      date: effectiveDate,
+      reason,
+    });
+    toast.success(
+      `Pago doble agregado: ${money.format(dailySalary)} adicionales para ${selectedEmployee.name}.`,
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden border-amber-300/70 bg-amber-50/45 dark:border-amber-800/60 dark:bg-amber-950/10">
+      <CardHeader className="border-b border-amber-200/70 pb-4 dark:border-amber-900/60">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarDays className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+              Días festivos o feriados con pago doble
+            </CardTitle>
+            <CardDescription className="mt-1 max-w-3xl">
+              El sueldo ordinario ya cubre el día laborado. Este registro suma
+              un salario diario adicional para completar el pago al doble y lo
+              distribuye a las sucursales del empleado.
+            </CardDescription>
+          </div>
+          <Badge className="w-fit border border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+            {periodEntries.length} REGISTRO
+            {periodEntries.length === 1 ? "" : "S"} EN EL PERIODO
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4 p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_0.8fr_1.2fr_auto] xl:items-end">
+          <div className="space-y-2">
+            <Label>Empleado</Label>
+            <Select
+              value={selectedEmployee?.id ?? ""}
+              onValueChange={setEmployeeId}
+              disabled={controlsDisabled || eligibleLines.length === 0}
+            >
+              <SelectTrigger aria-label="Empleado para pago doble">
+                <SelectValue placeholder="Selecciona empleado" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleLines.map((line) => (
+                  <SelectItem
+                    key={line.employee.id}
+                    value={line.employee.id}
+                  >
+                    {line.employee.name} · {line.employee.position}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`double-pay-date-${view}`}>Fecha laborada</Label>
+            <Input
+              id={`double-pay-date-${view}`}
+              type="date"
+              min={periodStart}
+              max={periodEnd}
+              value={effectiveDate}
+              disabled={controlsDisabled}
+              onChange={(event) => setPaymentDate(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`double-pay-reason-${view}`}>Motivo</Label>
+            <Input
+              id={`double-pay-reason-${view}`}
+              value={reason}
+              disabled={controlsDisabled}
+              placeholder="DÍA FESTIVO / FERIADO"
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            disabled={controlsDisabled || !selectedEmployee}
+            onClick={submit}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Agregar día doble
+          </Button>
+        </div>
+        {selectedEmployee ? (
+          <div className="rounded-xl border border-amber-200 bg-white/70 px-4 py-3 text-xs dark:border-amber-900 dark:bg-black/10">
+            <span className="font-semibold">Vista previa:</span>{" "}
+            {selectedEmployee.name} · salario diario{" "}
+            <span className="number-display font-semibold">
+              {money.format(dailySalary)}
+            </span>{" "}
+            · adicional a integrar{" "}
+            <span className="number-display font-semibold text-amber-800 dark:text-amber-200">
+              {money.format(dailySalary)}
+            </span>
+          </div>
+        ) : null}
+        {periodEntries.length > 0 ? (
+          <div className="grid gap-2 lg:grid-cols-2">
+            {periodEntries.map((entry) => {
+              const employee = state.employees.find(
+                (item) => item.id === entry.employeeId,
+              );
+              const amount = (employee?.monthlySalary ?? 0) / 30;
+              return (
+                <div
+                  key={entry.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 dark:border-amber-900 dark:bg-black/10"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold">
+                      {employee?.name ?? "EMPLEADO"} · {entry.date}
+                    </p>
+                    <p className="truncate text-[10px] text-[color:var(--text-muted)]">
+                      {entry.reason} · 1 día adicional ·{" "}
+                      <span className="number-display">
+                        {money.format(amount)}
+                      </span>
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 text-rose-700"
+                    aria-label={`Eliminar pago doble de ${employee?.name ?? "empleado"}`}
+                    disabled={controlsDisabled}
+                    onClick={() => {
+                      deleteDoublePayDay(entry.id);
+                      toast.success("Registro de pago doble eliminado.");
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-[color:var(--text-muted)]">
+            No hay días dobles registrados en este periodo.
+          </p>
+        )}
+        {payrollLocked ? (
+          <p className="flex items-center gap-1 text-[10px] font-medium text-amber-800 dark:text-amber-200">
+            <LockKeyhole className="h-3 w-3" />
+            La nómina está cerrada; reábrela con código maestro para modificar
+            estos registros.
+          </p>
+        ) : !canManage ? (
+          <p className="flex items-center gap-1 text-[10px] font-medium text-amber-800 dark:text-amber-200">
+            <LockKeyhole className="h-3 w-3" />
+            Tu rol no tiene autorización para crear movimientos de nómina.
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function PayrollTable({
   lines,
   view,
@@ -704,6 +933,17 @@ function PayrollTable({
   const showSalary =
     view === "CONSOLIDATED" ||
     Boolean(moduleDefinition?.concepts.includes("SALARY"));
+  const showDoublePay =
+    (view === "FIXED" ||
+      view === "SPECIALIST" ||
+      view === "CONSOLIDATED") &&
+    (view !== "CONSOLIDATED" ||
+      lines.some((line) => line.doublePayAmount > 0));
+  const showApproval = view !== "FIXED" && view !== "SPECIALIST";
+  const showNegativeBalances = lines.some(
+    (line) =>
+      line.carriedNegativeBalance > 0 || line.newNegativeBalance > 0,
+  );
   const showCommission =
     view === "CONSOLIDATED" ||
     Boolean(moduleDefinition?.concepts.includes("COMMISSION"));
@@ -748,6 +988,10 @@ function PayrollTable({
     (sum, line) => sum + line.christmasBonusPayment,
     0,
   );
+  const doublePayTotal = lines.reduce(
+    (sum, line) => sum + line.doublePayAmount,
+    0,
+  );
   const approvedEmployeeIds = useMemo(
     () =>
       new Set(
@@ -775,6 +1019,12 @@ function PayrollTable({
     grossSales: line.grossSales,
     salesWithoutVat: line.salesWithoutVat,
     salary: line.fixedSalary,
+    doublePay: line.doublePayAmount,
+    doublePayDetail: line.doublePayDays
+      .map((entry) => `${entry.date} · ${entry.reason}`)
+      .join(" | "),
+    carriedBalance: line.carriedNegativeBalance,
+    pendingBalance: line.newNegativeBalance,
     commission: line.commission,
     bonuses: line.bonuses,
     deductions: line.fines + line.loanDeduction,
@@ -815,12 +1065,37 @@ function PayrollTable({
     metrics: [
       { label: "Personal", value: String(lines.length), detail: "Registros incluidos" },
       { label: "Nómina", value: money.format(payrollTotal), detail: "Pago del periodo" },
+      ...(showDoublePay
+        ? [
+            {
+              label: "Pago doble",
+              value: money.format(doublePayTotal),
+              detail: "Salario diario adicional",
+            },
+          ]
+        : []),
       { label: "Cargas", value: money.format(socialTotal + isrTotal), detail: "Costo social + ISR" },
       { label: "Costo total", value: money.format(total), detail: "Nómina + cargas" },
     ],
     analysis: [
-      `${approvedEmployeeIds.size} de ${lines.length} recibos del periodo aparecen aprobados por el personal.`,
+      ...(showApproval
+        ? [
+            `${approvedEmployeeIds.size} de ${lines.length} recibos del periodo aparecen aprobados por el personal.`,
+          ]
+        : [
+            "Esta nómina no requiere aprobación individual del empleado; el control se realiza mediante el cierre de la corrida.",
+          ]),
       `El costo social está ${includeSocialCost ? "incluido" : "excluido"} y el ISR está ${includeIsr ? "incluido" : "excluido"} en esta salida.`,
+      ...(showDoublePay
+        ? [
+            `${lines.reduce((sum, line) => sum + line.doublePayDayCount, 0)} días festivos o feriados agregan ${money.format(doublePayTotal)} a la nómina; el día ordinario permanece dentro del sueldo base.`,
+          ]
+        : []),
+      ...(showNegativeBalances
+        ? [
+            `Los saldos negativos anteriores descuentan ${money.format(lines.reduce((sum, line) => sum + line.carriedNegativeBalance, 0))}; cualquier remanente se conserva para el siguiente periodo.`,
+          ]
+        : []),
       "La exportación contiene únicamente la nómina seleccionada y no incluye filtros, navegación ni controles del sistema.",
     ],
     filename: `nomina-${view.toLocaleLowerCase()}-${periodStart}`,
@@ -881,6 +1156,22 @@ function PayrollTable({
         format: "currency" as const,
         width: 15,
       },
+      ...(showDoublePay
+        ? [
+            {
+              header: "PAGO DOBLE ADICIONAL",
+              accessor: (row: (typeof reportRows)[number]) => row.doublePay,
+              format: "currency" as const,
+              width: 19,
+            },
+            {
+              header: "DETALLE PAGO DOBLE",
+              accessor: (row: (typeof reportRows)[number]) =>
+                row.doublePayDetail,
+              width: 30,
+            },
+          ]
+        : []),
       {
         header: "COMISIÓN",
         accessor: (row: (typeof reportRows)[number]) => row.commission,
@@ -905,6 +1196,24 @@ function PayrollTable({
         format: "currency" as const,
         width: 14,
       },
+      ...(showNegativeBalances
+        ? [
+            {
+              header: "SALDO ANTERIOR",
+              accessor: (row: (typeof reportRows)[number]) =>
+                row.carriedBalance,
+              format: "currency" as const,
+              width: 17,
+            },
+            {
+              header: "SALDO PENDIENTE",
+              accessor: (row: (typeof reportRows)[number]) =>
+                row.pendingBalance,
+              format: "currency" as const,
+              width: 18,
+            },
+          ]
+        : []),
       ...(showChristmasBonus
         ? [
             {
@@ -944,11 +1253,15 @@ function PayrollTable({
         format: "currency" as const,
         width: 14,
       },
-      {
-        header: "APROBACIÓN",
-        accessor: (row: (typeof reportRows)[number]) => row.approval,
-        width: 16,
-      },
+      ...(showApproval
+        ? [
+            {
+              header: "APROBACIÓN",
+              accessor: (row: (typeof reportRows)[number]) => row.approval,
+              width: 16,
+            },
+          ]
+        : []),
       {
         header: "COSTO TOTAL",
         accessor: (row: (typeof reportRows)[number]) => row.total,
@@ -1008,6 +1321,11 @@ function PayrollTable({
                     {showSalary && (
                       <TableHead className="text-right">SUELDO</TableHead>
                     )}
+                    {showDoublePay && (
+                      <TableHead className="text-right">
+                        PAGO DOBLE
+                      </TableHead>
+                    )}
                     {showCommission && (
                       <TableHead className="text-right">
                         COMISIÓN + BONOS
@@ -1021,6 +1339,11 @@ function PayrollTable({
                 {showAdjustments && (
                   <TableHead className="text-right">AJUSTES</TableHead>
                 )}
+                {showNegativeBalances && (
+                  <TableHead className="text-right">
+                    SALDO ARRASTRADO
+                  </TableHead>
+                )}
                 {showChristmasBonus && (
                   <TableHead className="text-right">AGUINALDO</TableHead>
                 )}
@@ -1032,7 +1355,9 @@ function PayrollTable({
                 <TableHead className="text-right">NÓMINA</TableHead>
                 <TableHead className="text-right">COSTO SOCIAL</TableHead>
                 <TableHead className="text-right">ISR</TableHead>
-                <TableHead className="text-center">APROBACIÓN</TableHead>
+                {showApproval && (
+                  <TableHead className="text-center">APROBACIÓN</TableHead>
+                )}
                 <TableHead className="text-right">COSTO TOTAL</TableHead>
               </TableRow>
             </TableHeader>
@@ -1043,6 +1368,10 @@ function PayrollTable({
                   className={
                     line.settlementPayment > 0
                       ? "bg-sky-50/80 ring-1 ring-inset ring-sky-200/70 dark:bg-sky-950/15 dark:ring-sky-800/50"
+                      : line.newNegativeBalance > 0
+                        ? "bg-rose-50/80 ring-1 ring-inset ring-rose-200/80 dark:bg-rose-950/15 dark:ring-rose-800/50"
+                      : line.doublePayAmount > 0
+                        ? "bg-amber-50/80 ring-1 ring-inset ring-amber-200/80 dark:bg-amber-950/15 dark:ring-amber-800/50"
                       : undefined
                   }
                 >
@@ -1059,6 +1388,18 @@ function PayrollTable({
                     {line.settlementPayment > 0 ? (
                       <Badge className="mt-1 border border-sky-300 bg-sky-100 text-[9px] text-sky-900">
                         LIQUIDACIÓN INTEGRADA
+                      </Badge>
+                    ) : null}
+                    {line.doublePayAmount > 0 ? (
+                      <Badge className="mt-1 border border-amber-300 bg-amber-100 text-[9px] text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+                        PAGO DOBLE · {line.doublePayDayCount} DÍA
+                        {line.doublePayDayCount === 1 ? "" : "S"}
+                      </Badge>
+                    ) : null}
+                    {line.newNegativeBalance > 0 ? (
+                      <Badge className="mt-1 border border-rose-300 bg-rose-100 text-[9px] text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100">
+                        SALDO PENDIENTE ·{" "}
+                        {money.format(line.newNegativeBalance)}
                       </Badge>
                     ) : null}
                   </TableCell>
@@ -1136,6 +1477,22 @@ function PayrollTable({
                           )}
                         </TableCell>
                       )}
+                      {showDoublePay && (
+                        <TableCell className="bg-amber-50/60 text-right dark:bg-amber-950/20">
+                          <p className="number-display font-semibold text-amber-800 dark:text-amber-200">
+                            {line.doublePayAmount > 0
+                              ? money.format(line.doublePayAmount)
+                              : "—"}
+                          </p>
+                          {line.doublePayDayCount > 0 ? (
+                            <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-amber-700 dark:text-amber-300">
+                              {line.doublePayDays
+                                .map((entry) => entry.date)
+                                .join(" · ")}
+                            </p>
+                          ) : null}
+                        </TableCell>
+                      )}
                       {showCommission && (
                         <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
                           {money.format(line.commission + line.bonuses)}
@@ -1163,6 +1520,20 @@ function PayrollTable({
                           line.viaticsDeductions +
                           (!showCommission ? line.bonuses : 0),
                       )}
+                    </TableCell>
+                  )}
+                  {showNegativeBalances && (
+                    <TableCell className="bg-rose-50/60 text-right dark:bg-rose-950/20">
+                      <p className="number-display font-semibold text-rose-800 dark:text-rose-200">
+                        {line.carriedNegativeBalance > 0
+                          ? `−${money.format(line.carriedNegativeBalance)}`
+                          : "—"}
+                      </p>
+                      {line.newNegativeBalance > 0 ? (
+                        <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-rose-700 dark:text-rose-300">
+                          PASA {money.format(line.newNegativeBalance)}
+                        </p>
+                      ) : null}
                     </TableCell>
                   )}
                   {showChristmasBonus && (
@@ -1194,21 +1565,25 @@ function PayrollTable({
                   >
                     {includeIsr ? money.format(line.isrCost) : "EXCLUIDO"}
                   </TableCell>
-                  <TableCell className="text-center">
-                    {approvedEmployeeIds.has(line.employee.id) ? (
-                      <span className="inline-flex flex-col items-center gap-0.5 text-emerald-700 dark:text-emerald-300">
-                        <CheckCircle2
-                          className="h-5 w-5 fill-emerald-100 dark:fill-emerald-950"
-                          aria-hidden="true"
-                        />
-                        <span className="text-[9px] font-semibold tracking-[0.08em]">
-                          APROBADO
+                  {showApproval && (
+                    <TableCell className="text-center">
+                      {approvedEmployeeIds.has(line.employee.id) ? (
+                        <span className="inline-flex flex-col items-center gap-0.5 text-emerald-700 dark:text-emerald-300">
+                          <CheckCircle2
+                            className="h-5 w-5 fill-emerald-100 dark:fill-emerald-950"
+                            aria-hidden="true"
+                          />
+                          <span className="text-[9px] font-semibold tracking-[0.08em]">
+                            APROBADO
+                          </span>
                         </span>
-                      </span>
-                    ) : (
-                      <span className="sr-only">Pendiente de aprobación</span>
-                    )}
-                  </TableCell>
+                      ) : (
+                        <span className="sr-only">
+                          Pendiente de aprobación
+                        </span>
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell className="number-display text-right text-base font-semibold">
                     {money.format(
                       line.total +
@@ -1228,9 +1603,11 @@ function PayrollTable({
                     (contractor
                       ? 5
                       : Number(showSalary) +
+                        Number(showDoublePay) +
                         Number(showCommission) +
                         Number(showDeductions)) +
-                    Number(showAdjustments)
+                    Number(showAdjustments) +
+                    Number(showNegativeBalances)
                   }
                   className="text-right font-semibold"
                 >
@@ -1255,7 +1632,7 @@ function PayrollTable({
                 <TableCell className="number-display text-right">
                   {money.format(isrTotal)}
                 </TableCell>
-                <TableCell />
+                {showApproval && <TableCell />}
                 <TableCell className="number-display text-right text-base">
                   {money.format(total)}
                 </TableCell>
@@ -2148,6 +2525,7 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
     payrollLines,
     periodOptions,
     setCalculationMode,
+    closeRunAndOpenNextPeriod,
     setPeriodTaxInclusion,
     setRunStatus,
   } = usePayrollDemo();
@@ -2324,10 +2702,15 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
                 Configuración
               </Link>
             </Button>
-            <Button onClick={() => setRunDialog(true)} disabled={payrollLocked}>
-              <Plus className="mr-2 h-4 w-4" />
-              Nueva nómina
-            </Button>
+            {view !== "FIXED" && view !== "SPECIALIST" ? (
+              <Button
+                onClick={() => setRunDialog(true)}
+                disabled={payrollLocked}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Nueva nómina
+              </Button>
+            ) : null}
           </div>
         )}
       </header>
@@ -2581,6 +2964,15 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
               detail={`Nómina${includeSocialCost ? " + costo social" : ""}${includeIsr ? " + ISR" : ""}`}
             />
           </div>
+          {(view === "FIXED" || view === "SPECIALIST") && (
+            <DoublePayDaysPanel
+              lines={lines}
+              view={view}
+              periodStart={selectedPeriod.start}
+              periodEnd={selectedPeriod.end}
+              payrollLocked={payrollLocked}
+            />
+          )}
           {selectedRun && (
             <Card
               className={`border-[color:var(--border-color)] ${payrollLocked ? "bg-[linear-gradient(110deg,var(--bg-card),rgba(53,79,61,.12))]" : "bg-[linear-gradient(110deg,var(--bg-card),var(--accent-hover))]"}`}
@@ -2615,9 +3007,55 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
                     <Button
                       size="sm"
                       onClick={() => {
-                        setRunStatus(selectedRun.id, "APPROVED");
+                        const nextPeriod =
+                          periodDisplay === "MONTHLY"
+                            ? (() => {
+                                const currentMonth = new Date(
+                                  `${selectedPeriod.start.slice(0, 7)}-01T12:00:00`,
+                                );
+                                currentMonth.setMonth(
+                                  currentMonth.getMonth() + 1,
+                                );
+                                return monthlyPeriod(
+                                  currentMonth.toISOString().slice(0, 7),
+                                );
+                              })()
+                            : [...periodOptions]
+                                .filter(
+                                  (period) =>
+                                    period.start > selectedPeriod.end,
+                                )
+                                .sort((left, right) =>
+                                  left.start.localeCompare(right.start),
+                                )[0];
+                        if (!nextPeriod) {
+                          toast.error(
+                            "No fue posible preparar el siguiente periodo.",
+                          );
+                          return;
+                        }
+                        const payDate = new Date(
+                          `${nextPeriod.end}T12:00:00`,
+                        );
+                        payDate.setDate(payDate.getDate() + 3);
+                        closeRunAndOpenNextPeriod(
+                          selectedRun.id,
+                          {
+                            start: nextPeriod.start,
+                            end: nextPeriod.end,
+                            payDate: payDate.toISOString().slice(0, 10),
+                            label: nextPeriod.label,
+                          },
+                          lines.map((line) => ({
+                            employeeId: line.employee.id,
+                            amount: line.newNegativeBalance,
+                          })),
+                        );
+                        if (periodDisplay === "MONTHLY")
+                          setSelectedMonth(nextPeriod.start.slice(0, 7));
+                        else setSelectedFortnight(nextPeriod.start);
                         toast.success(
-                          "Nómina cerrada, protegida y disponible en Dispersión.",
+                          `Nómina cerrada para pago. Se abrió ${nextPeriod.label.toLocaleLowerCase("es-MX")}.`,
                         );
                       }}
                     >
