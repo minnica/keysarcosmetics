@@ -42,8 +42,8 @@ import {
 } from "./payroll-cost-branch-selector";
 import {
   christmasBonusPaidAmountForRange,
+  effectiveTaxInclusionForRange,
   payrollModuleForCategory,
-  periodTaxInclusionForRange,
   terminationSettlementTotal,
   usePayrollDemo,
 } from "./payroll-demo-context";
@@ -267,13 +267,18 @@ export function PayrollBranchReportDemo() {
           state.calculationMode,
           bounds.end,
         );
-        const periodTaxes = periodTaxInclusionForRange(
+        const settlementTaxes = effectiveTaxInclusionForRange(
           state.periodTaxInclusions,
           bounds.start,
           bounds.end,
+          "SETTLEMENT",
         );
-        const includeSocialCost = periodTaxes?.includeSocialCost ?? true;
-        const includeIsr = periodTaxes?.includeIsr ?? true;
+        const christmasTaxes = effectiveTaxInclusionForRange(
+          state.periodTaxInclusions,
+          bounds.start,
+          bounds.end,
+          "CHRISTMAS_BONUS",
+        );
         const lineByEmployee = new Map(
           lines.map((line) => [line.employee.id, line]),
         );
@@ -373,22 +378,25 @@ export function PayrollBranchReportDemo() {
                   bounds.end,
                 ) > 0,
             );
-            const specialSocial = includeSocialCost
-              ? (settlementRecord?.includeSocialCost
-                  ? line.settlementPayment * settlementRecord.socialCostRate
-                  : 0) +
-                (christmasRecord?.includeSocialCost
-                  ? line.christmasBonusPayment * christmasRecord.socialCostRate
-                  : 0)
-              : 0;
-            const specialIsr = includeIsr
-              ? (settlementRecord?.includeIsr
-                  ? line.settlementPayment * settlementRecord.isrRate
-                  : 0) +
-                (christmasRecord?.includeIsr
-                  ? line.christmasBonusPayment * christmasRecord.isrRate
-                  : 0)
-              : 0;
+            const specialSocial =
+              (settlementTaxes.includeSocialCost &&
+              settlementRecord?.includeSocialCost
+                ? line.settlementPayment * settlementRecord.socialCostRate
+                : 0) +
+              ((christmasTaxes.includeSocialCost ||
+                christmasRecord?.includeSocialCost === true) &&
+              christmasRecord
+                ? line.christmasBonusPayment * christmasRecord.socialCostRate
+                : 0);
+            const specialIsr =
+              (settlementTaxes.includeIsr && settlementRecord?.includeIsr
+                ? line.settlementPayment * settlementRecord.isrRate
+                : 0) +
+              ((christmasTaxes.includeIsr ||
+                christmasRecord?.includeIsr === true) &&
+              christmasRecord
+                ? line.christmasBonusPayment * christmasRecord.isrRate
+                : 0);
             socialCost +=
               Math.max(0, line.socialCost - specialSocial) * costShare;
             isrCost += Math.max(0, line.isrCost - specialIsr) * costShare;
@@ -481,11 +489,12 @@ export function PayrollBranchReportDemo() {
               const gross = terminationSettlementTotal(settlement);
               settlementPayroll += gross * share;
               socialCost +=
-                (includeSocialCost && settlement.includeSocialCost
+                (settlementTaxes.includeSocialCost &&
+                settlement.includeSocialCost
                   ? gross * settlement.socialCostRate
                   : 0) * share;
               isrCost +=
-                (includeIsr && settlement.includeIsr
+                (settlementTaxes.includeIsr && settlement.includeIsr
                   ? gross * settlement.isrRate
                   : 0) * share;
               employeeIds.add(settlement.employeeId);
@@ -513,11 +522,12 @@ export function PayrollBranchReportDemo() {
               );
               christmasBonusPayroll += gross * share;
               socialCost +=
-                (includeSocialCost && bonus.includeSocialCost
+                ((christmasTaxes.includeSocialCost ||
+                  bonus.includeSocialCost)
                   ? gross * bonus.socialCostRate
                   : 0) * share;
               isrCost +=
-                (includeIsr && bonus.includeIsr
+                ((christmasTaxes.includeIsr || bonus.includeIsr)
                   ? gross * bonus.isrRate
                   : 0) * share;
               employeeIds.add(bonus.employeeId);

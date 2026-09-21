@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -30,6 +35,7 @@ import {
   Network,
   PlaneTakeoff,
   ReceiptText,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   Store,
@@ -70,6 +76,11 @@ type NavSection = { id: SectionId; label: string; items: NavItem[] };
 
 const PRIVACY_IDLE_LIMIT_MS = 3 * 60 * 1000;
 const SESSION_IDLE_LIMIT_MS = 5 * 60 * 1000;
+const updateTimeFormatter = new Intl.DateTimeFormat("es-MX", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
 
 const sections: NavSection[] = [
   {
@@ -214,6 +225,66 @@ function isRouteActive(pathname: string, href: string): boolean {
   return href === "/"
     ? pathname === "/"
     : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function updateAgeLabel(updatedAt: string | null, now: number) {
+  if (!updatedAt) return "Preparando datos";
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((now - new Date(updatedAt).getTime()) / 1000),
+  );
+  if (elapsedSeconds < 5) return "Ahora";
+  if (elapsedSeconds < 60) return `Hace ${elapsedSeconds} s`;
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) return `Hace ${elapsedMinutes} min`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  return `Hace ${elapsedHours} h`;
+}
+
+function DataUpdateStatus({ compact = false }: { compact?: boolean }) {
+  const { state } = usePayrollDemo();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!state.lastUpdatedAt) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [state.lastUpdatedAt]);
+
+  const exactTime = state.lastUpdatedAt
+    ? updateTimeFormatter.format(new Date(state.lastUpdatedAt))
+    : "--:--:--";
+  const age = updateAgeLabel(state.lastUpdatedAt, now);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      title={`Última actualización: ${exactTime} · ${age}`}
+      className={`flex shrink-0 items-center border border-emerald-300/20 bg-emerald-400/[0.07] text-emerald-100 ${compact ? "h-10 gap-1.5 rounded-xl px-2" : "h-10 gap-2 rounded-xl px-3"}`}
+    >
+      <span className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-300/10">
+        <span className="absolute h-2 w-2 animate-ping rounded-full bg-emerald-300/45 motion-reduce:animate-none" />
+        <RefreshCw className="relative h-3 w-3" aria-hidden="true" />
+      </span>
+      {compact ? (
+        <span className="text-[9px] font-semibold tabular-nums text-emerald-50">
+          {exactTime}
+        </span>
+      ) : (
+        <span className="leading-tight">
+          <span className="block text-[7px] font-semibold uppercase tracking-[0.14em] text-emerald-200/70">
+            Última actualización
+          </span>
+          <span className="mt-0.5 block text-[9px] font-semibold tabular-nums text-emerald-50">
+            {exactTime} · {age}
+          </span>
+        </span>
+      )}
+    </div>
+  );
 }
 
 function MasterClarificationBell({ mobile = false }: { mobile?: boolean }) {
@@ -527,6 +598,7 @@ function TopNavigation() {
         </nav>
 
         <div className="ml-auto hidden items-center gap-1.5 md:flex">
+          <DataUpdateStatus />
           <MasterClarificationBell />
           <button
             type="button"
@@ -571,6 +643,7 @@ function TopNavigation() {
         </div>
 
         <div className="ml-auto flex min-w-0 items-center gap-2 md:hidden">
+          <DataUpdateStatus compact />
           <div className="hidden min-w-0 text-right">
             <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-[#b99c81]">
               Sección actual
@@ -865,6 +938,32 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
     toast.success("Información desbloqueada por autorización master.");
   }
 
+  function handlePrivateCodeKeyDown(
+    event: ReactKeyboardEvent<HTMLInputElement>,
+  ) {
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault();
+      if (!event.repeat) addPrivateCodeDigit(event.key);
+      return;
+    }
+    if (event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault();
+      setPrivateCode((current) => current.slice(0, -1));
+      setUnlockError("");
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setPrivateCode("");
+      setUnlockError("");
+      return;
+    }
+    if (event.key === "Enter" && privateCode.length === 4) {
+      event.preventDefault();
+      unlockInformation();
+    }
+  }
+
   return (
     <>
       <div
@@ -881,13 +980,6 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
           aria-modal="true"
           aria-labelledby="privacy-lock-title"
           aria-describedby="privacy-lock-description"
-          onKeyDown={(event) => {
-            if (/^\d$/.test(event.key)) addPrivateCodeDigit(event.key);
-            if (event.key === "Backspace")
-              setPrivateCode((current) => current.slice(0, -1));
-            if (event.key === "Enter" && privateCode.length === 4)
-              unlockInformation();
-          }}
         >
           <section className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#241c17] p-5 text-white shadow-[0_28px_90px_rgba(0,0,0,0.55)] sm:p-6">
             <div className="flex items-start gap-3">
@@ -934,12 +1026,23 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
                 value={privateCode}
                 readOnly
                 autoFocus
+                inputMode="numeric"
+                maxLength={4}
+                onKeyDown={handlePrivateCodeKeyDown}
                 autoComplete="off"
                 data-1p-ignore="true"
                 data-lpignore="true"
                 className="mt-3 h-11 border-white/15 bg-black/20 text-center text-lg tracking-[0.5em] text-white"
                 aria-label="Código privado master capturado con teclado seguro"
+                aria-describedby="master-privacy-code-help"
               />
+              <p
+                id="master-privacy-code-help"
+                className="mt-2 text-center text-[9px] text-white/50"
+              >
+                Usa el teclado numérico o los botones. Retroceso borra y Enter
+                desbloquea.
+              </p>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
                   <button

@@ -1,6 +1,12 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -177,6 +183,30 @@ export default function LoginPage() {
     setSecondaryKey((current) =>
       current.length < 4 ? `${current}${digit}` : current,
     );
+  }
+
+  function handleSecondaryKeyDown(
+    event: ReactKeyboardEvent<HTMLInputElement>,
+  ) {
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault();
+      if (!event.repeat) addDigit(event.key);
+      return;
+    }
+    if (event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault();
+      setSecondaryKey((current) => current.slice(0, -1));
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setSecondaryKey("");
+      return;
+    }
+    if (event.key === "Enter" && secondaryKey.length === 4) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
   }
 
   function resetLogin() {
@@ -559,12 +589,24 @@ export default function LoginPage() {
                         type="password"
                         value={secondaryKey}
                         readOnly
+                        autoFocus
+                        inputMode="numeric"
+                        maxLength={4}
+                        onKeyDown={handleSecondaryKeyDown}
                         autoComplete="off"
                         data-1p-ignore="true"
                         data-lpignore="true"
                         className="mt-3 h-12 text-center text-xl tracking-[0.55em]"
                         aria-label="Código privado capturado con teclado seguro"
+                        aria-describedby="secondary-access-key-help"
                       />
+                      <p
+                        id="secondary-access-key-help"
+                        className="mt-2 text-center text-[10px] text-[#776d65] dark:text-[#b8aca1]"
+                      >
+                        Usa el teclado numérico o los botones. Retroceso borra y
+                        Enter confirma.
+                      </p>
                       <div className="mt-3 grid grid-cols-3 gap-2">
                         {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(
                           (digit) => (

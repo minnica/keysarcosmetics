@@ -46,7 +46,7 @@ import {
 import {
   employeeAppliesToPeriod,
   christmasBonusPaidAmountForRange,
-  periodTaxInclusionForRange,
+  effectiveTaxInclusionForRange,
   roleHasPermission,
   terminationSettlementTotal,
   type DemoChristmasBonus,
@@ -245,9 +245,9 @@ function defaultChristmasBonus(
     costBranchIds: employee.costBranchIds.length
       ? employee.costBranchIds
       : [employee.branchId],
-    includeSocialCost: employee.socialCostRate > 0,
+    includeSocialCost: false,
     socialCostRate: employee.socialCostRate,
-    includeIsr: employee.isrCostRate > 0,
+    includeIsr: false,
     isrRate: employee.isrCostRate,
     paidPeriodIds: [],
     notes: "CÁLCULO PROPORCIONAL POR DÍAS LABORADOS EN EL AÑO.",
@@ -300,9 +300,11 @@ function StatusBadge({ status }: { status: SpecialPayrollStatus }) {
 function BranchPicker({
   value,
   onChange,
+  disabled = false,
 }: {
   value: string[];
   onChange: (value: string[]) => void;
+  disabled?: boolean;
 }) {
   const { state } = usePayrollDemo();
   const branches = state.branches.filter((branch) => branch.active);
@@ -318,6 +320,7 @@ function BranchPicker({
           variant="ghost"
           size="sm"
           className="h-7 text-[9px]"
+          disabled={disabled}
           onClick={() =>
             onChange(allSelected ? [] : branches.map((branch) => branch.id))
           }
@@ -334,6 +337,7 @@ function BranchPicker({
                 key={branch.id}
                 type="button"
                 aria-pressed={selected}
+                disabled={disabled}
                 onClick={() =>
                   onChange(
                     selected
@@ -341,7 +345,7 @@ function BranchPicker({
                       : [...value, branch.id],
                   )
                 }
-                className={`rounded-lg border px-2 py-2 text-left text-[10px] font-semibold transition-colors ${selected ? "border-emerald-400 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100" : "border-[color:var(--border-color)] hover:bg-[color:var(--accent-hover)]"}`}
+                className={`rounded-lg border px-2 py-2 text-left text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selected ? "border-emerald-400 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100" : "border-[color:var(--border-color)] hover:bg-[color:var(--accent-hover)]"}`}
               >
                 {selected ? "✓ " : ""}
                 {branch.name}
@@ -475,15 +479,20 @@ function DashboardValue({
   );
 }
 
-function taxFlags(inclusions: DemoPeriodTaxInclusion[], paymentDate: string) {
-  const inclusion = periodTaxInclusionForRange(
+function taxFlags(
+  inclusions: DemoPeriodTaxInclusion[],
+  paymentDate: string,
+  payrollModule: "SETTLEMENT" | "CHRISTMAS_BONUS",
+) {
+  const inclusion = effectiveTaxInclusionForRange(
     inclusions,
     paymentDate,
     paymentDate,
+    payrollModule,
   );
   return {
-    includeSocialCost: inclusion?.includeSocialCost ?? true,
-    includeIsr: inclusion?.includeIsr ?? true,
+    includeSocialCost: inclusion.includeSocialCost,
+    includeIsr: inclusion.includeIsr,
   };
 }
 
@@ -492,7 +501,7 @@ function settlementCosts(
   inclusions: DemoPeriodTaxInclusion[],
 ) {
   const gross = settlement.applies ? terminationSettlementTotal(settlement) : 0;
-  const flags = taxFlags(inclusions, settlement.paymentDate);
+  const flags = taxFlags(inclusions, settlement.paymentDate, "SETTLEMENT");
   const social =
     flags.includeSocialCost && settlement.includeSocialCost
       ? gross * settlement.socialCostRate
@@ -549,17 +558,21 @@ function christmasPaidCosts(
         const gross = bonus.applies
           ? bonus.grossAmount * period.percentage
           : 0;
-        const flags = taxFlags(inclusions, period.paymentDate);
+        const flags = taxFlags(
+          inclusions,
+          period.paymentDate,
+          "CHRISTMAS_BONUS",
+        );
         return {
           gross: totals.gross + gross,
           social:
             totals.social +
-            (flags.includeSocialCost && bonus.includeSocialCost
+            (flags.includeSocialCost || bonus.includeSocialCost
               ? gross * bonus.socialCostRate
               : 0),
           isr:
             totals.isr +
-            (flags.includeIsr && bonus.includeIsr
+            (flags.includeIsr || bonus.includeIsr
               ? gross * bonus.isrRate
               : 0),
         };
@@ -1553,26 +1566,41 @@ function TaxEditor({
   rate,
   onChecked,
   onRate,
+  disabled = false,
+  globalEnabled,
 }: {
   label: string;
   checked: boolean;
   rate: number;
   onChecked: (checked: boolean) => void;
   onRate: (rate: number) => void;
+  disabled?: boolean;
+  globalEnabled?: boolean;
 }) {
+  const hasGlobalRule = typeof globalEnabled === "boolean";
+  const effective = hasGlobalRule ? globalEnabled || checked : checked;
   return (
     <div className="rounded-xl border border-[color:var(--border-color)] p-3">
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-xs font-semibold">{label}</p>
           <p className="text-[9px] text-[color:var(--text-muted)]">
-            Aplicación individual
+            {hasGlobalRule
+              ? globalEnabled
+                ? "Regla general activa en el periodo"
+                : "Regla general apagada en el periodo"
+              : "Aplicación individual"}
           </p>
         </div>
         <Toggle
           checked={checked}
-          label={`Aplicar ${label}`}
+          label={
+            hasGlobalRule
+              ? `Forzar ${label} solo para este aguinaldo`
+              : `Aplicar ${label}`
+          }
           onCheckedChange={onChecked}
+          disabled={disabled}
         />
       </div>
       <Input
@@ -1582,10 +1610,26 @@ function TaxEditor({
         max="100"
         step="0.1"
         value={rate === 0 ? "" : rate * 100}
+        disabled={disabled || (hasGlobalRule && !effective)}
         onChange={(event) =>
           onRate(clampRate(Number(event.target.value) / 100))
         }
       />
+      {hasGlobalRule ? (
+        <p
+          className={`mt-2 text-[9px] font-semibold ${
+            effective
+              ? "text-emerald-700 dark:text-emerald-300"
+              : "text-[color:var(--text-muted)]"
+          }`}
+        >
+          {globalEnabled
+            ? "APLICA POR REGLA GENERAL"
+            : checked
+              ? "APLICA SOLO A ESTE AGUINALDO"
+              : "NO APLICA EN ESTE PERIODO"}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -1601,6 +1645,7 @@ export function PayrollChristmasBonusDemo() {
   const [pageSize, setPageSize] = useState<PageSize>("20");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const selectedYear = Number(year);
   const yearStart = `${year}-01-01`;
   const yearEnd = `${year}-12-31`;
@@ -1837,6 +1882,7 @@ export function PayrollChristmasBonusDemo() {
     const allPaid =
       activePeriodIds.length > 0 &&
       activePeriodIds.every((periodId) => paidPeriodIds.includes(periodId));
+    setEditingId(null);
     save(
       {
         ...bonus,
@@ -2274,6 +2320,8 @@ export function PayrollChristmasBonusDemo() {
               const employee = employeeMap.get(bonus.employeeId);
               if (!employee) return null;
               const expanded = expandedId === bonus.id;
+              const editing = editingId === bonus.id;
+              const locked = bonus.paidPeriodIds.length > 0;
               const rowScheduled = christmasScheduledAmount(
                 bonus,
                 state.christmasBonusPaymentPeriods,
@@ -2290,12 +2338,19 @@ export function PayrollChristmasBonusDemo() {
               const nextPayment = paymentPeriods.find(
                 (period) => !bonus.paidPeriodIds.includes(period.id),
               );
+              const globalTaxFlags = taxFlags(
+                state.periodTaxInclusions,
+                nextPayment?.paymentDate ?? bonus.paymentDate,
+                "CHRISTMAS_BONUS",
+              );
               return (
                 <article
                   key={bonus.id}
-                  className="px-3 py-2.5 [contain-intrinsic-size:72px] [content-visibility:auto]"
+                  className={`px-3 py-2.5 [contain-intrinsic-size:72px] [content-visibility:auto] ${
+                    locked ? "bg-emerald-50/40 dark:bg-emerald-950/10" : ""
+                  }`}
                 >
-                  <div className="grid gap-2 xl:grid-cols-[minmax(210px,1.25fr)_90px_88px_130px_130px_165px_92px] xl:items-center">
+                  <div className="grid gap-2 xl:grid-cols-[minmax(210px,1.25fr)_90px_88px_130px_130px_240px_92px] xl:items-center">
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold">{employee.name}</p>
@@ -2312,6 +2367,7 @@ export function PayrollChristmasBonusDemo() {
                         <Toggle
                           checked={bonus.applies}
                           label={`Aplicar aguinaldo a ${employee.name}`}
+                          disabled={locked || !editing}
                           onCheckedChange={(applies) =>
                             save({ ...bonus, applies })
                           }
@@ -2328,6 +2384,7 @@ export function PayrollChristmasBonusDemo() {
                         type="number"
                         min="0"
                         step="1"
+                        disabled={locked || !editing}
                         value={
                           bonus.daysGranted === 0 ? "" : bonus.daysGranted
                         }
@@ -2363,24 +2420,52 @@ export function PayrollChristmasBonusDemo() {
                         )}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-8 text-[10px]"
-                      disabled={
-                        !bonus.applies ||
-                        bonus.grossAmount <= 0 ||
-                        !nextPayment
-                      }
-                      onClick={() => {
-                        if (nextPayment) markPayment(bonus, nextPayment);
-                      }}
-                    >
-                      <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                      {nextPayment
-                        ? `PAGAR ${(nextPayment.percentage * 100).toFixed(0)}%`
-                        : "PAGADO"}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 flex-1 text-[10px]"
+                        disabled={
+                          editing ||
+                          !bonus.applies ||
+                          bonus.grossAmount <= 0 ||
+                          !nextPayment
+                        }
+                        onClick={() => {
+                          if (nextPayment) markPayment(bonus, nextPayment);
+                        }}
+                      >
+                        <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                        {nextPayment
+                          ? `PAGAR ${(nextPayment.percentage * 100).toFixed(0)}%`
+                          : "PAGADO"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-[10px]"
+                        disabled={locked}
+                        onClick={() => {
+                          if (editing) {
+                            setEditingId(null);
+                            toast.success(
+                              "Cambios aplicados a nómina, consolidado y reportes.",
+                            );
+                            return;
+                          }
+                          setEditingId(bonus.id);
+                          setExpandedId(bonus.id);
+                        }}
+                      >
+                        {editing ? (
+                          <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                        ) : (
+                          <Pencil className="mr-1 h-3.5 w-3.5" />
+                        )}
+                        {locked ? "BLOQUEADO" : editing ? "LISTO" : "EDITAR"}
+                      </Button>
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
@@ -2401,6 +2486,8 @@ export function PayrollChristmasBonusDemo() {
                       employee={employee}
                       bonus={bonus}
                       paymentPeriods={paymentPeriods}
+                      readOnly={locked || !editing}
+                      globalTaxFlags={globalTaxFlags}
                       save={save}
                       updateNotes={upsertChristmasBonus}
                     />
@@ -2427,17 +2514,31 @@ function ChristmasEditor({
   employee,
   bonus,
   paymentPeriods,
+  readOnly,
+  globalTaxFlags,
   save,
   updateNotes,
 }: {
   employee: DemoEmployee;
   bonus: DemoChristmasBonus;
   paymentPeriods: DemoChristmasBonusPaymentPeriod[];
+  readOnly: boolean;
+  globalTaxFlags: Pick<
+    DemoPeriodTaxInclusion,
+    "includeSocialCost" | "includeIsr"
+  >;
   save: (bonus: DemoChristmasBonus, message?: string) => void;
   updateNotes: (bonus: DemoChristmasBonus) => void;
 }) {
   return (
     <div className="mt-4 space-y-5 rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/10 p-4">
+      {readOnly ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+          {bonus.paidPeriodIds.length > 0
+            ? "REGISTRO BLOQUEADO: YA TIENE UN PAGO INTEGRADO. EL DETALLE ES SOLO DE CONSULTA."
+            : "DETALLE EN MODO CONSULTA. USA EDITAR PARA MODIFICARLO."}
+        </div>
+      ) : null}
       <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-3">
         <p className="label-caps">CALENDARIO DE PAGO CONFIGURADO</p>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -2471,6 +2572,7 @@ function ChristmasEditor({
             type="number"
             min="0"
             step="0.01"
+            disabled={readOnly}
             value={bonus.grossAmount === 0 ? "" : bonus.grossAmount}
             onChange={(event) =>
               save({
@@ -2484,6 +2586,8 @@ function ChristmasEditor({
           label="Costo social"
           checked={bonus.includeSocialCost}
           rate={bonus.socialCostRate}
+          disabled={readOnly}
+          globalEnabled={globalTaxFlags.includeSocialCost}
           onChecked={(includeSocialCost) =>
             save({ ...bonus, includeSocialCost })
           }
@@ -2493,18 +2597,22 @@ function ChristmasEditor({
           label="ISR"
           checked={bonus.includeIsr}
           rate={bonus.isrRate}
+          disabled={readOnly}
+          globalEnabled={globalTaxFlags.includeIsr}
           onChecked={(includeIsr) => save({ ...bonus, includeIsr })}
           onRate={(isrRate) => save({ ...bonus, isrRate })}
         />
       </div>
       <BranchPicker
         value={bonus.costBranchIds}
+        disabled={readOnly}
         onChange={(costBranchIds) => save({ ...bonus, costBranchIds })}
       />
       <div className="space-y-2">
         <Label>Notas para {employee.name}</Label>
         <Textarea
           value={bonus.notes}
+          disabled={readOnly}
           onChange={(event) =>
             updateNotes({ ...bonus, notes: event.target.value })
           }

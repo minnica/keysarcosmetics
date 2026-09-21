@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -384,6 +385,13 @@ export interface DemoPayrollRun {
   mode: "WITH_VAT" | "WITHOUT_VAT";
   status: PayrollStatus;
   createdAt: string;
+  closureReason?: "MANUAL" | "ALL_RECEIPTS_AUTHORIZED" | null;
+  closedAt?: string | null;
+  closedByEmployeeId?: string | null;
+  reopenedAt?: string | null;
+  reopenedByEmployeeId?: string | null;
+  reopenReason?: string | null;
+  revision?: number;
 }
 
 export interface DemoPayrollPeriodConfig {
@@ -410,6 +418,7 @@ export interface DemoPayrollTaxAssignment {
 }
 
 export interface DemoPeriodTaxInclusion {
+  payrollModule?: Exclude<PayrollModule, "CONSOLIDATED"> | null;
   periodStart: string;
   periodEnd: string;
   includeSocialCost: boolean;
@@ -537,10 +546,55 @@ export function periodTaxInclusionForRange(
   return inclusions
     .filter(
       (inclusion) =>
+        !inclusion.payrollModule &&
         inclusion.periodStart <= periodEnd &&
         inclusion.periodEnd >= periodStart,
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+}
+
+export function moduleTaxInclusionForRange(
+  inclusions: DemoPeriodTaxInclusion[],
+  periodStart: string,
+  periodEnd: string,
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED">,
+) {
+  return inclusions
+    .filter(
+      (inclusion) =>
+        inclusion.payrollModule === payrollModule &&
+        inclusion.periodStart <= periodEnd &&
+        inclusion.periodEnd >= periodStart,
+    )
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+}
+
+export function effectiveTaxInclusionForRange(
+  inclusions: DemoPeriodTaxInclusion[],
+  periodStart: string,
+  periodEnd: string,
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED">,
+) {
+  const global = periodTaxInclusionForRange(
+    inclusions,
+    periodStart,
+    periodEnd,
+  );
+  const moduleOverride = moduleTaxInclusionForRange(
+    inclusions,
+    periodStart,
+    periodEnd,
+    payrollModule,
+  );
+  return {
+    includeSocialCost:
+      (global?.includeSocialCost ?? true) ||
+      (moduleOverride?.includeSocialCost ?? false),
+    includeIsr:
+      (global?.includeIsr ?? true) || (moduleOverride?.includeIsr ?? false),
+    global,
+    moduleOverride,
+  };
 }
 
 export interface DemoEmployeeDecision {
@@ -549,6 +603,34 @@ export interface DemoEmployeeDecision {
   status: "PENDING" | "AUTHORIZED" | "CLARIFICATION";
   note: string;
   updatedAt: string;
+}
+
+function invalidateAuthorizedDecisions(
+  decisions: DemoEmployeeDecision[],
+  employeeIds: Iterable<string>,
+  periodStart: string | null | undefined,
+  note: string,
+) {
+  if (!periodStart) return decisions;
+  const affectedEmployeeIds = new Set(employeeIds);
+  if (affectedEmployeeIds.size === 0) return decisions;
+  let changed = false;
+  const next = decisions.map((decision) => {
+    if (
+      decision.periodStart !== periodStart ||
+      decision.status !== "AUTHORIZED" ||
+      !affectedEmployeeIds.has(decision.employeeId)
+    )
+      return decision;
+    changed = true;
+    return {
+      ...decision,
+      status: "PENDING" as const,
+      note,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  return changed ? next : decisions;
 }
 
 export interface DemoKioskReceiptDecision {
@@ -584,6 +666,7 @@ export interface DemoViaticsEntry {
 }
 
 export interface DemoState {
+  lastUpdatedAt: string | null;
   branches: DemoBranch[];
   positions: DemoPosition[];
   payrollModules: DemoPayrollModuleDefinition[];
@@ -1898,6 +1981,7 @@ function createInitialState(): DemoState {
   );
 
   return {
+    lastUpdatedAt: null,
     branches,
     positions: [
       {
@@ -2817,6 +2901,7 @@ function createInitialState(): DemoState {
     })),
     periodTaxInclusions: [
       {
+        payrollModule: null,
         periodStart: period.start,
         periodEnd: period.end,
         includeSocialCost: true,
@@ -2939,9 +3024,9 @@ function createInitialState(): DemoState {
         grossAmount: Math.round((28000 / 30) * 20 * 100) / 100,
         paymentDate: `${new Date().getFullYear()}-12-15`,
         costBranchIds: branches.map((branch) => branch.id),
-        includeSocialCost: true,
+        includeSocialCost: false,
         socialCostRate: 0.25,
-        includeIsr: true,
+        includeIsr: false,
         isrRate: 0.16,
         paidPeriodIds: [],
         notes: "20 DÍAS OTORGADOS POR POLÍTICA INTERNA · REGISTRO DEMO.",
@@ -3181,6 +3266,17 @@ interface DemoPayrollContextValue {
     payDate: string,
   ) => void;
   setRunStatus: (runId: string, status: PayrollStatus) => void;
+  closeCommissionRun: (runId: string) => void;
+  reopenCommissionRun: (
+    runId: string,
+    masterCode: string,
+    reason: string,
+  ) => void;
+  resetCommissionApprovals: (
+    periodStart: string,
+    employeeIds: string[],
+    reason: string,
+  ) => void;
   closeRunAndOpenNextPeriod: (
     runId: string,
     nextPeriod: {
@@ -3194,6 +3290,7 @@ interface DemoPayrollContextValue {
   setCalculationMode: (mode: DemoPayrollRun["mode"]) => void;
   setCommissionModeOverride: (
     employeeId: string,
+    periodStart: string,
     mode: DemoPayrollRun["mode"] | null,
   ) => void;
   setPayrollCostAllocationModes: (
@@ -3234,6 +3331,14 @@ interface DemoPayrollContextValue {
     assignments: Array<Omit<DemoPayrollTaxAssignment, "payrollModule">>,
   ) => void;
   setPeriodTaxInclusion: (
+    periodStart: string,
+    periodEnd: string,
+    patch: Partial<
+      Pick<DemoPeriodTaxInclusion, "includeSocialCost" | "includeIsr">
+    >,
+  ) => void;
+  setModuleTaxInclusion: (
+    module: Exclude<PayrollModule, "CONSOLIDATED">,
     periodStart: string,
     periodEnd: string,
     patch: Partial<
@@ -3349,8 +3454,21 @@ export function PayrollDemoProvider({
       ? periodOptions[0]
       : periodForDate(new Date());
 
+  useEffect(() => {
+    setState((current) =>
+      current.lastUpdatedAt
+        ? current
+        : { ...current, lastUpdatedAt: new Date().toISOString() },
+    );
+  }, []);
+
   const update = useCallback((recipe: (current: DemoState) => DemoState) => {
-    setState((current) => recipe(current));
+    setState((current) => {
+      const next = recipe(current);
+      return Object.is(next, current)
+        ? current
+        : { ...next, lastUpdatedAt: new Date().toISOString() };
+    });
   }, []);
 
   const payrollLines = useCallback(
@@ -3373,13 +3491,6 @@ export function PayrollDemoProvider({
       const moduleDefinition = state.payrollModules.find(
         (module) => module.id === payrollModule,
       );
-      const periodTaxInclusion = periodTaxInclusionForRange(
-        state.periodTaxInclusions,
-        periodStart,
-        configuredEnd,
-      );
-      const includeSocialCost = periodTaxInclusion?.includeSocialCost ?? true;
-      const includeIsr = periodTaxInclusion?.includeIsr ?? true;
       const includesConcept = (concept: PayrollModuleConcept) =>
         payrollModule === "CONSOLIDATED" ||
         Boolean(moduleDefinition?.concepts.includes(concept));
@@ -3429,20 +3540,18 @@ export function PayrollDemoProvider({
                 86_400_000,
             ) + 1,
           );
-          const grossSales = state.sales
-            .filter(
-              (sale) =>
-                sale.employeeId === employee.id &&
-                sale.date >= employmentStart &&
-                sale.date <= employmentEnd,
-            )
-            .reduce((sum, sale) => sum + sale.amount, 0);
-          const calculationMode =
-            employee.category === "SELLER"
-              ? (state.commissionModeOverrides[employee.id] ?? mode)
-              : mode;
-          const sales =
-            calculationMode === "WITHOUT_VAT" ? grossSales / 1.16 : grossSales;
+          const employeeSales = state.sales.filter(
+            (sale) =>
+              sale.employeeId === employee.id &&
+              sale.date >= employmentStart &&
+              sale.date <= employmentEnd,
+          );
+          const grossSales = employeeSales.reduce(
+            (sum, sale) => sum + sale.amount,
+            0,
+          );
+          const employeeCommissionModule =
+            employeeCommissionPayrollModule(employee);
           const applicableAssignment = state.schemeAssignments
             .filter(
               (assignment) =>
@@ -3456,22 +3565,101 @@ export function PayrollDemoProvider({
                 (applicableAssignment?.schemeId ?? employee.schemeId) &&
               schemeAppliesToPeriod(item, periodStart, configuredEnd),
           );
-          const tier = scheme?.tiers.find(
-            (item) =>
-              sales >= item.from && (item.to === null || sales <= item.to),
+          const hasCommissionActivity = grossSales > 0 || Boolean(scheme);
+          const overlappingPeriods = periodOptions.filter(
+            (period) =>
+              period.start <= employmentEnd && period.end >= employmentStart,
           );
-          const rate = tier?.rate ?? 0;
+          const calculationPeriods =
+            overlappingPeriods.length > 0
+              ? overlappingPeriods
+              : [
+                  {
+                    value: periodStart,
+                    start: periodStart,
+                    end: configuredEnd,
+                    label: periodStart,
+                  },
+                ];
+          const commissionSegments = calculationPeriods.map((period) => {
+            const segmentStart =
+              period.start > employmentStart
+                ? period.start
+                : employmentStart;
+            const segmentEnd =
+              period.end < employmentEnd ? period.end : employmentEnd;
+            const segmentGrossSales = employeeSales
+              .filter(
+                (sale) =>
+                  sale.date >= segmentStart && sale.date <= segmentEnd,
+              )
+              .reduce((sum, sale) => sum + sale.amount, 0);
+            const closedCommissionRun = state.runs.find(
+              (run) =>
+                run.module === "COMMISSION" &&
+                run.periodStart === period.start &&
+                run.periodEnd === period.end &&
+                run.status !== "DRAFT",
+            );
+            const segmentMode =
+              employeeCommissionModule !== null || hasCommissionActivity
+                ? (state.commissionModeOverrides[
+                    `${period.start}:${employee.id}`
+                  ] ??
+                  state.commissionModeOverrides[employee.id] ??
+                  (closedCommissionRun &&
+                  (payrollModule === "COMMISSION" ||
+                    payrollModule === "CONSOLIDATED")
+                    ? closedCommissionRun.mode
+                    : mode))
+                : mode;
+            const segmentSales =
+              segmentMode === "WITHOUT_VAT"
+                ? segmentGrossSales / 1.16
+                : segmentGrossSales;
+            const segmentTier = scheme?.tiers.find(
+              (item) =>
+                segmentSales >= item.from &&
+                (item.to === null || segmentSales <= item.to),
+            );
+            return {
+              grossSales: segmentGrossSales,
+              sales: segmentSales,
+              mode: segmentMode,
+              commission: segmentSales * (segmentTier?.rate ?? 0),
+            };
+          });
+          const activeSegmentModes = commissionSegments
+            .filter((segment) => segment.grossSales > 0)
+            .map((segment) => segment.mode);
+          const calculationMode =
+            activeSegmentModes.length > 0 &&
+            activeSegmentModes.every(
+              (segmentMode) => segmentMode === activeSegmentModes[0],
+            )
+              ? activeSegmentModes[0]!
+              : mode;
+          const sales = commissionSegments.reduce(
+            (sum, segment) => sum + segment.sales,
+            0,
+          );
+          const calculatedCommission = commissionSegments.reduce(
+            (sum, segment) => sum + segment.commission,
+            0,
+          );
+          const rate = sales > 0 ? calculatedCommission / sales : 0;
           const salaryModuleId = employeeSalaryPayrollModule(employee);
-          const commissionModuleId = employeeCommissionPayrollModule(employee);
+          const commissionModuleId = employeeCommissionModule;
           const salaryAssignedHere =
             payrollModule === "CONSOLIDATED" ||
             salaryModuleId === payrollModule;
           const commissionAssignedHere =
             payrollModule === "CONSOLIDATED" ||
-            commissionModuleId === payrollModule;
+            commissionModuleId === payrollModule ||
+            (payrollModule === "COMMISSION" && hasCommissionActivity);
           const commission =
             commissionAssignedHere && includesConcept("COMMISSION")
-              ? sales * rate
+              ? calculatedCommission
               : 0;
           const periodMovements = state.movements.filter(
             (movement) =>
@@ -3480,7 +3668,9 @@ export function PayrollDemoProvider({
               movement.periodStart <= configuredEnd &&
               movement.status === "APPROVED" &&
               (payrollModule === "CONSOLIDATED" ||
-                movement.payrollModule === payrollModule),
+                movement.payrollModule === payrollModule ||
+                (payrollModule === "COMMISSION" &&
+                  movement.type === "BONUS")),
           );
           const movementBonuses = periodMovements
             .filter(
@@ -3497,7 +3687,8 @@ export function PayrollDemoProvider({
                   (award) =>
                     award.employee.id === employee.id &&
                     (payrollModule === "CONSOLIDATED" ||
-                      award.concept.payrollModule === payrollModule),
+                      award.concept.payrollModule === payrollModule ||
+                      payrollModule === "COMMISSION"),
                 )
                 .reduce((sum, award) => sum + award.amount, 0)
             : 0;
@@ -3530,7 +3721,9 @@ export function PayrollDemoProvider({
               adjustment.payrollDate >= periodStart &&
               adjustment.payrollDate <= configuredEnd &&
               (payrollModule === "CONSOLIDATED" ||
-                adjustment.payrollModule === payrollModule) &&
+                adjustment.payrollModule === payrollModule ||
+                (payrollModule === "COMMISSION" &&
+                  adjustment.type === "BONUS")) &&
               (adjustment.type !== "BASE_SALARY" ||
                 (salaryAssignedHere && includesConcept("SALARY"))),
           );
@@ -3764,43 +3957,69 @@ export function PayrollDemoProvider({
               assignment.payrollModule === employeePayrollModule &&
               assignment.employeeId === employee.id,
           );
+          const ordinaryTaxInclusion = effectiveTaxInclusionForRange(
+            state.periodTaxInclusions,
+            periodStart,
+            configuredEnd,
+            employeePayrollModule,
+          );
+          const settlementTaxInclusion = effectiveTaxInclusionForRange(
+            state.periodTaxInclusions,
+            periodStart,
+            configuredEnd,
+            "SETTLEMENT",
+          );
+          const christmasTaxInclusion = effectiveTaxInclusionForRange(
+            state.periodTaxInclusions,
+            periodStart,
+            configuredEnd,
+            "CHRISTMAS_BONUS",
+          );
           const taxableBase = Math.max(ordinaryTotal, 0);
           const ordinarySocialCost =
-            !includeSocialCost || taxAssignment?.socialCostEnabled === false
+            !ordinaryTaxInclusion.includeSocialCost ||
+            taxAssignment?.socialCostEnabled === false
               ? 0
               : taxAssignment?.socialCostMode === "FIXED"
                 ? taxAssignment.socialCostValue
                 : taxableBase *
                   (taxAssignment?.socialCostValue ?? employee.socialCostRate);
           const ordinaryIsrCost =
-            !includeIsr || taxAssignment?.isrCostEnabled === false
+            !ordinaryTaxInclusion.includeIsr ||
+            taxAssignment?.isrCostEnabled === false
               ? 0
               : taxAssignment?.isrCostMode === "FIXED"
                 ? taxAssignment.isrCostValue
                 : taxableBase *
                   (taxAssignment?.isrCostValue ?? employee.isrCostRate);
-          const specialSocialCost = !includeSocialCost
-            ? 0
-            : (settlementRecord?.includeSocialCost
-                ? settlementPayment * settlementRecord.socialCostRate
-                : 0) +
-              (christmasBonusRecord?.includeSocialCost
-                ? christmasBonusPayment * christmasBonusRecord.socialCostRate
-                : 0);
-          const specialIsrCost = !includeIsr
-            ? 0
-            : (settlementRecord?.includeIsr
-                ? settlementPayment * settlementRecord.isrRate
-                : 0) +
-              (christmasBonusRecord?.includeIsr
-                ? christmasBonusPayment * christmasBonusRecord.isrRate
-                : 0);
+          const specialSocialCost =
+            (settlementTaxInclusion.includeSocialCost &&
+            settlementRecord?.includeSocialCost
+              ? settlementPayment * settlementRecord.socialCostRate
+              : 0) +
+            ((christmasTaxInclusion.includeSocialCost ||
+              christmasBonusRecord?.includeSocialCost === true) &&
+            christmasBonusRecord
+              ? christmasBonusPayment * christmasBonusRecord.socialCostRate
+              : 0);
+          const specialIsrCost =
+            (settlementTaxInclusion.includeIsr && settlementRecord?.includeIsr
+              ? settlementPayment * settlementRecord.isrRate
+              : 0) +
+            ((christmasTaxInclusion.includeIsr ||
+              christmasBonusRecord?.includeIsr === true) &&
+            christmasBonusRecord
+              ? christmasBonusPayment * christmasBonusRecord.isrRate
+              : 0);
           const socialCost = ordinarySocialCost + specialSocialCost;
           const isrCost = ordinaryIsrCost + specialIsrCost;
           const includedInModule =
             payrollModule === "CONSOLIDATED" ||
             salaryModuleId === payrollModule ||
             commissionModuleId === payrollModule ||
+            (payrollModule === "COMMISSION" &&
+              (grossSales > 0 || commission > 0 || bonuses > 0)) ||
+            periodMovements.length > 0 ||
             doublePayDays.length > 0 ||
             carriedNegativeBalance > 0 ||
             payrollAdjustments.length > 0 ||
@@ -4315,7 +4534,15 @@ export function PayrollDemoProvider({
         update((current) => ({
           ...current,
           employees: current.employees.map((employee) =>
-            employee.id === employeeId ? { ...employee, schemeId } : employee,
+            employee.id === employeeId
+              ? {
+                  ...employee,
+                  schemeId,
+                  commissionPayrollModuleId: schemeId
+                    ? (employee.commissionPayrollModuleId ?? "COMMISSION")
+                    : employee.commissionPayrollModuleId,
+                }
+              : employee,
           ),
           schemeAssignments: schemeId
             ? [
@@ -4340,36 +4567,125 @@ export function PayrollDemoProvider({
           ),
         })),
       addMovement: (movement) =>
-        update((current) => ({
-          ...current,
-          movements: [
-            ...current.movements,
-            { ...movement, id: id("movement"), createdAt: isoDate(new Date()) },
-          ],
-        })),
+        update((current) => {
+          const run = current.runs.find(
+            (item) =>
+              item.module === movement.payrollModule &&
+              item.periodStart === movement.periodStart,
+          );
+          if (run && run.status !== "DRAFT") return current;
+          return {
+            ...current,
+            movements: [
+              ...current.movements,
+              {
+                ...movement,
+                id: id("movement"),
+                createdAt: isoDate(new Date()),
+              },
+            ],
+            decisions:
+              movement.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    [movement.employeeId],
+                    movement.periodStart,
+                    "MOVIMIENTO AGREGADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
+          };
+        }),
       updateMovement: (movementId, patch) =>
-        update((current) => ({
-          ...current,
-          movements: current.movements.map((movement) =>
-            movement.id === movementId
-              ? { ...movement, ...patch, status: "DRAFT" }
-              : movement,
-          ),
-        })),
+        update((current) => {
+          const selected = current.movements.find(
+            (movement) => movement.id === movementId,
+          );
+          const run = selected
+            ? current.runs.find(
+                (item) =>
+                  item.module === selected.payrollModule &&
+                  item.periodStart === selected.periodStart,
+              )
+            : undefined;
+          if (!selected || (run && run.status !== "DRAFT")) return current;
+          return {
+            ...current,
+            movements: current.movements.map((movement) =>
+              movement.id === movementId
+                ? { ...movement, ...patch, status: "DRAFT" }
+                : movement,
+            ),
+            decisions:
+              selected.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    [selected.employeeId],
+                    selected.periodStart,
+                    "MOVIMIENTO EDITADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
+          };
+        }),
       deleteMovement: (movementId) =>
-        update((current) => ({
-          ...current,
-          movements: current.movements.filter(
-            (movement) => movement.id !== movementId,
-          ),
-        })),
+        update((current) => {
+          const selected = current.movements.find(
+            (movement) => movement.id === movementId,
+          );
+          const run = selected
+            ? current.runs.find(
+                (item) =>
+                  item.module === selected.payrollModule &&
+                  item.periodStart === selected.periodStart,
+              )
+            : undefined;
+          if (!selected || (run && run.status !== "DRAFT")) return current;
+          return {
+            ...current,
+            movements: current.movements.filter(
+              (movement) => movement.id !== movementId,
+            ),
+            decisions:
+              selected.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    [selected.employeeId],
+                    selected.periodStart,
+                    "MOVIMIENTO ELIMINADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
+          };
+        }),
       setMovementStatus: (movementId, status) =>
-        update((current) => ({
-          ...current,
-          movements: current.movements.map((movement) =>
-            movement.id === movementId ? { ...movement, status } : movement,
-          ),
-        })),
+        update((current) => {
+          const selected = current.movements.find(
+            (movement) => movement.id === movementId,
+          );
+          const run = selected
+            ? current.runs.find(
+                (item) =>
+                  item.module === selected.payrollModule &&
+                  item.periodStart === selected.periodStart,
+              )
+            : undefined;
+          if (!selected || (run && run.status !== "DRAFT")) return current;
+          const affectsPayroll =
+            selected.status !== status &&
+            (selected.status === "APPROVED" || status === "APPROVED");
+          return {
+            ...current,
+            movements: current.movements.map((movement) =>
+              movement.id === movementId ? { ...movement, status } : movement,
+            ),
+            decisions: affectsPayroll
+              ? invalidateAuthorizedDecisions(
+                  current.decisions,
+                  [selected.employeeId],
+                  selected.periodStart,
+                  "MOVIMIENTO ACTUALIZADO · REQUIERE NUEVA CONFIRMACIÓN",
+                )
+              : current.decisions,
+          };
+        }),
       addBonusFineConcept: (concept) =>
         update((current) => ({
           ...current,
@@ -4463,6 +4779,15 @@ export function PayrollDemoProvider({
                 createdAt: isoDate(new Date()),
               },
             ],
+            decisions:
+              adjustment.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    adjustment.participantIds,
+                    adjustment.periodStart,
+                    "AJUSTE AGREGADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
           };
         }),
       updatePayrollAdjustment: (adjustmentId, patch) =>
@@ -4485,6 +4810,15 @@ export function PayrollDemoProvider({
                   }
                 : item,
             ),
+            decisions:
+              adjustment?.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    adjustment.participantIds,
+                    adjustment.periodStart,
+                    "AJUSTE EDITADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
           };
         }),
       setPayrollAdjustmentStatus: (adjustmentId, status) =>
@@ -4496,11 +4830,23 @@ export function PayrollDemoProvider({
             ? current.runs.find((item) => item.id === adjustment.payrollRunId)
             : undefined;
           if (run && run.status !== "DRAFT") return current;
+          if (!adjustment) return current;
+          const affectsPayroll =
+            adjustment.status !== status &&
+            (adjustment.status === "APPROVED" || status === "APPROVED");
           return {
             ...current,
             adjustments: current.adjustments.map((item) =>
               item.id === adjustmentId ? { ...item, status } : item,
             ),
+            decisions: affectsPayroll
+              ? invalidateAuthorizedDecisions(
+                  current.decisions,
+                  adjustment.participantIds,
+                  adjustment.periodStart,
+                  "AJUSTE ACTUALIZADO · REQUIERE NUEVA CONFIRMACIÓN",
+                )
+              : current.decisions,
           };
         }),
       addLoan: (loan) =>
@@ -4536,6 +4882,15 @@ export function PayrollDemoProvider({
                 ],
               },
             ],
+            decisions:
+              loan.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    [loan.employeeId],
+                    loan.firstPeriod,
+                    "PRÉSTAMO O ADELANTO ACTUALIZADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
           };
         }),
       updateLoan: (loanId, patch) =>
@@ -4585,12 +4940,20 @@ export function PayrollDemoProvider({
           const run = selected
             ? current.runs.find((item) => item.id === selected.payrollRunId)
             : undefined;
-          return run && run.status !== "DRAFT"
-            ? current
-            : {
-                ...current,
-                loans: current.loans.filter((loan) => loan.id !== loanId),
-              };
+          if (!selected || (run && run.status !== "DRAFT")) return current;
+          return {
+            ...current,
+            loans: current.loans.filter((loan) => loan.id !== loanId),
+            decisions:
+              selected.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    [selected.employeeId],
+                    selected.firstPeriod,
+                    "PRÉSTAMO O ADELANTO ELIMINADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
+          };
         }),
       setLoanStatus: (loanId, status) =>
         update((current) => {
@@ -4602,7 +4965,10 @@ export function PayrollDemoProvider({
           const run = selected
             ? current.runs.find((item) => item.id === selected.payrollRunId)
             : undefined;
-          if (run && run.status !== "DRAFT") return current;
+          if (!selected || (run && run.status !== "DRAFT")) return current;
+          const affectsPayroll =
+            selected.status !== status &&
+            (selected.status === "APPROVED" || status === "APPROVED");
           return {
             ...current,
             loans: current.loans.map((loan) =>
@@ -4627,6 +4993,14 @@ export function PayrollDemoProvider({
                   }
                 : loan,
             ),
+            decisions: affectsPayroll
+              ? invalidateAuthorizedDecisions(
+                  current.decisions,
+                  [selected.employeeId],
+                  selected.firstPeriod,
+                  "PRÉSTAMO O ADELANTO ACTUALIZADO · REQUIERE NUEVA CONFIRMACIÓN",
+                )
+              : current.decisions,
           };
         }),
       updateFinancialRequestPolicy: (policy) =>
@@ -4737,6 +5111,96 @@ export function PayrollDemoProvider({
             run.id === runId ? { ...run, status } : run,
           ),
         })),
+      closeCommissionRun: (runId) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          const activeRole = current.roles.find(
+            (role) => role.id === activeEmployee?.roleId,
+          );
+          const selectedRun = current.runs.find((run) => run.id === runId);
+          if (
+            !activeEmployee ||
+            !selectedRun ||
+            selectedRun.module !== "COMMISSION" ||
+            selectedRun.status !== "DRAFT" ||
+            !roleHasPermission(activeRole, "payroll.approve")
+          )
+            return current;
+          return {
+            ...current,
+            runs: current.runs.map((run) =>
+              run.id === runId
+                ? {
+                    ...run,
+                    status: "APPROVED" as const,
+                    closureReason: "MANUAL" as const,
+                    closedAt: new Date().toISOString(),
+                    closedByEmployeeId: activeEmployee.id,
+                  }
+                : run,
+            ),
+          };
+        }),
+      reopenCommissionRun: (runId, masterCode, reason) =>
+        update((current) => {
+          const authorizingMaster = current.employees.find(
+            (employee) =>
+              employee.active &&
+              employee.roleId === "role-admin" &&
+              employee.secondaryAccessKey === masterCode,
+          );
+          if (!authorizingMaster) return current;
+          const selectedRun = current.runs.find((run) => run.id === runId);
+          if (
+            !selectedRun ||
+            selectedRun.module !== "COMMISSION" ||
+            selectedRun.status === "DRAFT"
+          )
+            return current;
+          return {
+            ...current,
+            runs: current.runs.map((run) =>
+              run.id === runId
+                ? {
+                    ...run,
+                    status: "DRAFT" as const,
+                    reopenedAt: new Date().toISOString(),
+                    reopenedByEmployeeId: authorizingMaster.id,
+                    reopenReason: reason.trim(),
+                    revision: (run.revision ?? 0) + 1,
+                  }
+                : run,
+            ),
+          };
+        }),
+      resetCommissionApprovals: (periodStart, employeeIds, reason) =>
+        update((current) => {
+          const selectedIds = new Set(employeeIds);
+          const run = current.runs.find(
+            (item) =>
+              item.module === "COMMISSION" &&
+              item.periodStart === periodStart,
+          );
+          if (!run || run.status !== "DRAFT" || selectedIds.size === 0)
+            return current;
+          return {
+            ...current,
+            decisions: current.decisions.map((decision) =>
+              decision.periodStart === periodStart &&
+              selectedIds.has(decision.employeeId) &&
+              decision.status === "AUTHORIZED"
+                ? {
+                    ...decision,
+                    status: "PENDING" as const,
+                    note: reason.trim(),
+                    updatedAt: new Date().toISOString(),
+                  }
+                : decision,
+            ),
+          };
+        }),
       closeRunAndOpenNextPeriod: (runId, nextPeriod, balances) =>
         update((current) => {
           const activeEmployee = current.employees.find(
@@ -4844,29 +5308,81 @@ export function PayrollDemoProvider({
           };
         }),
       setCalculationMode: (mode) =>
-        update((current) => ({
-          ...current,
-          calculationMode: mode,
-          runs: current.runs.map((run) => {
-            const activeConfig = current.periodConfigs.find(
-              (config) => config.module === run.module,
-            );
-            return run.status === "DRAFT" &&
-              activeConfig &&
-              run.periodStart === activeConfig.periodStart &&
-              run.periodEnd === activeConfig.periodEnd
-              ? { ...run, mode }
-              : run;
-          }),
-        })),
-      setCommissionModeOverride: (employeeId, mode) =>
         update((current) => {
+          if (current.calculationMode === mode) return current;
+          const affectedPeriods = new Set(
+            current.runs
+              .filter((run) => {
+                const activeConfig = current.periodConfigs.find(
+                  (config) => config.module === run.module,
+                );
+                return (
+                  run.status === "DRAFT" &&
+                  Boolean(activeConfig) &&
+                  run.periodStart === activeConfig?.periodStart &&
+                  run.periodEnd === activeConfig?.periodEnd
+                );
+              })
+              .map((run) => run.periodStart),
+          );
+          const updatedAt = new Date().toISOString();
+          return {
+            ...current,
+            calculationMode: mode,
+            runs: current.runs.map((run) => {
+              const activeConfig = current.periodConfigs.find(
+                (config) => config.module === run.module,
+              );
+              return run.status === "DRAFT" &&
+                activeConfig &&
+                run.periodStart === activeConfig.periodStart &&
+                run.periodEnd === activeConfig.periodEnd
+                ? { ...run, mode }
+                : run;
+            }),
+            decisions: current.decisions.map((decision) =>
+              affectedPeriods.has(decision.periodStart) &&
+              decision.status === "AUTHORIZED"
+                ? {
+                    ...decision,
+                    status: "PENDING" as const,
+                    note: "BASE GLOBAL DE IVA ACTUALIZADA · REQUIERE NUEVA CONFIRMACIÓN",
+                    updatedAt,
+                  }
+                : decision,
+            ),
+          };
+        }),
+      setCommissionModeOverride: (employeeId, periodStart, mode) =>
+        update((current) => {
+          const run = current.runs.find(
+            (item) =>
+              item.module === "COMMISSION" &&
+              item.periodStart === periodStart,
+          );
+          if (run && run.status !== "DRAFT") return current;
           const commissionModeOverrides = {
             ...current.commissionModeOverrides,
           };
-          if (mode) commissionModeOverrides[employeeId] = mode;
-          else delete commissionModeOverrides[employeeId];
-          return { ...current, commissionModeOverrides };
+          const overrideKey = `${periodStart}:${employeeId}`;
+          if (mode) commissionModeOverrides[overrideKey] = mode;
+          else delete commissionModeOverrides[overrideKey];
+          return {
+            ...current,
+            commissionModeOverrides,
+            decisions: current.decisions.map((decision) =>
+              decision.employeeId === employeeId &&
+              decision.periodStart === periodStart &&
+              decision.status === "AUTHORIZED"
+                ? {
+                    ...decision,
+                    status: "PENDING" as const,
+                    note: "BASE DE VENTA CORREGIDA · REQUIERE NUEVA CONFIRMACIÓN",
+                    updatedAt: new Date().toISOString(),
+                  }
+                : decision,
+            ),
+          };
         }),
       setPayrollCostAllocationModes: (periodStart, modes) =>
         update((current) => {
@@ -5043,6 +5559,7 @@ export function PayrollDemoProvider({
             periodEnd,
           );
           const nextInclusion: DemoPeriodTaxInclusion = {
+            payrollModule: null,
             periodStart,
             periodEnd,
             includeSocialCost: existing?.includeSocialCost ?? true,
@@ -5056,6 +5573,42 @@ export function PayrollDemoProvider({
             periodTaxInclusions: [
               ...current.periodTaxInclusions.filter(
                 (inclusion) =>
+                  Boolean(inclusion.payrollModule) ||
+                  inclusion.periodStart !== periodStart ||
+                  inclusion.periodEnd !== periodEnd,
+              ),
+              nextInclusion,
+            ],
+          };
+        }),
+      setModuleTaxInclusion: (module, periodStart, periodEnd, patch) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          if (activeEmployee?.roleId !== "role-admin") return current;
+          const existing = moduleTaxInclusionForRange(
+            current.periodTaxInclusions,
+            periodStart,
+            periodEnd,
+            module,
+          );
+          const nextInclusion: DemoPeriodTaxInclusion = {
+            payrollModule: module,
+            periodStart,
+            periodEnd,
+            includeSocialCost: existing?.includeSocialCost ?? false,
+            includeIsr: existing?.includeIsr ?? false,
+            ...patch,
+            updatedAt: new Date().toISOString(),
+            updatedByEmployeeId: activeEmployee.id,
+          };
+          return {
+            ...current,
+            periodTaxInclusions: [
+              ...current.periodTaxInclusions.filter(
+                (inclusion) =>
+                  inclusion.payrollModule !== module ||
                   inclusion.periodStart !== periodStart ||
                   inclusion.periodEnd !== periodEnd,
               ),
@@ -5214,21 +5767,38 @@ export function PayrollDemoProvider({
           };
         }),
       upsertChristmasBonus: (bonus) =>
-        update((current) => ({
-          ...current,
-          christmasBonuses: current.christmasBonuses.some(
+        update((current) => {
+          const existing = current.christmasBonuses.find(
             (item) => item.id === bonus.id,
-          )
-            ? current.christmasBonuses.map((item) =>
-                item.id === bonus.id
-                  ? { ...bonus, updatedAt: new Date().toISOString() }
-                  : item,
-              )
-            : [
-                ...current.christmasBonuses,
-                { ...bonus, updatedAt: new Date().toISOString() },
-              ],
-        })),
+          );
+          let nextBonus = {
+            ...bonus,
+            updatedAt: new Date().toISOString(),
+          };
+          if (existing?.paidPeriodIds.length) {
+            const paidPeriodIds = Array.from(
+              new Set([...existing.paidPeriodIds, ...bonus.paidPeriodIds]),
+            );
+            if (paidPeriodIds.length === existing.paidPeriodIds.length) {
+              return current;
+            }
+            nextBonus = {
+              ...existing,
+              paidPeriodIds,
+              paymentDate: bonus.paymentDate,
+              status: bonus.status,
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return {
+            ...current,
+            christmasBonuses: existing
+              ? current.christmasBonuses.map((item) =>
+                  item.id === bonus.id ? nextBonus : item,
+                )
+              : [...current.christmasBonuses, nextBonus],
+          };
+        }),
       replaceChristmasBonusPaymentPeriods: (year, periods) =>
         update((current) => ({
           ...current,
@@ -5323,6 +5893,15 @@ export function PayrollDemoProvider({
                   }
                 : entry,
             ),
+            decisions:
+              selected?.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    [selected.employeeId],
+                    selected.periodStart,
+                    "VIÁTICO ACTUALIZADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
           };
         }),
       deleteViaticsEntry: (entryId) =>
@@ -5333,14 +5912,22 @@ export function PayrollDemoProvider({
           const run = selected?.payrollRunId
             ? current.runs.find((item) => item.id === selected.payrollRunId)
             : undefined;
-          return run && run.status !== "DRAFT"
-            ? current
-            : {
-                ...current,
-                viaticsEntries: current.viaticsEntries.filter(
-                  (entry) => entry.id !== entryId,
-                ),
-              };
+          if (!selected || (run && run.status !== "DRAFT")) return current;
+          return {
+            ...current,
+            viaticsEntries: current.viaticsEntries.filter(
+              (entry) => entry.id !== entryId,
+            ),
+            decisions:
+              selected.status === "APPROVED"
+                ? invalidateAuthorizedDecisions(
+                    current.decisions,
+                    [selected.employeeId],
+                    selected.periodStart,
+                    "VIÁTICO ELIMINADO · REQUIERE NUEVA CONFIRMACIÓN",
+                  )
+                : current.decisions,
+          };
         }),
       setViaticsEntryStatus: (entryId, status, payrollRunId) =>
         update((current) => {
@@ -5354,10 +5941,18 @@ export function PayrollDemoProvider({
             ? current.runs.find((item) => item.id === selected.payrollRunId)
             : undefined;
           if (
+            !selected ||
             (run && run.status !== "DRAFT") ||
             (currentRun && currentRun.status !== "DRAFT")
           )
             return current;
+          const affectsPayroll =
+            selected.status !== status &&
+            (selected.status === "APPROVED" || status === "APPROVED");
+          const affectedPeriod =
+            status === "APPROVED"
+              ? (run?.periodStart ?? selected.periodStart)
+              : selected.periodStart;
           return {
             ...current,
             viaticsEntries: current.viaticsEntries.map((entry) =>
@@ -5380,6 +5975,14 @@ export function PayrollDemoProvider({
                   }
                 : entry,
             ),
+            decisions: affectsPayroll
+              ? invalidateAuthorizedDecisions(
+                  current.decisions,
+                  [selected.employeeId],
+                  affectedPeriod,
+                  "VIÁTICO ACTUALIZADO · REQUIERE NUEVA CONFIRMACIÓN",
+                )
+              : current.decisions,
           };
         }),
       addRole: (name) =>
@@ -5475,9 +6078,8 @@ export function PayrollDemoProvider({
           ),
         })),
       setDecision: (employeeId, periodStart, status, note) =>
-        update((current) => ({
-          ...current,
-          decisions: [
+        update((current) => {
+          const decisions = [
             ...current.decisions.filter(
               (decision) =>
                 !(
@@ -5492,8 +6094,56 @@ export function PayrollDemoProvider({
               note,
               updatedAt: new Date().toISOString(),
             },
-          ],
-        })),
+          ];
+          const commissionRun = current.runs.find(
+            (run) =>
+              run.module === "COMMISSION" &&
+              run.periodStart === periodStart,
+          );
+          const eligibleSellerIds = current.employees
+            .filter(
+              (employee) =>
+                employee.category === "SELLER" &&
+                employeeAppliesToPeriod(
+                  employee,
+                  periodStart,
+                  commissionRun?.periodEnd ?? periodStart,
+                ) &&
+                employeeCommissionPayrollModule(employee) === "COMMISSION",
+            )
+            .map((employee) => employee.id);
+          const authorizedIds = new Set(
+            decisions
+              .filter(
+                (decision) =>
+                  decision.periodStart === periodStart &&
+                  decision.status === "AUTHORIZED",
+              )
+              .map((decision) => decision.employeeId),
+          );
+          const allReceiptsAuthorized =
+            eligibleSellerIds.length > 0 &&
+            eligibleSellerIds.every((sellerId) =>
+              authorizedIds.has(sellerId),
+            );
+          return {
+            ...current,
+            decisions,
+            runs: current.runs.map((run) =>
+              run.id === commissionRun?.id &&
+              run.status === "DRAFT" &&
+              allReceiptsAuthorized
+                ? {
+                    ...run,
+                    status: "APPROVED" as const,
+                    closureReason: "ALL_RECEIPTS_AUTHORIZED" as const,
+                    closedAt: new Date().toISOString(),
+                    closedByEmployeeId: employeeId,
+                  }
+                : run,
+            ),
+          };
+        }),
       setKioskReceiptDecision: (managerId, month, status, note) =>
         update((current) => ({
           ...current,
@@ -5512,7 +6162,10 @@ export function PayrollDemoProvider({
           ],
         })),
       resetDemo: () => {
-        setState(createInitialState());
+        setState({
+          ...createInitialState(),
+          lastUpdatedAt: new Date().toISOString(),
+        });
       },
       payrollLines,
     }),

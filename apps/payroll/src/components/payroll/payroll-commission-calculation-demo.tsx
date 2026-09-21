@@ -7,14 +7,24 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  KeyRound,
+  LockKeyhole,
   RefreshCw,
   Search,
+  Store,
+  UsersRound,
 } from "lucide-react";
 import {
   Badge,
   Button,
   Card,
   CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Input,
   Label,
   Select,
@@ -25,13 +35,19 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
   toast,
 } from "@cosmetics/ui";
 import { ReportExportButtons } from "./report-export-buttons";
-import { type DemoPayrollRun, usePayrollDemo } from "./payroll-demo-context";
+import {
+  type DemoPayrollRun,
+  type EmployeePayrollLine,
+  usePayrollDemo,
+} from "./payroll-demo-context";
+import { employeeCostAllocationShares } from "./payroll-cost-branch-selector";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -57,6 +73,9 @@ export function PayrollCommissionCalculationDemo() {
     periodOptions,
     payrollLines,
     createRun,
+    closeCommissionRun,
+    reopenCommissionRun,
+    resetCommissionApprovals,
     setCalculationMode,
     setCommissionModeOverride,
   } = usePayrollDemo();
@@ -70,20 +89,43 @@ export function PayrollCommissionCalculationDemo() {
       item.periodEnd === period.end,
   );
   const payrollLocked = Boolean(activeRun && activeRun.status !== "DRAFT");
+  const calculationMode = activeRun?.mode ?? state.calculationMode;
   const [payDate, setPayDate] = useState(activeRun?.payDate ?? period.end);
   const [draftMode, setDraftMode] = useState<DemoPayrollRun["mode"]>(
     state.calculationMode,
   );
   const [search, setSearch] = useState("");
+  const [positionFilter, setPositionFilter] = useState("ALL");
+  const [branchFilter, setBranchFilter] = useState("ALL");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
   const [showMissing, setShowMissing] = useState(false);
-  const lines = payrollLines(
-    period.start,
-    state.calculationMode,
-    period.end,
-    "COMMISSION",
-  ).filter((line) => line.employee.category === "SELLER");
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [masterCode, setMasterCode] = useState("");
+  const lines = useMemo(
+    () =>
+      payrollLines(
+        period.start,
+        calculationMode,
+        period.end,
+        "COMMISSION",
+      ),
+    [calculationMode, payrollLines, period.end, period.start],
+  );
+  const consolidatedActivityLines = useMemo(
+    () =>
+      payrollLines(
+        period.start,
+        calculationMode,
+        period.end,
+        "CONSOLIDATED",
+      ).filter(
+        (line) =>
+          line.grossSales > 0 || line.commission > 0 || line.bonuses > 0,
+      ),
+    [calculationMode, payrollLines, period.end, period.start],
+  );
   const detailRows = useMemo(
     () =>
       lines.map((line) => {
@@ -120,16 +162,59 @@ export function PayrollCommissionCalculationDemo() {
       state.sales,
     ],
   );
+  const approvedReceiptCount = detailRows.filter(
+    (row) => row.approvalStatus === "AUTHORIZED",
+  ).length;
+  const pendingReceiptCount = detailRows.length - approvedReceiptCount;
+  const masterEmployee = state.employees.find(
+    (employee) =>
+      employee.active &&
+      employee.roleId === "role-admin" &&
+      employee.secondaryAccessKey,
+  );
   const missingScheme = detailRows.filter(
     (row) => row.line.schemeName === "SIN ESQUEMA",
   );
   const normalizedSearch = search.trim().toLocaleLowerCase("es-MX");
+  const positionOptions = Array.from(
+    new Set(detailRows.map((row) => row.line.employee.position)),
+  ).sort((left, right) => left.localeCompare(right, "es-MX"));
+  const branchOptions = Array.from(
+    new Set(detailRows.map((row) => row.branch)),
+  ).sort((left, right) => left.localeCompare(right, "es-MX"));
   const filteredRows = detailRows.filter(
-    (row) =>
-      !normalizedSearch ||
-      `${row.line.employee.name} ${row.branch} ${row.line.schemeName}`
-        .toLocaleLowerCase("es-MX")
-        .includes(normalizedSearch),
+    (row) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        `${row.line.employee.name} ${row.line.employee.position} ${row.branch} ${row.line.schemeName}`
+          .toLocaleLowerCase("es-MX")
+          .includes(normalizedSearch);
+      return (
+        matchesSearch &&
+        (positionFilter === "ALL" ||
+          row.line.employee.position === positionFilter) &&
+        (branchFilter === "ALL" || row.branch === branchFilter)
+      );
+    },
+  );
+  const filteredDeductions = filteredRows.reduce(
+    (sum, row) =>
+      sum +
+      row.line.fines +
+      row.line.loanDeduction +
+      row.line.externalDeductions +
+      row.line.viaticsDeductions +
+      row.line.carriedNegativeBalance,
+    0,
+  );
+  const filteredAdjustments = filteredRows.reduce(
+    (sum, row) =>
+      sum +
+      row.line.externalAdditions -
+      row.line.externalDeductions +
+      row.line.viaticsAdditions -
+      row.line.viaticsDeductions,
+    0,
   );
   const effectivePageSize =
     pageSize === "ALL" ? Math.max(filteredRows.length, 1) : Number(pageSize);
@@ -152,6 +237,33 @@ export function PayrollCommissionCalculationDemo() {
     (sum, row) => sum + row.line.sales,
     0,
   );
+  const calculatedCommission = detailRows.reduce(
+    (sum, row) => sum + row.line.commission,
+    0,
+  );
+  const calculatedBonuses = detailRows.reduce(
+    (sum, row) => sum + row.line.bonuses,
+    0,
+  );
+  const consolidatedSales = consolidatedActivityLines.reduce(
+    (sum, line) => sum + line.sales,
+    0,
+  );
+  const consolidatedCommission = consolidatedActivityLines.reduce(
+    (sum, line) => sum + line.commission,
+    0,
+  );
+  const consolidatedBonuses = consolidatedActivityLines.reduce(
+    (sum, line) => sum + line.bonuses,
+    0,
+  );
+  const salesDifference = selectedSales - consolidatedSales;
+  const commissionDifference = calculatedCommission - consolidatedCommission;
+  const bonusDifference = calculatedBonuses - consolidatedBonuses;
+  const consolidatedReconciled =
+    Math.abs(salesDifference) < 0.01 &&
+    Math.abs(commissionDifference) < 0.01 &&
+    Math.abs(bonusDifference) < 0.01;
   const payrollTotal = detailRows.reduce((sum, row) => sum + row.line.total, 0);
   const deductions = detailRows.reduce(
     (sum, row) =>
@@ -172,7 +284,7 @@ export function PayrollCommissionCalculationDemo() {
       row.line.viaticsDeductions,
     0,
   );
-  const exportRows = detailRows.map((row) => ({
+  const exportRows = filteredRows.map((row) => ({
     employee: row.line.employee.name,
     branch: row.branch,
     grossSales: row.grossSales,
@@ -191,23 +303,38 @@ export function PayrollCommissionCalculationDemo() {
   }));
   const exportConfig = {
     title: "Cálculo de comisiones",
-    subtitle: `${period.start} — ${period.end} · Base global ${state.calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"}`,
+    subtitle: `${period.start} — ${period.end} · Base global ${calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"}`,
     metadata: [
       { label: "Periodo", value: `${period.start} — ${period.end}` },
       { label: "Tipo de nómina", value: "COMISIONES" },
-      { label: "Alcance", value: "REPORTE GENERAL · TODOS LOS VENDEDORES" },
-      { label: "Base de cálculo", value: state.calculationMode === "WITH_VAT" ? "CON IVA" : "SIN IVA" },
+      {
+        label: "Puesto",
+        value: positionFilter === "ALL" ? "TODOS" : positionFilter,
+      },
+      {
+        label: "Sucursal",
+        value: branchFilter === "ALL" ? "EMPRESA COMPLETA" : branchFilter,
+      },
+      {
+        label: "Alcance",
+        value:
+          positionFilter === "ALL" && branchFilter === "ALL" && !search.trim()
+            ? "REPORTE GENERAL"
+            : "SELECCIÓN FILTRADA",
+      },
+      { label: "Base de cálculo", value: calculationMode === "WITH_VAT" ? "CON IVA" : "SIN IVA" },
     ],
     metrics: [
-      { label: "Ventas calculadas", value: money.format(selectedSales), detail: "Base global y excepciones" },
-      { label: "Nómina total", value: money.format(payrollTotal), detail: `${detailRows.length} vendedores` },
-      { label: "Deducciones", value: money.format(deductions), detail: "Multas, préstamos y ajustes" },
-      { label: "Ajuste neto", value: money.format(adjustments), detail: "Movimientos del periodo" },
+      { label: "Ventas calculadas", value: money.format(filteredRows.reduce((sum, row) => sum + row.line.sales, 0)), detail: "Selección exportada" },
+      { label: "Nómina total", value: money.format(filteredRows.reduce((sum, row) => sum + row.line.total, 0)), detail: `${filteredRows.length} empleados` },
+      { label: "Deducciones", value: money.format(filteredDeductions), detail: "Multas, préstamos y ajustes" },
+      { label: "Conciliación", value: consolidatedReconciled ? "CUADRADA" : "REVISAR", detail: "Ventas, comisiones y bonos contra Consolidado" },
     ],
     analysis: [
-      `${detailRows.filter((row) => row.approvalStatus === "AUTHORIZED").length} de ${detailRows.length} recibos aparecen aprobados por el personal.`,
-      `La nómina de comisiones suma ${money.format(payrollTotal)} para el periodo seleccionado.`,
-      `El archivo incluye ventas con IVA y sin IVA para auditar la base aplicada a cada vendedor.`,
+      `${filteredRows.filter((row) => row.approvalStatus === "AUTHORIZED").length} de ${filteredRows.length} recibos de la selección aparecen aprobados por el personal.`,
+      `La selección de comisiones suma ${money.format(filteredRows.reduce((sum, row) => sum + row.line.total, 0))}.`,
+      `La conciliación general contra Consolidado ${consolidatedReconciled ? "está cuadrada" : "presenta diferencias"}: ventas ${money.format(salesDifference)}, comisiones ${money.format(commissionDifference)} y bonos ${money.format(bonusDifference)}.`,
+      `El archivo incluye ventas con IVA y sin IVA para auditar la base aplicada a cada empleado.`,
     ],
     filename: `calculo-comisiones-${period.start}`,
     sheetName: "Comisiones",
@@ -302,7 +429,16 @@ export function PayrollCommissionCalculationDemo() {
     ],
   };
 
-  useEffect(() => setPage(1), [pageSize, periodStart, search]);
+  useEffect(
+    () => setPage(1),
+    [branchFilter, pageSize, periodStart, positionFilter, search],
+  );
+
+  useEffect(() => {
+    setPayDate(activeRun?.payDate ?? period.end);
+    setDraftMode(activeRun?.mode ?? state.calculationMode);
+    setMasterCode("");
+  }, [activeRun?.id, activeRun?.mode, activeRun?.payDate, period.end, state.calculationMode]);
 
   function saveAndRecalculate() {
     if (payrollLocked) {
@@ -311,10 +447,52 @@ export function PayrollCommissionCalculationDemo() {
       );
       return;
     }
+    const payrollChanged =
+      !activeRun ||
+      activeRun.mode !== draftMode ||
+      activeRun.payDate !== payDate;
     setCalculationMode(draftMode);
     createRun("COMMISSION", period.start, period.end, draftMode, payDate);
+    if (payrollChanged)
+      resetCommissionApprovals(
+        period.start,
+        detailRows.map((row) => row.line.employee.id),
+        "NÓMINA RECALCULADA · REQUIERE NUEVA CONFIRMACIÓN",
+      );
     toast.success(
       "Borrador guardado y todos los reportes fueron recalculados.",
+    );
+  }
+
+  function closePayroll() {
+    if (!activeRun || activeRun.status !== "DRAFT") {
+      toast.error("No existe una corrida abierta para cerrar.");
+      return;
+    }
+    closeCommissionRun(activeRun.id);
+    setCloseDialogOpen(false);
+    toast.success("Nómina cerrada manualmente. Los importes quedaron bloqueados.");
+  }
+
+  function reopenPayroll() {
+    if (!activeRun || !masterEmployee?.secondaryAccessKey) {
+      toast.error("No existe un código máster disponible.");
+      return;
+    }
+    if (masterCode !== masterEmployee.secondaryAccessKey) {
+      toast.error("Código máster incorrecto.");
+      setMasterCode("");
+      return;
+    }
+    reopenCommissionRun(
+      activeRun.id,
+      masterCode,
+      "CORRECCIÓN AUTORIZADA EN CÁLCULO DE COMISIONES",
+    );
+    setReopenDialogOpen(false);
+    setMasterCode("");
+    toast.success(
+      "Nómina reabierta. Cada cambio revocará la confirmación del personal afectado.",
     );
   }
 
@@ -324,12 +502,12 @@ export function PayrollCommissionCalculationDemo() {
         <div className="mb-2 flex items-center gap-2">
           <Badge variant="outline">SUBMENÚ INDEPENDIENTE</Badge>
           <span className="text-xs text-[color:var(--text-muted)]">
-            Cálculo auditable por vendedor
+            Cálculo auditable por empleado
           </span>
         </div>
         <h1 className="page-title">Cálculo de comisiones</h1>
         <p className="mt-1 max-w-3xl text-sm text-[color:var(--text-muted)]">
-          Configura la corrida, aplica excepciones de IVA por vendedor y revisa
+          Configura la corrida, aplica excepciones de IVA por empleado y revisa
           cada concepto antes del pago.
         </p>
       </header>
@@ -347,14 +525,49 @@ export function PayrollCommissionCalculationDemo() {
                 </p>
                 <Badge className="border-white/15 bg-white/10 text-white">
                   {activeRun?.status === "APPROVED"
-                    ? "AUTORIZADA"
+                    ? "CERRADA"
                     : activeRun?.status === "PAID"
                       ? "PAGADA"
                       : "BORRADOR"}
                 </Badge>
               </div>
+              {activeRun?.status !== "DRAFT" ? (
+                <p className="mt-1 text-[9px] uppercase tracking-[0.12em] text-white/55">
+                  {activeRun?.closureReason === "ALL_RECEIPTS_AUTHORIZED"
+                    ? "CIERRE AUTOMÁTICO · TODOS LOS RECIBOS APROBADOS"
+                    : "CIERRE MANUAL · DATOS BLOQUEADOS"}
+                </p>
+              ) : activeRun?.reopenedAt ? (
+                <p className="mt-1 text-[9px] uppercase tracking-[0.12em] text-amber-200">
+                  REABIERTA CON CÓDIGO MÁSTER · REVISIÓN {activeRun.revision ?? 1}
+                </p>
+              ) : null}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {payrollLocked ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  onClick={() => setReopenDialogOpen(true)}
+                >
+                  <KeyRound className="mr-1.5 h-4 w-4" />
+                  Modificar con código máster
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-200/40 bg-amber-200/10 text-amber-50 hover:bg-amber-200/20 hover:text-white"
+                  disabled={!activeRun || !detailRows.length}
+                  onClick={() => setCloseDialogOpen(true)}
+                >
+                  <LockKeyhole className="mr-1.5 h-4 w-4" />
+                  Cerrar nómina
+                </Button>
+              )}
               <span className="hidden text-right text-[10px] uppercase leading-4 tracking-[0.14em] text-white/55 sm:block">
                 Descargar
                 <br />
@@ -362,7 +575,7 @@ export function PayrollCommissionCalculationDemo() {
               </span>
               <ReportExportButtons
                 config={exportConfig}
-                disabled={!detailRows.length}
+                disabled={!filteredRows.length}
                 iconOnly
                 appearance="on-dark"
               />
@@ -405,8 +618,124 @@ export function PayrollCommissionCalculationDemo() {
               </p>
             </div>
           </div>
+          <div
+            className={`mt-5 flex flex-col gap-2 rounded-xl border px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between ${
+              consolidatedReconciled
+                ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-50"
+                : "border-rose-300/40 bg-rose-300/10 text-rose-50"
+            }`}
+          >
+            <span className="flex items-center gap-2 font-semibold uppercase tracking-[0.1em]">
+              {consolidatedReconciled ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <AlertTriangle className="h-4 w-4" />
+              )}
+              Consolidación {consolidatedReconciled ? "cuadrada" : "con diferencia"}
+            </span>
+            <span className="number-display text-[10px] text-white/70">
+              VENTAS {money.format(salesDifference)} · COMISIONES{" "}
+              {money.format(commissionDifference)} · BONOS{" "}
+              {money.format(bonusDifference)}
+            </span>
+          </div>
         </CardContent>
       </Card>
+
+      <Dialog open={closeDialogOpen} onOpenChange={setCloseDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Cerrar nómina de comisiones</DialogTitle>
+            <DialogDescription>
+              El cierre es manual y bloqueará importes, fecha de pago, base de
+              venta y excepciones individuales del periodo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 p-4 text-sm">
+            <p className="font-semibold">
+              {period.start} — {period.end}
+            </p>
+            <p className="mt-2 text-xs text-[color:var(--text-muted)]">
+              {approvedReceiptCount} de {detailRows.length} empleados han
+              confirmado su recibo · {pendingReceiptCount} pendientes.
+            </p>
+            {pendingReceiptCount > 0 ? (
+              <p className="mt-3 flex gap-2 text-xs text-amber-800 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                El cierre manual está permitido, pero conservará como pendientes
+                las confirmaciones faltantes.
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCloseDialogOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={closePayroll}>
+              <LockKeyhole className="mr-2 h-4 w-4" />
+              Confirmar cierre manual
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Autorizar modificación de nómina</DialogTitle>
+            <DialogDescription>
+              Ingresa el código privado máster. La corrida volverá a borrador y
+              cualquier empleado afectado deberá confirmar nuevamente su recibo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="commission-master-code">Código máster</Label>
+            <Input
+              id="commission-master-code"
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              autoComplete="off"
+              value={masterCode}
+              onChange={(event) =>
+                setMasterCode(
+                  event.target.value.replace(/\D/g, "").slice(0, 4),
+                )
+              }
+              placeholder="4 dígitos"
+              className="text-center text-lg tracking-[0.45em]"
+            />
+            <p className="text-[10px] text-[color:var(--text-muted)]">
+              La reapertura quedará registrada con fecha, usuario máster y número
+              de revisión.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setReopenDialogOpen(false);
+                setMasterCode("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={masterCode.length !== 4}
+              onClick={reopenPayroll}
+            >
+              <KeyRound className="mr-2 h-4 w-4" />
+              Reabrir para modificar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -494,13 +823,13 @@ export function PayrollCommissionCalculationDemo() {
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" />
                 <div>
                   <p className="font-semibold text-amber-950 dark:text-amber-100">
-                    Revisa la configuración de vendedores
+                    Revisa la configuración del personal con comisión
                   </p>
                   <p className="mt-1 text-sm text-amber-900/75 dark:text-amber-200/75">
                     {missingScheme.length}{" "}
                     {missingScheme.length === 1
-                      ? "vendedor no tiene"
-                      : "vendedores no tienen"}{" "}
+                      ? "empleado no tiene"
+                      : "empleados no tienen"}{" "}
                     esquema vigente para este periodo.
                   </p>
                 </div>
@@ -571,16 +900,43 @@ export function PayrollCommissionCalculationDemo() {
           </div>
         </div>
         <Card className="border-[color:var(--border-color)]">
-          <CardContent className="p-3">
+          <CardContent className="grid gap-3 p-3 lg:grid-cols-[minmax(260px,1fr)_240px_240px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--text-muted)]" />
               <Input
                 className="pl-9"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="BUSCAR EMPLEADO, SUCURSAL O ESQUEMA"
+                placeholder="BUSCAR EMPLEADO, PUESTO, SUCURSAL O ESQUEMA"
+                aria-label="Buscar empleado en cálculo de comisiones"
               />
             </div>
+            <Select value={positionFilter} onValueChange={setPositionFilter}>
+              <SelectTrigger aria-label="Filtrar cálculo de comisiones por puesto">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">TODOS LOS PUESTOS</SelectItem>
+                {positionOptions.map((position) => (
+                  <SelectItem key={position} value={position}>
+                    {position}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger aria-label="Filtrar cálculo de comisiones por sucursal">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">TODAS LAS SUCURSALES</SelectItem>
+                {branchOptions.map((branch) => (
+                  <SelectItem key={branch} value={branch}>
+                    {branch}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
         <Card className="overflow-hidden border-[color:var(--border-color)]">
@@ -635,6 +991,9 @@ export function PayrollCommissionCalculationDemo() {
                 <TableBody>
                   {pagedRows.map((row) => {
                     const override =
+                      state.commissionModeOverrides[
+                        `${period.start}:${row.line.employee.id}`
+                      ] ??
                       state.commissionModeOverrides[row.line.employee.id];
                     const adjustment =
                       row.line.externalAdditions - row.line.externalDeductions;
@@ -685,6 +1044,7 @@ export function PayrollCommissionCalculationDemo() {
                             onValueChange={(value) => {
                               setCommissionModeOverride(
                                 row.line.employee.id,
+                                period.start,
                                 value === "GLOBAL"
                                   ? null
                                   : (value as DemoPayrollRun["mode"]),
@@ -703,7 +1063,7 @@ export function PayrollCommissionCalculationDemo() {
                             <SelectContent>
                               <SelectItem value="GLOBAL">
                                 HEREDA ·{" "}
-                                {state.calculationMode === "WITH_VAT"
+                                {calculationMode === "WITH_VAT"
                                   ? "IVA"
                                   : "SIN IVA"}
                               </SelectItem>
@@ -832,6 +1192,590 @@ export function PayrollCommissionCalculationDemo() {
           </div>
         </Card>
       </section>
+
+      <CommissionBranchCostReport
+        lines={lines}
+        periodStart={period.start}
+        periodEnd={period.end}
+        payrollTotal={payrollTotal}
+      />
     </div>
+  );
+}
+
+interface CommissionBranchCostRow {
+  line: EmployeePayrollLine;
+  branchSales: Record<string, number>;
+  branchCosts: Record<string, number>;
+  movementNet: number;
+}
+
+function CommissionBranchCostReport({
+  lines,
+  periodStart,
+  periodEnd,
+  payrollTotal,
+}: {
+  lines: EmployeePayrollLine[];
+  periodStart: string;
+  periodEnd: string;
+  payrollTotal: number;
+}) {
+  const { state } = usePayrollDemo();
+  const [search, setSearch] = useState("");
+  const [positionFilter, setPositionFilter] = useState("ALL");
+  const [branchFilter, setBranchFilter] = useState("ALL");
+  const [pageSize, setPageSize] = useState("20");
+  const [page, setPage] = useState(1);
+
+  const rows = useMemo<CommissionBranchCostRow[]>(
+    () =>
+      lines.map((line) => {
+        const salesFactor =
+          line.grossSales > 0 ? line.sales / line.grossSales : 1;
+        const branchSales = state.sales
+          .filter(
+            (sale) =>
+              sale.employeeId === line.employee.id &&
+              sale.date >= periodStart &&
+              sale.date <= periodEnd,
+          )
+          .reduce<Record<string, number>>((totals, sale) => {
+            totals[sale.branchId] =
+              (totals[sale.branchId] ?? 0) + sale.amount * salesFactor;
+            return totals;
+          }, {});
+        const allocations = employeeCostAllocationShares({
+          employee: line.employee,
+          branches: state.branches,
+          sales: state.sales,
+          periodStart,
+          periodEnd,
+          mode: "SALES_SHARE",
+        });
+        const branchCosts: Record<string, number> = {};
+        let assigned = 0;
+        allocations.forEach((allocation, index) => {
+          const cost =
+            index === allocations.length - 1
+              ? line.total - assigned
+              : line.total * allocation.share;
+          branchCosts[allocation.branchId] = cost;
+          assigned += cost;
+        });
+        return {
+          line,
+          branchSales,
+          branchCosts,
+          movementNet: line.total - line.commission,
+        };
+      }),
+    [lines, periodEnd, periodStart, state.branches, state.sales],
+  );
+  const branchColumns = useMemo(
+    () =>
+      state.branches.filter((branch) =>
+        rows.some(
+          (row) =>
+            Object.hasOwn(row.branchCosts, branch.id) ||
+            (row.branchSales[branch.id] ?? 0) > 0,
+        ),
+      ),
+    [rows, state.branches],
+  );
+  const positionOptions = useMemo(
+    () =>
+      Array.from(new Set(rows.map((row) => row.line.employee.position))).sort(
+        (left, right) => left.localeCompare(right, "es-MX"),
+      ),
+    [rows],
+  );
+  const normalizedSearch = search.trim().toLocaleLowerCase("es-MX");
+  const filteredRows = rows.filter((row) => {
+    const matchesSearch =
+      !normalizedSearch ||
+      `${row.line.employee.name} ${row.line.employee.position} ${row.line.schemeName}`
+        .toLocaleLowerCase("es-MX")
+        .includes(normalizedSearch);
+    const matchesPosition =
+      positionFilter === "ALL" ||
+      row.line.employee.position === positionFilter;
+    const matchesBranch =
+      branchFilter === "ALL" ||
+      Object.hasOwn(row.branchCosts, branchFilter) ||
+      (row.branchSales[branchFilter] ?? 0) > 0;
+    return matchesSearch && matchesPosition && matchesBranch;
+  });
+  const effectivePageSize =
+    pageSize === "ALL" ? Math.max(filteredRows.length, 1) : Number(pageSize);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredRows.length / effectivePageSize),
+  );
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = filteredRows.slice(
+    (currentPage - 1) * effectivePageSize,
+    currentPage * effectivePageSize,
+  );
+  const visibleStart =
+    filteredRows.length === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1;
+  const visibleEnd = Math.min(
+    currentPage * effectivePageSize,
+    filteredRows.length,
+  );
+  const filteredPayroll = filteredRows.reduce(
+    (sum, row) => sum + row.line.total,
+    0,
+  );
+  const branchCostTotal = filteredRows.reduce(
+    (total, row) =>
+      total +
+      branchColumns.reduce(
+        (sum, branch) => sum + (row.branchCosts[branch.id] ?? 0),
+        0,
+      ),
+    0,
+  );
+  const reconciliationDifference = branchCostTotal - filteredPayroll;
+  const reconciled = Math.abs(reconciliationDifference) < 0.01;
+  const generalScope =
+    !search.trim() && positionFilter === "ALL" && branchFilter === "ALL";
+  const branchName =
+    state.branches.find((branch) => branch.id === branchFilter)?.name ??
+    "TODAS";
+  const exportConfig = {
+    title: "Carga de costo de comisiones por empleado y sucursal",
+    subtitle: `${periodStart} — ${periodEnd} · ${generalScope ? "REPORTE GENERAL" : "SELECCIÓN FILTRADA"}`,
+    metadata: [
+      { label: "Periodo", value: `${periodStart} — ${periodEnd}` },
+      {
+        label: "Puesto",
+        value: positionFilter === "ALL" ? "TODOS" : positionFilter,
+      },
+      {
+        label: "Sucursal POS",
+        value: branchFilter === "ALL" ? "TODAS" : branchName,
+      },
+      {
+        label: "Origen",
+        value: "VENTAS POR PUNTO DE VENTA · DISTRIBUCIÓN PROPORCIONAL",
+      },
+    ],
+    metrics: [
+      {
+        label: "Personal",
+        value: String(filteredRows.length),
+        detail: "Registros seleccionados",
+      },
+      {
+        label: "Nómina",
+        value: money.format(filteredPayroll),
+        detail: "Total por empleado",
+      },
+      {
+        label: "Carga por sucursal",
+        value: money.format(branchCostTotal),
+        detail: "Suma de columnas POS",
+      },
+      {
+        label: "Conciliación",
+        value: reconciled ? "CUADRADA" : money.format(reconciliationDifference),
+        detail: generalScope ? "Contra la nómina superior" : "Contra la selección",
+      },
+    ],
+    analysis: [
+      `La carga por sucursal ${reconciled ? "coincide" : "no coincide"} con la nómina de la selección; la diferencia es ${money.format(reconciliationDifference)}.`,
+      generalScope
+        ? `El reporte completo concilia ${money.format(branchCostTotal)} contra el total superior de ${money.format(payrollTotal)}.`
+        : "Los filtros reducen las filas visibles; la conciliación se realiza contra los empleados seleccionados.",
+      "Las ventas provienen del punto de venta y distribuyen el pago de cada empleado según la participación de cada sucursal. Si no existen ventas, se usa su centro de costo asignado.",
+      "Bonos, multas, préstamos, ajustes y viáticos permanecen dentro del total del empleado y se distribuyen con la misma proporción para evitar diferencias.",
+    ],
+    filename: `costo-comisiones-sucursal-${periodStart}`,
+    sheetName: "Costo por sucursal",
+    orientation: "landscape" as const,
+    rows: filteredRows,
+    columns: [
+      {
+        header: "EMPLEADO",
+        accessor: (row: CommissionBranchCostRow) => row.line.employee.name,
+        width: 24,
+      },
+      {
+        header: "PUESTO",
+        accessor: (row: CommissionBranchCostRow) => row.line.employee.position,
+        width: 20,
+      },
+      {
+        header: "VENTA POS",
+        accessor: (row: CommissionBranchCostRow) => row.line.grossSales,
+        format: "currency" as const,
+        width: 15,
+      },
+      {
+        header: "COMISIÓN",
+        accessor: (row: CommissionBranchCostRow) => row.line.commission,
+        format: "currency" as const,
+        width: 15,
+      },
+      {
+        header: "MOVIMIENTOS",
+        accessor: (row: CommissionBranchCostRow) => row.movementNet,
+        format: "currency" as const,
+        width: 16,
+      },
+      ...branchColumns.map((branch) => ({
+        header: branch.name,
+        accessor: (row: CommissionBranchCostRow) =>
+          row.branchCosts[branch.id] ?? 0,
+        format: "currency" as const,
+        width: 15,
+      })),
+      {
+        header: "TOTAL NÓMINA",
+        accessor: (row: CommissionBranchCostRow) => row.line.total,
+        format: "currency" as const,
+        width: 17,
+      },
+    ],
+  };
+
+  useEffect(
+    () => setPage(1),
+    [branchFilter, pageSize, positionFilter, search],
+  );
+
+  return (
+    <section
+      className="space-y-4 border-t border-[color:var(--border-color)] pt-7"
+      aria-labelledby="commission-cost-report-title"
+    >
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="label-caps">CONCILIACIÓN POR PUNTO DE VENTA</p>
+            <Badge
+              variant="outline"
+              className={
+                reconciled
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+                  : "border-rose-300 bg-rose-50 text-rose-800 dark:bg-rose-950/30 dark:text-rose-200"
+              }
+            >
+              {reconciled ? "CUADRADA" : "REVISAR DIFERENCIA"}
+            </Badge>
+          </div>
+          <h2
+            id="commission-cost-report-title"
+            className="mt-1 text-xl font-semibold"
+          >
+            Carga de costo por empleado y sucursal
+          </h2>
+          <p className="mt-1 max-w-4xl text-sm text-[color:var(--text-muted)]">
+            Cada columna muestra cuánto de la nómina pagó la sucursal según las
+            ventas importadas del punto de venta. La suma general debe coincidir
+            con la nómina total del periodo.
+          </p>
+        </div>
+        <ReportExportButtons
+          config={exportConfig}
+          disabled={!filteredRows.length}
+        />
+      </div>
+
+      <Card className="border-[color:var(--border-color)]">
+        <CardContent className="grid gap-3 p-4 lg:grid-cols-[minmax(260px,1fr)_240px_240px]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--text-muted)]" />
+            <Input
+              className="pl-9"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="BUSCAR EMPLEADO, PUESTO O ESQUEMA"
+              aria-label="Buscar en carga de costo de comisiones"
+            />
+          </div>
+          <Select value={positionFilter} onValueChange={setPositionFilter}>
+            <SelectTrigger aria-label="Filtrar carga de costo por puesto">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">TODOS LOS PUESTOS</SelectItem>
+              {positionOptions.map((position) => (
+                <SelectItem key={position} value={position}>
+                  {position}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={branchFilter} onValueChange={setBranchFilter}>
+            <SelectTrigger aria-label="Filtrar carga de costo por sucursal POS">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">TODAS LAS SUCURSALES POS</SelectItem>
+              {branchColumns.map((branch) => (
+                <SelectItem key={branch.id} value={branch.id}>
+                  {branch.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-[color:var(--border-color)]">
+          <CardContent className="p-4">
+            <UsersRound className="h-5 w-5 text-[color:var(--text-secondary)]" />
+            <p className="label-caps mt-3">PERSONAL</p>
+            <p className="number-display mt-1 text-xl">
+              {filteredRows.length}
+            </p>
+            <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
+              Empleados con comisión o movimientos
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-[color:var(--border-color)]">
+          <CardContent className="p-4">
+            <Store className="h-5 w-5 text-[color:var(--text-secondary)]" />
+            <p className="label-caps mt-3">SUCURSALES POS</p>
+            <p className="number-display mt-1 text-xl">
+              {branchColumns.length}
+            </p>
+            <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
+              Columnas con ventas o costo
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-[color:var(--border-color)]">
+          <CardContent className="p-4">
+            <p className="label-caps">NÓMINA SELECCIONADA</p>
+            <p className="number-display mt-2 text-xl">
+              {money.format(filteredPayroll)}
+            </p>
+            <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
+              Comisión más movimientos
+            </p>
+          </CardContent>
+        </Card>
+        <Card
+          className={
+            reconciled
+              ? "border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20"
+              : "border-rose-300 bg-rose-50/60 dark:bg-rose-950/20"
+          }
+        >
+          <CardContent className="p-4">
+            <CheckCircle2
+              className={`h-5 w-5 ${reconciled ? "text-emerald-700" : "text-rose-700"}`}
+            />
+            <p className="label-caps mt-3">CARGA POR SUCURSAL</p>
+            <p className="number-display mt-1 text-xl">
+              {money.format(branchCostTotal)}
+            </p>
+            <p className="mt-1 text-[10px] font-semibold">
+              {reconciled
+                ? "COINCIDE CON LA NÓMINA"
+                : `DIFERENCIA ${money.format(reconciliationDifference)}`}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden border-[color:var(--border-color)]">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table className="min-w-max text-[10px]">
+              <TableHeader className="bg-[linear-gradient(110deg,#28231f,#3b3027)] text-white">
+                <TableRow className="border-[#5a493b] hover:bg-transparent">
+                  <TableHead className="min-w-56 text-white/75">
+                    EMPLEADO
+                  </TableHead>
+                  <TableHead className="min-w-44 text-white/75">
+                    PUESTO / ESQUEMA
+                  </TableHead>
+                  <TableHead className="min-w-32 text-right text-white/75">
+                    VENTA POS
+                  </TableHead>
+                  <TableHead className="min-w-32 text-right text-white/75">
+                    COMISIÓN
+                  </TableHead>
+                  <TableHead className="min-w-32 text-right text-white/75">
+                    MOVIMIENTOS
+                  </TableHead>
+                  {branchColumns.map((branch) => (
+                    <TableHead
+                      key={branch.id}
+                      className="min-w-36 text-right text-white/75"
+                    >
+                      {branch.name}
+                    </TableHead>
+                  ))}
+                  <TableHead className="min-w-36 text-right text-white/75">
+                    TOTAL NÓMINA
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pagedRows.map((row) => (
+                  <TableRow
+                    key={row.line.employee.id}
+                    className="[contain-intrinsic-size:58px] [content-visibility:auto]"
+                  >
+                    <TableCell>
+                      <p className="font-semibold">{row.line.employee.name}</p>
+                      <p className="mt-0.5 text-[9px] text-[color:var(--text-muted)]">
+                        ID {row.line.employee.id.toLocaleUpperCase("es-MX")}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <p className="font-semibold">
+                        {row.line.employee.position}
+                      </p>
+                      <p className="mt-0.5 text-[9px] text-[color:var(--text-muted)]">
+                        {row.line.schemeName}
+                      </p>
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.line.grossSales)}
+                    </TableCell>
+                    <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
+                      {money.format(row.line.commission)}
+                    </TableCell>
+                    <TableCell
+                      className={`number-display text-right ${
+                        row.movementNet < 0
+                          ? "text-rose-700 dark:text-rose-300"
+                          : row.movementNet > 0
+                            ? "text-emerald-700 dark:text-emerald-300"
+                            : ""
+                      }`}
+                    >
+                      {money.format(row.movementNet)}
+                    </TableCell>
+                    {branchColumns.map((branch) => (
+                      <TableCell
+                        key={branch.id}
+                        className="bg-[color:var(--accent-hover)]/15 text-right"
+                      >
+                        <p className="number-display font-semibold">
+                          {money.format(row.branchCosts[branch.id] ?? 0)}
+                        </p>
+                        <p className="mt-0.5 text-[8px] text-[color:var(--text-muted)]">
+                          Venta{" "}
+                          {money.format(row.branchSales[branch.id] ?? 0)}
+                        </p>
+                      </TableCell>
+                    ))}
+                    <TableCell className="number-display text-right text-xs font-semibold">
+                      {money.format(row.line.total)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!pagedRows.length ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6 + branchColumns.length}
+                      className="py-10 text-center text-sm text-[color:var(--text-muted)]"
+                    >
+                      No hay registros para los filtros seleccionados.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell colSpan={4} className="text-right font-semibold">
+                    TOTALES CONCILIADOS
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(
+                      filteredRows.reduce(
+                        (sum, row) => sum + row.movementNet,
+                        0,
+                      ),
+                    )}
+                  </TableCell>
+                  {branchColumns.map((branch) => (
+                    <TableCell
+                      key={branch.id}
+                      className="number-display text-right"
+                    >
+                      {money.format(
+                        filteredRows.reduce(
+                          (sum, row) =>
+                            sum + (row.branchCosts[branch.id] ?? 0),
+                          0,
+                        ),
+                      )}
+                    </TableCell>
+                  ))}
+                  <TableCell className="number-display text-right text-xs">
+                    {money.format(filteredPayroll)}
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
+          <div className="flex flex-col gap-3 border-t border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/20 px-4 py-3 text-xs lg:flex-row lg:items-center lg:justify-between">
+            <p>
+              Mostrando{" "}
+              <strong>
+                {visibleStart}–{visibleEnd}
+              </strong>{" "}
+              de <strong>{filteredRows.length}</strong> empleados · página{" "}
+              <strong>{currentPage}</strong> de <strong>{totalPages}</strong>
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-muted)]">
+                Filas
+              </Label>
+              <Select value={pageSize} onValueChange={setPageSize}>
+                <SelectTrigger
+                  className="h-8 w-[88px] rounded-lg text-[10px] font-semibold"
+                  aria-label="Filas del reporte de costo por página"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[20, 40, 60].map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="ALL">TODAS</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 px-2.5 text-[10px]"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
+                <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                Anterior
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 px-2.5 text-[10px]"
+                disabled={currentPage >= totalPages}
+                onClick={() =>
+                  setPage((value) => Math.min(totalPages, value + 1))
+                }
+              >
+                Siguiente
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
   );
 }

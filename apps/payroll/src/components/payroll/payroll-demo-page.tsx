@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -16,6 +16,7 @@ import {
   ListChecks,
   LockKeyhole,
   Plus,
+  Search,
   Settings2,
   Sparkles,
   Trash2,
@@ -63,6 +64,7 @@ import {
   type PayrollStatus,
   employeeCommissionPayrollModule,
   employeeSalaryPayrollModule,
+  moduleTaxInclusionForRange,
   periodTaxInclusionForRange,
   payrollModuleLabel,
   payrollModuleLabels,
@@ -379,7 +381,6 @@ function RunDialog({
     return state.employees
       .filter(
         (employee) =>
-          employee.category === "SELLER" &&
           employee.hireDate <= config.periodEnd &&
           (!employee.terminationDate ||
             employee.terminationDate >= config.periodStart),
@@ -906,24 +907,87 @@ function PayrollTable({
   );
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [positionFilter, setPositionFilter] = useState("ALL");
+  const [branchFilter, setBranchFilter] = useState("ALL");
+  const commissionFilters = view === "COMMISSION";
+  const positionOptions = useMemo(
+    () =>
+      Array.from(new Set(lines.map((line) => line.employee.position))).sort(
+        (left, right) => left.localeCompare(right, "es-MX"),
+      ),
+    [lines],
+  );
+  const branchOptions = useMemo(
+    () =>
+      state.branches.filter((branch) =>
+        lines.some((line) => line.employee.branchId === branch.id),
+      ),
+    [lines, state.branches],
+  );
+  const normalizedSearch = search.trim().toLocaleLowerCase("es-MX");
+  const filteredLines = useMemo(
+    () =>
+      commissionFilters
+        ? lines.filter((line) => {
+            const branch =
+              state.branches.find(
+                (item) => item.id === line.employee.branchId,
+              )?.name ?? "SIN SUCURSAL";
+            const matchesSearch =
+              !normalizedSearch ||
+              `${line.employee.name} ${line.employee.position} ${branch} ${line.schemeName}`
+                .toLocaleLowerCase("es-MX")
+                .includes(normalizedSearch);
+            return (
+              matchesSearch &&
+              (positionFilter === "ALL" ||
+                line.employee.position === positionFilter) &&
+              (branchFilter === "ALL" ||
+                line.employee.branchId === branchFilter)
+            );
+          })
+        : lines,
+    [
+      branchFilter,
+      commissionFilters,
+      lines,
+      normalizedSearch,
+      positionFilter,
+      state.branches,
+    ],
+  );
   const effectivePageSize =
-    pageSize === "ALL" ? Math.max(lines.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(lines.length / effectivePageSize));
+    pageSize === "ALL" ? Math.max(filteredLines.length, 1) : Number(pageSize);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredLines.length / effectivePageSize),
+  );
   const currentPage = Math.min(page, totalPages);
-  const pagedLines = lines.slice(
+  const pagedLines = filteredLines.slice(
     (currentPage - 1) * effectivePageSize,
     currentPage * effectivePageSize,
   );
   const visibleStart =
-    lines.length === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1;
-  const visibleEnd = Math.min(currentPage * effectivePageSize, lines.length);
-  const payrollTotal = lines.reduce((sum, line) => sum + line.total, 0);
-  const socialTotal = includeSocialCost
-    ? lines.reduce((sum, line) => sum + line.socialCost, 0)
-    : 0;
-  const isrTotal = includeIsr
-    ? lines.reduce((sum, line) => sum + line.isrCost, 0)
-    : 0;
+    filteredLines.length === 0
+      ? 0
+      : (currentPage - 1) * effectivePageSize + 1;
+  const visibleEnd = Math.min(
+    currentPage * effectivePageSize,
+    filteredLines.length,
+  );
+  const payrollTotal = filteredLines.reduce(
+    (sum, line) => sum + line.total,
+    0,
+  );
+  const socialTotal = filteredLines.reduce(
+    (sum, line) => sum + line.socialCost,
+    0,
+  );
+  const isrTotal = filteredLines.reduce(
+    (sum, line) => sum + line.isrCost,
+    0,
+  );
   const total = payrollTotal + socialTotal + isrTotal;
   const contractor = view === "CONTRACTOR";
   const showSales =
@@ -938,9 +1002,9 @@ function PayrollTable({
       view === "SPECIALIST" ||
       view === "CONSOLIDATED") &&
     (view !== "CONSOLIDATED" ||
-      lines.some((line) => line.doublePayAmount > 0));
+      filteredLines.some((line) => line.doublePayAmount > 0));
   const showApproval = view !== "FIXED" && view !== "SPECIALIST";
-  const showNegativeBalances = lines.some(
+  const showNegativeBalances = filteredLines.some(
     (line) =>
       line.carriedNegativeBalance > 0 || line.newNegativeBalance > 0,
   );
@@ -979,16 +1043,16 @@ function PayrollTable({
     );
   const showSettlement =
     (view === "CONSOLIDATED" || view === "SETTLEMENT") &&
-    lines.some((line) => line.settlementPayment > 0);
-  const settlementTotal = lines.reduce(
+    filteredLines.some((line) => line.settlementPayment > 0);
+  const settlementTotal = filteredLines.reduce(
     (sum, line) => sum + line.settlementPayment,
     0,
   );
-  const christmasBonusTotal = lines.reduce(
+  const christmasBonusTotal = filteredLines.reduce(
     (sum, line) => sum + line.christmasBonusPayment,
     0,
   );
-  const doublePayTotal = lines.reduce(
+  const doublePayTotal = filteredLines.reduce(
     (sum, line) => sum + line.doublePayAmount,
     0,
   );
@@ -1006,7 +1070,10 @@ function PayrollTable({
       ),
     [periodEnd, periodStart, state.decisions],
   );
-  const reportRows = lines.map((line) => ({
+  const approvedVisibleCount = filteredLines.filter((line) =>
+    approvedEmployeeIds.has(line.employee.id),
+  ).length;
+  const reportRows = filteredLines.map((line) => ({
     employee: line.employee.name,
     position: line.employee.position,
     branch:
@@ -1033,20 +1100,18 @@ function PayrollTable({
     christmasBonus:
       line.christmasBonusPayment > 0 ? line.christmasBonusPayment : null,
     payroll: line.total,
-    socialCost: includeSocialCost ? line.socialCost : 0,
-    isr: includeIsr ? line.isrCost : 0,
+    socialCost: line.socialCost,
+    isr: line.isrCost,
     approval: approvedEmployeeIds.has(line.employee.id) ? "APROBADO" : "",
     total:
-      line.total +
-      (includeSocialCost ? line.socialCost : 0) +
-      (includeIsr ? line.isrCost : 0),
+      line.total + line.socialCost + line.isrCost,
   }));
   const reportConfig = {
     title:
       view === "CONSOLIDATED"
         ? "Consolidado general de nómina"
         : `Detalle de ${payrollModuleLabel(state, view)}`,
-    subtitle: `${periodStart} — ${periodEnd} · Costo social ${includeSocialCost ? "incluido" : "excluido"} · ISR ${includeIsr ? "incluido" : "excluido"}`,
+    subtitle: `${periodStart} — ${periodEnd} · Costo social ${includeSocialCost ? "incluido" : "general excluido; excepciones por nómina vigentes"} · ISR ${includeIsr ? "incluido" : "general excluido; excepciones por nómina vigentes"}`,
     metadata: [
       { label: "Periodo", value: `${periodStart} — ${periodEnd}` },
       {
@@ -1056,14 +1121,41 @@ function PayrollTable({
             ? "CONSOLIDADO GENERAL"
             : payrollModuleLabel(state, view),
       },
-      { label: "Alcance", value: "REPORTE GENERAL · EMPRESA COMPLETA" },
+      {
+        label: "Alcance",
+        value:
+          commissionFilters &&
+          (search.trim() ||
+            positionFilter !== "ALL" ||
+            branchFilter !== "ALL")
+            ? "SELECCIÓN FILTRADA"
+            : "REPORTE GENERAL · EMPRESA COMPLETA",
+      },
+      ...(commissionFilters
+        ? [
+            {
+              label: "Puesto",
+              value:
+                positionFilter === "ALL" ? "TODOS" : positionFilter,
+            },
+            {
+              label: "Sucursal",
+              value:
+                branchFilter === "ALL"
+                  ? "TODAS"
+                  : (state.branches.find(
+                      (branch) => branch.id === branchFilter,
+                    )?.name ?? "SUCURSAL"),
+            },
+          ]
+        : []),
       {
         label: "Cargas incluidas",
-        value: `COSTO SOCIAL ${includeSocialCost ? "SÍ" : "NO"} · ISR ${includeIsr ? "SÍ" : "NO"}`,
+        value: `COSTO SOCIAL ${includeSocialCost ? "GENERAL" : "SOLO EXCEPCIONES"} · ISR ${includeIsr ? "GENERAL" : "SOLO EXCEPCIONES"}`,
       },
     ],
     metrics: [
-      { label: "Personal", value: String(lines.length), detail: "Registros incluidos" },
+      { label: "Personal", value: String(filteredLines.length), detail: "Registros incluidos" },
       { label: "Nómina", value: money.format(payrollTotal), detail: "Pago del periodo" },
       ...(showDoublePay
         ? [
@@ -1080,20 +1172,20 @@ function PayrollTable({
     analysis: [
       ...(showApproval
         ? [
-            `${approvedEmployeeIds.size} de ${lines.length} recibos del periodo aparecen aprobados por el personal.`,
+            `${approvedVisibleCount} de ${filteredLines.length} recibos de la selección aparecen aprobados por el personal.`,
           ]
         : [
             "Esta nómina no requiere aprobación individual del empleado; el control se realiza mediante el cierre de la corrida.",
           ]),
-      `El costo social está ${includeSocialCost ? "incluido" : "excluido"} y el ISR está ${includeIsr ? "incluido" : "excluido"} en esta salida.`,
+      `El costo social está ${includeSocialCost ? "incluido de forma general" : "excluido de forma general, conservando excepciones por nómina"} y el ISR está ${includeIsr ? "incluido de forma general" : "excluido de forma general, conservando excepciones por nómina"} en esta salida.`,
       ...(showDoublePay
         ? [
-            `${lines.reduce((sum, line) => sum + line.doublePayDayCount, 0)} días festivos o feriados agregan ${money.format(doublePayTotal)} a la nómina; el día ordinario permanece dentro del sueldo base.`,
+            `${filteredLines.reduce((sum, line) => sum + line.doublePayDayCount, 0)} días festivos o feriados agregan ${money.format(doublePayTotal)} a la nómina; el día ordinario permanece dentro del sueldo base.`,
           ]
         : []),
       ...(showNegativeBalances
         ? [
-            `Los saldos negativos anteriores descuentan ${money.format(lines.reduce((sum, line) => sum + line.carriedNegativeBalance, 0))}; cualquier remanente se conserva para el siguiente periodo.`,
+            `Los saldos negativos anteriores descuentan ${money.format(filteredLines.reduce((sum, line) => sum + line.carriedNegativeBalance, 0))}; cualquier remanente se conserva para el siguiente periodo.`,
           ]
         : []),
       "La exportación contiene únicamente la nómina seleccionada y no incluye filtros, navegación ni controles del sistema.",
@@ -1270,6 +1362,10 @@ function PayrollTable({
       },
     ],
   };
+  useEffect(
+    () => setPage(1),
+    [branchFilter, pageSize, positionFilter, search],
+  );
   return (
     <Card className="overflow-hidden border-[color:var(--border-color)]">
       <CardHeader className="border-b border-[color:var(--border-color)]">
@@ -1279,18 +1375,59 @@ function PayrollTable({
               Contenido de la nómina
             </CardTitle>
             <CardDescription>
-              {lines.length} empleados incluidos en el cálculo actual.
+              {filteredLines.length} de {lines.length} empleados visibles en el
+              cálculo actual.
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">SOLO DATOS · MOCK</Badge>
             <ReportExportButtons
               config={reportConfig}
-              disabled={!lines.length}
+              disabled={!filteredLines.length}
               iconOnly
             />
           </div>
         </div>
+        {commissionFilters ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(260px,1fr)_240px_240px]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--text-muted)]" />
+              <Input
+                className="pl-9"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="BUSCAR EMPLEADO, PUESTO, SUCURSAL O ESQUEMA"
+                aria-label="Buscar en nómina de comisiones"
+              />
+            </div>
+            <Select value={positionFilter} onValueChange={setPositionFilter}>
+              <SelectTrigger aria-label="Filtrar nómina de comisiones por puesto">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">TODOS LOS PUESTOS</SelectItem>
+                {positionOptions.map((position) => (
+                  <SelectItem key={position} value={position}>
+                    {position}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger aria-label="Filtrar nómina de comisiones por sucursal">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">TODAS LAS SUCURSALES</SelectItem>
+                {branchOptions.map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
@@ -1554,16 +1691,18 @@ function PayrollTable({
                     {money.format(line.total)}
                   </TableCell>
                   <TableCell
-                    className={`number-display text-right ${includeSocialCost ? "" : "text-[color:var(--text-muted)]"}`}
+                    className={`number-display text-right ${includeSocialCost || line.socialCost > 0 ? "" : "text-[color:var(--text-muted)]"}`}
                   >
-                    {includeSocialCost
+                    {includeSocialCost || line.socialCost > 0
                       ? money.format(line.socialCost)
                       : "EXCLUIDO"}
                   </TableCell>
                   <TableCell
-                    className={`number-display text-right ${includeIsr ? "" : "text-[color:var(--text-muted)]"}`}
+                    className={`number-display text-right ${includeIsr || line.isrCost > 0 ? "" : "text-[color:var(--text-muted)]"}`}
                   >
-                    {includeIsr ? money.format(line.isrCost) : "EXCLUIDO"}
+                    {includeIsr || line.isrCost > 0
+                      ? money.format(line.isrCost)
+                      : "EXCLUIDO"}
                   </TableCell>
                   {showApproval && (
                     <TableCell className="text-center">
@@ -1586,9 +1725,7 @@ function PayrollTable({
                   )}
                   <TableCell className="number-display text-right text-base font-semibold">
                     {money.format(
-                      line.total +
-                        (includeSocialCost ? line.socialCost : 0) +
-                        (includeIsr ? line.isrCost : 0),
+                      line.total + line.socialCost + line.isrCost,
                     )}
                   </TableCell>
                 </TableRow>
@@ -1640,14 +1777,14 @@ function PayrollTable({
             </TableFooter>
           </Table>
         </div>
-        {lines.length > 0 && (
+        {filteredLines.length > 0 && (
           <div className="flex flex-col gap-2 border-t border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/15 px-4 py-3 text-xs lg:flex-row lg:items-center lg:justify-between">
             <p>
               Mostrando{" "}
               <strong>
                 {visibleStart}–{visibleEnd}
               </strong>{" "}
-              de <strong>{lines.length}</strong> empleados · página{" "}
+              de <strong>{filteredLines.length}</strong> empleados · página{" "}
               <strong>{currentPage}</strong> de <strong>{totalPages}</strong>
             </p>
             <div className="flex flex-wrap items-center gap-2">
@@ -1728,12 +1865,8 @@ function ConsolidatedDashboard({
   );
   const totalSales = lines.reduce((sum, line) => sum + line.sales, 0);
   const payrollBase = lines.reduce((sum, line) => sum + line.total, 0);
-  const socialCost = includeSocialCost
-    ? lines.reduce((sum, line) => sum + line.socialCost, 0)
-    : 0;
-  const isrCost = includeIsr
-    ? lines.reduce((sum, line) => sum + line.isrCost, 0)
-    : 0;
+  const socialCost = lines.reduce((sum, line) => sum + line.socialCost, 0);
+  const isrCost = lines.reduce((sum, line) => sum + line.isrCost, 0);
   const totalPayroll = payrollBase + socialCost + isrCost;
   const totalVariable = lines.reduce(
     (sum, line) => sum + line.commission + line.bonuses,
@@ -1793,18 +1926,14 @@ function ConsolidatedDashboard({
         (sum, { line, share }) => sum + line.total * share,
         0,
       );
-      const social = includeSocialCost
-        ? branchAllocations.reduce(
-            (sum, { line, share }) => sum + line.socialCost * share,
-            0,
-          )
-        : 0;
-      const isr = includeIsr
-        ? branchAllocations.reduce(
-            (sum, { line, share }) => sum + line.isrCost * share,
-            0,
-          )
-        : 0;
+      const social = branchAllocations.reduce(
+        (sum, { line, share }) => sum + line.socialCost * share,
+        0,
+      );
+      const isr = branchAllocations.reduce(
+        (sum, { line, share }) => sum + line.isrCost * share,
+        0,
+      );
       const movements = branchAllocations.reduce(
         (sum, { line, share }) =>
           sum +
@@ -1858,8 +1987,8 @@ function ConsolidatedDashboard({
       total: 0,
     };
     const payroll = line.total * share;
-    const social = includeSocialCost ? line.socialCost * share : 0;
-    const isr = includeIsr ? line.isrCost * share : 0;
+    const social = line.socialCost * share;
+    const isr = line.isrCost * share;
     row.employees.add(line.employee.id);
     let assignedPayroll = 0;
     payrollTypeColumns.forEach((module) => {
@@ -2081,7 +2210,7 @@ function ConsolidatedDashboard({
           icon={TrendingUp}
           label="VENTAS DEL PERIODO"
           value={money.format(totalSales)}
-          detail={`Acumulado ${state.calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"}`}
+          detail={`Base global ${state.calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"} · excepciones aplicadas`}
         />
         <Metric
           icon={WalletCards}
@@ -2247,9 +2376,7 @@ function ConsolidatedDashboard({
           const total = categoryLines.reduce(
             (sum, line) =>
               sum +
-              line.total +
-              (includeSocialCost ? line.socialCost : 0) +
-              (includeIsr ? line.isrCost : 0),
+              line.total + line.socialCost + line.isrCost,
             0,
           );
           return (
@@ -2526,6 +2653,7 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
     periodOptions,
     setCalculationMode,
     closeRunAndOpenNextPeriod,
+    setModuleTaxInclusion,
     setPeriodTaxInclusion,
     setRunStatus,
   } = usePayrollDemo();
@@ -2579,8 +2707,23 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
     selectedPeriod.start,
     selectedPeriod.end,
   );
-  const includeSocialCost = periodTaxInclusion?.includeSocialCost ?? true;
-  const includeIsr = periodTaxInclusion?.includeIsr ?? true;
+  const controlsGlobalTaxes = view === "CONSOLIDATED";
+  const moduleTaxInclusion = controlsGlobalTaxes
+    ? undefined
+    : moduleTaxInclusionForRange(
+        state.periodTaxInclusions,
+        selectedPeriod.start,
+        selectedPeriod.end,
+        view as Exclude<PayrollModule, "CONSOLIDATED">,
+      );
+  const globalIncludeSocialCost =
+    periodTaxInclusion?.includeSocialCost ?? true;
+  const globalIncludeIsr = periodTaxInclusion?.includeIsr ?? true;
+  const includeSocialCost =
+    globalIncludeSocialCost ||
+    (moduleTaxInclusion?.includeSocialCost ?? false);
+  const includeIsr =
+    globalIncludeIsr || (moduleTaxInclusion?.includeIsr ?? false);
   const calculationConfig = useMemo<DemoPayrollPeriodConfig>(
     () => ({
       ...config,
@@ -2612,6 +2755,9 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
       run.periodEnd === selectedPeriod.end &&
       run.status !== "DRAFT",
   );
+  const taxControlLocked = controlsGlobalTaxes
+    ? taxPeriodLocked
+    : payrollLocked;
   const activeEmployee = state.employees.find(
     (employee) => employee.id === state.activeEmployeeId,
   );
@@ -2835,44 +2981,93 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
               <Label>Cargas incluidas en el cálculo</Label>
               <div className="flex flex-wrap gap-2">
                 <CostToggle
-                  label="Costo social"
+                  label={
+                    controlsGlobalTaxes
+                      ? "Costo social global"
+                      : globalIncludeSocialCost
+                        ? "Costo social · global"
+                        : "Costo social · esta nómina"
+                  }
                   checked={includeSocialCost}
-                  disabled={taxPeriodLocked || !isMaster}
+                  disabled={
+                    taxControlLocked ||
+                    !isMaster ||
+                    (!controlsGlobalTaxes && globalIncludeSocialCost)
+                  }
                   onCheckedChange={(checked) => {
-                    setPeriodTaxInclusion(
-                      selectedPeriod.start,
-                      selectedPeriod.end,
-                      { includeSocialCost: checked },
-                    );
+                    if (controlsGlobalTaxes) {
+                      setPeriodTaxInclusion(
+                        selectedPeriod.start,
+                        selectedPeriod.end,
+                        { includeSocialCost: checked },
+                      );
+                    } else {
+                      setModuleTaxInclusion(
+                        view as Exclude<PayrollModule, "CONSOLIDATED">,
+                        selectedPeriod.start,
+                        selectedPeriod.end,
+                        { includeSocialCost: checked },
+                      );
+                    }
                     toast.success(
                       "Costo social " +
                         (checked ? "incluido" : "excluido") +
                         " para " +
                         selectedPeriod.label.toLocaleLowerCase("es-MX") +
-                        " en todos los módulos.",
+                        (controlsGlobalTaxes
+                          ? " en todos los módulos."
+                          : ` únicamente en ${titles[0].toLocaleLowerCase("es-MX")}.`),
                     );
                   }}
                 />
                 <CostToggle
-                  label="ISR"
+                  label={
+                    controlsGlobalTaxes
+                      ? "ISR global"
+                      : globalIncludeIsr
+                        ? "ISR · global"
+                        : "ISR · esta nómina"
+                  }
                   checked={includeIsr}
-                  disabled={taxPeriodLocked || !isMaster}
+                  disabled={
+                    taxControlLocked ||
+                    !isMaster ||
+                    (!controlsGlobalTaxes && globalIncludeIsr)
+                  }
                   onCheckedChange={(checked) => {
-                    setPeriodTaxInclusion(
-                      selectedPeriod.start,
-                      selectedPeriod.end,
-                      { includeIsr: checked },
-                    );
+                    if (controlsGlobalTaxes) {
+                      setPeriodTaxInclusion(
+                        selectedPeriod.start,
+                        selectedPeriod.end,
+                        { includeIsr: checked },
+                      );
+                    } else {
+                      setModuleTaxInclusion(
+                        view as Exclude<PayrollModule, "CONSOLIDATED">,
+                        selectedPeriod.start,
+                        selectedPeriod.end,
+                        { includeIsr: checked },
+                      );
+                    }
                     toast.success(
                       "ISR " +
                         (checked ? "incluido" : "excluido") +
                         " para " +
                         selectedPeriod.label.toLocaleLowerCase("es-MX") +
-                        " en todos los módulos.",
+                        (controlsGlobalTaxes
+                          ? " en todos los módulos."
+                          : ` únicamente en ${titles[0].toLocaleLowerCase("es-MX")}.`),
                     );
                   }}
                 />
               </div>
+              {!controlsGlobalTaxes && (
+                <p className="mt-2 text-[10px] text-[color:var(--text-muted)]">
+                  {globalIncludeSocialCost || globalIncludeIsr
+                    ? "Las cargas activas por control global se aplican a todas las nóminas y no pueden apagarse desde este módulo."
+                    : "El control global está apagado. Cada interruptor afecta únicamente esta nómina."}
+                </p>
+              )}
               {!isMaster && (
                 <p className="mt-2 flex items-center gap-1 text-[10px] font-medium text-amber-800 dark:text-amber-200">
                   <LockKeyhole className="h-3 w-3" />
@@ -2955,13 +3150,11 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
                 lines.reduce(
                   (sum, line) =>
                     sum +
-                    line.total +
-                    (includeSocialCost ? line.socialCost : 0) +
-                    (includeIsr ? line.isrCost : 0),
+                    line.total + line.socialCost + line.isrCost,
                   0,
                 ),
               )}
-              detail={`Nómina${includeSocialCost ? " + costo social" : ""}${includeIsr ? " + ISR" : ""}`}
+              detail="Nómina + cargas generales o excepciones individuales"
             />
           </div>
           {(view === "FIXED" || view === "SPECIALIST") && (

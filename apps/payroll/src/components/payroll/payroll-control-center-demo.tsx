@@ -20,7 +20,7 @@ import {
 } from "@cosmetics/ui";
 import {
   type DemoState, type EmployeePayrollLine, type PayrollModule,
-  payrollModuleLabel, periodTaxInclusionForRange, usePayrollDemo,
+  payrollModuleLabel, usePayrollDemo,
 } from "./payroll-demo-context";
 import {
   employeeCostAllocationShares, payrollCostAllocationMode,
@@ -55,14 +55,11 @@ function formatMonth(month: string, long = false) {
 
 function buildScopeAnalysis({ state, payrollLines, month, module, branchId }: { state: DemoState; payrollLines: LinesProvider; month: string; module: PayrollModule | "ALL"; branchId: string }): ScopeAnalysis {
   const { start, end } = monthRange(month);
-  const tax = periodTaxInclusionForRange(state.periodTaxInclusions, start, end);
-  const includeSocial = tax?.includeSocialCost ?? true;
-  const includeIsr = tax?.includeIsr ?? true;
   const lines = payrollLines(start, state.calculationMode, end, module === "ALL" ? "CONSOLIDATED" : module);
   const authorizedIds = new Set(state.decisions.filter((decision) => decision.periodStart.startsWith(month) && decision.status === "AUTHORIZED").map((decision) => decision.employeeId));
   const rows = state.branches.map<BranchRow>((branch) => ({
     id: branch.id, name: branch.name, city: branch.city,
-    sales: state.sales.filter((sale) => sale.branchId === branch.id && sale.date >= start && sale.date <= end).reduce((sum, sale) => sum + sale.amount, 0),
+    sales: 0,
     payroll: 0, social: 0, isr: 0, totalCost: 0, employeeIds: new Set<string>(), authorized: 0,
   }));
   const rowById = new Map(rows.map((row) => [row.id, row]));
@@ -70,6 +67,30 @@ function buildScopeAnalysis({ state, payrollLines, month, module, branchId }: { 
   let allocatedTotal = 0;
 
   lines.forEach((line) => {
+    const grossSalesByBranch = state.sales
+      .filter(
+        (sale) =>
+          sale.employeeId === line.employee.id &&
+          sale.date >= start &&
+          sale.date <= end,
+      )
+      .reduce<Record<string, number>>((totals, sale) => {
+        totals[sale.branchId] = (totals[sale.branchId] ?? 0) + sale.amount;
+        return totals;
+      }, {});
+    const employeeGrossSales = Object.values(grossSalesByBranch).reduce(
+      (sum, amount) => sum + amount,
+      0,
+    );
+    if (employeeGrossSales > 0) {
+      Object.entries(grossSalesByBranch).forEach(
+        ([saleBranchId, grossAmount]) => {
+          const row = rowById.get(saleBranchId);
+          if (row)
+            row.sales += line.sales * (grossAmount / employeeGrossSales);
+        },
+      );
+    }
     const mode = payrollCostAllocationMode(state.payrollCostAllocationModes, line.employee.id, start, end);
     const allocations = employeeCostAllocationShares({ employee: line.employee, branches: state.branches, sales: state.sales, periodStart: start, periodEnd: end, mode });
     if (!allocations.length) { unassigned.add(line.employee.id); return; }
@@ -77,8 +98,8 @@ function buildScopeAnalysis({ state, payrollLines, month, module, branchId }: { 
       const row = rowById.get(targetId);
       if (!row) { unassigned.add(line.employee.id); return; }
       const payroll = line.total * share;
-      const social = includeSocial ? line.socialCost * share : 0;
-      const isr = includeIsr ? line.isrCost * share : 0;
+      const social = line.socialCost * share;
+      const isr = line.isrCost * share;
       row.payroll += payroll; row.social += social; row.isr += isr;
       row.totalCost += payroll + social + isr; row.employeeIds.add(line.employee.id);
       allocatedTotal += payroll + social + isr;
@@ -87,7 +108,7 @@ function buildScopeAnalysis({ state, payrollLines, month, module, branchId }: { 
   rows.forEach((row) => { row.authorized = Array.from(row.employeeIds).filter((id) => authorizedIds.has(id)).length; });
   const scopedRows = branchId === "ALL" ? rows : rows.filter((row) => row.id === branchId);
   const employeeIds = new Set(scopedRows.flatMap((row) => Array.from(row.employeeIds)));
-  const sourceTotal = lines.reduce((sum, line) => sum + line.total + (includeSocial ? line.socialCost : 0) + (includeIsr ? line.isrCost : 0), 0);
+  const sourceTotal = lines.reduce((sum, line) => sum + line.totalCost, 0);
   return {
     month,
     sales: scopedRows.reduce((sum, row) => sum + row.sales, 0),

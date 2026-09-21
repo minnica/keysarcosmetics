@@ -41,9 +41,17 @@ export function employeeCostAllocationShares({
 }) {
   const salesByBranch = sales
     .filter((sale) => sale.employeeId === employee.id && sale.date >= periodStart && sale.date <= periodEnd)
-    .reduce<Record<string, number>>((totals, sale) => ({ ...totals, [sale.branchId]: (totals[sale.branchId] ?? 0) + sale.amount }), {});
+    .reduce<Record<string, number>>((totals, sale) => {
+      totals[sale.branchId] = (totals[sale.branchId] ?? 0) + sale.amount;
+      return totals;
+    }, {});
   const saleBranchIds = Object.keys(salesByBranch).filter((branchId) => branches.some((branch) => branch.id === branchId));
-  const branchIds = saleBranchIds.length > 1 ? saleBranchIds : employeeCostBranchIds(employee, branches);
+  const branchIds =
+    mode === "SALES_SHARE" && saleBranchIds.length > 0
+      ? saleBranchIds
+      : saleBranchIds.length > 1
+        ? saleBranchIds
+        : employeeCostBranchIds(employee, branches);
   const totalSales = branchIds.reduce((sum, branchId) => sum + (salesByBranch[branchId] ?? 0), 0);
   return branchIds.map((branchId) => ({
     branchId,
