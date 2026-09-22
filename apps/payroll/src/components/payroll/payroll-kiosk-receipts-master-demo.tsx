@@ -47,7 +47,7 @@ import {
   TableRow,
   toast,
 } from "@cosmetics/ui";
-import { resolveBranchCommission } from "./branch-commission-calculator";
+import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import {
   type DemoEmployee,
   type DemoKioskReceiptDecision,
@@ -157,6 +157,9 @@ interface ManagerReceiptRow {
   transactions: number;
   rate: number;
   commission: number;
+  socialCost: number;
+  isr: number;
+  totalCost: number;
   decision: DemoKioskReceiptDecision | undefined;
   status: ReceiptStatus;
 }
@@ -194,65 +197,30 @@ export function PayrollKioskReceiptsMasterDemo({
   const [preview, setPreview] = useState<ManagerReceiptRow | null>(null);
 
   const rows = useMemo(() => {
-    const resolved = new Map<string, ManagerReceiptRow>();
-
-    state.kioskTargets.forEach((target) => {
-      const resolution = resolveBranchCommission({
-        branchId: target.branchId,
-        month: selectedMonth,
-        schemes: state.branchCommissionSchemes,
-        sales: state.kioskMonthlySales,
-        fallbackTarget: target,
-      });
-      if (!resolution.managerId) return;
-      const manager = state.employees.find(
-        (employee) => employee.id === resolution.managerId,
-      );
-      if (!manager) return;
-      const includedBranchIds = resolution.scheme?.branchIds ?? [
-        target.branchId,
-      ];
-      const key = `${manager.id}-${resolution.scheme?.id ?? target.branchId}`;
-      if (resolved.has(key)) return;
-      const branchNames = includedBranchIds.map(
-        (branchId) =>
-          state.branches.find((branch) => branch.id === branchId)?.name ??
-          "SUCURSAL",
-      );
-      const sales = resolution.combined
-        ? resolution.salesBase
-        : resolution.branchSales;
-      const monthlyTarget = state.kioskTargets
-        .filter((item) => includedBranchIds.includes(item.branchId))
-        .reduce((sum, item) => sum + item.monthlyTarget, 0);
-      const transactions = state.kioskMonthlySales
-        .filter(
-          (sale) =>
-            sale.month === selectedMonth &&
-            includedBranchIds.includes(sale.branchId),
-        )
-        .reduce((sum, sale) => sum + sale.transactions, 0);
-      const decision = state.kioskReceiptDecisions.find(
-        (item) => item.managerId === manager.id && item.month === selectedMonth,
-      );
-
-      resolved.set(key, {
-        id: key,
-        manager,
-        branchNames,
-        schemeName: resolution.scheme?.name ?? "META INDIVIDUAL",
-        sales,
-        target: monthlyTarget,
-        transactions,
-        rate: resolution.rate,
-        commission: sales * resolution.rate,
-        decision,
-        status: decision?.status ?? "PENDING",
-      });
-    });
-
-    return Array.from(resolved.values()).sort((a, b) =>
-      a.manager.name.localeCompare(b.manager.name, "es-MX"),
+    return kioskPayrollForMonth(state, selectedMonth).managerRows.map(
+      (payroll): ManagerReceiptRow => {
+        const decision = state.kioskReceiptDecisions.find(
+          (item) =>
+            item.managerId === payroll.manager.id &&
+            item.month === selectedMonth,
+        );
+        return {
+          id: `${payroll.manager.id}-${selectedMonth}`,
+          manager: payroll.manager,
+          branchNames: payroll.branchNames,
+          schemeName: payroll.schemeNames.join(" · "),
+          sales: payroll.sales,
+          target: payroll.target,
+          transactions: payroll.transactions,
+          rate: payroll.rate,
+          commission: payroll.commission,
+          socialCost: payroll.socialCost,
+          isr: payroll.isr,
+          totalCost: payroll.totalCost,
+          decision,
+          status: decision?.status ?? "PENDING",
+        };
+      },
     );
   }, [selectedMonth, state]);
 
@@ -291,6 +259,9 @@ export function PayrollKioskReceiptsMasterDemo({
   ).length;
   const pendingRows = rows.filter((row) => row.status !== "AUTHORIZED");
   const totalCommission = rows.reduce((sum, row) => sum + row.commission, 0);
+  const totalSocialCost = rows.reduce((sum, row) => sum + row.socialCost, 0);
+  const totalIsr = rows.reduce((sum, row) => sum + row.isr, 0);
+  const totalCost = rows.reduce((sum, row) => sum + row.totalCost, 0);
   const allApproved = rows.length > 0 && pendingRows.length === 0;
 
   return (
@@ -343,7 +314,7 @@ export function PayrollKioskReceiptsMasterDemo({
         </div>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Metric
           icon={<ReceiptText className="h-5 w-5" />}
           label="RECIBOS GERENCIALES"
@@ -363,6 +334,11 @@ export function PayrollKioskReceiptsMasterDemo({
           icon={<BadgeCheck className="h-5 w-5" />}
           label="COMISIÓN GERENCIAL"
           value={money.format(totalCommission)}
+        />
+        <Metric
+          icon={<ShieldCheck className="h-5 w-5" />}
+          label="COSTO TOTAL CON CARGAS"
+          value={money.format(totalCost)}
         />
       </div>
 
@@ -444,7 +420,7 @@ export function PayrollKioskReceiptsMasterDemo({
             <span>Gerente</span>
             <span>Sucursal / esquema</span>
             <span className="text-right">Ventas</span>
-            <span className="text-right">Comisión</span>
+            <span className="text-right">Comisión / cargas</span>
             <span>Estatus</span>
             <span className="text-right">Acciones</span>
           </div>
@@ -479,9 +455,18 @@ export function PayrollKioskReceiptsMasterDemo({
                 <p className="number-display text-sm lg:text-right">
                   {money.format(row.sales)}
                 </p>
-                <p className="number-display text-base font-semibold lg:text-right">
-                  {money.format(row.commission)}
-                </p>
+                <div className="lg:text-right">
+                  <p className="number-display text-base font-semibold">
+                    {money.format(row.commission)}
+                  </p>
+                  <p className="mt-1 text-[9px] text-[color:var(--text-muted)]">
+                    SOCIAL {money.format(row.socialCost)} · ISR{" "}
+                    {money.format(row.isr)}
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-semibold">
+                    COSTO {money.format(row.totalCost)}
+                  </p>
+                </div>
                 <div>
                   <ManagerDecisionBadge status={row.status} />
                   {row.decision?.updatedAt && (
@@ -767,6 +752,18 @@ function ManagerReceiptDocument({
               <strong>{percent.format(row.rate)}</strong>
             </div>
             <div className="flex justify-between gap-4">
+              <span>Comisión gerencial</span>
+              <strong>{money.format(row.commission)}</strong>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Costo social</span>
+              <strong>{money.format(row.socialCost)}</strong>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>ISR</span>
+              <strong>{money.format(row.isr)}</strong>
+            </div>
+            <div className="flex justify-between gap-4">
               <span>Estado del gerente</span>
               <strong>
                 {row.status === "AUTHORIZED"
@@ -778,12 +775,12 @@ function ManagerReceiptDocument({
             </div>
           </div>
           <div className="rounded-2xl border border-[color:var(--accent)]/45 bg-[color:var(--accent-hover)]/35 p-5 text-right">
-            <p className="label-caps">COMISIÓN GERENCIAL</p>
+            <p className="label-caps">COSTO TOTAL GERENCIAL</p>
             <p className="number-display mt-1 text-3xl">
-              {money.format(row.commission)}
+              {money.format(row.totalCost)}
             </p>
             <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-              Pago independiente
+              Comisión y cargas fiscales del periodo
             </p>
           </div>
         </div>

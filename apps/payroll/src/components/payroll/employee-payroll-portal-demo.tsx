@@ -60,6 +60,7 @@ import {
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
+import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { EmployeeViaticsPanel } from "./payroll-viatics-demo";
 import { evaluateFinancialRequest } from "./payroll-financial-request-policy";
 import { Receipt } from "./payroll-receipts-demo";
@@ -389,8 +390,15 @@ export function EmployeePayrollPortalDemo() {
     closedManagerMonthlyTarget > 0
       ? closedManagerResolution.salesBase / closedManagerMonthlyTarget
       : 0;
-  const closedManagerCommission =
-    closedManagerResolution.salesBase * closedManagerResolution.rate;
+  const closedManagerPayroll = kioskPayrollForMonth(
+    state,
+    managerReceiptMonth,
+  ).managerRows.find((row) => row.manager.id === employee?.id);
+  const closedManagerCommission = closedManagerPayroll?.commission ?? 0;
+  const closedManagerSocialCost = closedManagerPayroll?.socialCost ?? 0;
+  const closedManagerIsr = closedManagerPayroll?.isr ?? 0;
+  const closedManagerTotalCost =
+    closedManagerPayroll?.totalCost ?? closedManagerCommission;
   const kioskDecision = state.kioskReceiptDecisions.find(
     (item) =>
       item.managerId === employee?.id && item.month === managerReceiptMonth,
@@ -908,6 +916,9 @@ export function EmployeePayrollPortalDemo() {
                   <p className="number-display mt-1 text-2xl">
                     {money.format(closedManagerCommission)}
                   </p>
+                  <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
+                    Costo total {money.format(closedManagerTotalCost)}
+                  </p>
                 </div>
                 <Button size="sm" onClick={() => setReceiptPreview("KIOSK")}>
                   <Eye className="mr-2 h-4 w-4" />
@@ -933,15 +944,10 @@ export function EmployeePayrollPortalDemo() {
             {annualManagerHistory.length ? (
               <div className="divide-y divide-[color:var(--border-color)]">
                 {annualManagerHistory.map((entry) => {
-                  const historyResolution = resolveBranchCommission({
-                    branchId: employee.branchId,
-                    month: entry.month,
-                    schemes: state.branchCommissionSchemes,
-                    sales: state.kioskMonthlySales,
-                    fallbackTarget: managerTarget,
-                  });
-                  const historyCommission =
-                    historyResolution.salesBase * historyResolution.rate;
+                  const historyCost =
+                    kioskPayrollForMonth(state, entry.month).managerRows.find(
+                      (row) => row.manager.id === employee.id,
+                    )?.totalCost ?? 0;
                   return (
                     <div
                       key={entry.month}
@@ -959,7 +965,7 @@ export function EmployeePayrollPortalDemo() {
                         </p>
                       </div>
                       <p className="number-display text-sm sm:text-right">
-                        {money.format(historyCommission)}
+                        {money.format(historyCost)}
                       </p>
                     </div>
                   );
@@ -1827,14 +1833,26 @@ export function EmployeePayrollPortalDemo() {
                       : "1 SUCURSAL"}
                   </strong>
                 </div>
+                <div className="flex justify-between gap-4">
+                  <span>Comisión gerencial</span>
+                  <strong>{money.format(closedManagerCommission)}</strong>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span>Costo social</span>
+                  <strong>{money.format(closedManagerSocialCost)}</strong>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span>ISR</span>
+                  <strong>{money.format(closedManagerIsr)}</strong>
+                </div>
               </div>
               <div className="rounded-xl border border-[#b89468]/45 bg-[color:var(--accent-hover)]/35 p-4 text-right">
-                <p className="label-caps">COMISIÓN EXTRA GERENCIAL</p>
+                <p className="label-caps">COSTO TOTAL GERENCIAL</p>
                 <p className="number-display mt-1 text-3xl">
-                  {money.format(closedManagerCommission)}
+                  {money.format(closedManagerTotalCost)}
                 </p>
                 <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-                  Pago separado del recibo personal
+                  Comisión y cargas fiscales del periodo
                 </p>
               </div>
               <div className="flex justify-end">

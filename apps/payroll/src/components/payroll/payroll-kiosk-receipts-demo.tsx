@@ -45,6 +45,7 @@ import {
 } from "@cosmetics/ui";
 import { usePayrollDemo } from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
+import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { PayrollKioskReceiptsMasterDemo } from "./payroll-kiosk-receipts-master-demo";
 
 const money = new Intl.NumberFormat("es-MX", {
@@ -153,6 +154,13 @@ function ManagerKioskReceiptPortal({
   const [viewingHistory, setViewingHistory] = useState(false);
   const [clarificationOpen, setClarificationOpen] = useState(false);
   const [clarification, setClarification] = useState("");
+  const kioskPayroll = useMemo(
+    () => kioskPayrollForMonth(state, selectedMonth),
+    [selectedMonth, state],
+  );
+  const managerPayroll = kioskPayroll.managerRows.find(
+    (row) => row.manager.id === employee?.id,
+  );
   const isClosedMonth = selectedMonth < currentMonth;
   const isCutoffMonth = selectedMonth === cutoffMonth;
   const sale = state.kioskMonthlySales.find(
@@ -182,9 +190,10 @@ function ManagerKioskReceiptPortal({
         .reduce((sum, item) => sum + item.monthlyTarget, 0)
     : (target?.monthlyTarget ?? 0);
   const achievement = monthlyTarget > 0 ? sales / monthlyTarget : 0;
-  const commission = resolution.combined
-    ? resolution.salesBase * resolution.rate
-    : resolution.commission;
+  const commission = managerPayroll?.commission ?? 0;
+  const socialCost = managerPayroll?.socialCost ?? 0;
+  const isr = managerPayroll?.isr ?? 0;
+  const totalCost = managerPayroll?.totalCost ?? commission;
   const receiptDecision = state.kioskReceiptDecisions.find(
     (decision) =>
       decision.managerId === employee?.id && decision.month === selectedMonth,
@@ -490,7 +499,7 @@ function ManagerKioskReceiptPortal({
             </Card>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <Card>
               <CardContent className="p-5">
                 <Store className="h-5 w-5 text-[color:var(--text-secondary)]" />
@@ -535,6 +544,18 @@ function ManagerKioskReceiptPortal({
                 </p>
                 <p className="mt-1 text-xs text-[color:var(--text-muted)]">
                   Escala aplicada {percent.format(resolution.rate)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <BadgeCheck className="h-5 w-5 text-sky-600" />
+                <p className="label-caps mt-4">CARGAS FISCALES</p>
+                <p className="number-display mt-2 text-2xl">
+                  {money.format(socialCost + isr)}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                  Social {money.format(socialCost)} · ISR {money.format(isr)}
                 </p>
               </CardContent>
             </Card>
@@ -678,16 +699,28 @@ function ManagerKioskReceiptPortal({
                     <span>Escala aplicada</span>
                     <strong>{percent.format(resolution.rate)}</strong>
                   </div>
+                  <div className="flex justify-between">
+                    <span>Comisión gerencial</span>
+                    <strong>{money.format(commission)}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Costo social</span>
+                    <strong>{money.format(socialCost)}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>ISR</span>
+                    <strong>{money.format(isr)}</strong>
+                  </div>
                 </div>
                 <div className="rounded-2xl border border-[color:var(--accent)]/45 bg-[color:var(--accent-hover)]/35 p-5 text-right">
                   <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
-                    Comisión total gerencial
+                    Costo total gerencial
                   </p>
                   <p className="number-display mt-1 text-3xl">
-                    {money.format(commission)}
+                    {money.format(totalCost)}
                   </p>
                   <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-                    Pago separado de la nómina personal
+                    Comisión y cargas fiscales del periodo
                   </p>
                 </div>
               </div>
@@ -756,6 +789,10 @@ function ManagerKioskReceiptPortal({
         >
           {annualManagerHistory.length ? (
             annualManagerHistory.map((month) => {
+              const monthPayroll = kioskPayrollForMonth(
+                state,
+                month,
+              ).managerRows.find((row) => row.manager.id === employee?.id);
               const monthResolution = resolveBranchCommission({
                 branchId: employee?.branchId ?? "",
                 month,
@@ -763,9 +800,6 @@ function ManagerKioskReceiptPortal({
                 sales: state.kioskMonthlySales,
                 fallbackTarget: target,
               });
-              const amount = monthResolution.combined
-                ? monthResolution.salesBase * monthResolution.rate
-                : monthResolution.commission;
               return (
                 <button
                   type="button"
@@ -785,7 +819,7 @@ function ManagerKioskReceiptPortal({
                       </p>
                     </div>
                     <span className="number-display text-sm">
-                      {money.format(amount)}
+                      {money.format(monthPayroll?.totalCost ?? 0)}
                     </span>
                   </div>
                 </button>

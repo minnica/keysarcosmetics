@@ -73,6 +73,11 @@ import {
 } from "./payroll-demo-context";
 import { PayrollModuleAnalytics } from "./payroll-module-analytics";
 import {
+  PayrollConsolidatedSalesAnalytics,
+  type ConsolidatedBranchSalesPoint,
+  type ConsolidatedSalesTrendPoint,
+} from "./payroll-consolidated-sales-analytics";
+import {
   employeeCostAllocationShares,
   employeeCostBranchIds,
   payrollCostAllocationMode,
@@ -98,6 +103,12 @@ const dateLabel = new Intl.DateTimeFormat("es-MX", {
 const monthLabel = new Intl.DateTimeFormat("es-MX", {
   month: "long",
   year: "numeric",
+  timeZone: "UTC",
+});
+
+const shortMonthLabel = new Intl.DateTimeFormat("es-MX", {
+  month: "short",
+  year: "2-digit",
   timeZone: "UTC",
 });
 
@@ -1957,6 +1968,102 @@ function ConsolidatedDashboard({
       };
     })
     .filter((branch) => branch.employees > 0);
+  const salesTrend = useMemo<ConsolidatedSalesTrendPoint[]>(() => {
+    const selectedMonth = config.periodEnd.slice(0, 7);
+    const [year = 0, monthNumber = 1] = selectedMonth.split("-").map(Number);
+
+    return Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(Date.UTC(year, monthNumber - 1 - (5 - index), 1));
+      const month = `${date.getUTCFullYear()}-${String(
+        date.getUTCMonth() + 1,
+      ).padStart(2, "0")}`;
+      const period = monthlyPeriod(month);
+      const monthLines = payrollLines(
+        period.start,
+        state.calculationMode,
+        period.end,
+        "CONSOLIDATED",
+      );
+      const sales = monthLines.reduce((sum, line) => sum + line.sales, 0);
+      const totalCost = monthLines.reduce(
+        (sum, line) => sum + line.total + line.socialCost + line.isrCost,
+        0,
+      );
+
+      return {
+        month,
+        label: shortMonthLabel
+          .format(new Date(`${month}-01T00:00:00Z`))
+          .replace(".", "")
+          .toLocaleUpperCase("es-MX"),
+        sales,
+        totalCost,
+      };
+    });
+  }, [config.periodEnd, payrollLines, state.calculationMode]);
+  const branchSales = useMemo<ConsolidatedBranchSalesPoint[]>(() => {
+    const employeeIds = new Set(lines.map((line) => line.employee.id));
+    const rawSalesByEmployee = new Map<
+      string,
+      { total: number; byBranch: Map<string, number> }
+    >();
+
+    state.sales.forEach((sale) => {
+      if (
+        !employeeIds.has(sale.employeeId) ||
+        sale.date < config.periodStart ||
+        sale.date > config.periodEnd
+      ) {
+        return;
+      }
+      const current = rawSalesByEmployee.get(sale.employeeId) ?? {
+        total: 0,
+        byBranch: new Map<string, number>(),
+      };
+      current.total += sale.amount;
+      current.byBranch.set(
+        sale.branchId,
+        (current.byBranch.get(sale.branchId) ?? 0) + sale.amount,
+      );
+      rawSalesByEmployee.set(sale.employeeId, current);
+    });
+
+    const salesByBranch = new Map<string, number>();
+    lines.forEach((line) => {
+      const employeeSales = rawSalesByEmployee.get(line.employee.id);
+      if (!employeeSales || employeeSales.total <= 0) return;
+      employeeSales.byBranch.forEach((rawSales, branchId) => {
+        const allocatedSales = line.sales * (rawSales / employeeSales.total);
+        salesByBranch.set(
+          branchId,
+          (salesByBranch.get(branchId) ?? 0) + allocatedSales,
+        );
+      });
+    });
+
+    const costByBranch = new Map(
+      branchCosts.map((branch) => [branch.id, branch]),
+    );
+    return state.branches
+      .map((branch) => {
+        const cost = costByBranch.get(branch.id);
+        return {
+          id: branch.id,
+          name: branch.name,
+          sales: salesByBranch.get(branch.id) ?? 0,
+          cost: cost?.total ?? 0,
+          employees: cost?.employees ?? 0,
+        };
+      })
+      .filter((branch) => branch.sales > 0 || branch.cost > 0);
+  }, [
+    branchCosts,
+    config.periodEnd,
+    config.periodStart,
+    lines,
+    state.branches,
+    state.sales,
+  ]);
   const positionCostMap = new Map<
     string,
     {
@@ -2289,6 +2396,16 @@ function ConsolidatedDashboard({
           </CardContent>
         </Card>
       )}
+
+      <PayrollConsolidatedSalesAnalytics
+        periodLabel={`${config.periodStart} — ${config.periodEnd}`}
+        trend={salesTrend}
+        branches={branchSales}
+        payrollBase={payrollBase}
+        socialCost={socialCost}
+        isrCost={isrCost}
+        totalSales={totalSales}
+      />
 
       <PayrollTable
         lines={lines}

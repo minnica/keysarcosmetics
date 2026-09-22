@@ -33,12 +33,8 @@ import {
   ShieldPlus,
   UsersRound,
 } from "lucide-react";
-import {
-  periodTaxInclusionForRange,
-  type PayrollModule,
-  usePayrollDemo,
-} from "./payroll-demo-context";
-import { resolveBranchCommission } from "./branch-commission-calculator";
+import { type PayrollModule, usePayrollDemo } from "./payroll-demo-context";
+import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { ReportExportButtons } from "./report-export-buttons";
 import type { ReportExportConfig } from "@/lib/report-export";
 
@@ -165,9 +161,47 @@ function Metric({
   );
 }
 
+function DisbursementTaxToggle({
+  label,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onCheckedChange(!checked)}
+      className={`flex h-10 items-center gap-2 rounded-xl border px-3 text-left text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${checked ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100" : "border-[color:var(--border-color)] bg-[color:var(--input-disabled-bg)] text-[color:var(--text-muted)]"}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`relative h-4 w-8 rounded-full ${checked ? "bg-emerald-600" : "bg-stone-300 dark:bg-stone-700"}`}
+      >
+        <span
+          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-[17px]" : "translate-x-0.5"}`}
+        />
+      </span>
+      {label}
+    </button>
+  );
+}
+
 export function PayrollDisbursementDemo() {
-  const { state, payrollLines, periodOptions, currentPeriod } =
-    usePayrollDemo();
+  const {
+    state,
+    payrollLines,
+    periodOptions,
+    currentPeriod,
+    setModuleTaxInclusion,
+  } = usePayrollDemo();
   const [module, setModule] = useState<DisbursementModule>("CONSOLIDATED");
   const [selectedRunId, setSelectedRunId] = useState("");
   const [pageSize, setPageSize] = useState("20");
@@ -233,6 +267,18 @@ export function PayrollDisbursementDemo() {
   ]);
   const run =
     availableRuns.find((item) => item.id === selectedRunId) ?? availableRuns[0];
+  const kioskPayroll =
+    module === "KIOSK_COMMISSION" && run
+      ? kioskPayrollForMonth(state, run.periodStart.slice(0, 7))
+      : null;
+  const activeEmployee = state.employees.find(
+    (employee) => employee.id === state.activeEmployeeId,
+  );
+  const isMaster = activeEmployee?.roleId === "role-admin";
+  const globalIncludeSocialCost =
+    kioskPayroll?.taxInclusion.global?.includeSocialCost ?? true;
+  const globalIncludeIsr =
+    kioskPayroll?.taxInclusion.global?.includeIsr ?? true;
 
   const availablePeriodCounts = useMemo(() => {
     const currentMonth = new Date().toISOString().slice(0, 7);
@@ -271,79 +317,27 @@ export function PayrollDisbursementDemo() {
 
     if (module === "KIOSK_COMMISSION") {
       const month = run.periodStart.slice(0, 7);
-      const taxInclusion = periodTaxInclusionForRange(
-        state.periodTaxInclusions,
-        run.periodStart,
-        run.periodEnd,
-      );
-      const managerRows = new Map<
-        string,
-        DisbursementRow & { branchNames: Set<string>; employeeId: string }
-      >();
-
-      state.kioskTargets.forEach((target) => {
-        const resolution = resolveBranchCommission({
-          branchId: target.branchId,
-          month,
-          schemes: state.branchCommissionSchemes,
-          sales: state.kioskMonthlySales,
-          fallbackTarget: target,
-        });
-        const employee = state.employees.find(
-          (item) => item.id === resolution.managerId,
-        );
-        if (!employee || resolution.commission <= 0) return;
-
-        const branchName =
-          state.branches.find((item) => item.id === target.branchId)?.name ??
-          "SIN SUCURSAL";
-        const current = managerRows.get(employee.id);
-        if (current) {
-          current.payment += resolution.commission;
-          current.branchNames.add(branchName);
-          return;
-        }
-
-        const fallback = fallbackName(employee.name);
-        managerRows.set(employee.id, {
-          id: `kiosk-${month}-${employee.id}`,
-          employeeId: employee.id,
-          paternalSurname: employee.paternalSurname ?? fallback.paternalSurname,
-          maternalSurname: employee.maternalSurname ?? fallback.maternalSurname,
-          firstName: employee.firstName ?? fallback.firstName,
-          position: employee.position,
-          bank: employee.bank,
-          clabe:
-            employee.clabe ??
-            `CLABE DEMO ${employee.account.replace(/\D/g, "").padStart(18, "0")}`,
-          payment: resolution.commission,
-          isr: 0,
-          socialCost: 0,
-          total: 0,
-          branch: branchName,
-          branchNames: new Set([branchName]),
-        });
-      });
-
-      return Array.from(managerRows.values())
-        .map(({ branchNames, employeeId, ...row }) => {
-          const employee = state.employees.find(
-            (item) => item.id === employeeId,
-          );
-          const isr =
-            (taxInclusion?.includeIsr ?? true)
-              ? row.payment * (employee?.isrCostRate ?? 0)
-              : 0;
-          const socialCost =
-            (taxInclusion?.includeSocialCost ?? true)
-              ? row.payment * (employee?.socialCostRate ?? 0)
-              : 0;
+      return kioskPayrollForMonth(state, month)
+        .managerRows.filter((row) => row.commission > 0)
+        .map((row) => {
+          const fallback = fallbackName(row.manager.name);
           return {
-            ...row,
-            branch: Array.from(branchNames).join(" · "),
-            isr,
-            socialCost,
-            total: row.payment + isr + socialCost,
+            id: `kiosk-${month}-${row.manager.id}`,
+            paternalSurname:
+              row.manager.paternalSurname ?? fallback.paternalSurname,
+            maternalSurname:
+              row.manager.maternalSurname ?? fallback.maternalSurname,
+            firstName: row.manager.firstName ?? fallback.firstName,
+            position: row.manager.position,
+            bank: row.manager.bank,
+            clabe:
+              row.manager.clabe ??
+              `CLABE DEMO ${row.manager.account.replace(/\D/g, "").padStart(18, "0")}`,
+            payment: row.commission,
+            isr: row.isr,
+            socialCost: row.socialCost,
+            total: row.totalCost,
+            branch: row.branchNames.join(" · "),
           };
         })
         .sort(
@@ -385,17 +379,7 @@ export function PayrollDisbursementDemo() {
           a.maternalSurname.localeCompare(b.maternalSurname, "es-MX") ||
           a.firstName.localeCompare(b.firstName, "es-MX"),
       );
-  }, [
-    module,
-    payrollLines,
-    run,
-    state.branchCommissionSchemes,
-    state.branches,
-    state.employees,
-    state.kioskMonthlySales,
-    state.kioskTargets,
-    state.periodTaxInclusions,
-  ]);
+  }, [module, payrollLines, run, state]);
 
   const effectivePageSize =
     pageSize === "ALL" ? Math.max(rows.length, 1) : Number(pageSize);
@@ -672,6 +656,55 @@ export function PayrollDisbursementDemo() {
               </p>
             </div>
           </section>
+          {module === "KIOSK_COMMISSION" && kioskPayroll && (
+            <section className="payroll-dispersion-controls rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-4 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="label-caps">CARGAS DE COMISIÓN POR KIOSCO</p>
+                  <h2 className="mt-1 text-base font-semibold">
+                    ISR y costo social del periodo mensual
+                  </h2>
+                  <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                    Con la regla general apagada, estos controles modifican
+                    únicamente kiosco, sus recibos gerenciales, reportes y esta
+                    dispersión.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <DisbursementTaxToggle
+                    label={
+                      globalIncludeSocialCost
+                        ? "Costo social · global"
+                        : "Costo social · kiosco"
+                    }
+                    checked={kioskPayroll.taxInclusion.includeSocialCost}
+                    disabled={!isMaster || globalIncludeSocialCost}
+                    onCheckedChange={(includeSocialCost) =>
+                      setModuleTaxInclusion(
+                        "KIOSK_COMMISSION",
+                        kioskPayroll.bounds.start,
+                        kioskPayroll.bounds.end,
+                        { includeSocialCost },
+                      )
+                    }
+                  />
+                  <DisbursementTaxToggle
+                    label={globalIncludeIsr ? "ISR · global" : "ISR · kiosco"}
+                    checked={kioskPayroll.taxInclusion.includeIsr}
+                    disabled={!isMaster || globalIncludeIsr}
+                    onCheckedChange={(includeIsr) =>
+                      setModuleTaxInclusion(
+                        "KIOSK_COMMISSION",
+                        kioskPayroll.bounds.start,
+                        kioskPayroll.bounds.end,
+                        { includeIsr },
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            </section>
+          )}
           <section id="payroll-dispersion-report" className="space-y-5">
             <Card className="overflow-hidden border-[#a47b56]/40 bg-card text-white">
               <CardContent className="p-5">

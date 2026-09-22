@@ -48,7 +48,7 @@ import {
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { ReportExportButtons } from "./report-export-buttons";
-import { resolveBranchCommission } from "./branch-commission-calculator";
+import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 
 type ReportScope = "MONTHLY" | "QUARTERLY" | "ANNUAL";
 
@@ -279,6 +279,10 @@ export function PayrollBranchReportDemo() {
           bounds.end,
           "CHRISTMAS_BONUS",
         );
+        const kioskCalculation = kioskPayrollForMonth(state, month);
+        const kioskBranchById = new Map(
+          kioskCalculation.branchRows.map((row) => [row.target.branchId, row]),
+        );
         const lineByEmployee = new Map(
           lines.map((line) => [line.employee.id, line]),
         );
@@ -352,8 +356,7 @@ export function PayrollBranchReportDemo() {
             if (payrollKind === "SPECIALIST")
               specialistPayroll += modulePayroll * costShare;
             doublePayPayroll += line.doublePayAmount * costShare;
-            negativeBalanceApplied +=
-              line.carriedNegativeBalance * costShare;
+            negativeBalanceApplied += line.carriedNegativeBalance * costShare;
             if (payrollKind === "COMMISSION")
               commissionPayroll += modulePayroll * costShare;
             if (payrollKind === "CONTRACTOR")
@@ -522,30 +525,21 @@ export function PayrollBranchReportDemo() {
               );
               christmasBonusPayroll += gross * share;
               socialCost +=
-                ((christmasTaxes.includeSocialCost ||
-                  bonus.includeSocialCost)
+                (christmasTaxes.includeSocialCost || bonus.includeSocialCost
                   ? gross * bonus.socialCostRate
                   : 0) * share;
               isrCost +=
-                ((christmasTaxes.includeIsr || bonus.includeIsr)
+                (christmasTaxes.includeIsr || bonus.includeIsr
                   ? gross * bonus.isrRate
                   : 0) * share;
               employeeIds.add(bonus.employeeId);
             });
 
-          const kioskTarget = state.kioskTargets.find(
-            (target) => target.branchId === branch.id,
-          );
-          const kioskResolution = resolveBranchCommission({
-            branchId: branch.id,
-            month,
-            schemes: state.branchCommissionSchemes,
-            sales: state.kioskMonthlySales,
-            fallbackTarget: kioskTarget,
-          });
-          kioskPayroll = kioskResolution.commission;
-          if (kioskResolution.managerId)
-            employeeIds.add(kioskResolution.managerId);
+          const kioskBranch = kioskBranchById.get(branch.id);
+          kioskPayroll = kioskBranch?.commission ?? 0;
+          socialCost += kioskBranch?.socialCost ?? 0;
+          isrCost += kioskBranch?.isr ?? 0;
+          if (kioskBranch?.manager) employeeIds.add(kioskBranch.manager.id);
 
           const payrollCost =
             fixedPayroll +
@@ -778,22 +772,7 @@ export function PayrollBranchReportDemo() {
     selectedPeriod.end,
     selectedPeriod.months,
     selectedPeriod.start,
-    state.adjustments,
-    state.branchCommissionSchemes,
-    state.branches,
-    state.calculationMode,
-    state.christmasBonuses,
-    state.christmasBonusPaymentPeriods,
-    state.employees,
-    state.kioskMonthlySales,
-    state.kioskTargets,
-    state.movements,
-    state.payrollCostAllocationModes,
-    state.periodTaxInclusions,
-    state.sales,
-    state.terminationSettlements,
-    state.viaticsConcepts,
-    state.viaticsEntries,
+    state,
   ]);
 
   const rows = analysis.rows;
