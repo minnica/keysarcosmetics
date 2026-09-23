@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -247,8 +248,9 @@ function updateAgeLabel(updatedAt: string | null, now: number) {
 }
 
 function DataUpdateStatus({ compact = false }: { compact?: boolean }) {
-  const { state } = usePayrollDemo();
+  const { state, refreshSystem } = usePayrollDemo();
   const [now, setNow] = useState(() => Date.now());
+  const [isRefreshing, startRefreshTransition] = useTransition();
 
   useEffect(() => {
     if (!state.lastUpdatedAt) return;
@@ -262,33 +264,52 @@ function DataUpdateStatus({ compact = false }: { compact?: boolean }) {
     : "--:--:--";
   const age = updateAgeLabel(state.lastUpdatedAt, now);
 
+  function handleRefresh() {
+    startRefreshTransition(() => refreshSystem());
+    toast.success(
+      "Sistema actualizado: nóminas, consolidado, recibos, dispersión, dashboards y reportes fueron recalculados.",
+    );
+  }
+
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      title={`Última actualización: ${exactTime} · ${age}`}
-      className={`flex shrink-0 items-center border border-emerald-300/20 bg-emerald-400/[0.07] text-emerald-100 ${compact ? "h-10 gap-1.5 rounded-xl px-2" : "h-10 gap-2 rounded-xl px-3"}`}
+    <button
+      type="button"
+      onClick={handleRefresh}
+      disabled={isRefreshing}
+      aria-busy={isRefreshing}
+      aria-label={`Actualizar todo el sistema. Última actualización: ${exactTime}, ${age}`}
+      title={`Actualizar todo el sistema · Última actualización: ${exactTime} · ${age}`}
+      className={`flex shrink-0 items-center border border-emerald-300/20 bg-emerald-400/[0.07] text-emerald-100 transition-colors hover:border-emerald-300/45 hover:bg-emerald-400/[0.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 disabled:cursor-wait disabled:opacity-70 ${compact ? "h-10 gap-1.5 rounded-xl px-2" : "h-10 gap-2 rounded-xl px-3"}`}
     >
       <span className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-300/10">
-        <span className="absolute h-2 w-2 animate-ping rounded-full bg-emerald-300/45 motion-reduce:animate-none" />
-        <RefreshCw className="relative h-3 w-3" aria-hidden="true" />
+        {!isRefreshing && (
+          <span className="absolute h-2 w-2 animate-ping rounded-full bg-emerald-300/45 motion-reduce:animate-none" />
+        )}
+        <RefreshCw
+          className={`relative h-3 w-3 ${isRefreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
+          aria-hidden="true"
+        />
       </span>
       {compact ? (
-        <span className="text-[9px] font-semibold tabular-nums text-emerald-50">
-          {exactTime}
+        <span role="status" aria-live="polite" className="leading-tight">
+          <span className="block text-[7px] font-semibold uppercase tracking-[0.1em] text-emerald-200/75">
+            {isRefreshing ? "Actualizando" : "Actualizar"}
+          </span>
+          <span className="block text-[8px] font-semibold tabular-nums text-emerald-50">
+            {exactTime}
+          </span>
         </span>
       ) : (
-        <span className="leading-tight">
+        <span role="status" aria-live="polite" className="leading-tight">
           <span className="block text-[7px] font-semibold uppercase tracking-[0.14em] text-emerald-200/70">
-            Última actualización
+            {isRefreshing ? "Actualizando sistema" : "Actualizar sistema"}
           </span>
           <span className="mt-0.5 block text-[9px] font-semibold tabular-nums text-emerald-50">
             {exactTime} · {age}
           </span>
         </span>
       )}
-    </div>
+    </button>
   );
 }
 

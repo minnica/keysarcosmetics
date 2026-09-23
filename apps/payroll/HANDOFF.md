@@ -371,7 +371,8 @@ negocio definitiva.
 ## Actualización automática del sistema
 
 - Todas las altas, ediciones, cambios de estatus y configuraciones del prototipo pasan por el estado compartido de nómina. Cada mutación válida recalcula las líneas derivadas y vuelve a renderizar los módulos, consolidados, reportes, recibos y costos que consumen esos datos, sin requerir recargar la página.
-- El encabezado muestra permanentemente la hora exacta y la antigüedad de la última actualización. El indicador se adapta a escritorio y celular, usa una región accesible de estado y no modifica la marca de tiempo cuando una operación es rechazada o no produce cambios.
+- El encabezado muestra permanentemente la hora exacta y la antigüedad de la última actualización. El control `Actualizar sistema` se adapta a escritorio y celular; al pulsarlo invalida el estado compartido de la sesión y fuerza una nueva evaluación de nóminas, consolidado, recibos, dispersión, dashboards, reportes y costos sin recargar la página ni perder capturas en memoria.
+- La actualización manual expone estado accesible de progreso y confirma el alcance al terminar. No modifica datos contables, autorizaciones ni cierres: únicamente vuelve a proyectar todos los consumidores desde la fuente vigente y renueva la marca de tiempo.
 - Alcance actual: la sincronización es inmediata dentro de la sesión React del prototipo. La sincronización entre dispositivos y usuarios simultáneos requerirá que el backend publique eventos versionados —por ejemplo con WebSocket o Server-Sent Events— y que el cliente invalide los datos afectados sin perder la auditoría.
 
 ## Prioridad fiscal por periodo y nómina

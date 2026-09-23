@@ -3154,6 +3154,7 @@ interface DemoPayrollContextValue {
   isAuthenticated: boolean;
   periodOptions: PeriodOption[];
   currentPeriod: PeriodOption;
+  refreshSystem: () => void;
   startSession: (employeeId: string) => void;
   endSession: () => void;
   setActiveEmployee: (employeeId: string) => void;
@@ -4125,6 +4126,7 @@ export function PayrollDemoProvider({
       isAuthenticated,
       periodOptions,
       currentPeriod,
+      refreshSystem: () => update((current) => ({ ...current })),
       startSession: (employeeId) => {
         update((current) => ({ ...current, activeEmployeeId: employeeId }));
         setIsAuthenticated(true);
