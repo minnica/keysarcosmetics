@@ -48,6 +48,57 @@ const money = new Intl.NumberFormat("es-MX", {
   currency: "MXN",
 });
 
+export function commissionReceiptNet(
+  line: EmployeePayrollLine,
+  includeBaseSalary = false,
+) {
+  return Math.max(
+    (includeBaseSalary ? line.fixedSalary : 0) +
+      line.commission +
+      line.bonuses +
+      line.externalAdditions -
+      line.fines -
+      line.loanDeduction -
+      line.externalDeductions -
+      line.carriedNegativeBalance,
+    0,
+  );
+}
+
+export function commissionReceiptPendingBalance(
+  line: EmployeePayrollLine,
+  includeBaseSalary = false,
+) {
+  return Math.max(
+    line.fines +
+      line.loanDeduction +
+      line.externalDeductions +
+      line.carriedNegativeBalance -
+      (includeBaseSalary ? line.fixedSalary : 0) -
+      line.commission -
+      line.bonuses -
+      line.externalAdditions,
+    0,
+  );
+}
+
+export function hasCommissionReceiptActivity(
+  line: EmployeePayrollLine,
+  includeBaseSalary = false,
+) {
+  return (
+    (includeBaseSalary && line.fixedSalary !== 0) ||
+    line.sales > 0 ||
+    line.commission !== 0 ||
+    line.bonuses !== 0 ||
+    line.fines !== 0 ||
+    line.loanDeduction !== 0 ||
+    line.externalAdditions !== 0 ||
+    line.externalDeductions !== 0 ||
+    line.carriedNegativeBalance !== 0
+  );
+}
+
 export function Receipt({
   line,
   periodStart,
@@ -60,10 +111,12 @@ export function Receipt({
   module?: PayrollModule;
 }) {
   const { state } = usePayrollDemo();
+  const receiptConfiguration = state.receiptConfiguration;
   const moduleDefinition = state.payrollModules.find(
     (item) => item.id === module,
   );
   const includesConcept = (concept: PayrollModuleConcept) =>
+    concept === "FINE" ||
     module === "CONSOLIDATED" ||
     Boolean(moduleDefinition?.concepts.includes(concept));
   const movements = state.movements.filter(
@@ -127,9 +180,18 @@ export function Receipt({
     sales: state.kioskMonthlySales,
     fallbackTarget: managerTarget,
   });
-  const showSalary = includesConcept("SALARY");
   const showCommission = includesConcept("COMMISSION");
   const showLoans = includesConcept("LOAN") || includesConcept("ADVANCE");
+  const includeBaseSalary =
+    receiptConfiguration.includeBaseSalaryInReceipt && line.fixedSalary > 0;
+  const receiptNet = commissionReceiptNet(line, includeBaseSalary);
+  const pendingBalance = commissionReceiptPendingBalance(
+    line,
+    includeBaseSalary,
+  );
+  const receiptNetLabel = includeBaseSalary
+    ? "Neto del recibo"
+    : "Neto de comisiones";
   const dualCommission =
     showCommission &&
     managerResolution.managerId === line.employee.id &&
@@ -139,7 +201,10 @@ export function Receipt({
       <div className="bg-[#4f4a44] px-6 py-5 text-white">
         <p className="font-brand text-xl tracking-widest">KEYSAR COSMETICS</p>
         <p className="mt-1 text-xs uppercase tracking-[0.16em] text-white/65">
-          Recibo de nómina · demostración
+          {receiptConfiguration.title}
+        </p>
+        <p className="mt-1 text-[10px] text-white/55">
+          {receiptConfiguration.subtitle}
         </p>
       </div>
       <div className="space-y-5 p-6">
@@ -170,9 +235,12 @@ export function Receipt({
           </div>
         </div>
         <Separator />
-        {showCommission && (
+        {showCommission &&
+          (receiptConfiguration.showSales ||
+            receiptConfiguration.showScheme) && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
+            {receiptConfiguration.showSales && (
+              <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
               <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
                 Ventas compactadas ·{" "}
                 {line.calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"}
@@ -180,8 +248,10 @@ export function Receipt({
               <p className="number-display mt-1 text-xl">
                 {money.format(line.sales)}
               </p>
-            </div>
-            <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
+              </div>
+            )}
+            {receiptConfiguration.showScheme && (
+              <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
               <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
                 Tasa / esquema al corte
               </p>
@@ -194,7 +264,8 @@ export function Receipt({
                 {line.schemeName} ·{" "}
                 {line.calculationMode === "WITH_VAT" ? "CON IVA" : "SIN IVA"}
               </p>
-            </div>
+              </div>
+            )}
           </div>
         )}
         {dualCommission && (
@@ -220,16 +291,24 @@ export function Receipt({
             </div>
           </div>
         )}
+        <div
+          className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.08em]"
+          aria-label="Leyenda de colores de deducciones"
+        >
+          <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-amber-800 dark:border-amber-800 dark:bg-amber-950/25 dark:text-amber-200">
+            Ámbar · préstamo o adelanto
+          </span>
+          <span className="rounded-full border border-rose-300 bg-rose-50 px-2.5 py-1 text-rose-800 dark:border-rose-800 dark:bg-rose-950/25 dark:text-rose-200">
+            Rojo · multa o descuento
+          </span>
+        </div>
         <div className="space-y-2 text-sm">
-          {showSalary && (
-            <div className="flex justify-between">
-              <span>
-                Sueldo fijo
-                {line.workedDays < line.periodDays
-                  ? ` · ${line.workedDays}/${line.periodDays} días`
-                  : ""}
-              </span>
-              <strong>{money.format(line.fixedSalary)}</strong>
+          {includeBaseSalary && (
+            <div className="flex justify-between gap-4 rounded-lg border border-amber-300/70 bg-amber-50/60 px-3 py-2 dark:border-amber-800 dark:bg-amber-950/20">
+              <span>Sueldo base del periodo</span>
+              <strong className="text-emerald-700 dark:text-emerald-300">
+                +{money.format(line.fixedSalary)}
+              </strong>
             </div>
           )}
           {showCommission && (
@@ -239,8 +318,13 @@ export function Receipt({
             </div>
           )}
           {movements.map((movement) => (
-            <div key={movement.id} className="flex justify-between">
-              <span>{movement.concept}</span>
+            <div key={movement.id} className="flex justify-between gap-4">
+              <span>
+                <span className="block">{movement.concept}</span>
+                <span className="mt-0.5 block text-[10px] leading-4 text-[color:var(--text-muted)]">
+                  Motivo: {movement.comments}
+                </span>
+              </span>
               <strong
                 className={
                   movement.type === "FINE"
@@ -276,6 +360,9 @@ export function Receipt({
                     includesConcept("LOAN"))),
             )
             .map((adjustment) => {
+              const loanRelated =
+                adjustment.type === "LOAN" ||
+                adjustment.type === "LOAN_PAYMENT";
               const positive =
                 adjustment.type === "PLUS" ||
                 adjustment.type === "BONUS" ||
@@ -285,10 +372,17 @@ export function Receipt({
                 Math.max(adjustment.participantIds.length, 1);
               return (
                 <div key={adjustment.id} className="flex justify-between gap-4">
-                  <span>{adjustment.comments}</span>
+                  <span>
+                    <span className="block">{adjustment.concept}</span>
+                    <span className="mt-0.5 block text-[10px] leading-4 text-[color:var(--text-muted)]">
+                      Motivo: {adjustment.comments}
+                    </span>
+                  </span>
                   <strong
                     className={
-                      positive
+                      loanRelated
+                        ? "text-amber-700 dark:text-amber-300"
+                        : positive
                         ? "text-emerald-700 dark:text-emerald-300"
                         : "text-rose-700 dark:text-rose-300"
                     }
@@ -306,7 +400,12 @@ export function Receipt({
             const positive = concept?.effect !== "DEDUCT";
             return (
               <div key={entry.id} className="flex justify-between gap-4">
-                <span>VIÁTICO · {concept?.name}</span>
+                <span>
+                  <span className="block">VIÁTICO · {concept?.name}</span>
+                  <span className="mt-0.5 block text-[10px] leading-4 text-[color:var(--text-muted)]">
+                    Motivo: {entry.comments}
+                  </span>
+                </span>
                 <strong
                   className={
                     positive
@@ -323,7 +422,7 @@ export function Receipt({
           {showLoans && (
             <div className="flex justify-between">
               <span>Cuota de préstamo</span>
-              <strong className="text-rose-700 dark:text-rose-300">
+              <strong className="text-amber-700 dark:text-amber-300">
                 −{money.format(line.loanDeduction)}
               </strong>
             </div>
@@ -336,18 +435,19 @@ export function Receipt({
               </strong>
             </div>
           )}
-          {line.newNegativeBalance > 0 && (
+          {pendingBalance > 0 && (
             <div className="flex justify-between gap-4 rounded-lg border border-rose-300 bg-rose-50/70 px-3 py-2 dark:border-rose-900 dark:bg-rose-950/20">
               <span className="font-semibold">
                 Saldo pendiente para el siguiente periodo
               </span>
               <strong className="number-display text-rose-700 dark:text-rose-300">
-                {money.format(line.newNegativeBalance)}
+                {money.format(pendingBalance)}
               </strong>
             </div>
           )}
         </div>
-        {temporaryChallenges.length > 0 && (
+        {receiptConfiguration.showTemporaryBonusProgress &&
+          temporaryChallenges.length > 0 && (
           <div className="space-y-3 rounded-xl border border-amber-300/60 bg-amber-50/50 p-4 dark:bg-amber-950/20">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-amber-600" />
@@ -392,18 +492,22 @@ export function Receipt({
         )}
         <Separator />
         <div className="flex items-end justify-between gap-4">
-          <div>
+          {receiptConfiguration.showBankAccount ? (
+            <div>
             <p className="text-xs text-[color:var(--text-muted)]">
               Pago a {line.employee.bank}
             </p>
             <p className="text-sm font-medium">{line.employee.account}</p>
-          </div>
+            </div>
+          ) : (
+            <div />
+          )}
           <div className="text-right">
             <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
-              Total neto
+              {receiptNetLabel}
             </p>
             <p className="number-display text-2xl">
-              {money.format(line.total)}
+              {money.format(receiptNet)}
             </p>
           </div>
         </div>
@@ -418,6 +522,8 @@ export function PayrollReceiptsDemo() {
   const [periodStart, setPeriodStart] = useState(currentPeriod.start);
   const [module, setModule] = useState<PayrollModule>("CONSOLIDATED");
   const [preview, setPreview] = useState<EmployeePayrollLine | null>(null);
+  const includeBaseSalary =
+    state.receiptConfiguration.includeBaseSalaryInReceipt;
   const period =
     periodOptions.find((item) => item.start === periodStart) ?? currentPeriod;
   const run = state.runs.find(
@@ -430,7 +536,7 @@ export function PayrollReceiptsDemo() {
     state.calculationMode,
     period.end,
     module,
-  );
+  ).filter((line) => hasCommissionReceiptActivity(line, includeBaseSalary));
 
   return (
     <div className="space-y-7">
@@ -501,7 +607,13 @@ export function PayrollReceiptsDemo() {
             <Banknote className="h-5 w-5 text-emerald-600" />
             <p className="label-caps mt-4">TOTAL NETO</p>
             <p className="number-display mt-2 text-2xl">
-              {money.format(lines.reduce((sum, line) => sum + line.total, 0))}
+              {money.format(
+                lines.reduce(
+                  (sum, line) =>
+                    sum + commissionReceiptNet(line, includeBaseSalary),
+                  0,
+                ),
+              )}
             </p>
           </CardContent>
         </Card>
@@ -550,7 +662,9 @@ export function PayrollReceiptsDemo() {
                     {line.employee.position} · {line.employee.bank}
                   </p>
                   <p className="number-display mt-2 text-lg">
-                    {money.format(line.total)}
+                    {money.format(
+                      commissionReceiptNet(line, includeBaseSalary),
+                    )}
                   </p>
                 </div>
                 <div className="flex gap-1">

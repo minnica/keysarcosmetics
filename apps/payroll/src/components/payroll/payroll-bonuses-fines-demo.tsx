@@ -39,6 +39,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Textarea,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -111,6 +112,7 @@ function BonusFineMovementDialog({
     movement?.appliedAt ?? currentPeriod.end,
   );
   const [amount, setAmount] = useState(String(movement?.amount ?? ""));
+  const [comments, setComments] = useState(movement?.comments ?? "");
   const [costBranchIds, setCostBranchIds] = useState<string[]>(
     movement?.costBranchIds ??
       (initialEmployee
@@ -151,11 +153,12 @@ function BonusFineMovementDialog({
       !selectedCatalog ||
       !selectedPeriod ||
       !appliedAt ||
+      !comments.trim() ||
       costBranchIds.length === 0 ||
       parsedAmount <= 0
     ) {
       toast.error(
-        "Selecciona empleado, concepto, periodo, fecha, sucursal y monto.",
+        "Selecciona empleado, concepto, periodo, fecha, sucursal, monto y explica el motivo.",
       );
       return;
     }
@@ -172,6 +175,7 @@ function BonusFineMovementDialog({
       type: selectedCatalog.type,
       mode: selectedCatalog.mode,
       concept: selectedCatalog.name,
+      comments: comments.trim().toLocaleUpperCase("es-MX"),
       amount: parsedAmount,
       threshold: selectedAward?.tier?.from ?? selectedCatalog.threshold,
       payrollModule: selectedCatalog.payrollModule,
@@ -224,7 +228,7 @@ function BonusFineMovementDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Empleado / vendedor</Label>
+              <Label>Empleado</Label>
               <Select
                 value={employeeId}
                 onValueChange={(value) => {
@@ -349,6 +353,22 @@ function BonusFineMovementDialog({
                 onChange={(event) => setAmount(event.target.value)}
               />
             </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="bonus-fine-comments">
+                Motivo visible para el empleado
+              </Label>
+              <Textarea
+                id="bonus-fine-comments"
+                value={comments}
+                onChange={(event) => setComments(event.target.value)}
+                placeholder="EXPLICA POR QUÉ SE APLICA ESTE BONO O DESCUENTO"
+                rows={3}
+              />
+              <p className="text-xs text-[color:var(--text-muted)]">
+                Este comentario aparecerá en el recibo y en el portal del
+                empleado.
+              </p>
+            </div>
           </div>
           {selectedCatalog && (
             <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 p-4 text-sm">
@@ -462,6 +482,7 @@ export function PayrollBonusesFinesDemo() {
         return (
           !query ||
           movement.concept.toLocaleLowerCase("es-MX").includes(query) ||
+          movement.comments.toLocaleLowerCase("es-MX").includes(query) ||
           employee?.name.toLocaleLowerCase("es-MX").includes(query)
         );
       })
@@ -524,7 +545,7 @@ export function PayrollBonusesFinesDemo() {
     metadata: [
       { label: "Periodo", value: monthLabel(selectedMonth) },
       {
-        label: "Empleado / vendedor",
+        label: "Empleado",
         value:
           employeeFilter === "ALL"
             ? "TODOS"
@@ -589,6 +610,11 @@ export function PayrollBonusesFinesDemo() {
         header: "Concepto",
         accessor: (row: DemoMovement) => row.concept,
         width: 28,
+      },
+      {
+        header: "Motivo",
+        accessor: (row: DemoMovement) => row.comments,
+        width: 36,
       },
       {
         header: "Empleado",
@@ -683,7 +709,7 @@ export function PayrollBonusesFinesDemo() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Empleado / vendedor</Label>
+              <Label>Empleado</Label>
               <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
                 <SelectTrigger>
                   <SelectValue />
@@ -893,6 +919,9 @@ export function PayrollBonusesFinesDemo() {
                             <p className="font-semibold">{movement.concept}</p>
                             <p className="text-xs text-[color:var(--text-muted)]">
                               {movement.type === "BONUS" ? "BONO" : "MULTA"}
+                            </p>
+                            <p className="mt-1 max-w-sm text-[10px] leading-4 text-[color:var(--text-muted)]">
+                              {movement.comments}
                             </p>
                           </TableCell>
                           <TableCell>

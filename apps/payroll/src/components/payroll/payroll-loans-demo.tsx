@@ -828,7 +828,7 @@ export function PayrollLoansDemo() {
                         </p>
                       </TableCell>
                       <TableCell className="text-right">
-                        <p className="number-display">
+                        <p className="number-display text-amber-700 dark:text-amber-300">
                           {money.format(loan.amount)}
                         </p>
                         {(loan.requestedAmount ?? loan.amount) !==
@@ -841,12 +841,12 @@ export function PayrollLoansDemo() {
                       </TableCell>
                       <TableCell>
                         {loan.paidInstallments} PAGADAS / {loan.installments}
-                        <p className="text-xs text-[color:var(--text-muted)]">
+                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
                           {money.format(loan.amount / loan.installments)} /
                           QUINCENA
                         </p>
                       </TableCell>
-                      <TableCell className="number-display text-right">
+                      <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
                         {money.format(balance)}
                       </TableCell>
                       <TableCell>

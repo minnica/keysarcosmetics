@@ -260,6 +260,7 @@ export interface DemoMovement {
   type: MovementType;
   mode: MovementMode;
   concept: string;
+  comments: string;
   amount: number;
   threshold: number | null;
   payrollModule: Exclude<PayrollModule, "CONSOLIDATED">;
@@ -356,6 +357,16 @@ export interface DemoFinancialRequestPolicy {
   maxMonthlyAdvances: number;
   maxLoanInstallments: number;
   maxQuarterlyLoans: number;
+}
+
+export interface DemoReceiptConfiguration {
+  title: string;
+  subtitle: string;
+  showSales: boolean;
+  showScheme: boolean;
+  includeBaseSalaryInReceipt: boolean;
+  showTemporaryBonusProgress: boolean;
+  showBankAccount: boolean;
 }
 
 export interface DemoNotificationTemplate {
@@ -683,6 +694,7 @@ export interface DemoState {
   adjustments: DemoPayrollAdjustment[];
   loans: DemoLoan[];
   financialRequestPolicy: DemoFinancialRequestPolicy;
+  receiptConfiguration: DemoReceiptConfiguration;
   notificationTemplates: DemoNotificationTemplate[];
   roles: DemoRole[];
   runs: DemoPayrollRun[];
@@ -912,6 +924,12 @@ export const modulePermissionCatalog = [
     paths: ["/notificaciones"],
   },
   {
+    permission: "module.receipt_settings",
+    label: "Configuración de recibos",
+    section: "Configuración",
+    paths: ["/configuracion-recibos"],
+  },
+  {
     permission: "module.access_control",
     label: "Roles y accesos",
     section: "Configuración",
@@ -1132,12 +1150,7 @@ export function employeeCanReceiveConcept(
   employee: DemoEmployee,
   concept: DemoBonusFineConcept,
 ) {
-  return (
-    bonusFineConceptAllowsEmployee(concept, employee.id) &&
-    (employeeSalaryPayrollModule(employee) === concept.payrollModule ||
-      employeeCommissionPayrollModule(employee) === concept.payrollModule ||
-      payrollModuleForCategory(employee.category) === concept.payrollModule)
-  );
+  return bonusFineConceptAllowsEmployee(concept, employee.id);
 }
 
 export function employeeSalesForRange(
@@ -2077,8 +2090,8 @@ function createInitialState(): DemoState {
         id: "FIXED",
         name: "SALARIO FIJO",
         description:
-          "Exclusivamente sueldo registrado y prorrateo por días trabajados.",
-        concepts: ["SALARY"],
+          "Sueldo registrado, prorrateo por días trabajados y multas aprobadas del periodo.",
+        concepts: ["SALARY", "FINE"],
         positionIds: [
           "position-branch-manager",
           "position-regional-manager-seller",
@@ -2095,6 +2108,7 @@ function createInitialState(): DemoState {
           "Sueldo de especialistas y los conceptos configurados para ese módulo.",
         concepts: [
           "SALARY",
+          "FINE",
           "ADJUSTMENT_PLUS",
           "ADJUSTMENT_MINUS",
           "LOAN",
@@ -2154,7 +2168,7 @@ function createInitialState(): DemoState {
         name: "LIQUIDACIONES Y FINIQUITOS",
         description:
           "Bajas de personal, acuerdos y prestaciones pendientes con costo dirigido por sucursal.",
-        concepts: ["SETTLEMENT"],
+        concepts: ["SETTLEMENT", "FINE"],
         positionIds: [],
         active: true,
         custom: false,
@@ -2165,7 +2179,7 @@ function createInitialState(): DemoState {
         name: "AGUINALDOS",
         description:
           "Aguinaldo anual por días otorgados, proporcionalidad y cargas configurables.",
-        concepts: ["CHRISTMAS_BONUS"],
+        concepts: ["CHRISTMAS_BONUS", "FINE"],
         positionIds: [],
         active: true,
         custom: false,
@@ -2446,6 +2460,7 @@ function createInitialState(): DemoState {
         type: "BONUS",
         mode: "SCALE",
         concept: "BONO META $60,000",
+        comments: "META DE VENTA DEL PERIODO ALCANZADA",
         amount: 1800,
         threshold: 60000,
         payrollModule: "COMMISSION",
@@ -2462,6 +2477,7 @@ function createInitialState(): DemoState {
         type: "BONUS",
         mode: "FIXED",
         concept: "BONO DE PUNTUALIDAD",
+        comments: "PUNTUALIDAD COMPLETA DURANTE EL PERIODO",
         amount: 750,
         threshold: null,
         payrollModule: "COMMISSION",
@@ -2478,6 +2494,7 @@ function createInitialState(): DemoState {
         type: "FINE",
         mode: "FIXED",
         concept: "DESCUENTO POR INCIDENCIA",
+        comments: "INCIDENCIA OPERATIVA REGISTRADA Y VALIDADA",
         amount: 350,
         threshold: null,
         payrollModule: "SPECIALIST",
@@ -2494,6 +2511,7 @@ function createInitialState(): DemoState {
         type: "BONUS",
         mode: "FIXED",
         concept: "BONO DEMO DE APERTURA",
+        comments: "APOYO EN APERTURA DE SUCURSAL DEMO",
         amount: 600,
         threshold: null,
         payrollModule: "COMMISSION",
@@ -2510,6 +2528,7 @@ function createInitialState(): DemoState {
         type: "FINE",
         mode: "FIXED",
         concept: "AJUSTE DEMO DE INCIDENCIA",
+        comments: "INCIDENCIA DEMO DOCUMENTADA EN EL PERIODO",
         amount: 250,
         threshold: null,
         payrollModule: "SPECIALIST",
@@ -2526,6 +2545,7 @@ function createInitialState(): DemoState {
         type: "BONUS",
         mode: "FIXED",
         concept: "BONO DEMO DE PRODUCTIVIDAD",
+        comments: "OBJETIVO DEMO DE PRODUCTIVIDAD ALCANZADO",
         amount: 800,
         threshold: null,
         payrollModule: "CONTRACTOR",
@@ -2707,6 +2727,15 @@ function createInitialState(): DemoState {
       maxMonthlyAdvances: 2,
       maxLoanInstallments: 6,
       maxQuarterlyLoans: 2,
+    },
+    receiptConfiguration: {
+      title: "RECIBO DE COMISIONES",
+      subtitle: "Comisiones, bonos y movimientos netos del periodo",
+      showSales: true,
+      showScheme: true,
+      includeBaseSalaryInReceipt: false,
+      showTemporaryBonusProgress: true,
+      showBankAccount: true,
     },
     notificationTemplates: [
       {
@@ -3255,6 +3284,9 @@ interface DemoPayrollContextValue {
   deleteLoan: (loanId: string) => void;
   setLoanStatus: (loanId: string, status: ApprovalStatus) => void;
   updateFinancialRequestPolicy: (policy: DemoFinancialRequestPolicy) => void;
+  updateReceiptConfiguration: (
+    configuration: DemoReceiptConfiguration,
+  ) => void;
   setNotificationModuleApproval: (moduleId: string, approved: boolean) => void;
   updateNotificationTemplate: (
     templateId: string,
@@ -3494,6 +3526,7 @@ export function PayrollDemoProvider({
         (module) => module.id === payrollModule,
       );
       const includesConcept = (concept: PayrollModuleConcept) =>
+        concept === "FINE" ||
         payrollModule === "CONSOLIDATED" ||
         Boolean(moduleDefinition?.concepts.includes(concept));
       return state.employees
@@ -3939,12 +3972,20 @@ export function PayrollDemoProvider({
                   balance.payrollModule === payrollModule),
             )
             .reduce((sum, balance) => sum + balance.amount, 0);
-          const balanceAdjustedTotal =
+          const ordinaryBalanceAdjustedTotal =
             ordinaryBeforeCarry - carriedNegativeBalance;
-          const ordinaryTotal = Math.max(balanceAdjustedTotal, 0);
-          const newNegativeBalance = Math.max(-balanceAdjustedTotal, 0);
-          const total =
-            ordinaryTotal + settlementPayment + christmasBonusPayment;
+          const ordinaryTotal = Math.max(ordinaryBalanceAdjustedTotal, 0);
+          const uncoveredDeductions = Math.max(
+            -ordinaryBalanceAdjustedTotal,
+            0,
+          );
+          const totalBeforeClamp =
+            ordinaryTotal +
+            settlementPayment +
+            christmasBonusPayment -
+            uncoveredDeductions;
+          const total = Math.max(totalBeforeClamp, 0);
+          const newNegativeBalance = Math.max(-totalBeforeClamp, 0);
           const employeePayrollModule =
             payrollModule === "CONSOLIDATED"
               ? (commissionModuleId ??
@@ -4242,14 +4283,18 @@ export function PayrollDemoProvider({
         update((current) => {
           const moduleId = `CUSTOM_${Date.now()}` as const;
           const selectedPositions = new Set(module.positionIds);
-          const salaryEnabled = module.concepts.includes("SALARY");
-          const commissionEnabled = module.concepts.includes("COMMISSION");
+          const concepts = module.concepts.includes("FINE")
+            ? module.concepts
+            : [...module.concepts, "FINE" as const];
+          const salaryEnabled = concepts.includes("SALARY");
+          const commissionEnabled = concepts.includes("COMMISSION");
           return {
             ...current,
             payrollModules: [
               ...current.payrollModules,
               {
                 ...module,
+                concepts,
                 id: moduleId,
                 name: module.name.trim().toLocaleUpperCase("es-MX"),
                 description: module.description.trim(),
@@ -4311,8 +4356,11 @@ export function PayrollDemoProvider({
           const assignmentModuleId: Exclude<PayrollModule, "CONSOLIDATED"> =
             moduleId;
           const selectedPositions = new Set(module.positionIds);
-          const salaryEnabled = module.concepts.includes("SALARY");
-          const commissionEnabled = module.concepts.includes("COMMISSION");
+          const concepts = module.concepts.includes("FINE")
+            ? module.concepts
+            : [...module.concepts, "FINE" as const];
+          const salaryEnabled = concepts.includes("SALARY");
+          const commissionEnabled = concepts.includes("COMMISSION");
           return {
             ...current,
             payrollModules: current.payrollModules.map((item) =>
@@ -4320,6 +4368,7 @@ export function PayrollDemoProvider({
                 ? {
                     ...item,
                     ...module,
+                    concepts,
                     name: module.name.trim().toLocaleUpperCase("es-MX"),
                     description: module.description.trim(),
                   }
@@ -5009,6 +5058,15 @@ export function PayrollDemoProvider({
         update((current) => ({
           ...current,
           financialRequestPolicy: policy,
+        })),
+      updateReceiptConfiguration: (configuration) =>
+        update((current) => ({
+          ...current,
+          receiptConfiguration: {
+            ...configuration,
+            title: configuration.title.trim().toLocaleUpperCase("es-MX"),
+            subtitle: configuration.subtitle.trim(),
+          },
         })),
       setNotificationModuleApproval: (moduleId, approved) =>
         update((current) => {

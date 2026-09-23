@@ -1123,6 +1123,9 @@ export function PayrollAdjustmentsDemo() {
                     adjustment.type === "BONUS" ||
                     adjustment.type === "LOAN" ||
                     adjustment.type === "BASE_SALARY";
+                  const loanType =
+                    adjustment.type === "LOAN" ||
+                    adjustment.type === "LOAN_PAYMENT";
                   return (
                     <TableRow key={adjustment.id}>
                       <TableCell className="w-10 pr-0">
@@ -1185,7 +1188,7 @@ export function PayrollAdjustmentsDemo() {
                         </p>
                       </TableCell>
                       <TableCell
-                        className={`number-display text-right ${positiveType ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}
+                        className={`number-display text-right ${loanType ? "text-amber-700 dark:text-amber-300" : positiveType ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}
                       >
                         {positiveType ? "+" : "−"}
                         {money.format(adjustment.amount)}

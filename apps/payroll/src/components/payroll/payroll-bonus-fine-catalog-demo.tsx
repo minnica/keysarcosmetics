@@ -62,7 +62,6 @@ import {
   type MovementMode,
   type MovementType,
   type PayrollModule,
-  employeeCommissionPayrollModule,
   payrollModuleLabel,
   temporaryBonusStandings,
   usePayrollDemo,
@@ -160,8 +159,8 @@ function SellerSelector({
           <span className="flex min-w-0 items-center gap-2">
             <UsersRound className="h-4 w-4 shrink-0 text-[#987049]" />
             <span className="truncate text-xs font-semibold">
-              {selectedIds.length} VENDEDOR
-              {selectedIds.length === 1 ? "" : "ES"} SELECCIONADO
+              {selectedIds.length} PERSONA
+              {selectedIds.length === 1 ? "" : "S"} SELECCIONADA
               {selectedIds.length === 1 ? "" : "S"}
             </span>
           </span>
@@ -173,7 +172,7 @@ function SellerSelector({
         className="w-[min(430px,calc(100vw-40px))] overflow-hidden rounded-2xl border-[color:var(--border-color)] p-0 shadow-xl"
       >
         <div className="border-b border-[color:var(--border-color)] p-3">
-          <p className="text-xs font-semibold">Vendedores participantes</p>
+          <p className="text-xs font-semibold">Personal participante</p>
           <p className="mt-0.5 text-[10px] text-[color:var(--text-muted)]">
             Busca por nombre o apellido y marca una o varias personas.
           </p>
@@ -184,7 +183,7 @@ function SellerSelector({
               onChange={(event) => setSearch(event.target.value)}
               className="h-8 pl-8 text-[10px]"
               placeholder="BUSCAR NOMBRE O APELLIDO"
-              aria-label="Buscar vendedor participante"
+              aria-label="Buscar empleado participante"
             />
           </div>
         </div>
@@ -292,15 +291,8 @@ function ConceptDialog({
     : type === "FINE"
       ? "multa"
       : "bono";
-  const sellerEmployees = useMemo(
-    () =>
-      state.employees.filter(
-        (employee) =>
-          employee.active &&
-          (employee.category === "SELLER" ||
-            employee.category === "CONTRACTOR" ||
-            employeeCommissionPayrollModule(employee) !== null),
-      ),
+  const eligibleEmployees = useMemo(
+    () => state.employees.filter((employee) => employee.active),
     [state.employees],
   );
 
@@ -394,7 +386,7 @@ function ConceptDialog({
       !allEligibleEmployees &&
       eligibleEmployeeIds.length === 0
     ) {
-      toast.error("Selecciona al menos un vendedor para este bono.");
+      toast.error("Selecciona al menos un empleado para este bono.");
       return;
     }
     if (validUntil && validUntil < validFrom) {
@@ -713,16 +705,16 @@ function ConceptDialog({
                   setAllEligibleEmployees(checked);
                   if (checked) setEligibleEmployeeIds([]);
                 }}
-                label="APLICAR A TODOS LOS VENDEDORES"
+                label="APLICAR A TODO EL PERSONAL"
                 description={
                   allEligibleEmployees
-                    ? `${sellerEmployees.length} vendedores elegibles`
+                    ? `${eligibleEmployees.length} empleados elegibles`
                     : "Elegir participantes mediante casillas"
                 }
               />
               {!allEligibleEmployees && (
                 <SellerSelector
-                  employees={sellerEmployees}
+                  employees={eligibleEmployees}
                   selectedIds={eligibleEmployeeIds}
                   onChange={setEligibleEmployeeIds}
                 />
@@ -1485,8 +1477,8 @@ export function PayrollBonusFineCatalogDemo() {
                         {concept.mode === "SCALE" && (
                           <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.06em] text-[color:var(--text-muted)]">
                             {concept.eligibleEmployeeIds
-                              ? `${concept.eligibleEmployeeIds.length} vendedores seleccionados`
-                              : "Todos los vendedores"}
+                              ? `${concept.eligibleEmployeeIds.length} empleados seleccionados`
+                              : "Todo el personal"}
                           </p>
                         )}
                       </TableCell>

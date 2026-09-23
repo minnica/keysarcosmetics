@@ -177,6 +177,11 @@ const sections: NavSection[] = [
       { href: "/bonos-multas", label: "Bonos y multas", icon: Sparkles },
       { href: "/viaticos", label: "Viáticos", icon: PlaneTakeoff },
       { href: "/notificaciones", label: "Notificaciones", icon: BellRing },
+      {
+        href: "/configuracion-recibos",
+        label: "Configuración de recibos",
+        icon: ReceiptText,
+      },
       { href: "/accesos", label: "Roles y accesos", icon: ShieldCheck },
     ],
   },

@@ -1025,10 +1025,6 @@ export function PayrollCommissionCalculationDemo() {
                       row.line.externalAdditions - row.line.externalDeductions;
                     const viatics =
                       row.line.viaticsAdditions - row.line.viaticsDeductions;
-                    const deductions =
-                      row.line.fines +
-                      row.line.loanDeduction +
-                      row.line.carriedNegativeBalance;
                     return (
                       <TableRow
                         key={row.line.employee.id}
@@ -1112,12 +1108,20 @@ export function PayrollCommissionCalculationDemo() {
                         <TableCell className="number-display px-2 py-2 text-right">
                           {money.format(row.line.bonuses)}
                         </TableCell>
-                        <TableCell
-                          className={`number-display px-2 py-2 text-right ${deductions ? "text-rose-700 dark:text-rose-300" : ""}`}
-                        >
-                          {money.format(deductions)}
+                        <TableCell className="number-display px-2 py-2 text-right">
+                          <span className="block text-rose-700 dark:text-rose-300" title="Multas">
+                            M −{money.format(row.line.fines)}
+                          </span>
+                          <span className="mt-0.5 block text-amber-700 dark:text-amber-300" title="Préstamos y adelantos">
+                            P −{money.format(row.line.loanDeduction)}
+                          </span>
+                          {row.line.carriedNegativeBalance > 0 ? (
+                            <span className="mt-0.5 block text-[7px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+                              SALDO −{money.format(row.line.carriedNegativeBalance)}
+                            </span>
+                          ) : null}
                           {row.line.newNegativeBalance > 0 ? (
-                            <span className="mt-0.5 block text-[7px] font-semibold uppercase tracking-wide">
+                            <span className="mt-0.5 block text-[7px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
                               PASA {money.format(row.line.newNegativeBalance)}
                             </span>
                           ) : null}

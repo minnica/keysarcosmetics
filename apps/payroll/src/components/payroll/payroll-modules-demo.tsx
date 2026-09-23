@@ -86,11 +86,13 @@ function ChoiceButton({
   selected,
   label,
   detail,
+  disabled = false,
   onClick,
 }: {
   selected: boolean;
   label: string;
   detail?: string;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -98,8 +100,9 @@ function ChoiceButton({
       type="button"
       role="checkbox"
       aria-checked={selected}
+      disabled={disabled}
       onClick={onClick}
-      className={`flex min-h-14 items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "border-[#a9794f] bg-[#a9794f]/10" : "border-[color:var(--border-color)] hover:bg-[color:var(--accent-hover)]/35"}`}
+      className={`flex min-h-14 items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-75 ${selected ? "border-[#a9794f] bg-[#a9794f]/10" : "border-[color:var(--border-color)] hover:bg-[color:var(--accent-hover)]/35"}`}
     >
       <span
         className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${selected ? "border-[#8a5e39] bg-[#765034] text-white" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)]"}`}
@@ -146,8 +149,7 @@ function ModuleEditor({
     if (!open) return;
     setName(module?.name ?? "");
     setDescription(module?.description ?? "");
-    setConcepts(
-      module?.concepts ?? [
+    const configuredConcepts = module?.concepts ?? [
         "COMMISSION",
         "BONUS",
         "FINE",
@@ -156,12 +158,17 @@ function ModuleEditor({
         "LOAN",
         "ADVANCE",
         "VIATICS",
-      ],
+      ];
+    setConcepts(
+      configuredConcepts.includes("FINE")
+        ? configuredConcepts
+        : [...configuredConcepts, "FINE"],
     );
     setPositionIds(module?.positionIds ?? []);
   }, [module, open]);
 
   function toggleConcept(concept: PayrollModuleConcept) {
+    if (concept === "FINE") return;
     setConcepts((current) =>
       current.includes(concept)
         ? current.filter((item) => item !== concept)
@@ -195,7 +202,9 @@ function ModuleEditor({
     onOpenChange(false);
   }
 
-  const isSalaryOnly = concepts.length === 1 && concepts[0] === "SALARY";
+  const isSalaryOnly =
+    concepts.includes("SALARY") &&
+    concepts.every((concept) => concept === "SALARY" || concept === "FINE");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
@@ -248,7 +257,12 @@ function ModuleEditor({
                   key={concept.id}
                   selected={concepts.includes(concept.id)}
                   label={concept.label}
-                  detail={concept.detail}
+                  detail={
+                    concept.id === "FINE"
+                      ? "Obligatorio: toda multa aprobada descuenta en la nómina seleccionada y se propaga al sistema."
+                      : concept.detail
+                  }
+                  disabled={concept.id === "FINE"}
                   onClick={() => toggleConcept(concept.id)}
                 />
               ))}
@@ -308,7 +322,7 @@ function ModuleEditor({
             </p>
             <p className="mt-1 opacity-80">
               {isSalaryOnly
-                ? "El recibo sumará únicamente el sueldo fijo asignado; no incorporará comisión ni movimientos."
+                ? "El cálculo sumará el sueldo fijo asignado y descontará únicamente las multas aprobadas obligatorias; no incorporará comisión ni otros movimientos."
                 : "Aunque un puesto tenga sueldo y comisión, el sueldo solo entra si seleccionas Sueldo base y el empleado queda asignado a este módulo."}
             </p>
           </div>

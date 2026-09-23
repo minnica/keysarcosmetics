@@ -45,7 +45,11 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { usePayrollDemo } from "./payroll-demo-context";
-import { Receipt } from "./payroll-receipts-demo";
+import {
+  Receipt,
+  commissionReceiptNet,
+  hasCommissionReceiptActivity,
+} from "./payroll-receipts-demo";
 import type { EmployeePayrollLine } from "./payroll-demo-context";
 
 const money = new Intl.NumberFormat("es-MX", {
@@ -64,6 +68,11 @@ function initials(name: string) {
 export function PayrollReceiptsExecutiveDemo() {
   const { state, currentPeriod, periodOptions, payrollLines, setDecision } =
     usePayrollDemo();
+  const includeBaseSalary =
+    state.receiptConfiguration.includeBaseSalaryInReceipt;
+  const receiptNetLabel = includeBaseSalary
+    ? "NETO DEL RECIBO"
+    : "NETO DE COMISIONES";
   const [periodStart, setPeriodStart] = useState(currentPeriod.start);
   const [preview, setPreview] = useState<{
     line: EmployeePayrollLine;
@@ -77,7 +86,9 @@ export function PayrollReceiptsExecutiveDemo() {
   const period =
     periodOptions.find((item) => item.start === periodStart) ?? currentPeriod;
   const run = state.runs.find((item) => item.periodStart === periodStart);
-  const lines = payrollLines(periodStart, state.calculationMode);
+  const lines = payrollLines(periodStart, state.calculationMode).filter(
+    (line) => hasCommissionReceiptActivity(line, includeBaseSalary),
+  );
   const activeEmployee = state.employees.find(
     (item) => item.id === state.activeEmployeeId,
   );
@@ -88,7 +99,11 @@ export function PayrollReceiptsExecutiveDemo() {
   const cutoffLine = payrollLines(
     currentPeriod.start,
     state.calculationMode,
-  ).find((line) => line.employee.id === activeEmployee?.id);
+  ).find(
+    (line) =>
+      line.employee.id === activeEmployee?.id &&
+      hasCommissionReceiptActivity(line, includeBaseSalary),
+  );
   const cutoffDecision = state.decisions.find(
     (item) =>
       item.employeeId === activeEmployee?.id &&
@@ -109,7 +124,8 @@ export function PayrollReceiptsExecutiveDemo() {
           historyPeriod.start,
           state.calculationMode,
         ).find((line) => line.employee.id === activeEmployee.id);
-        return historyLine
+        return historyLine &&
+          hasCommissionReceiptActivity(historyLine, includeBaseSalary)
           ? [
               {
                 period: historyPeriod,
@@ -153,7 +169,10 @@ export function PayrollReceiptsExecutiveDemo() {
     currentPage * effectivePageSize,
     visibleLines.length,
   );
-  const totalNet = lines.reduce((sum, line) => sum + line.total, 0);
+  const totalNet = lines.reduce(
+    (sum, line) => sum + commissionReceiptNet(line, includeBaseSalary),
+    0,
+  );
   const approvedLines = lines.filter((line) =>
     state.decisions.some(
       (decision) =>
@@ -334,8 +353,10 @@ export function PayrollReceiptsExecutiveDemo() {
                   value={`${cutoffLine.employee.bank} · ${cutoffLine.employee.account}`}
                 />
                 <Summary
-                  label="NETO A PAGAR"
-                  value={money.format(cutoffLine.total)}
+                  label={receiptNetLabel}
+                  value={money.format(
+                    commissionReceiptNet(cutoffLine, includeBaseSalary),
+                  )}
                   large
                 />
               </div>
@@ -424,7 +445,12 @@ export function PayrollReceiptsExecutiveDemo() {
                       </p>
                     </div>
                     <p className="number-display text-sm sm:text-right">
-                      {money.format(entry.line.total)}
+                      {money.format(
+                        commissionReceiptNet(
+                          entry.line,
+                          includeBaseSalary,
+                        ),
+                      )}
                     </p>
                     <div className="flex justify-end gap-1">
                       <IconButton
@@ -727,7 +753,9 @@ export function PayrollReceiptsExecutiveDemo() {
                   </div>
                   <div className="md:text-right">
                     <p className="number-display text-base">
-                      {money.format(line.total)}
+                      {money.format(
+                        commissionReceiptNet(line, includeBaseSalary),
+                      )}
                     </p>
                     <p className="text-[10px] text-[color:var(--text-muted)]">
                       NETO DEL PERIODO

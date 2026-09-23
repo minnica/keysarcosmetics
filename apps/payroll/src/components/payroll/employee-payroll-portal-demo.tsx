@@ -63,7 +63,11 @@ import { resolveBranchCommission } from "./branch-commission-calculator";
 import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { EmployeeViaticsPanel } from "./payroll-viatics-demo";
 import { evaluateFinancialRequest } from "./payroll-financial-request-policy";
-import { Receipt } from "./payroll-receipts-demo";
+import {
+  Receipt,
+  commissionReceiptNet,
+  hasCommissionReceiptActivity,
+} from "./payroll-receipts-demo";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -119,6 +123,11 @@ export function EmployeePayrollPortalDemo() {
     setKioskReceiptDecision,
     setMovementStatus,
   } = usePayrollDemo();
+  const includeBaseSalary =
+    state.receiptConfiguration.includeBaseSalaryInReceipt;
+  const receiptNetLabel = includeBaseSalary
+    ? "Neto estimado del recibo"
+    : "Neto estimado de comisiones";
   const employee =
     state.employees.find((item) => item.id === state.activeEmployeeId) ??
     state.employees[0];
@@ -145,8 +154,12 @@ export function EmployeePayrollPortalDemo() {
           activeConfig.periodStart,
           state.calculationMode,
           activeConfig.periodEnd,
-          payrollModule,
-        ).find((item) => item.employee.id === employee?.id)
+          "CONSOLIDATED",
+        ).find(
+          (item) =>
+            item.employee.id === employee?.id &&
+            hasCommissionReceiptActivity(item, includeBaseSalary),
+        )
       : undefined;
   const [clarificationOpen, setClarificationOpen] = useState(false);
   const [clarification, setClarification] = useState("");
@@ -425,8 +438,12 @@ export function EmployeePayrollPortalDemo() {
             historyPeriod.start,
             state.calculationMode,
             historyPeriod.end,
-            payrollModule,
-          ).find((item) => item.employee.id === employee.id);
+            "CONSOLIDATED",
+          ).find(
+            (item) =>
+              item.employee.id === employee.id &&
+              hasCommissionReceiptActivity(item, includeBaseSalary),
+          );
           return historyLine
             ? [{ period: historyPeriod, line: historyLine }]
             : [];
@@ -769,10 +786,12 @@ export function EmployeePayrollPortalDemo() {
             </div>
             <div className="rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur">
               <p className="text-xs uppercase tracking-[0.16em] text-white/65">
-                Total neto estimado
+                {receiptNetLabel}
               </p>
               <p className="number-display mt-2 text-4xl">
-                {money.format(line.total)}
+                {money.format(
+                  commissionReceiptNet(line, includeBaseSalary),
+                )}
               </p>
               <p className="mt-2 text-xs text-white/65">
                 Cuenta {employee.bank} · {employee.account}
@@ -816,7 +835,9 @@ export function EmployeePayrollPortalDemo() {
                     </span>
                   </span>
                   <span className="number-display text-sm sm:text-right">
-                    {money.format(entry.line.total)}
+                    {money.format(
+                      commissionReceiptNet(entry.line, includeBaseSalary),
+                    )}
                   </span>
                 </button>
               ))}
@@ -869,17 +890,23 @@ export function EmployeePayrollPortalDemo() {
                 <Badge variant="outline">RECIBO 1</Badge>
               </div>
               <p className="mt-4 text-xs font-semibold uppercase tracking-[0.1em]">
-                Nómina personal
+                Recibo personal de comisiones
               </p>
               <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-                Sueldo, venta personal, escala, movimientos y deducciones de la
-                quincena.
+                Comisión, bonos, movimientos y deducciones de la quincena. El
+                sueldo base, si se muestra, es sólo informativo.
               </p>
               <div className="mt-4 flex items-end justify-between gap-4">
                 <div>
-                  <p className="label-caps">NETO A PAGAR</p>
+                  <p className="label-caps">
+                    {includeBaseSalary
+                      ? "NETO DEL RECIBO"
+                      : "NETO DE COMISIONES"}
+                  </p>
                   <p className="number-display mt-1 text-2xl">
-                    {money.format(line.total)}
+                    {money.format(
+                      commissionReceiptNet(line, includeBaseSalary),
+                    )}
                   </p>
                 </div>
                 <Button
@@ -1231,9 +1258,9 @@ export function EmployeePayrollPortalDemo() {
         </Card>
         <Card>
           <CardContent className="p-5">
-            <Landmark className="h-5 w-5 text-rose-600" />
+            <Landmark className="h-5 w-5 text-amber-600" />
             <p className="label-caps mt-4">ADEUDO DE PRÉSTAMOS</p>
-            <p className="number-display mt-2 text-2xl">
+            <p className="number-display mt-2 text-2xl text-amber-700 dark:text-amber-300">
               {money.format(loanBalance)}
             </p>
             <p className="mt-1 text-xs text-[color:var(--text-muted)]">
@@ -1339,7 +1366,7 @@ export function EmployeePayrollPortalDemo() {
                       </p>
                     </TableCell>
                     <TableCell className="text-right">
-                      <p className="number-display">
+                      <p className="number-display text-amber-700 dark:text-amber-300">
                         {money.format(request.amount)}
                       </p>
                       {(request.requestedAmount ?? request.amount) !==
@@ -1641,6 +1668,9 @@ export function EmployeePayrollPortalDemo() {
                             ? `ACTIVO DESDE ${money.format(movement.threshold ?? 0)} EN VENTAS`
                             : "MONTO FIJO"}
                         </p>
+                        <p className="mt-2 text-xs leading-5 text-[color:var(--text-muted)]">
+                          <strong>Motivo:</strong> {movement.comments}
+                        </p>
                       </div>
                       <p
                         className={`number-display ${movement.type === "FINE" ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}`}
@@ -1747,7 +1777,7 @@ export function EmployeePayrollPortalDemo() {
       >
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Recibo 1 · Nómina personal</DialogTitle>
+            <DialogTitle>Recibo 1 · Comisiones y movimientos</DialogTitle>
             <DialogDescription>
               Documento quincenal independiente de la comisión gerencial.
             </DialogDescription>
