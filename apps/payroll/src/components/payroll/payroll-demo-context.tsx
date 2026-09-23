@@ -218,6 +218,7 @@ export interface DemoScheme {
   id: string;
   name: string;
   active: boolean;
+  commissionMode?: "FIXED" | "SCALE";
   effectiveFrom?: string;
   createdAt?: string;
   deactivatedAt?: string | null;
@@ -2467,13 +2468,10 @@ function createInitialState(): DemoState {
         id: "scheme-flat-20",
         name: "FLAT 20%",
         active: true,
+        commissionMode: "FIXED",
         effectiveFrom: "2026-08-01",
         createdAt: "2026-07-25",
-        tiers: [
-          { id: "tier-f201", from: 0, to: 39999.99, rate: 0.2 },
-          { id: "tier-f202", from: 40000, to: 59999.99, rate: 0.22 },
-          { id: "tier-f203", from: 60000, to: null, rate: 0.24 },
-        ],
+        tiers: [{ id: "tier-f201", from: 0, to: null, rate: 0.2 }],
       },
     ],
     schemeAssignments: [
@@ -4855,6 +4853,7 @@ export function PayrollDemoProvider({
               version: 1,
               previousVersionId: null,
               salaryPlan,
+              commissionMode: tiers.length === 1 ? "FIXED" : "SCALE",
               tiers: tiers.map((tier) => ({ ...tier, id: id("tier") })),
             },
           ],
@@ -4888,6 +4887,7 @@ export function PayrollDemoProvider({
             version: (previous.version ?? 1) + 1,
             previousVersionId: historicalSchemeId,
             salaryPlan,
+            commissionMode: tiers.length === 1 ? "FIXED" : "SCALE",
             tiers: tiers.map((tier) => ({ ...tier, id: id("tier") })),
           };
           const versionedSchemes = [

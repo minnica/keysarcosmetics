@@ -78,6 +78,12 @@ function formatDate(value?: string) {
 }
 
 function schemeTiersLabel(scheme: DemoScheme) {
+  if (
+    (scheme.commissionMode ??
+      (scheme.tiers.length === 1 ? "FIXED" : "SCALE")) === "FIXED"
+  ) {
+    return `COMISIÓN FIJA · ${((scheme.tiers[0]?.rate ?? 0) * 100).toFixed(1)}%`;
+  }
   return scheme.tiers
     .map(
       (tier) =>
@@ -98,6 +104,7 @@ type ActiveAssignmentExportRow = {
 type SchemeExportRow = {
   name: string;
   version: number;
+  commissionType: string;
   status: string;
   registeredAt: string;
   effectiveFrom: string;
@@ -119,6 +126,13 @@ function SchemeEditorDialog({
   const [name, setName] = useState(scheme?.name ?? "");
   const [effectiveFrom, setEffectiveFrom] = useState(currentPeriod.start);
   const [attempted, setAttempted] = useState(false);
+  const [commissionMode, setCommissionMode] = useState<"FIXED" | "SCALE">(
+    scheme?.commissionMode ??
+      (scheme?.tiers.length === 1 ? "FIXED" : "SCALE"),
+  );
+  const [fixedRate, setFixedRate] = useState(
+    scheme?.tiers.length === 1 ? String(scheme.tiers[0]!.rate * 100) : "",
+  );
   const [hasSalary, setHasSalary] = useState(Boolean(scheme?.salaryPlan));
   const [salaryAmount, setSalaryAmount] = useState(
     scheme?.salaryPlan ? String(scheme.salaryPlan.monthlySalary) : "",
@@ -137,9 +151,8 @@ function SchemeEditorDialog({
   );
   const [levels, setLevels] = useState(() =>
     scaleLevelsFromTiers(scheme?.tiers, [
-      { upperLimit: "29999.99", rate: "4" },
-      { upperLimit: "49999.99", rate: "6" },
-      { upperLimit: "", rate: "8" },
+      { upperLimit: "", rate: "" },
+      { upperLimit: "", rate: "" },
     ]),
   );
   const nextSchemes = state.schemes
@@ -148,7 +161,16 @@ function SchemeEditorDialog({
 
   function submit() {
     setAttempted(true);
-    const tiers = scaleLevelsToTiers(levels, 100);
+    const parsedFixedRate = Number(fixedRate);
+    const tiers =
+      commissionMode === "FIXED"
+        ? fixedRate.trim() !== "" &&
+          Number.isFinite(parsedFixedRate) &&
+          parsedFixedRate >= 0 &&
+          parsedFixedRate <= 100
+          ? [{ from: 0, to: null, rate: parsedFixedRate / 100 }]
+          : null
+        : scaleLevelsToTiers(levels, 100);
     const parsedSalary = Number(salaryAmount);
     const parsedMonths = Number(durationMonths);
     const invalidSalary = hasSalary && (!parsedSalary || parsedSalary <= 0);
@@ -163,7 +185,9 @@ function SchemeEditorDialog({
       invalidSalary ||
       invalidDuration
     ) {
-      toast.error("Revisa el nombre, las escalas y la vigencia del sueldo.");
+      toast.error(
+        "Revisa el nombre, el porcentaje o los niveles y la vigencia del sueldo.",
+      );
       return;
     }
 
@@ -201,7 +225,7 @@ function SchemeEditorDialog({
             {scheme ? "Crear nueva versión del esquema" : "Nuevo esquema"}
           </DialogTitle>
           <DialogDescription>
-            La escala sólo afecta Comisiones. Si agregas sueldo, se registra
+            La comisión sólo afecta Comisiones. Si agregas sueldo, se registra
             por separado y únicamente alimenta Salario fijo o Especialistas.
           </DialogDescription>
         </DialogHeader>
@@ -244,12 +268,86 @@ function SchemeEditorDialog({
             </div>
           </div>
 
-          <CommissionScaleEditor
-            levels={levels}
-            onChange={setLevels}
-            maxRate={100}
-            description="Los porcentajes siempre se calculan en la nómina de Comisiones, aun cuando el empleado también tenga sueldo."
-          />
+          <section className="space-y-4 rounded-2xl border border-[color:var(--border-color)] p-4">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:items-end">
+              <div className="space-y-2">
+                <Label>Tipo de comisión</Label>
+                <Select
+                  value={commissionMode}
+                  onValueChange={(value) => {
+                    const nextMode = value as "FIXED" | "SCALE";
+                    setCommissionMode(nextMode);
+                    if (nextMode === "SCALE" && levels.length < 2) {
+                      setLevels(
+                        scaleLevelsFromTiers(undefined, [
+                          { upperLimit: "", rate: fixedRate },
+                          { upperLimit: "", rate: fixedRate },
+                        ]),
+                      );
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FIXED">
+                      COMISIÓN FIJA · SIN ESCALA
+                    </SelectItem>
+                    <SelectItem value="SCALE">
+                      COMISIÓN POR ESCALA
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs leading-relaxed text-[color:var(--text-muted)]">
+                {commissionMode === "FIXED"
+                  ? "El mismo porcentaje aplica a cualquier monto de venta."
+                  : "Cada nivel se captura manualmente; agrega únicamente los rangos que necesite este esquema."}
+              </p>
+            </div>
+
+            {commissionMode === "FIXED" ? (
+              <div className="max-w-sm space-y-2 border-t border-[color:var(--border-color)] pt-4">
+                <Label htmlFor="scheme-fixed-rate">
+                  Porcentaje fijo de comisión
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="scheme-fixed-rate"
+                    className="pr-9"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={fixedRate}
+                    onChange={(event) => setFixedRate(event.target.value)}
+                    placeholder="EJ. 8"
+                    aria-invalid={
+                      attempted &&
+                      (fixedRate.trim() === "" ||
+                        !Number.isFinite(Number(fixedRate)) ||
+                        Number(fixedRate) < 0 ||
+                        Number(fixedRate) > 100)
+                    }
+                  />
+                  <span className="pointer-events-none absolute right-3 top-2.5 text-xs font-semibold text-[color:var(--text-muted)]">
+                    %
+                  </span>
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          {commissionMode === "SCALE" ? (
+            <CommissionScaleEditor
+              levels={levels}
+              onChange={setLevels}
+              maxRate={100}
+              title="Niveles manuales de comisión"
+              description="Captura cada corte y porcentaje. El botón Agregar otro nivel crea únicamente el siguiente rango requerido."
+            />
+          ) : null}
 
           <section className="rounded-2xl border border-[color:var(--border-color)] p-4">
             <button
@@ -677,6 +775,11 @@ export function PayrollSchemesDemo() {
         return {
           name: scheme.name,
           version: scheme.version ?? 1,
+          commissionType:
+            (scheme.commissionMode ??
+              (scheme.tiers.length === 1 ? "FIXED" : "SCALE")) === "FIXED"
+              ? "COMISIÓN FIJA"
+              : "POR ESCALA",
           status: scheme.active
             ? "ACTIVO"
             : schemeAppliesToPeriod(
@@ -771,6 +874,7 @@ export function PayrollSchemesDemo() {
     columns: [
       { header: "Esquema", accessor: (row) => row.name, width: 23 },
       { header: "Versión", accessor: (row) => row.version, width: 9, format: "number" },
+      { header: "Tipo de comisión", accessor: (row) => row.commissionType, width: 16 },
       { header: "Estatus", accessor: (row) => row.status, width: 10 },
       { header: "Registro", accessor: (row) => row.registeredAt, width: 14 },
       { header: "Vigente desde", accessor: (row) => row.effectiveFrom, width: 14 },
@@ -844,7 +948,7 @@ export function PayrollSchemesDemo() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ESQUEMA / ESTATUS</TableHead>
-                  <TableHead>RANGOS</TableHead>
+                  <TableHead>TIPO / RANGOS</TableHead>
                   <TableHead>REGISTRO / VIGENCIA</TableHead>
                   <TableHead>PERSONAL VIGENTE</TableHead>
                   <TableHead className="text-right">ACCIONES</TableHead>
@@ -911,15 +1015,41 @@ export function PayrollSchemesDemo() {
                       </TableCell>
                       <TableCell>
                         <div className="flex min-w-[420px] flex-wrap gap-1.5">
-                          {scheme.tiers.map((tier) => (
-                            <Badge
-                              key={tier.id}
-                              variant="outline"
-                              className="bg-[color:var(--accent-hover)]/45"
-                            >
-                              {money.format(tier.from)} — {tier.to === null ? "SIN LÍMITE" : money.format(tier.to)} · {(tier.rate * 100).toFixed(1)}%
-                            </Badge>
-                          ))}
+                          {(scheme.commissionMode ??
+                            (scheme.tiers.length === 1
+                              ? "FIXED"
+                              : "SCALE")) === "FIXED" ? (
+                            <>
+                              <Badge
+                                variant="outline"
+                                className="border-violet-300 text-violet-700 dark:text-violet-300"
+                              >
+                                COMISIÓN FIJA
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className="bg-[color:var(--accent-hover)]/45"
+                              >
+                                {((scheme.tiers[0]?.rate ?? 0) * 100).toFixed(1)}%
+                                {" · CUALQUIER VENTA"}
+                              </Badge>
+                            </>
+                          ) : (
+                            <>
+                              <Badge variant="outline">
+                                ESCALA · {scheme.tiers.length} NIVELES
+                              </Badge>
+                              {scheme.tiers.map((tier) => (
+                                <Badge
+                                  key={tier.id}
+                                  variant="outline"
+                                  className="bg-[color:var(--accent-hover)]/45"
+                                >
+                                  {money.format(tier.from)} — {tier.to === null ? "SIN LÍMITE" : money.format(tier.to)} · {(tier.rate * 100).toFixed(1)}%
+                                </Badge>
+                              ))}
+                            </>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1036,7 +1166,11 @@ export function PayrollSchemesDemo() {
                     {scheme.name}
                   </h3>
                   <p className="mt-0.5 text-[10px] text-white/60">
-                    {scheme.tiers.length} niveles · vigente desde {formatDate(scheme.effectiveFrom)}
+                    {(scheme.commissionMode ??
+                      (scheme.tiers.length === 1 ? "FIXED" : "SCALE")) ===
+                    "FIXED"
+                      ? `COMISIÓN FIJA · ${((scheme.tiers[0]?.rate ?? 0) * 100).toFixed(1)}%`
+                      : `${scheme.tiers.length} NIVELES MANUALES`} · vigente desde {formatDate(scheme.effectiveFrom)}
                   </p>
                 </div>
                 <Badge className="w-fit border-white/20 bg-white/10 text-white hover:bg-white/10">
