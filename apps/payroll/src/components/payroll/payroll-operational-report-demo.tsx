@@ -47,6 +47,13 @@ import {
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { ReportExportButtons } from "./report-export-buttons";
+import {
+  nextTableSort,
+  sortTableRows,
+  SortableTableHead,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
 
 export type OperationalReportKind = "MOVEMENTS" | "LOANS" | "BONUSES" | "FINES";
 
@@ -73,6 +80,23 @@ type BranchStat = {
   gross: number;
   impact: number;
 };
+
+type OperationalSortKey =
+  | "date"
+  | "employee"
+  | "branch"
+  | "concept"
+  | "payroll"
+  | "status"
+  | "amount"
+  | "cost";
+type BranchStatSortKey =
+  | "name"
+  | "records"
+  | "approved"
+  | "gross"
+  | "impact"
+  | "participation";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -225,6 +249,10 @@ export function PayrollOperationalReportDemo({
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
+  const [detailSort, setDetailSort] =
+    useState<TableSortState<OperationalSortKey>>(null);
+  const [branchSort, setBranchSort] =
+    useState<TableSortState<BranchStatSortKey>>(null);
 
   const employeeMap = useMemo(
     () => new Map(state.employees.map((employee) => [employee.id, employee])),
@@ -363,9 +391,8 @@ export function PayrollOperationalReportDemo({
     [baseRows],
   );
 
-  const filteredRows = useMemo(
-    () =>
-      baseRows
+  const filteredRows = useMemo(() => {
+    const defaultRows = baseRows
         .filter((row) => row.date >= dateFrom && row.date <= dateTo)
         .filter(
           (row) =>
@@ -381,9 +408,36 @@ export function PayrollOperationalReportDemo({
           (left, right) =>
             right.date.localeCompare(left.date) ||
             left.employeeNames.localeCompare(right.employeeNames, "es-MX"),
-        ),
-    [baseRows, branchFilter, dateFrom, dateTo, employeeFilter, statusFilter],
-  );
+        );
+    return sortTableRows(defaultRows, detailSort, {
+      date: (row) => row.date,
+      employee: (row) => row.employeeNames,
+      branch: (row) =>
+        row.branchIds
+          .map((branchId) => branchMap.get(branchId)?.name)
+          .filter(Boolean)
+          .join(", "),
+      concept: (row) => `${row.concept} ${row.detail}`,
+      payroll: (row) => row.payrollModule,
+      status: (row) => statusLabel(row.status),
+      amount: (row) => row.amount,
+      cost: (row) => Math.abs(row.signedAmount),
+    });
+  }, [
+    baseRows,
+    branchMap,
+    branchFilter,
+    dateFrom,
+    dateTo,
+    detailSort,
+    employeeFilter,
+    statusFilter,
+  ]);
+
+  function changeDetailSort(key: OperationalSortKey, kind: TableSortKind) {
+    setDetailSort((current) => nextTableSort(current, key, kind));
+    setPage(1);
+  }
 
   const scopedAmount = (row: OperationalReportRow) => {
     if (branchFilter === "ALL") return row.signedAmount;
@@ -435,6 +489,22 @@ export function PayrollOperationalReportDemo({
       .filter((branch) => branch.records > 0 || branchFilter !== "ALL")
       .sort((left, right) => right.gross - left.gross);
   }, [branchFilter, filteredRows, state.branches]);
+  const sortedBranchStats = useMemo(
+    () =>
+      sortTableRows(branchStats, branchSort, {
+        name: (branch) => branch.name,
+        records: (branch) => branch.records,
+        approved: (branch) => branch.approved,
+        gross: (branch) => branch.gross,
+        impact: (branch) => branch.impact,
+        participation: (branch) => branch.gross,
+      }),
+    [branchSort, branchStats],
+  );
+
+  function changeBranchSort(key: BranchStatSortKey, kind: TableSortKind) {
+    setBranchSort((current) => nextTableSort(current, key, kind));
+  }
 
   const conceptUniverse = useMemo(() => {
     const usedConcepts = baseRows.map((row) => row.concept);
@@ -671,7 +741,7 @@ export function PayrollOperationalReportDemo({
       sheetName: "Costo por sucursal",
       labelHeader: "Sucursal",
       valueHeader: "Impacto",
-      rows: branchStats.map((branch) => ({
+      rows: sortedBranchStats.map((branch) => ({
         label: branch.name,
         value: branch.impact,
       })),
@@ -1025,16 +1095,16 @@ export function PayrollOperationalReportDemo({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>SUCURSAL</TableHead>
-                  <TableHead className="text-center">REGISTROS</TableHead>
-                  <TableHead className="text-center">APROBADOS</TableHead>
-                  <TableHead className="text-right">IMPORTE BRUTO</TableHead>
-                  <TableHead className="text-right">IMPACTO CONTABLE</TableHead>
-                  <TableHead className="text-right">PARTICIPACIÓN</TableHead>
+                  <SortableTableHead column="name" label="SUCURSAL" kind="text" sort={branchSort} onSort={changeBranchSort} />
+                  <SortableTableHead column="records" label="REGISTROS" kind="number" sort={branchSort} onSort={changeBranchSort} align="center" />
+                  <SortableTableHead column="approved" label="APROBADOS" kind="number" sort={branchSort} onSort={changeBranchSort} align="center" />
+                  <SortableTableHead column="gross" label="IMPORTE BRUTO" kind="number" sort={branchSort} onSort={changeBranchSort} align="right" />
+                  <SortableTableHead column="impact" label="IMPACTO CONTABLE" kind="number" sort={branchSort} onSort={changeBranchSort} align="right" />
+                  <SortableTableHead column="participation" label="PARTICIPACIÓN" kind="number" sort={branchSort} onSort={changeBranchSort} align="right" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {branchStats.map((branch) => (
+                {sortedBranchStats.map((branch) => (
                   <TableRow key={branch.id}>
                     <TableCell className="font-semibold">
                       {branch.name}
@@ -1097,14 +1167,14 @@ export function PayrollOperationalReportDemo({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>FECHA</TableHead>
-                  <TableHead>EMPLEADO</TableHead>
-                  <TableHead>SUCURSAL</TableHead>
-                  <TableHead>CONCEPTO / DETALLE</TableHead>
-                  <TableHead>NÓMINA</TableHead>
-                  <TableHead>ESTATUS</TableHead>
-                  <TableHead className="text-right">IMPORTE</TableHead>
-                  <TableHead className="text-right">COSTO ASIGNADO</TableHead>
+                  <SortableTableHead column="date" label="FECHA" kind="text" sort={detailSort} onSort={changeDetailSort} />
+                  <SortableTableHead column="employee" label="EMPLEADO" kind="text" sort={detailSort} onSort={changeDetailSort} />
+                  <SortableTableHead column="branch" label="SUCURSAL" kind="text" sort={detailSort} onSort={changeDetailSort} />
+                  <SortableTableHead column="concept" label="CONCEPTO / DETALLE" kind="text" sort={detailSort} onSort={changeDetailSort} />
+                  <SortableTableHead column="payroll" label="NÓMINA" kind="text" sort={detailSort} onSort={changeDetailSort} />
+                  <SortableTableHead column="status" label="ESTATUS" kind="text" sort={detailSort} onSort={changeDetailSort} />
+                  <SortableTableHead column="amount" label="IMPORTE" kind="number" sort={detailSort} onSort={changeDetailSort} align="right" />
+                  <SortableTableHead column="cost" label="COSTO ASIGNADO" kind="number" sort={detailSort} onSort={changeDetailSort} align="right" />
                 </TableRow>
               </TableHeader>
               <TableBody>

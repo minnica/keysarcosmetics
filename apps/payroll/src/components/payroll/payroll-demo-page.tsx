@@ -69,6 +69,7 @@ import {
   payrollModuleLabel,
   payrollModuleLabels,
   roleHasPermission,
+  sortByListMode,
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { PayrollModuleAnalytics } from "./payroll-module-analytics";
@@ -83,9 +84,40 @@ import {
   payrollCostAllocationMode,
 } from "./payroll-cost-branch-selector";
 import { ReportExportButtons } from "./report-export-buttons";
+import {
+  nextTableSort,
+  sortTableRows,
+  SortableTableHead,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
 
 type PayrollView = PayrollModule;
 type PeriodDisplay = "FORTNIGHT" | "MONTHLY";
+type PayrollColumnSortKey =
+  | "employee"
+  | "bank"
+  | "position"
+  | "grossSales"
+  | "salesWithoutVat"
+  | "commission"
+  | "invoiceSubtotal"
+  | "ivaAmount"
+  | "isrRetention"
+  | "ivaRetention"
+  | "fixedSalary"
+  | "doublePay"
+  | "commissionBonuses"
+  | "deductions"
+  | "adjustments"
+  | "carriedBalance"
+  | "christmasBonus"
+  | "settlement"
+  | "payroll"
+  | "socialCost"
+  | "isr"
+  | "approval"
+  | "totalCost";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -921,6 +953,8 @@ function PayrollTable({
   const [search, setSearch] = useState("");
   const [positionFilter, setPositionFilter] = useState("ALL");
   const [branchFilter, setBranchFilter] = useState("ALL");
+  const [tableSort, setTableSort] =
+    useState<TableSortState<PayrollColumnSortKey>>(null);
   const commissionFilters = view === "COMMISSION";
   const positionOptions = useMemo(
     () =>
@@ -968,24 +1002,79 @@ function PayrollTable({
       state.branches,
     ],
   );
+  const sortedLines = useMemo(
+    () =>
+      sortTableRows(filteredLines, tableSort, {
+        employee: (line) => line.employee.name,
+        bank: (line) => `${line.employee.bank} ${line.employee.account}`,
+        position: (line) =>
+          `${line.employee.position} ${line.schemeName ?? ""}`,
+        grossSales: (line) => line.grossSales,
+        salesWithoutVat: (line) => line.salesWithoutVat,
+        commission: (line) => line.commission,
+        invoiceSubtotal: (line) => line.invoiceSubtotal,
+        ivaAmount: (line) => line.ivaAmount,
+        isrRetention: (line) => line.isrRetention,
+        ivaRetention: (line) => line.ivaRetention,
+        fixedSalary: (line) => line.fixedSalary,
+        doublePay: (line) => line.doublePayAmount,
+        commissionBonuses: (line) => line.commission + line.bonuses,
+        deductions: (line) =>
+          line.fines +
+          line.loanDeduction +
+          line.externalDeductions +
+          line.viaticsDeductions +
+          line.carriedNegativeBalance,
+        adjustments: (line) =>
+          line.externalAdditions -
+          line.externalDeductions +
+          line.viaticsAdditions -
+          line.viaticsDeductions,
+        carriedBalance: (line) => line.carriedNegativeBalance,
+        christmasBonus: (line) => line.christmasBonusPayment,
+        settlement: (line) => line.settlementPayment,
+        payroll: (line) => line.total,
+        socialCost: (line) => line.socialCost,
+        isr: (line) => line.isrCost,
+        approval: (line) =>
+          state.decisions.some(
+            (decision) =>
+              decision.employeeId === line.employee.id &&
+              decision.periodStart >= periodStart &&
+              decision.periodStart <= periodEnd &&
+              decision.status === "AUTHORIZED",
+          )
+            ? "APROBADO"
+            : "PENDIENTE",
+        totalCost: (line) => line.total + line.socialCost + line.isrCost,
+      }),
+    [filteredLines, periodEnd, periodStart, state.decisions, tableSort],
+  );
+  function changeTableSort(
+    key: PayrollColumnSortKey,
+    kind: TableSortKind,
+  ) {
+    setTableSort((current) => nextTableSort(current, key, kind));
+    setPage(1);
+  }
   const effectivePageSize =
-    pageSize === "ALL" ? Math.max(filteredLines.length, 1) : Number(pageSize);
+    pageSize === "ALL" ? Math.max(sortedLines.length, 1) : Number(pageSize);
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredLines.length / effectivePageSize),
+    Math.ceil(sortedLines.length / effectivePageSize),
   );
   const currentPage = Math.min(page, totalPages);
-  const pagedLines = filteredLines.slice(
+  const pagedLines = sortedLines.slice(
     (currentPage - 1) * effectivePageSize,
     currentPage * effectivePageSize,
   );
   const visibleStart =
-    filteredLines.length === 0
+    sortedLines.length === 0
       ? 0
       : (currentPage - 1) * effectivePageSize + 1;
   const visibleEnd = Math.min(
     currentPage * effectivePageSize,
-    filteredLines.length,
+    sortedLines.length,
   );
   const payrollTotal = filteredLines.reduce(
     (sum, line) => sum + line.total,
@@ -1084,7 +1173,7 @@ function PayrollTable({
   const approvedVisibleCount = filteredLines.filter((line) =>
     approvedEmployeeIds.has(line.employee.id),
   ).length;
-  const reportRows = filteredLines.map((line) => ({
+  const reportRows = sortedLines.map((line) => ({
     employee: line.employee.name,
     position: line.employee.position,
     branch:
@@ -1445,68 +1534,216 @@ function PayrollTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>EMPLEADO</TableHead>
-                <TableHead>BANCO / CUENTA</TableHead>
-                <TableHead>PUESTO / ESQUEMA</TableHead>
+                <SortableTableHead
+                  column="employee"
+                  label="EMPLEADO"
+                  kind="text"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                />
+                <SortableTableHead
+                  column="bank"
+                  label="BANCO / CUENTA"
+                  kind="text"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                />
+                <SortableTableHead
+                  column="position"
+                  label="PUESTO / ESQUEMA"
+                  kind="text"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                />
                 {showSales && (
-                  <TableHead className="text-right">VENTAS</TableHead>
+                  <SortableTableHead
+                    column="grossSales"
+                    label="VENTAS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
                 )}
                 {showSales && (
-                  <TableHead className="text-right">VENTAS SIN IVA</TableHead>
+                  <SortableTableHead
+                    column="salesWithoutVat"
+                    label="VENTAS SIN IVA"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
                 )}
                 {contractor ? (
                   <>
-                    <TableHead className="text-right">COMISIÓN</TableHead>
-                    <TableHead className="text-right">
-                      SUBTOTAL FACTURA
-                    </TableHead>
-                    <TableHead className="text-right">IVA</TableHead>
-                    <TableHead className="text-right">RET. ISR</TableHead>
-                    <TableHead className="text-right">RET. IVA</TableHead>
+                    <SortableTableHead
+                      column="commission"
+                      label="COMISIÓN"
+                      kind="number"
+                      sort={tableSort}
+                      onSort={changeTableSort}
+                      align="right"
+                    />
+                    <SortableTableHead
+                      column="invoiceSubtotal"
+                      label="SUBTOTAL FACTURA"
+                      kind="number"
+                      sort={tableSort}
+                      onSort={changeTableSort}
+                      align="right"
+                    />
+                    <SortableTableHead
+                      column="ivaAmount"
+                      label="IVA"
+                      kind="number"
+                      sort={tableSort}
+                      onSort={changeTableSort}
+                      align="right"
+                    />
+                    <SortableTableHead
+                      column="isrRetention"
+                      label="RET. ISR"
+                      kind="number"
+                      sort={tableSort}
+                      onSort={changeTableSort}
+                      align="right"
+                    />
+                    <SortableTableHead
+                      column="ivaRetention"
+                      label="RET. IVA"
+                      kind="number"
+                      sort={tableSort}
+                      onSort={changeTableSort}
+                      align="right"
+                    />
                   </>
                 ) : (
                   <>
                     {showSalary && (
-                      <TableHead className="text-right">SUELDO</TableHead>
+                      <SortableTableHead
+                        column="fixedSalary"
+                        label="SUELDO"
+                        kind="number"
+                        sort={tableSort}
+                        onSort={changeTableSort}
+                        align="right"
+                      />
                     )}
                     {showDoublePay && (
-                      <TableHead className="text-right">
-                        PAGO DOBLE
-                      </TableHead>
+                      <SortableTableHead
+                        column="doublePay"
+                        label="PAGO DOBLE"
+                        kind="number"
+                        sort={tableSort}
+                        onSort={changeTableSort}
+                        align="right"
+                      />
                     )}
                     {showCommission && (
-                      <TableHead className="text-right">
-                        COMISIÓN + BONOS
-                      </TableHead>
+                      <SortableTableHead
+                        column="commissionBonuses"
+                        label="COMISIÓN + BONOS"
+                        kind="number"
+                        sort={tableSort}
+                        onSort={changeTableSort}
+                        align="right"
+                      />
                     )}
                     {showDeductions && (
-                      <TableHead className="text-right">DEDUCCIONES</TableHead>
+                      <SortableTableHead
+                        column="deductions"
+                        label="DEDUCCIONES"
+                        kind="number"
+                        sort={tableSort}
+                        onSort={changeTableSort}
+                        align="right"
+                      />
                     )}
                   </>
                 )}
                 {showAdjustments && (
-                  <TableHead className="text-right">AJUSTES</TableHead>
+                  <SortableTableHead
+                    column="adjustments"
+                    label="AJUSTES"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
                 )}
                 {showNegativeBalances && (
-                  <TableHead className="text-right">
-                    SALDO ARRASTRADO
-                  </TableHead>
+                  <SortableTableHead
+                    column="carriedBalance"
+                    label="SALDO ARRASTRADO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
                 )}
                 {showChristmasBonus && (
-                  <TableHead className="text-right">AGUINALDO</TableHead>
+                  <SortableTableHead
+                    column="christmasBonus"
+                    label="AGUINALDO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
                 )}
                 {showSettlement && (
-                  <TableHead className="text-right">
-                    LIQUIDACIÓN / FINIQUITO
-                  </TableHead>
+                  <SortableTableHead
+                    column="settlement"
+                    label="LIQUIDACIÓN / FINIQUITO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
                 )}
-                <TableHead className="text-right">NÓMINA</TableHead>
-                <TableHead className="text-right">COSTO SOCIAL</TableHead>
-                <TableHead className="text-right">ISR</TableHead>
+                <SortableTableHead
+                  column="payroll"
+                  label="NÓMINA"
+                  kind="number"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                  align="right"
+                />
+                <SortableTableHead
+                  column="socialCost"
+                  label="COSTO SOCIAL"
+                  kind="number"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                  align="right"
+                />
+                <SortableTableHead
+                  column="isr"
+                  label="ISR"
+                  kind="number"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                  align="right"
+                />
                 {showApproval && (
-                  <TableHead className="text-center">APROBACIÓN</TableHead>
+                  <SortableTableHead
+                    column="approval"
+                    label="APROBACIÓN"
+                    kind="text"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="center"
+                  />
                 )}
-                <TableHead className="text-right">COSTO TOTAL</TableHead>
+                <SortableTableHead
+                  column="totalCost"
+                  label="COSTO TOTAL"
+                  kind="number"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                  align="right"
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1867,7 +2104,7 @@ function ConsolidatedDashboard({
   includeSocialCost: boolean;
   includeIsr: boolean;
 }) {
-  const { state, setRunStatus, payrollLines } = usePayrollDemo();
+  const { state, listSortMode, setRunStatus, payrollLines } = usePayrollDemo();
   const run = state.runs.find(
     (item) =>
       item.module === "CONSOLIDATED" &&
@@ -1928,7 +2165,7 @@ function ConsolidatedDashboard({
       allocationMode,
     }));
   });
-  const branchCosts = state.branches
+  const defaultBranchCosts = state.branches
     .map((branch) => {
       const branchAllocations = costAllocations.filter(
         (allocation) => allocation.branchId === branch.id,
@@ -1968,6 +2205,12 @@ function ConsolidatedDashboard({
       };
     })
     .filter((branch) => branch.employees > 0);
+  const branchCosts = sortByListMode(
+    defaultBranchCosts,
+    listSortMode,
+    (branch) => branch.name,
+    (branch) => branch.total,
+  );
   const salesTrend = useMemo<ConsolidatedSalesTrendPoint[]>(() => {
     const selectedMonth = config.periodEnd.slice(0, 7);
     const [year = 0, monthNumber = 1] = selectedMonth.split("-").map(Number);
@@ -2044,7 +2287,7 @@ function ConsolidatedDashboard({
     const costByBranch = new Map(
       branchCosts.map((branch) => [branch.id, branch]),
     );
-    return state.branches
+    const defaultRows = state.branches
       .map((branch) => {
         const cost = costByBranch.get(branch.id);
         return {
@@ -2056,10 +2299,17 @@ function ConsolidatedDashboard({
         };
       })
       .filter((branch) => branch.sales > 0 || branch.cost > 0);
+    return sortByListMode(
+      defaultRows,
+      listSortMode,
+      (branch) => branch.name,
+      (branch) => branch.sales,
+    );
   }, [
     branchCosts,
     config.periodEnd,
     config.periodStart,
+    listSortMode,
     lines,
     state.branches,
     state.sales,
@@ -2124,17 +2374,27 @@ function ConsolidatedDashboard({
     row.total += payroll + social + isr;
     positionCostMap.set(key, row);
   });
-  const positionCosts = Array.from(positionCostMap.values()).sort(
-    (a, b) =>
-      a.branch.localeCompare(b.branch, "es-MX") ||
-      a.position.localeCompare(b.position, "es-MX"),
+  const positionCosts = sortByListMode(
+    Array.from(positionCostMap.values()).sort(
+      (a, b) =>
+        a.branch.localeCompare(b.branch, "es-MX") ||
+        a.position.localeCompare(b.position, "es-MX"),
+    ),
+    listSortMode,
+    (row) => `${row.branch} ${row.position}`,
+    (row) => row.total,
   );
-  const branchPositionCosts = state.branches
-    .map((branch) => ({
-      branch,
-      rows: positionCosts.filter((row) => row.branchId === branch.id),
-    }))
-    .filter((item) => item.rows.length > 0);
+  const branchPositionCosts = sortByListMode(
+    state.branches
+      .map((branch) => ({
+        branch,
+        rows: positionCosts.filter((row) => row.branchId === branch.id),
+      }))
+      .filter((item) => item.rows.length > 0),
+    listSortMode,
+    (item) => item.branch.name,
+    (item) => item.rows.reduce((sum, row) => sum + row.total, 0),
+  );
   const reconciledTotal = positionCosts.reduce(
     (sum, row) => sum + row.total,
     0,

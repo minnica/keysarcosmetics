@@ -1,7 +1,26 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarChart3, Building2, CalendarDays, ChevronLeft, ChevronRight, History, Layers3, Pencil, Percent, Plus, RefreshCw, Search, Trash2, UserPlus, UserRoundCheck, UsersRound } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  History,
+  Layers3,
+  Pencil,
+  Percent,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  UserPlus,
+  UserRoundCheck,
+  UsersRound,
+  WalletCards,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +61,7 @@ import {
 import {
   type DemoScheme,
   type DemoSchemeAssignment,
+  type DemoSchemeSalaryPlan,
   employeeAppliesToPeriod,
   schemeAppliesToPeriod,
   usePayrollDemo,
@@ -77,42 +97,323 @@ type ActiveAssignmentExportRow = {
 
 type SchemeExportRow = {
   name: string;
+  version: number;
   status: string;
   registeredAt: string;
   effectiveFrom: string;
+  salaryPlan: string;
   tiers: string;
   activePeople: number;
 };
 
-function SchemeEditorDialog({ scheme, open, onOpenChange }: { scheme: DemoScheme | null; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { addScheme, updateScheme } = usePayrollDemo();
+function SchemeEditorDialog({
+  scheme,
+  open,
+  onOpenChange,
+}: {
+  scheme: DemoScheme | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { state, currentPeriod, addScheme, updateScheme } = usePayrollDemo();
   const [name, setName] = useState(scheme?.name ?? "");
-  const [effectiveFrom, setEffectiveFrom] = useState(scheme?.effectiveFrom ?? new Date().toISOString().slice(0, 10));
+  const [effectiveFrom, setEffectiveFrom] = useState(currentPeriod.start);
   const [attempted, setAttempted] = useState(false);
-  const [levels, setLevels] = useState(() => scaleLevelsFromTiers(scheme?.tiers, [
-    { upperLimit: "29999.99", rate: "4" },
-    { upperLimit: "49999.99", rate: "6" },
-    { upperLimit: "", rate: "8" },
-  ]));
+  const [hasSalary, setHasSalary] = useState(Boolean(scheme?.salaryPlan));
+  const [salaryAmount, setSalaryAmount] = useState(
+    scheme?.salaryPlan ? String(scheme.salaryPlan.monthlySalary) : "",
+  );
+  const [salaryPayrollModule, setSalaryPayrollModule] = useState<
+    "FIXED" | "SPECIALIST"
+  >(scheme?.salaryPlan?.payrollModule ?? "FIXED");
+  const [salaryDuration, setSalaryDuration] = useState<
+    "INDEFINITE" | "MONTHS"
+  >(scheme?.salaryPlan?.duration ?? "INDEFINITE");
+  const [durationMonths, setDurationMonths] = useState(
+    String(scheme?.salaryPlan?.durationMonths ?? 3),
+  );
+  const [nextSchemeId, setNextSchemeId] = useState(
+    scheme?.salaryPlan?.nextSchemeId ?? "NONE",
+  );
+  const [levels, setLevels] = useState(() =>
+    scaleLevelsFromTiers(scheme?.tiers, [
+      { upperLimit: "29999.99", rate: "4" },
+      { upperLimit: "49999.99", rate: "6" },
+      { upperLimit: "", rate: "8" },
+    ]),
+  );
+  const nextSchemes = state.schemes
+    .filter((item) => item.active && item.id !== scheme?.id)
+    .sort((left, right) => left.name.localeCompare(right.name, "es-MX"));
 
   function submit() {
     setAttempted(true);
     const tiers = scaleLevelsToTiers(levels, 100);
-    if (!name.trim() || !effectiveFrom || !tiers) {
-      toast.error("Revisa el nombre, los cortes y los porcentajes.");
+    const parsedSalary = Number(salaryAmount);
+    const parsedMonths = Number(durationMonths);
+    const invalidSalary = hasSalary && (!parsedSalary || parsedSalary <= 0);
+    const invalidDuration =
+      hasSalary &&
+      salaryDuration === "MONTHS" &&
+      (!Number.isInteger(parsedMonths) || parsedMonths < 1 || parsedMonths > 24);
+    if (
+      !name.trim() ||
+      !effectiveFrom ||
+      !tiers ||
+      invalidSalary ||
+      invalidDuration
+    ) {
+      toast.error("Revisa el nombre, las escalas y la vigencia del sueldo.");
       return;
     }
+
+    const salaryPlan: DemoSchemeSalaryPlan | null = hasSalary
+      ? {
+          monthlySalary: parsedSalary,
+          payrollModule: salaryPayrollModule,
+          duration: salaryDuration,
+          durationMonths:
+            salaryDuration === "MONTHS" ? parsedMonths : null,
+          nextSchemeId:
+            salaryDuration === "MONTHS" && nextSchemeId !== "NONE"
+              ? nextSchemeId
+              : null,
+        }
+      : null;
+
     if (scheme) {
-      updateScheme(scheme.id, name.trim(), tiers, effectiveFrom);
-      toast.success("Esquema actualizado en vendedores y nómina.");
+      updateScheme(scheme.id, name.trim(), tiers, effectiveFrom, salaryPlan);
+      toast.success(
+        "Nueva versión guardada; los periodos anteriores conservan sueldo y porcentajes.",
+      );
     } else {
-      addScheme(name.trim(), tiers, effectiveFrom);
-      toast.success("Nuevo tipo de esquema registrado.");
+      addScheme(name.trim(), tiers, effectiveFrom, salaryPlan);
+      toast.success("Nuevo esquema registrado con su vigencia.");
     }
     onOpenChange(false);
   }
 
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>{scheme ? "Editar esquema" : "Nuevo esquema"}</DialogTitle><DialogDescription>Define la comisión que corresponde según las ventas del periodo.</DialogDescription></DialogHeader><div className="space-y-5 py-2"><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="standalone-scheme-name">Nombre del esquema</Label><Input id="standalone-scheme-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="EJ. COMISIÓN ESTÁNDAR" aria-invalid={attempted && !name.trim()} />{attempted && !name.trim() && <p className="text-xs text-rose-600">Escribe un nombre para identificar el esquema.</p>}</div><div className="space-y-2"><Label htmlFor="standalone-scheme-effective"><CalendarDays className="mr-1 inline h-4 w-4" />Vigente desde</Label><Input id="standalone-scheme-effective" type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} aria-invalid={attempted && !effectiveFrom} /><p className="text-xs text-[color:var(--text-muted)]">El esquema solo afectará periodos que incluyan esta fecha o sean posteriores.</p></div></div><CommissionScaleEditor levels={levels} onChange={setLevels} maxRate={100} description="Define los rangos de venta y el porcentaje que recibirá el vendedor en cada nivel." /></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit}>{scheme ? "Guardar nueva versión" : "Crear esquema"}</Button></DialogFooter></DialogContent></Dialog>;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {scheme ? "Crear nueva versión del esquema" : "Nuevo esquema"}
+          </DialogTitle>
+          <DialogDescription>
+            La escala sólo afecta Comisiones. Si agregas sueldo, se registra
+            por separado y únicamente alimenta Salario fijo o Especialistas.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-5 py-2">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="standalone-scheme-name">
+                Nombre del esquema
+              </Label>
+              <Input
+                id="standalone-scheme-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="EJ. PRINCIPIANTE · MES 1"
+                aria-invalid={attempted && !name.trim()}
+              />
+              {attempted && !name.trim() ? (
+                <p className="text-xs text-rose-600">
+                  Escribe un nombre para identificar el esquema.
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="standalone-scheme-effective">
+                <CalendarDays className="mr-1 inline h-4 w-4" />
+                Vigente desde
+              </Label>
+              <Input
+                id="standalone-scheme-effective"
+                type="date"
+                value={effectiveFrom}
+                onChange={(event) => setEffectiveFrom(event.target.value)}
+                aria-invalid={attempted && !effectiveFrom}
+              />
+              <p className="text-xs text-[color:var(--text-muted)]">
+                {scheme
+                  ? "Se creará una versión nueva desde esta fecha; la versión anterior queda bloqueada para históricos."
+                  : "Sólo afectará periodos que incluyan esta fecha o sean posteriores."}
+              </p>
+            </div>
+          </div>
+
+          <CommissionScaleEditor
+            levels={levels}
+            onChange={setLevels}
+            maxRate={100}
+            description="Los porcentajes siempre se calculan en la nómina de Comisiones, aun cuando el empleado también tenga sueldo."
+          />
+
+          <section className="rounded-2xl border border-[color:var(--border-color)] p-4">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={hasSalary}
+              onClick={() => setHasSalary((current) => !current)}
+              className="flex w-full items-center justify-between gap-4 text-left"
+            >
+              <span className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--accent-hover)] text-[color:var(--text-secondary)]">
+                  <WalletCards className="h-4 w-4" />
+                </span>
+                <span>
+                  <strong className="block text-sm">
+                    ¿Este modelo incluye sueldo base?
+                  </strong>
+                  <span className="mt-0.5 block text-xs text-[color:var(--text-muted)]">
+                    El sueldo tendrá su propia vigencia y nunca se sumará dentro
+                    de la nómina de Comisiones.
+                  </span>
+                </span>
+              </span>
+              <span
+                aria-hidden="true"
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${hasSalary ? "bg-emerald-600" : "bg-stone-300 dark:bg-stone-700"}`}
+              >
+                <span
+                  className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${hasSalary ? "translate-x-6" : "translate-x-1"}`}
+                />
+              </span>
+            </button>
+
+            {hasSalary ? (
+              <div className="mt-4 space-y-4 border-t border-[color:var(--border-color)] pt-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="scheme-salary-amount">Sueldo mensual</Label>
+                    <Input
+                      id="scheme-salary-amount"
+                      type="number"
+                      min="0"
+                      value={salaryAmount}
+                      onChange={(event) => setSalaryAmount(event.target.value)}
+                      placeholder="0.00"
+                      aria-invalid={
+                        attempted && (!Number(salaryAmount) || Number(salaryAmount) <= 0)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nómina exclusiva del sueldo</Label>
+                    <Select
+                      value={salaryPayrollModule}
+                      onValueChange={(value) =>
+                        setSalaryPayrollModule(value as "FIXED" | "SPECIALIST")
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FIXED">SALARIO FIJO</SelectItem>
+                        <SelectItem value="SPECIALIST">ESPECIALISTAS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Duración del sueldo</Label>
+                    <Select
+                      value={salaryDuration}
+                      onValueChange={(value) =>
+                        setSalaryDuration(value as "INDEFINITE" | "MONTHS")
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="INDEFINITE">
+                          FIJO · SIN VENCIMIENTO
+                        </SelectItem>
+                        <SelectItem value="MONTHS">
+                          TEMPORAL · POR MESES
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {salaryDuration === "MONTHS" ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="scheme-duration-months">
+                        Meses de vigencia
+                      </Label>
+                      <Input
+                        id="scheme-duration-months"
+                        type="number"
+                        min="1"
+                        max="24"
+                        value={durationMonths}
+                        onChange={(event) =>
+                          setDurationMonths(event.target.value)
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                {salaryDuration === "MONTHS" ? (
+                  <div className="space-y-2">
+                    <Label>Al vencer, mover automáticamente a</Label>
+                    <Select value={nextSchemeId} onValueChange={setNextSchemeId}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">
+                          TERMINAR SUELDO · CONSERVAR SIN NUEVA ESCALA
+                        </SelectItem>
+                        {nextSchemes.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-[color:var(--text-muted)]">
+                      Puedes encadenar tres esquemas de un mes para construir
+                      Mes 1 → Mes 2 → Mes 3 y después pasar a la escala
+                      definitiva.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+
+          <div className="grid gap-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 text-sky-950 dark:border-sky-900 dark:bg-sky-950/20 dark:text-sky-100 sm:grid-cols-[auto_1fr]">
+            <Clock3 className="h-5 w-5" />
+            <div>
+              <p className="text-sm font-semibold">
+                Modelo recomendado para periodo de prueba
+              </p>
+              <p className="mt-1 text-xs opacity-80">
+                Crea tres versiones: Principiante mes 1, mes 2 y mes 3. Da a
+                cada una duración de un mes y enlázala con la siguiente. La
+                última puede quedar fija o enviar a la escala normal.
+              </p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={submit}>
+            {scheme ? "Guardar nueva versión" : "Crear esquema"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function SchemeAssignmentDialog({ open, onOpenChange, initialEmployeeId }: { open: boolean; onOpenChange: (open: boolean) => void; initialEmployeeId?: string | undefined }) {
@@ -122,8 +423,6 @@ function SchemeAssignmentDialog({ open, onOpenChange, initialEmployeeId }: { ope
       state.employees
         .filter(
           (employee) =>
-            (employee.category === "SELLER" ||
-              employee.category === "CONTRACTOR") &&
             employeeAppliesToPeriod(
               employee,
               currentPeriod.start,
@@ -144,6 +443,7 @@ function SchemeAssignmentDialog({ open, onOpenChange, initialEmployeeId }: { ope
   const employee = sellers.find((item) => item.id === employeeId);
   const currentAssignment = state.schemeAssignments.filter((item) => item.employeeId === employeeId && item.effectiveFrom <= currentPeriod.end).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
   const [schemeId, setSchemeId] = useState(currentAssignment?.schemeId ?? employee?.schemeId ?? assignableSchemes[0]?.id ?? "");
+  const selectedScheme = assignableSchemes.find((item) => item.id === schemeId);
   const [effectiveFrom, setEffectiveFrom] = useState(currentPeriod.start);
   const [viaticsEnabled, setViaticsEnabled] = useState(employee?.viaticsEnabled ?? false);
   const [conceptIds, setConceptIds] = useState<string[]>(employee?.allowedViaticsConceptIds ?? []);
@@ -154,7 +454,7 @@ function SchemeAssignmentDialog({ open, onOpenChange, initialEmployeeId }: { ope
     toast.success(`Cambio de esquema programado desde ${effectiveFrom}; los periodos anteriores se conservan.`);
     onOpenChange(false);
   }
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>{currentAssignment ? "Cambiar esquema" : "Asignar esquema a vendedor"}</DialogTitle><DialogDescription>El cambio solo afectará la nómina que incluya la fecha seleccionada y los periodos posteriores.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Vendedor</Label><Select value={employeeId} onValueChange={(id) => { const nextEmployee = sellers.find((item) => item.id === id); const nextAssignment = state.schemeAssignments.filter((item) => item.employeeId === id && item.effectiveFrom <= currentPeriod.end).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0]; setEmployeeId(id); setSchemeId(nextAssignment?.schemeId ?? nextEmployee?.schemeId ?? assignableSchemes[0]?.id ?? ""); setViaticsEnabled(nextEmployee?.viaticsEnabled ?? false); setConceptIds(nextEmployee?.allowedViaticsConceptIds ?? []); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{sellers.map((seller) => <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Tipo de esquema</Label><Select value={schemeId} onValueChange={setSchemeId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{assignableSchemes.map((scheme) => <SelectItem key={scheme.id} value={scheme.id}>{scheme.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label htmlFor="scheme-effective-from"><CalendarDays className="mr-1 inline h-4 w-4" />Vigente desde</Label><Input id="scheme-effective-from" type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} /></div></div><div className="rounded-lg border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/35 p-3 text-xs"><strong>Protección de historial:</strong> las nóminas cuyo periodo termine antes de {effectiveFrom} conservarán su esquema anterior.</div><button type="button" role="switch" aria-checked={viaticsEnabled} onClick={() => { const next = !viaticsEnabled; setViaticsEnabled(next); if (!next) setConceptIds([]); }} className={`flex w-full items-center justify-between rounded-xl border p-4 text-left ${viaticsEnabled ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/25" : "border-[color:var(--border-color)]"}`}><span><strong className="block">¿Puede registrar viáticos?</strong><span className="text-xs text-[color:var(--text-muted)]">Si está desactivado, el botón no aparecerá en su portal.</span></span><span className={`rounded-full px-3 py-1 text-xs font-semibold ${viaticsEnabled ? "bg-emerald-600 text-white" : "bg-[color:var(--accent-hover)]"}`}>{viaticsEnabled ? "SÍ" : "NO"}</span></button>{viaticsEnabled && <div className="space-y-2"><Label>Conceptos permitidos</Label><div className="grid gap-2 sm:grid-cols-2">{state.viaticsConcepts.filter((concept) => concept.active).map((concept) => { const selected = conceptIds.includes(concept.id); return <button key={concept.id} type="button" onClick={() => setConceptIds((current) => selected ? current.filter((id) => id !== concept.id) : [...current, concept.id])} className={`rounded-lg border px-3 py-2 text-left text-xs font-semibold ${selected ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/25" : "border-[color:var(--border-color)]"}`}>{concept.name}<span className="block font-normal text-[color:var(--text-muted)]">HASTA {money.format(concept.maxAmount)}</span></button>; })}</div></div>}</div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit}>{currentAssignment ? "Registrar cambio" : "Aplicar asignación"}</Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>{currentAssignment ? "Cambiar esquema" : "Asignar esquema a personal"}</DialogTitle><DialogDescription>El cambio sólo afecta Comisiones desde la fecha elegida. Si el modelo incluye sueldo, se programa por separado en Salario fijo o Especialistas.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Empleado</Label><Select value={employeeId} onValueChange={(id) => { const nextEmployee = sellers.find((item) => item.id === id); const nextAssignment = state.schemeAssignments.filter((item) => item.employeeId === id && item.effectiveFrom <= currentPeriod.end).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0]; setEmployeeId(id); setSchemeId(nextAssignment?.schemeId ?? nextEmployee?.schemeId ?? assignableSchemes[0]?.id ?? ""); setViaticsEnabled(nextEmployee?.viaticsEnabled ?? false); setConceptIds(nextEmployee?.allowedViaticsConceptIds ?? []); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{sellers.map((seller) => <SelectItem key={seller.id} value={seller.id}>{seller.name} · {seller.position}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Tipo de esquema</Label><Select value={schemeId} onValueChange={setSchemeId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{assignableSchemes.map((scheme) => <SelectItem key={scheme.id} value={scheme.id}>{scheme.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label htmlFor="scheme-effective-from"><CalendarDays className="mr-1 inline h-4 w-4" />Vigente desde</Label><Input id="scheme-effective-from" type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} /></div></div>{selectedScheme?.salaryPlan ? <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-xs text-sky-950 dark:border-sky-900 dark:bg-sky-950/20 dark:text-sky-100"><p className="font-semibold">Automatización incluida</p><p className="mt-1">Sueldo {money.format(selectedScheme.salaryPlan.monthlySalary)} en {selectedScheme.salaryPlan.payrollModule === "FIXED" ? "Salario fijo" : "Especialistas"}{selectedScheme.salaryPlan.duration === "MONTHS" ? ` durante ${selectedScheme.salaryPlan.durationMonths} mes(es)` : " sin vencimiento"}. {selectedScheme.salaryPlan.nextSchemeId ? "Al vencer se programará automáticamente la siguiente escala." : selectedScheme.salaryPlan.duration === "MONTHS" ? "Al vencer, el sueldo se detendrá." : ""}</p></div> : null}<div className="rounded-lg border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/35 p-3 text-xs"><strong>Protección de historial:</strong> las nóminas cuyo periodo termine antes de {effectiveFrom} conservarán su sueldo y esquema anteriores.</div><button type="button" role="switch" aria-checked={viaticsEnabled} onClick={() => { const next = !viaticsEnabled; setViaticsEnabled(next); if (!next) setConceptIds([]); }} className={`flex w-full items-center justify-between rounded-xl border p-4 text-left ${viaticsEnabled ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/25" : "border-[color:var(--border-color)]"}`}><span><strong className="block">¿Puede registrar viáticos?</strong><span className="text-xs text-[color:var(--text-muted)]">Si está desactivado, el botón no aparecerá en su portal.</span></span><span className={`rounded-full px-3 py-1 text-xs font-semibold ${viaticsEnabled ? "bg-emerald-600 text-white" : "bg-[color:var(--accent-hover)]"}`}>{viaticsEnabled ? "SÍ" : "NO"}</span></button>{viaticsEnabled && <div className="space-y-2"><Label>Conceptos permitidos</Label><div className="grid gap-2 sm:grid-cols-2">{state.viaticsConcepts.filter((concept) => concept.active).map((concept) => { const selected = conceptIds.includes(concept.id); return <button key={concept.id} type="button" onClick={() => setConceptIds((current) => selected ? current.filter((id) => id !== concept.id) : [...current, concept.id])} className={`rounded-lg border px-3 py-2 text-left text-xs font-semibold ${selected ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/25" : "border-[color:var(--border-color)]"}`}>{concept.name}<span className="block font-normal text-[color:var(--text-muted)]">HASTA {money.format(concept.maxAmount)}</span></button>; })}</div></div>}</div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit}>{currentAssignment ? "Registrar cambio" : "Aplicar asignación"}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function AssignmentHistoryDialog({ assignment, open, onOpenChange }: { assignment: DemoSchemeAssignment; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -183,8 +483,6 @@ export function PayrollSchemesDemo() {
       state.employees
         .filter(
           (employee) =>
-            (employee.category === "SELLER" ||
-              employee.category === "CONTRACTOR") &&
             employeeAppliesToPeriod(
               employee,
               currentPeriod.start,
@@ -378,6 +676,7 @@ export function PayrollSchemesDemo() {
           .sort()[0];
         return {
           name: scheme.name,
+          version: scheme.version ?? 1,
           status: scheme.active
             ? "ACTIVO"
             : schemeAppliesToPeriod(
@@ -393,6 +692,9 @@ export function PayrollSchemesDemo() {
             scheme.effectiveFrom ??
             "SIN FECHA",
           effectiveFrom: scheme.effectiveFrom ?? "SIN FECHA",
+          salaryPlan: scheme.salaryPlan
+            ? `${money.format(scheme.salaryPlan.monthlySalary)} · ${scheme.salaryPlan.payrollModule === "FIXED" ? "SALARIO FIJO" : "ESPECIALISTAS"} · ${scheme.salaryPlan.duration === "MONTHS" ? `${scheme.salaryPlan.durationMonths} MES(ES)` : "SIN VENCIMIENTO"}`
+            : "SIN SUELDO EN EL MODELO",
           tiers: schemeTiersLabel(scheme),
           activePeople: currentAssignments.filter(
             (item) => item.scheme.id === scheme.id,
@@ -463,14 +765,16 @@ export function PayrollSchemesDemo() {
       { label: "Personal vigente", value: String(activeAssignmentRows.length), detail: "Asignaciones activas en el periodo" },
     ],
     analysis: [
-      "Cada esquema conserva sus rangos, porcentajes, fecha de registro y vigencia para auditoría.",
+      "Cada esquema conserva versiones fechadas de rangos, porcentajes y sueldo para auditoría; los cambios no recalculan periodos anteriores.",
       "La exportación utiliza únicamente la búsqueda aplicada al catálogo, ordenada por tipo de esquema y sin incluir controles de pantalla.",
     ],
     columns: [
       { header: "Esquema", accessor: (row) => row.name, width: 23 },
+      { header: "Versión", accessor: (row) => row.version, width: 9, format: "number" },
       { header: "Estatus", accessor: (row) => row.status, width: 10 },
       { header: "Registro", accessor: (row) => row.registeredAt, width: 14 },
       { header: "Vigente desde", accessor: (row) => row.effectiveFrom, width: 14 },
+      { header: "Plan de sueldo", accessor: (row) => row.salaryPlan, width: 27 },
       { header: "Escalas y porcentajes", accessor: (row) => row.tiers, width: 40 },
       { header: "Personal activo", accessor: (row) => row.activePeople, width: 12, format: "number" },
     ],
@@ -566,16 +870,44 @@ export function PayrollSchemesDemo() {
                     <TableRow key={scheme.id}>
                       <TableCell>
                         <p className="font-semibold">{scheme.name}</p>
-                        <Badge
-                          variant="outline"
-                          className={`mt-1 ${scheme.active ? "border-emerald-300 text-emerald-700 dark:text-emerald-300" : "border-stone-300 text-stone-500"}`}
-                        >
-                          {scheme.active
-                            ? "ACTIVO"
-                            : protectedForPeriod
-                              ? "BAJA AL CIERRE"
-                              : "INACTIVO"}
-                        </Badge>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className={
+                              scheme.active
+                                ? "border-emerald-300 text-emerald-700 dark:text-emerald-300"
+                                : "border-stone-300 text-stone-500"
+                            }
+                          >
+                            {scheme.active
+                              ? "ACTIVO"
+                              : protectedForPeriod
+                                ? "BAJA AL CIERRE"
+                                : "HISTÓRICO"}
+                          </Badge>
+                          <Badge variant="outline">
+                            VERSIÓN {scheme.version ?? 1}
+                          </Badge>
+                          {scheme.salaryPlan ? (
+                            <Badge
+                              variant="outline"
+                              className="border-sky-300 text-sky-700 dark:text-sky-300"
+                            >
+                              CON SUELDO
+                            </Badge>
+                          ) : null}
+                        </div>
+                        {scheme.salaryPlan ? (
+                          <p className="mt-2 max-w-xs text-[10px] text-[color:var(--text-muted)]">
+                            {money.format(scheme.salaryPlan.monthlySalary)} · {" "}
+                            {scheme.salaryPlan.payrollModule === "FIXED"
+                              ? "SALARIO FIJO"
+                              : "ESPECIALISTAS"}
+                            {scheme.salaryPlan.duration === "MONTHS"
+                              ? ` · ${scheme.salaryPlan.durationMonths} MES(ES)`
+                              : " · SIN VENCIMIENTO"}
+                          </p>
+                        ) : null}
                       </TableCell>
                       <TableCell>
                         <div className="flex min-w-[420px] flex-wrap gap-1.5">
@@ -871,6 +1203,8 @@ export function PayrollSchemesDemo() {
                   const isCurrent =
                     assignmentByEmployee.get(assignment.employeeId)?.id ===
                     assignment.id;
+                  const isScheduled =
+                    assignment.effectiveFrom > currentPeriod.end;
                   const editable = assignment.effectiveFrom >= currentPeriod.start;
                   return (
                     <TableRow key={assignment.id}>
@@ -882,7 +1216,11 @@ export function PayrollSchemesDemo() {
                       <TableCell>{assignment.createdAt}</TableCell>
                       <TableCell>
                         <Badge variant="outline">
-                          {isCurrent ? "VIGENTE" : "HISTÓRICO"}
+                          {isScheduled
+                            ? "PROGRAMADO"
+                            : isCurrent
+                              ? "VIGENTE"
+                              : "HISTÓRICO"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">

@@ -50,6 +50,33 @@ import { type DemoKioskTarget, usePayrollDemo } from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
 import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { ReportExportButtons } from "./report-export-buttons";
+import {
+  nextTableSort,
+  sortTableRows,
+  SortableTableHead,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
+
+type KioskSortKey =
+  | "branch"
+  | "account"
+  | "scheme"
+  | "target"
+  | "sales"
+  | "achievement"
+  | "rate"
+  | "commission"
+  | "socialCost"
+  | "isr"
+  | "totalCost";
+type KioskHistorySortKey =
+  | "month"
+  | "branch"
+  | "scheme"
+  | "sales"
+  | "rate"
+  | "commission";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -241,18 +268,38 @@ export function PayrollKioskCommissionDemo() {
   const [editingTarget, setEditingTarget] = useState<DemoKioskTarget | null>(
     null,
   );
+  const [tableSort, setTableSort] =
+    useState<TableSortState<KioskSortKey>>(null);
+  const [historySort, setHistorySort] =
+    useState<TableSortState<KioskHistorySortKey>>(null);
 
   const kioskPayroll = useMemo(
     () => kioskPayrollForMonth(state, selectedMonth),
     [selectedMonth, state],
   );
-  const rows = kioskPayroll.branchRows.map((row) => ({
+  const rawRows = kioskPayroll.branchRows.map((row) => ({
     ...row,
     appliedRate: row.resolution.rate,
     commissionBase: row.resolution.salesBase,
     branchScheme: row.resolution.scheme,
     combined: row.resolution.combined,
   }));
+  const rows = sortTableRows(rawRows, tableSort, {
+    branch: (row) => `${row.branch?.name ?? ""} ${row.manager?.name ?? ""}`,
+    account: (row) => `${row.manager?.bank ?? ""} ${row.manager?.account ?? ""}`,
+    scheme: (row) => row.branchScheme?.name ?? "META INDIVIDUAL",
+    target: (row) => row.target.monthlyTarget,
+    sales: (row) => row.sales,
+    achievement: (row) => row.achievement,
+    rate: (row) => row.appliedRate,
+    commission: (row) => row.commission,
+    socialCost: (row) => row.socialCost,
+    isr: (row) => row.isr,
+    totalCost: (row) => row.totalCost,
+  });
+  function changeTableSort(key: KioskSortKey, kind: TableSortKind) {
+    setTableSort((current) => nextTableSort(current, key, kind));
+  }
   const activeEmployee = state.employees.find(
     (employee) => employee.id === state.activeEmployeeId,
   );
@@ -263,7 +310,7 @@ export function PayrollKioskCommissionDemo() {
   const yearSales = state.kioskMonthlySales.filter((sale) =>
     sale.month.startsWith(selectedYear),
   );
-  const annualRows = yearSales
+  const annualDefaultRows = yearSales
     .map((sale) => {
       const target = state.kioskTargets.find(
         (item) => item.branchId === sale.branchId,
@@ -295,6 +342,17 @@ export function PayrollKioskCommissionDemo() {
       (a, b) =>
         b.month.localeCompare(a.month) || a.branch.localeCompare(b.branch),
     );
+  const annualRows = sortTableRows(annualDefaultRows, historySort, {
+    month: (row) => row.month,
+    branch: (row) => row.branch,
+    scheme: (row) => `${row.schemeName} ${row.manager}`,
+    sales: (row) => row.sales,
+    rate: (row) => row.rate,
+    commission: (row) => row.commission,
+  });
+  function changeHistorySort(key: KioskHistorySortKey, kind: TableSortKind) {
+    setHistorySort((current) => nextTableSort(current, key, kind));
+  }
 
   const totalSales = rows.reduce((sum, row) => sum + row.sales, 0);
   const totalTarget = rows.reduce(
@@ -707,17 +765,17 @@ export function PayrollKioskCommissionDemo() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>SUCURSAL / GERENTE</TableHead>
-                  <TableHead>CUENTA PARA TRANSFERENCIA</TableHead>
-                  <TableHead>ESQUEMA APLICADO</TableHead>
-                  <TableHead className="text-right">META</TableHead>
-                  <TableHead className="text-right">VENTA DEL MES</TableHead>
-                  <TableHead>CUMPLIMIENTO</TableHead>
-                  <TableHead className="text-right">TASA</TableHead>
-                  <TableHead className="text-right">COMISIÓN</TableHead>
-                  <TableHead className="text-right">COSTO SOCIAL</TableHead>
-                  <TableHead className="text-right">ISR</TableHead>
-                  <TableHead className="text-right">COSTO TOTAL</TableHead>
+                  <SortableTableHead column="branch" label="SUCURSAL / GERENTE" kind="text" sort={tableSort} onSort={changeTableSort} />
+                  <SortableTableHead column="account" label="CUENTA PARA TRANSFERENCIA" kind="text" sort={tableSort} onSort={changeTableSort} />
+                  <SortableTableHead column="scheme" label="ESQUEMA APLICADO" kind="text" sort={tableSort} onSort={changeTableSort} />
+                  <SortableTableHead column="target" label="META" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="sales" label="VENTA DEL MES" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="achievement" label="CUMPLIMIENTO" kind="number" sort={tableSort} onSort={changeTableSort} />
+                  <SortableTableHead column="rate" label="TASA" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="commission" label="COMISIÓN" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="socialCost" label="COSTO SOCIAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="isr" label="ISR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="totalCost" label="COSTO TOTAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
                   <TableHead className="text-right">CONFIGURAR</TableHead>
                 </TableRow>
               </TableHeader>
@@ -938,12 +996,12 @@ export function PayrollKioskCommissionDemo() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>MES</TableHead>
-                      <TableHead>SUCURSAL</TableHead>
-                      <TableHead>ESQUEMA / GERENTE</TableHead>
-                      <TableHead className="text-right">VENTA</TableHead>
-                      <TableHead className="text-right">TASA</TableHead>
-                      <TableHead className="text-right">COMISIÓN</TableHead>
+                      <SortableTableHead column="month" label="MES" kind="text" sort={historySort} onSort={changeHistorySort} />
+                      <SortableTableHead column="branch" label="SUCURSAL" kind="text" sort={historySort} onSort={changeHistorySort} />
+                      <SortableTableHead column="scheme" label="ESQUEMA / GERENTE" kind="text" sort={historySort} onSort={changeHistorySort} />
+                      <SortableTableHead column="sales" label="VENTA" kind="number" sort={historySort} onSort={changeHistorySort} align="right" />
+                      <SortableTableHead column="rate" label="TASA" kind="number" sort={historySort} onSort={changeHistorySort} align="right" />
+                      <SortableTableHead column="commission" label="COMISIÓN" kind="number" sort={historySort} onSort={changeHistorySort} align="right" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>

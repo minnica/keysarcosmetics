@@ -48,6 +48,7 @@ import {
   christmasBonusPaidAmountForRange,
   effectiveTaxInclusionForRange,
   roleHasPermission,
+  sortByListMode,
   terminationSettlementTotal,
   type DemoChristmasBonus,
   type DemoChristmasBonusPaymentPeriod,
@@ -659,6 +660,7 @@ function settlementReceiptConfig(
 export function PayrollTerminationSettlementsDemo() {
   const {
     state,
+    listSortMode,
     upsertTerminationSettlement,
     approveTerminationSettlement,
     archiveTerminationSettlement,
@@ -684,9 +686,8 @@ export function PayrollTerminationSettlementsDemo() {
     () => new Map(state.employees.map((employee) => [employee.id, employee])),
     [state.employees],
   );
-  const rows = useMemo(
-    () =>
-      state.employees
+  const rows = useMemo(() => {
+    const defaultRows = state.employees
         .filter((employee) => Boolean(employee.terminationDate))
         .flatMap((employee) => {
           const saved = state.terminationSettlements.find(
@@ -711,18 +712,25 @@ export function PayrollTerminationSettlementsDemo() {
                 .includes(term)),
           );
         })
-        .sort((a, b) => b.terminationDate.localeCompare(a.terminationDate)),
-    [
+        .sort((a, b) => b.terminationDate.localeCompare(a.terminationDate));
+    return sortByListMode(
+      defaultRows,
+      listSortMode,
+      (settlement) =>
+        employeeMap.get(settlement.employeeId)?.name ?? "PERSONA DEMO",
+      (settlement) => terminationSettlementTotal(settlement),
+    );
+  }, [
       branchFilter,
       dateFrom,
       dateTo,
       employeeMap,
+      listSortMode,
       search,
       statusFilter,
       state.employees,
       state.terminationSettlements,
-    ],
-  );
+    ]);
   const effectiveSize =
     pageSize === "ALL" ? Math.max(rows.length, 1) : Number(pageSize);
   const totalPages = Math.max(1, Math.ceil(rows.length / effectiveSize));
@@ -1635,7 +1643,7 @@ function TaxEditor({
 }
 
 export function PayrollChristmasBonusDemo() {
-  const { state, upsertChristmasBonus } = usePayrollDemo();
+  const { state, listSortMode, upsertChristmasBonus } = usePayrollDemo();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(String(currentYear));
   const [paymentFrom, setPaymentFrom] = useState(`${currentYear}-01-01`);
@@ -1661,9 +1669,8 @@ export function PayrollChristmasBonusDemo() {
     () => new Map(state.employees.map((employee) => [employee.id, employee])),
     [state.employees],
   );
-  const rows = useMemo(
-    () =>
-      state.employees
+  const rows = useMemo(() => {
+    const defaultRows = state.employees
         .filter(
           (employee) =>
             employee.monthlySalary > 0 &&
@@ -1701,10 +1708,17 @@ export function PayrollChristmasBonusDemo() {
             employeeMap.get(b.employeeId)?.name ?? "",
             "es-MX",
           ),
-        ),
-    [
+        );
+    return sortByListMode(
+      defaultRows,
+      listSortMode,
+      (bonus) => employeeMap.get(bonus.employeeId)?.name ?? "PERSONA DEMO",
+      (bonus) => bonus.grossAmount,
+    );
+  }, [
       branchFilter,
       employeeMap,
+      listSortMode,
       paymentFrom,
       paymentTo,
       paymentPeriods,
@@ -1714,8 +1728,7 @@ export function PayrollChristmasBonusDemo() {
       state.employees,
       yearEnd,
       yearStart,
-    ],
-  );
+    ]);
   const effectiveSize =
     pageSize === "ALL" ? Math.max(rows.length, 1) : Number(pageSize);
   const totalPages = Math.max(1, Math.ceil(rows.length / effectiveSize));
@@ -1814,7 +1827,7 @@ export function PayrollChristmasBonusDemo() {
       });
     });
 
-    const allBranches = Array.from(byBranch.values())
+    const defaultBranches = Array.from(byBranch.values())
       .map((branch) => ({
         id: branch.id,
         name: branch.name,
@@ -1826,6 +1839,12 @@ export function PayrollChristmasBonusDemo() {
         total: branch.gross + branch.social + branch.isr,
       }))
       .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es-MX"));
+    const allBranches = sortByListMode(
+      defaultBranches,
+      listSortMode,
+      (branch) => branch.name,
+      (branch) => branch.total,
+    );
     const allCost = allBranches.reduce((sum, branch) => sum + branch.total, 0);
 
     return allBranches
@@ -1839,6 +1858,7 @@ export function PayrollChristmasBonusDemo() {
   }, [
     applicableRows,
     branchFilter,
+    listSortMode,
     paymentFrom,
     paymentTo,
     state.branches,
@@ -2624,7 +2644,7 @@ function ChristmasEditor({
 }
 
 export function PayrollSettlementReportDemo() {
-  const { state } = usePayrollDemo();
+  const { state, listSortMode } = usePayrollDemo();
   const currentYear = new Date().getFullYear();
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState(`${currentYear}-01-01`);
@@ -2637,9 +2657,8 @@ export function PayrollSettlementReportDemo() {
     () => new Map(state.employees.map((employee) => [employee.id, employee])),
     [state.employees],
   );
-  const rows = useMemo(
-    () =>
-      state.terminationSettlements
+  const rows = useMemo(() => {
+    const defaultRows = state.terminationSettlements
         .filter((settlement) => {
           const employee = employeeMap.get(settlement.employeeId);
           const term = search.trim().toLocaleUpperCase("es-MX");
@@ -2658,17 +2677,24 @@ export function PayrollSettlementReportDemo() {
                 .includes(term)),
           );
         })
-        .sort((a, b) => b.terminationDate.localeCompare(a.terminationDate)),
-    [
+        .sort((a, b) => b.terminationDate.localeCompare(a.terminationDate));
+    return sortByListMode(
+      defaultRows,
+      listSortMode,
+      (settlement) =>
+        employeeMap.get(settlement.employeeId)?.name ?? "PERSONA DEMO",
+      (settlement) => terminationSettlementTotal(settlement),
+    );
+  }, [
       branchFilter,
       dateFrom,
       dateTo,
       employeeMap,
+      listSortMode,
       search,
       statusFilter,
       state.terminationSettlements,
-    ],
-  );
+    ]);
   const effectiveSize =
     pageSize === "ALL" ? Math.max(rows.length, 1) : Number(pageSize);
   const totalPages = Math.max(1, Math.ceil(rows.length / effectiveSize));

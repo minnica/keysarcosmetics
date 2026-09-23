@@ -32,7 +32,6 @@ import {
   TableBody,
   TableCell,
   TableFooter,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@cosmetics/ui";
@@ -49,6 +48,13 @@ import {
 } from "./payroll-demo-context";
 import { ReportExportButtons } from "./report-export-buttons";
 import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
+import {
+  nextTableSort,
+  sortTableRows,
+  SortableTableHead,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
 
 type ReportScope = "MONTHLY" | "QUARTERLY" | "ANNUAL";
 
@@ -80,6 +86,23 @@ interface BranchSummaryRow {
   totalCost: number;
   employees: number;
 }
+
+type BranchSummarySortKey =
+  | "branch"
+  | "fixedPayroll"
+  | "specialistPayroll"
+  | "doublePayPayroll"
+  | "negativeBalanceApplied"
+  | "commissionPayroll"
+  | "kioskPayroll"
+  | "contractorPayroll"
+  | "settlementPayroll"
+  | "christmasBonusPayroll"
+  | "movements"
+  | "payrollCost"
+  | "socialCost"
+  | "isrCost"
+  | "totalCost";
 
 interface MonthlyTrend {
   month: string;
@@ -221,6 +244,8 @@ export function PayrollBranchReportDemo() {
   );
   const [scope, setScope] = useState<ReportScope>("MONTHLY");
   const [periodKey, setPeriodKey] = useState(currentPeriod.start.slice(0, 7));
+  const [tableSort, setTableSort] =
+    useState<TableSortState<BranchSummarySortKey>>(null);
   const scopeOptions = useMemo(
     () => buildScopeOptions(scope, availableMonths),
     [availableMonths, scope],
@@ -775,7 +800,30 @@ export function PayrollBranchReportDemo() {
     state,
   ]);
 
-  const rows = analysis.rows;
+  const rows = useMemo(
+    () =>
+      sortTableRows(analysis.rows, tableSort, {
+        branch: (row) => row.branch,
+        fixedPayroll: (row) => row.fixedPayroll,
+        specialistPayroll: (row) => row.specialistPayroll,
+        doublePayPayroll: (row) => row.doublePayPayroll,
+        negativeBalanceApplied: (row) => row.negativeBalanceApplied,
+        commissionPayroll: (row) => row.commissionPayroll,
+        kioskPayroll: (row) => row.kioskPayroll,
+        contractorPayroll: (row) => row.contractorPayroll,
+        settlementPayroll: (row) => row.settlementPayroll,
+        christmasBonusPayroll: (row) => row.christmasBonusPayroll,
+        movements: (row) => row.movements,
+        payrollCost: (row) => row.payrollCost,
+        socialCost: (row) => row.socialCost,
+        isrCost: (row) => row.isrCost,
+        totalCost: (row) => row.totalCost,
+      }),
+    [analysis.rows, tableSort],
+  );
+  function changeTableSort(key: BranchSummarySortKey, kind: TableSortKind) {
+    setTableSort((current) => nextTableSort(current, key, kind));
+  }
   const totalSales = rows.reduce((sum, row) => sum + row.sales, 0);
   const totalPayroll = rows.reduce((sum, row) => sum + row.payrollCost, 0);
   const totalSocial = rows.reduce((sum, row) => sum + row.socialCost, 0);
@@ -1414,21 +1462,21 @@ export function PayrollBranchReportDemo() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>SUCURSAL</TableHead>
-                  <TableHead className="text-right">FIJO</TableHead>
-                  <TableHead className="text-right">ESPECIALISTAS</TableHead>
-                  <TableHead className="text-right">PAGO DOBLE</TableHead>
-                  <TableHead className="text-right">SALDO ARRASTRADO</TableHead>
-                  <TableHead className="text-right">COMISIONES</TableHead>
-                  <TableHead className="text-right">KIOSCO</TableHead>
-                  <TableHead className="text-right">HONORARIOS</TableHead>
-                  <TableHead className="text-right">LIQUIDACIONES</TableHead>
-                  <TableHead className="text-right">AGUINALDOS</TableHead>
-                  <TableHead className="text-right">MOVIMIENTOS</TableHead>
-                  <TableHead className="text-right">NÓMINA</TableHead>
-                  <TableHead className="text-right">SOCIAL</TableHead>
-                  <TableHead className="text-right">ISR</TableHead>
-                  <TableHead className="text-right">TOTAL</TableHead>
+                  <SortableTableHead column="branch" label="SUCURSAL" kind="text" sort={tableSort} onSort={changeTableSort} />
+                  <SortableTableHead column="fixedPayroll" label="FIJO" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="specialistPayroll" label="ESPECIALISTAS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="doublePayPayroll" label="PAGO DOBLE" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="negativeBalanceApplied" label="SALDO ARRASTRADO" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="commissionPayroll" label="COMISIONES" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="kioskPayroll" label="KIOSCO" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="contractorPayroll" label="HONORARIOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="settlementPayroll" label="LIQUIDACIONES" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="christmasBonusPayroll" label="AGUINALDOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="movements" label="MOVIMIENTOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="payrollCost" label="NÓMINA" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="socialCost" label="SOCIAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="isrCost" label="ISR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead column="totalCost" label="TOTAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
                 </TableRow>
               </TableHeader>
               <TableBody>

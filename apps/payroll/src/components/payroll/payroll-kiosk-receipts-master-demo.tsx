@@ -51,6 +51,7 @@ import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import {
   type DemoEmployee,
   type DemoKioskReceiptDecision,
+  sortByListMode,
   usePayrollDemo,
 } from "./payroll-demo-context";
 
@@ -169,7 +170,7 @@ export function PayrollKioskReceiptsMasterDemo({
 }: {
   onOpenOwnReceipt?: (() => void) | undefined;
 }) {
-  const { state } = usePayrollDemo();
+  const { state, listSortMode } = usePayrollDemo();
   const currentMonth = localIsoDate().slice(0, 7);
   const currentYear = currentMonth.slice(0, 4);
   const monthOptions = useMemo(
@@ -197,7 +198,7 @@ export function PayrollKioskReceiptsMasterDemo({
   const [preview, setPreview] = useState<ManagerReceiptRow | null>(null);
 
   const rows = useMemo(() => {
-    return kioskPayrollForMonth(state, selectedMonth).managerRows.map(
+    const managerRows = kioskPayrollForMonth(state, selectedMonth).managerRows.map(
       (payroll): ManagerReceiptRow => {
         const decision = state.kioskReceiptDecisions.find(
           (item) =>
@@ -222,7 +223,13 @@ export function PayrollKioskReceiptsMasterDemo({
         };
       },
     );
-  }, [selectedMonth, state]);
+    return sortByListMode(
+      managerRows,
+      listSortMode,
+      (row) => row.manager.name,
+      (row) => row.commission,
+    );
+  }, [listSortMode, selectedMonth, state]);
 
   const normalizedSearch = search.trim().toLocaleLowerCase("es-MX");
   const visibleRows = rows.filter((row) => {

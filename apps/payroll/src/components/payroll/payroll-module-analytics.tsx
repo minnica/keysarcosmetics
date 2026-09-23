@@ -16,7 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from "@cosmetics/ui";
-import { type EmployeePayrollLine, usePayrollDemo } from "./payroll-demo-context";
+import {
+  sortByListMode,
+  type EmployeePayrollLine,
+  usePayrollDemo,
+} from "./payroll-demo-context";
 import { employeeCostAllocationShares, payrollCostAllocationMode } from "./payroll-cost-branch-selector";
 
 const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
@@ -47,8 +51,8 @@ export function PayrollModuleAnalytics({
   periodEnd: string;
   title: string;
 }) {
-  const { state } = usePayrollDemo();
-  const rows: BranchAnalytics[] = state.branches.map((branch) => {
+  const { state, listSortMode } = usePayrollDemo();
+  const rows: BranchAnalytics[] = sortByListMode(state.branches.map((branch) => {
     let sales = 0;
     let payroll = 0;
     let socialCost = 0;
@@ -68,7 +72,7 @@ export function PayrollModuleAnalytics({
       isr += line.isrCost * costShare;
     });
     return { id: branch.id, name: branch.name, employees: employees.size, sales, payroll, socialCost, isr, totalCost: payroll + socialCost + isr };
-  });
+  }), listSortMode, (row) => row.name, (row) => row.totalCost);
   const payroll = lines.reduce((sum, line) => sum + line.total, 0);
   const socialCost = lines.reduce((sum, line) => sum + line.socialCost, 0);
   const isr = lines.reduce((sum, line) => sum + line.isrCost, 0);

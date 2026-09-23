@@ -3,10 +3,17 @@
 import { Fragment, useMemo, useState } from "react";
 import type { ElementType } from "react";
 import { BarChart3, BriefcaseBusiness, CalendarDays, ChevronDown, ChevronUp, CircleDollarSign, Search, SlidersHorizontal, TrendingDown, TrendingUp, Users, WalletCards } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@cosmetics/ui";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableFooter, TableHeader, TableRow } from "@cosmetics/ui";
 import type { EmployeePayrollLine } from "./payroll-demo-context";
 import { usePayrollDemo } from "./payroll-demo-context";
 import { ReportExportButtons } from "./report-export-buttons";
+import {
+  nextTableSort,
+  sortTableRows,
+  SortableTableHead,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
 
 interface EmployeeExpenseRow {
   id: string;
@@ -32,6 +39,24 @@ interface PositionExpenseRow {
   percentage: number;
   change: number | null;
 }
+
+type PositionExpenseSortKey =
+  | "position"
+  | "employeeCount"
+  | "payroll"
+  | "socialCost"
+  | "isrCost"
+  | "total"
+  | "percentage"
+  | "change";
+type EmployeeExpenseSortKey =
+  | "name"
+  | "branch"
+  | "category"
+  | "payroll"
+  | "socialCost"
+  | "isrCost"
+  | "total";
 
 const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 const compactMoney = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", notation: "compact", maximumFractionDigits: 1 });
@@ -99,6 +124,10 @@ export function PayrollPositionExpenseReport() {
   const [nameQuery, setNameQuery] = useState("");
   const [positionFilter, setPositionFilter] = useState("ALL");
   const [expandedPosition, setExpandedPosition] = useState<string | null>(null);
+  const [positionSort, setPositionSort] =
+    useState<TableSortState<PositionExpenseSortKey>>(null);
+  const [employeeSort, setEmployeeSort] =
+    useState<TableSortState<EmployeeExpenseSortKey>>(null);
   const previousFrom = shiftMonth(dateFrom, -1);
   const previousTo = shiftMonth(dateTo, -1);
   const positionOptions = useMemo(() => Array.from(new Set([
@@ -114,8 +143,49 @@ export function PayrollPositionExpenseReport() {
     const branchName = (branchId: string) => state.branches.find((branch) => branch.id === branchId)?.name ?? "SIN SUCURSAL";
     const current = toEmployeeRows(payrollLines(dateFrom, state.calculationMode, dateTo, "CONSOLIDATED").filter(matchesFilters), branchName);
     const previous = toEmployeeRows(payrollLines(previousFrom, state.calculationMode, previousTo, "CONSOLIDATED").filter(matchesFilters), branchName);
-    return { current, previous, positions: groupByPosition(current, previous) };
+    const positions = groupByPosition(current, previous);
+    return { current, previous, positions };
   }, [dateFrom, dateTo, nameQuery, payrollLines, positionFilter, previousFrom, previousTo, state.branches, state.calculationMode]);
+
+  const sortedPositions = useMemo(
+    () =>
+      sortTableRows(analysis.positions, positionSort, {
+        position: (row) => row.position,
+        employeeCount: (row) => row.employeeCount,
+        payroll: (row) => row.payroll,
+        socialCost: (row) => row.socialCost,
+        isrCost: (row) => row.isrCost,
+        total: (row) => row.total,
+        percentage: (row) => row.percentage,
+        change: (row) => row.change,
+      }),
+    [analysis.positions, positionSort],
+  );
+  const sortEmployees = (employees: EmployeeExpenseRow[]) =>
+    sortTableRows(employees, employeeSort, {
+      name: (row) => row.name,
+      branch: (row) => row.branch,
+      category: (row) => row.category,
+      payroll: (row) => row.payroll,
+      socialCost: (row) => row.socialCost,
+      isrCost: (row) => row.isrCost,
+      total: (row) => row.total,
+    });
+  const exportEmployeeRows = sortedPositions.flatMap((row) =>
+    sortEmployees(row.employees),
+  );
+  function changePositionSort(
+    key: PositionExpenseSortKey,
+    kind: TableSortKind,
+  ) {
+    setPositionSort((current) => nextTableSort(current, key, kind));
+  }
+  function changeEmployeeSort(
+    key: EmployeeExpenseSortKey,
+    kind: TableSortKind,
+  ) {
+    setEmployeeSort((current) => nextTableSort(current, key, kind));
+  }
 
   const totalPayroll = analysis.current.reduce((sum, row) => sum + row.payroll, 0);
   const totalSocial = analysis.current.reduce((sum, row) => sum + row.socialCost, 0);
@@ -155,7 +225,7 @@ export function PayrollPositionExpenseReport() {
     filename: `gastos-por-puesto-${dateFrom}-${dateTo}`,
     sheetName: "Detalle por empleado",
     orientation: "landscape" as const,
-    rows: analysis.current,
+    rows: exportEmployeeRows,
     columns: [
       { header: "EMPLEADO", accessor: (row: EmployeeExpenseRow) => row.name, width: 28 },
       { header: "PUESTO", accessor: (row: EmployeeExpenseRow) => row.position, width: 28 },
@@ -166,7 +236,7 @@ export function PayrollPositionExpenseReport() {
       { header: "ISR", accessor: (row: EmployeeExpenseRow) => row.isrCost, format: "currency" as const, width: 14 },
       { header: "COSTO TOTAL", accessor: (row: EmployeeExpenseRow) => row.total, format: "currency" as const, width: 17 },
     ],
-    summarySection: { title: "Costo acumulado por puesto", sheetName: "Resumen por puesto", labelHeader: "Puesto", valueHeader: "Costo total", rows: analysis.positions.map((row) => ({ label: row.position, value: row.total })), totalLabel: "Gasto total", total },
+    summarySection: { title: "Costo acumulado por puesto", sheetName: "Resumen por puesto", labelHeader: "Puesto", valueHeader: "Costo total", rows: sortedPositions.map((row) => ({ label: row.position, value: row.total })), totalLabel: "Gasto total", total },
   };
 
   function resetFilters() {
@@ -192,9 +262,9 @@ export function PayrollPositionExpenseReport() {
         <Card><CardHeader><CardTitle className="section-heading uppercase">Comparativo mensual por puesto</CardTitle><CardDescription>Periodo actual frente al rango equivalente del mes anterior.</CardDescription></CardHeader><CardContent className="space-y-4">{analysis.positions.slice(0, 8).map((row) => <div key={row.position}><div className="mb-1.5 flex items-center justify-between gap-3"><span className="truncate text-xs font-semibold">{row.position}</span><ChangeBadge value={row.change} /></div><div className="grid gap-1"><div className="flex items-center gap-2"><span className="w-14 text-[8px] font-semibold text-[color:var(--text-muted)]">ACTUAL</span><div className="h-2 flex-1 overflow-hidden rounded-full bg-[color:var(--accent-hover)]"><div className="h-full rounded-full bg-[#9b7957]" style={{ width: `${Math.max(row.total / maxComparison * 100, 0)}%` }} /></div><span className="w-16 text-right text-[9px]">{compactMoney.format(row.total)}</span></div><div className="flex items-center gap-2"><span className="w-14 text-[8px] font-semibold text-[color:var(--text-muted)]">ANTERIOR</span><div className="h-2 flex-1 overflow-hidden rounded-full bg-[color:var(--accent-hover)]"><div className="h-full rounded-full bg-[#648672]" style={{ width: `${Math.max(row.previousTotal / maxComparison * 100, 0)}%` }} /></div><span className="w-16 text-right text-[9px]">{compactMoney.format(row.previousTotal)}</span></div></div></div>)}{!analysis.positions.length && <p className="py-8 text-center text-sm text-[color:var(--text-muted)]">No hay puestos para comparar.</p>}</CardContent></Card>
       </div>
 
-      <Card className="overflow-hidden"><CardHeader className="border-b border-[color:var(--border-color)]"><CardTitle className="section-heading uppercase">Detalle ejecutivo por puesto</CardTitle><CardDescription>Selecciona el nombre de un puesto para desplegar las personas y los conceptos que integran su costo.</CardDescription></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>PUESTO</TableHead><TableHead className="text-center">PERSONAL</TableHead><TableHead className="text-right">NÓMINA</TableHead><TableHead className="text-right">SOCIAL</TableHead><TableHead className="text-right">ISR</TableHead><TableHead className="text-right">COSTO TOTAL</TableHead><TableHead className="text-right">PARTICIPACIÓN</TableHead><TableHead className="text-right">VS. ANTERIOR</TableHead></TableRow></TableHeader><TableBody>{analysis.positions.map((row) => {
+      <Card className="overflow-hidden"><CardHeader className="border-b border-[color:var(--border-color)]"><CardTitle className="section-heading uppercase">Detalle ejecutivo por puesto</CardTitle><CardDescription>Selecciona cualquier título de la tabla para ordenar A–Z, Z–A o por importe.</CardDescription></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><SortableTableHead column="position" label="PUESTO" kind="text" sort={positionSort} onSort={changePositionSort} /><SortableTableHead column="employeeCount" label="PERSONAL" kind="number" sort={positionSort} onSort={changePositionSort} align="center" /><SortableTableHead column="payroll" label="NÓMINA" kind="number" sort={positionSort} onSort={changePositionSort} align="right" /><SortableTableHead column="socialCost" label="SOCIAL" kind="number" sort={positionSort} onSort={changePositionSort} align="right" /><SortableTableHead column="isrCost" label="ISR" kind="number" sort={positionSort} onSort={changePositionSort} align="right" /><SortableTableHead column="total" label="COSTO TOTAL" kind="number" sort={positionSort} onSort={changePositionSort} align="right" /><SortableTableHead column="percentage" label="PARTICIPACIÓN" kind="number" sort={positionSort} onSort={changePositionSort} align="right" /><SortableTableHead column="change" label="VS. ANTERIOR" kind="number" sort={positionSort} onSort={changePositionSort} align="right" /></TableRow></TableHeader><TableBody>{sortedPositions.map((row) => {
           const expanded = expandedPosition === row.position;
-          return <Fragment key={row.position}><TableRow className={expanded ? "bg-[color:var(--accent-hover)]/30" : undefined}><TableCell><button type="button" className="inline-flex items-center gap-2 text-left text-xs font-semibold uppercase text-[#765638] hover:text-[#9b744f]" onClick={() => setExpandedPosition(expanded ? null : row.position)} aria-expanded={expanded}>{expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}{row.position}</button></TableCell><TableCell className="text-center">{row.employeeCount}</TableCell><TableCell className="number-display text-right">{money.format(row.payroll)}</TableCell><TableCell className="number-display text-right">{money.format(row.socialCost)}</TableCell><TableCell className="number-display text-right">{money.format(row.isrCost)}</TableCell><TableCell className="number-display text-right font-semibold">{money.format(row.total)}</TableCell><TableCell className="number-display text-right">{row.percentage.toFixed(1)}%</TableCell><TableCell className="text-right"><ChangeBadge value={row.change} /></TableCell></TableRow>{expanded && <TableRow><TableCell colSpan={8} className="bg-[color:var(--accent-hover)]/15 p-0"><div className="p-4"><div className="mb-3 flex items-center gap-2"><BriefcaseBusiness className="h-4 w-4 text-[#8a6744]" /><p className="text-[10px] font-semibold uppercase tracking-[0.1em]">Integración de {row.position}</p></div><div className="overflow-x-auto rounded-xl border border-[color:var(--border-color)]"><Table><TableHeader><TableRow><TableHead>EMPLEADO</TableHead><TableHead>SUCURSAL</TableHead><TableHead>TIPO</TableHead><TableHead className="text-right">NÓMINA</TableHead><TableHead className="text-right">SOCIAL</TableHead><TableHead className="text-right">ISR</TableHead><TableHead className="text-right">TOTAL</TableHead></TableRow></TableHeader><TableBody>{row.employees.map((employee) => <TableRow key={employee.id}><TableCell className="font-semibold">{employee.name}</TableCell><TableCell>{employee.branch}</TableCell><TableCell><Badge variant="outline" className="text-[8px]">{employee.category}</Badge></TableCell><TableCell className="number-display text-right">{money.format(employee.payroll)}</TableCell><TableCell className="number-display text-right">{money.format(employee.socialCost)}</TableCell><TableCell className="number-display text-right">{money.format(employee.isrCost)}</TableCell><TableCell className="number-display text-right font-semibold">{money.format(employee.total)}</TableCell></TableRow>)}</TableBody></Table></div></div></TableCell></TableRow>}</Fragment>;
+          return <Fragment key={row.position}><TableRow className={expanded ? "bg-[color:var(--accent-hover)]/30" : undefined}><TableCell><button type="button" className="inline-flex items-center gap-2 text-left text-xs font-semibold uppercase text-[#765638] hover:text-[#9b744f]" onClick={() => setExpandedPosition(expanded ? null : row.position)} aria-expanded={expanded}>{expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}{row.position}</button></TableCell><TableCell className="text-center">{row.employeeCount}</TableCell><TableCell className="number-display text-right">{money.format(row.payroll)}</TableCell><TableCell className="number-display text-right">{money.format(row.socialCost)}</TableCell><TableCell className="number-display text-right">{money.format(row.isrCost)}</TableCell><TableCell className="number-display text-right font-semibold">{money.format(row.total)}</TableCell><TableCell className="number-display text-right">{row.percentage.toFixed(1)}%</TableCell><TableCell className="text-right"><ChangeBadge value={row.change} /></TableCell></TableRow>{expanded && <TableRow><TableCell colSpan={8} className="bg-[color:var(--accent-hover)]/15 p-0"><div className="p-4"><div className="mb-3 flex items-center gap-2"><BriefcaseBusiness className="h-4 w-4 text-[#8a6744]" /><p className="text-[10px] font-semibold uppercase tracking-[0.1em]">Integración de {row.position}</p></div><div className="overflow-x-auto rounded-xl border border-[color:var(--border-color)]"><Table><TableHeader><TableRow><SortableTableHead column="name" label="EMPLEADO" kind="text" sort={employeeSort} onSort={changeEmployeeSort} /><SortableTableHead column="branch" label="SUCURSAL" kind="text" sort={employeeSort} onSort={changeEmployeeSort} /><SortableTableHead column="category" label="TIPO" kind="text" sort={employeeSort} onSort={changeEmployeeSort} /><SortableTableHead column="payroll" label="NÓMINA" kind="number" sort={employeeSort} onSort={changeEmployeeSort} align="right" /><SortableTableHead column="socialCost" label="SOCIAL" kind="number" sort={employeeSort} onSort={changeEmployeeSort} align="right" /><SortableTableHead column="isrCost" label="ISR" kind="number" sort={employeeSort} onSort={changeEmployeeSort} align="right" /><SortableTableHead column="total" label="TOTAL" kind="number" sort={employeeSort} onSort={changeEmployeeSort} align="right" /></TableRow></TableHeader><TableBody>{sortEmployees(row.employees).map((employee) => <TableRow key={employee.id}><TableCell className="font-semibold">{employee.name}</TableCell><TableCell>{employee.branch}</TableCell><TableCell><Badge variant="outline" className="text-[8px]">{employee.category}</Badge></TableCell><TableCell className="number-display text-right">{money.format(employee.payroll)}</TableCell><TableCell className="number-display text-right">{money.format(employee.socialCost)}</TableCell><TableCell className="number-display text-right">{money.format(employee.isrCost)}</TableCell><TableCell className="number-display text-right font-semibold">{money.format(employee.total)}</TableCell></TableRow>)}</TableBody></Table></div></div></TableCell></TableRow>}</Fragment>;
         })}</TableBody><TableFooter><TableRow><TableCell>TOTAL FILTRADO</TableCell><TableCell className="text-center">{headcount}</TableCell><TableCell className="number-display text-right">{money.format(totalPayroll)}</TableCell><TableCell className="number-display text-right">{money.format(totalSocial)}</TableCell><TableCell className="number-display text-right">{money.format(totalIsr)}</TableCell><TableCell className="number-display text-right">{money.format(total)}</TableCell><TableCell className="text-right">100%</TableCell><TableCell /></TableRow></TableFooter></Table></div></CardContent></Card>
     </div>
   );

@@ -17,12 +17,13 @@ import {
   TableBody,
   TableCell,
   TableFooter,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@cosmetics/ui";
 import {
+  AlertTriangle,
   Building2,
+  Calculator,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -33,9 +34,19 @@ import {
   ShieldPlus,
   UsersRound,
 } from "lucide-react";
-import { type PayrollModule, usePayrollDemo } from "./payroll-demo-context";
+import {
+  type PayrollModule,
+  usePayrollDemo,
+} from "./payroll-demo-context";
 import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { ReportExportButtons } from "./report-export-buttons";
+import {
+  nextTableSort,
+  sortTableRows,
+  SortableTableHead,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
 import type { ReportExportConfig } from "@/lib/report-export";
 
 const money = new Intl.NumberFormat("es-MX", {
@@ -60,7 +71,7 @@ const moduleCopy: Record<
 > = {
   CONSOLIDATED: {
     label: "TODAS LAS NÓMINAS",
-    detail: "PERSONAL Y PAGO FINAL CONSOLIDADO",
+    detail: "PRE-CÁLCULO TOTAL DEL PERIODO",
   },
   FIXED: { label: "SALARIO FIJO", detail: "GERENCIA Y CALL CENTER" },
   SPECIALIST: { label: "ESPECIALISTAS", detail: "FACIALISTAS Y ESPECIALISTAS" },
@@ -97,6 +108,31 @@ interface DisbursementRow {
   branch: string;
 }
 
+interface DisbursementTotals {
+  payment: number;
+  isr: number;
+  socialCost: number;
+  total: number;
+}
+
+interface OpenPayrollWarning {
+  id: string;
+  label: string;
+  periodStart: string;
+  periodEnd: string;
+}
+
+type DisbursementSortKey =
+  | "paternalSurname"
+  | "maternalSurname"
+  | "firstName"
+  | "position"
+  | "bank"
+  | "payment"
+  | "isr"
+  | "socialCost"
+  | "total";
+
 function fallbackName(fullName: string) {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length === 1)
@@ -124,6 +160,18 @@ function addDays(value: string, days: number) {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function sumDisbursementRows(rows: DisbursementRow[]): DisbursementTotals {
+  return rows.reduce(
+    (result, row) => ({
+      payment: result.payment + row.payment,
+      isr: result.isr + row.isr,
+      socialCost: result.socialCost + row.socialCost,
+      total: result.total + row.total,
+    }),
+    { payment: 0, isr: 0, socialCost: 0, total: 0 },
+  );
 }
 
 function runStatusLabel(status: DisbursementRun["status"]) {
@@ -206,6 +254,8 @@ export function PayrollDisbursementDemo() {
   const [selectedRunId, setSelectedRunId] = useState("");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
+  const [tableSort, setTableSort] =
+    useState<TableSortState<DisbursementSortKey>>(null);
 
   useEffect(() => {
     document.body.classList.add("payroll-dispersion-print");
@@ -214,11 +264,10 @@ export function PayrollDisbursementDemo() {
 
   const availableRuns = useMemo<DisbursementRun[]>(() => {
     if (module === "KIOSK_COMMISSION") {
-      const currentMonth = new Date().toISOString().slice(0, 7);
+      const currentMonth = currentPeriod.start.slice(0, 7);
       return Array.from(
         new Set(state.kioskMonthlySales.map((sale) => sale.month)),
       )
-        .filter((month) => month < currentMonth)
         .sort((a, b) => b.localeCompare(a))
         .map((month) => {
           const periodEnd = monthEnd(month);
@@ -229,7 +278,7 @@ export function PayrollDisbursementDemo() {
             periodEnd,
             payDate: addDays(periodEnd, 3),
             mode: "WITH_VAT",
-            status: "APPROVED",
+            status: month < currentMonth ? "PAID" : "DRAFT",
           };
         });
     }
@@ -281,13 +330,12 @@ export function PayrollDisbursementDemo() {
     kioskPayroll?.taxInclusion.global?.includeIsr ?? true;
 
   const availablePeriodCounts = useMemo(() => {
-    const currentMonth = new Date().toISOString().slice(0, 7);
     return Object.fromEntries(
       modules.map((item) => {
         if (item === "KIOSK_COMMISSION") {
           const kioskPeriods = Array.from(
             new Set(state.kioskMonthlySales.map((sale) => sale.month)),
-          ).filter((month) => month < currentMonth).length;
+          ).length;
           return [item, kioskPeriods];
         }
 
@@ -312,17 +360,28 @@ export function PayrollDisbursementDemo() {
     ) as Record<DisbursementModule, number>;
   }, [currentPeriod.start, periodOptions, state.kioskMonthlySales, state.runs]);
 
-  const rows = useMemo<DisbursementRow[]>(() => {
-    if (!run) return [];
+  const dispersionPreview = useMemo<{
+    rows: DisbursementRow[];
+    consolidatedRows: DisbursementRow[];
+    kioskRows: DisbursementRow[];
+  }>(() => {
+    if (!run) return { rows: [], consolidatedRows: [], kioskRows: [] };
 
-    if (module === "KIOSK_COMMISSION") {
-      const month = run.periodStart.slice(0, 7);
-      return kioskPayrollForMonth(state, month)
-        .managerRows.filter((row) => row.commission > 0)
-        .map((row) => {
+    const mapKioskRows = (month: string, keepEmployeeId = false) =>
+      kioskPayrollForMonth(state, month)
+        .managerRows.filter(
+          (row) =>
+            row.commission > 0 ||
+            row.isr > 0 ||
+            row.socialCost > 0 ||
+            row.totalCost > 0,
+        )
+        .map<DisbursementRow>((row) => {
           const fallback = fallbackName(row.manager.name);
           return {
-            id: `kiosk-${month}-${row.manager.id}`,
+            id: keepEmployeeId
+              ? row.manager.id
+              : `kiosk-${month}-${row.manager.id}`,
             paternalSurname:
               row.manager.paternalSurname ?? fallback.paternalSurname,
             maternalSurname:
@@ -339,47 +398,112 @@ export function PayrollDisbursementDemo() {
             total: row.totalCost,
             branch: row.branchNames.join(" · "),
           };
-        })
-        .sort(
-          (a, b) =>
-            a.paternalSurname.localeCompare(b.paternalSurname, "es-MX") ||
-            a.maternalSurname.localeCompare(b.maternalSurname, "es-MX") ||
-            a.firstName.localeCompare(b.firstName, "es-MX"),
-        );
+        });
+
+    if (module === "KIOSK_COMMISSION") {
+      const kioskRows = mapKioskRows(run.periodStart.slice(0, 7));
+      return { rows: kioskRows, consolidatedRows: [], kioskRows };
     }
 
-    return payrollLines(run.periodStart, run.mode, run.periodEnd, module)
-      .map((line) => {
-        const fallback = fallbackName(line.employee.name);
-        const branch =
-          state.branches.find((item) => item.id === line.employee.branchId)
-            ?.name ?? "SIN SUCURSAL";
-        return {
-          id: line.employee.id,
-          paternalSurname:
-            line.employee.paternalSurname ?? fallback.paternalSurname,
-          maternalSurname:
-            line.employee.maternalSurname ?? fallback.maternalSurname,
-          firstName: line.employee.firstName ?? fallback.firstName,
-          position: line.employee.position,
-          bank: line.employee.bank,
-          clabe:
-            line.employee.clabe ??
-            `CLABE DEMO ${line.employee.account.replace(/\D/g, "").padStart(18, "0")}`,
-          payment: line.total,
-          isr: line.isrCost,
-          socialCost: line.socialCost,
-          total: line.totalCost,
-          branch,
-        };
-      })
-      .sort(
-        (a, b) =>
-          a.paternalSurname.localeCompare(b.paternalSurname, "es-MX") ||
-          a.maternalSurname.localeCompare(b.maternalSurname, "es-MX") ||
-          a.firstName.localeCompare(b.firstName, "es-MX"),
-      );
+    const consolidatedRows = payrollLines(
+      run.periodStart,
+      run.mode,
+      run.periodEnd,
+      module,
+    ).map<DisbursementRow>((line) => {
+      const fallback = fallbackName(line.employee.name);
+      const branch =
+        state.branches.find((item) => item.id === line.employee.branchId)
+          ?.name ?? "SIN SUCURSAL";
+      return {
+        id: line.employee.id,
+        paternalSurname:
+          line.employee.paternalSurname ?? fallback.paternalSurname,
+        maternalSurname:
+          line.employee.maternalSurname ?? fallback.maternalSurname,
+        firstName: line.employee.firstName ?? fallback.firstName,
+        position: line.employee.position,
+        bank: line.employee.bank,
+        clabe:
+          line.employee.clabe ??
+          `CLABE DEMO ${line.employee.account.replace(/\D/g, "").padStart(18, "0")}`,
+        payment: line.total,
+        isr: line.isrCost,
+        socialCost: line.socialCost,
+        total: line.totalCost,
+        branch,
+      };
+    });
+
+    const includesMonthlyKiosk =
+      module === "CONSOLIDATED" &&
+      run.periodStart.slice(0, 7) === run.periodEnd.slice(0, 7) &&
+      run.periodEnd === monthEnd(run.periodEnd.slice(0, 7));
+    const kioskRows = includesMonthlyKiosk
+      ? mapKioskRows(run.periodEnd.slice(0, 7), true)
+      : [];
+
+    if (kioskRows.length === 0) {
+      return { rows: consolidatedRows, consolidatedRows, kioskRows };
+    }
+
+    const combinedRows = new Map(
+      consolidatedRows.map((row) => [row.id, row] as const),
+    );
+    kioskRows.forEach((kioskRow) => {
+      const existing = combinedRows.get(kioskRow.id);
+      if (!existing) {
+        combinedRows.set(kioskRow.id, kioskRow);
+        return;
+      }
+      combinedRows.set(kioskRow.id, {
+        ...existing,
+        payment: existing.payment + kioskRow.payment,
+        isr: existing.isr + kioskRow.isr,
+        socialCost: existing.socialCost + kioskRow.socialCost,
+        total: existing.total + kioskRow.total,
+        branch: Array.from(
+          new Set(
+            `${existing.branch} · ${kioskRow.branch}`
+              .split(" · ")
+              .filter(Boolean),
+          ),
+        ).join(" · "),
+      });
+    });
+
+    return {
+      rows: Array.from(combinedRows.values()),
+      consolidatedRows,
+      kioskRows,
+    };
   }, [module, payrollLines, run, state]);
+
+  const rawRows = dispersionPreview.rows;
+
+  const rows = useMemo(
+    () =>
+      sortTableRows(rawRows, tableSort, {
+        paternalSurname: (row) => row.paternalSurname,
+        maternalSurname: (row) => row.maternalSurname,
+        firstName: (row) => row.firstName,
+        position: (row) => `${row.position} ${row.branch}`,
+        bank: (row) => `${row.bank} ${row.clabe}`,
+        payment: (row) => row.payment,
+        isr: (row) => row.isr,
+        socialCost: (row) => row.socialCost,
+        total: (row) => row.total,
+      }),
+    [rawRows, tableSort],
+  );
+
+  function changeTableSort(
+    key: DisbursementSortKey,
+    kind: TableSortKind,
+  ) {
+    setTableSort((current) => nextTableSort(current, key, kind));
+    setPage(1);
+  }
 
   const effectivePageSize =
     pageSize === "ALL" ? Math.max(rows.length, 1) : Number(pageSize);
@@ -393,19 +517,90 @@ export function PayrollDisbursementDemo() {
     rows.length === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1;
   const visibleEnd = Math.min(currentPage * effectivePageSize, rows.length);
 
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (result, row) => ({
-          payment: result.payment + row.payment,
-          isr: result.isr + row.isr,
-          socialCost: result.socialCost + row.socialCost,
-          total: result.total + row.total,
-        }),
-        { payment: 0, isr: 0, socialCost: 0, total: 0 },
-      ),
-    [rows],
+  const totals = useMemo(() => sumDisbursementRows(rows), [rows]);
+  const consolidatedSourceTotals = useMemo(
+    () => sumDisbursementRows(dispersionPreview.consolidatedRows),
+    [dispersionPreview.consolidatedRows],
   );
+  const kioskSourceTotals = useMemo(
+    () => sumDisbursementRows(dispersionPreview.kioskRows),
+    [dispersionPreview.kioskRows],
+  );
+  const expectedConsolidatedTotal =
+    consolidatedSourceTotals.total + kioskSourceTotals.total;
+  const reconciliationDifference = totals.total - expectedConsolidatedTotal;
+  const isReconciled = Math.abs(reconciliationDifference) < 0.01;
+
+  const openPayrollWarnings = useMemo<OpenPayrollWarning[]>(() => {
+    if (!run) return [];
+
+    if (module !== "CONSOLIDATED") {
+      return run.status === "DRAFT"
+        ? [
+            {
+              id: run.id,
+              label: moduleCopy[module].label,
+              periodStart: run.periodStart,
+              periodEnd: run.periodEnd,
+            },
+          ]
+        : [];
+    }
+
+    const sourceModules: DisbursementModule[] = [
+      "FIXED",
+      "SPECIALIST",
+      "COMMISSION",
+      "CONTRACTOR",
+    ];
+    const warnings = sourceModules.flatMap<OpenPayrollWarning>(
+      (sourceModule) => {
+        const sourceRun = state.runs.find(
+          (item) =>
+            item.module === sourceModule &&
+            item.periodStart === run.periodStart &&
+            item.periodEnd === run.periodEnd,
+        );
+        const isCurrentUnclosedRun =
+          (!sourceRun && run.periodEnd >= currentPeriod.start) ||
+          sourceRun?.status === "DRAFT";
+        return isCurrentUnclosedRun
+          ? [
+              {
+                id: sourceRun?.id ?? `${sourceModule}-${run.periodStart}`,
+                label: moduleCopy[sourceModule].label,
+                periodStart: run.periodStart,
+                periodEnd: run.periodEnd,
+              },
+            ]
+          : [];
+      },
+    );
+
+    if (dispersionPreview.kioskRows.length > 0) {
+      const kioskMonth = run.periodEnd.slice(0, 7);
+      const currentMonth = currentPeriod.start.slice(0, 7);
+      if (kioskMonth >= currentMonth) {
+        warnings.push({
+          id: `run-kiosk-${kioskMonth}`,
+          label: moduleCopy.KIOSK_COMMISSION.label,
+          periodStart: `${kioskMonth}-01`,
+          periodEnd: monthEnd(kioskMonth),
+        });
+      }
+    }
+
+    if (warnings.length === 0 && run.status === "DRAFT") {
+      warnings.push({
+        id: run.id,
+        label: moduleCopy.CONSOLIDATED.label,
+        periodStart: run.periodStart,
+        periodEnd: run.periodEnd,
+      });
+    }
+
+    return warnings;
+  }, [currentPeriod.start, dispersionPreview.kioskRows.length, module, run, state.runs]);
 
   const footerRow: DisbursementRow = {
     id: "total",
@@ -444,6 +639,23 @@ export function PayrollDisbursementDemo() {
         label: "Estado",
         value: run ? runStatusLabel(run.status) : "NO DISPONIBLE",
       },
+      {
+        label: "Tipo de cálculo",
+        value:
+          openPayrollWarnings.length > 0
+            ? "PRE-CÁLCULO VIVO · INCLUYE NÓMINAS ABIERTAS"
+            : "CÁLCULO CERRADO DEL PERIODO",
+      },
+      ...(openPayrollWarnings.length > 0
+        ? [
+            {
+              label: "Nóminas abiertas",
+              value: openPayrollWarnings
+                .map((warning) => warning.label)
+                .join(" · "),
+            },
+          ]
+        : []),
     ],
     metrics: [
       {
@@ -452,9 +664,9 @@ export function PayrollDisbursementDemo() {
         detail: "Registros para dispersión",
       },
       {
-        label: "Neto a cobrar",
+        label: "Neto precalculado",
         value: money.format(totals.payment),
-        detail: "Monto final a transferir",
+        detail: "Incluye corridas abiertas y no pagadas",
       },
       {
         label: "Cargas",
@@ -469,8 +681,23 @@ export function PayrollDisbursementDemo() {
     ],
     analysis: [
       module === "CONSOLIDATED"
-        ? "La dispersión consolida una sola fila por empleado con el neto final de todas las nóminas incluidas."
+        ? "El precálculo consolida una sola fila por empleado e incluye las nóminas del periodo aunque todavía no estén cerradas o pagadas."
         : `La dispersión corresponde a ${moduleCopy[module].label.toLocaleLowerCase("es-MX")} y conserva a todo el personal asignado a esa nómina.`,
+      ...(module === "CONSOLIDATED"
+        ? [
+            `Conciliación: nómina consolidada ${money.format(consolidatedSourceTotals.total)} + comisión de kiosco ${money.format(kioskSourceTotals.total)} = ${money.format(expectedConsolidatedTotal)}.`,
+          ]
+        : []),
+      ...(openPayrollWarnings.length > 0
+        ? [
+            `Pendientes de cierre: ${openPayrollWarnings
+              .map(
+                (warning) =>
+                  `${warning.label} (${warning.periodStart} — ${warning.periodEnd})`,
+              )
+              .join("; ")}.`,
+          ]
+        : []),
       run
         ? `La corrida ${run.id.toLocaleUpperCase("es-MX")} está ${runStatusLabel(run.status).toLocaleLowerCase("es-MX")}.`
         : "No existe un periodo disponible para consultar.",
@@ -593,6 +820,38 @@ export function PayrollDisbursementDemo() {
           })}
         </div>
       </section>
+
+      {run && openPayrollWarnings.length > 0 && (
+        <section
+          role="alert"
+          aria-live="polite"
+          className="rounded-2xl border border-rose-300 bg-rose-50/90 p-4 text-rose-950 shadow-sm dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-100"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-300" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">
+                Precálculo con nóminas todavía abiertas
+              </p>
+              <p className="mt-1 text-xs text-rose-800 dark:text-rose-200">
+                Estos importes ya se suman al total del periodo aunque la
+                nómina aún no esté cerrada ni marcada como pagada.
+              </p>
+              <ul className="mt-3 grid gap-2 lg:grid-cols-2">
+                {openPayrollWarnings.map((warning) => (
+                  <li
+                    key={warning.id}
+                    className="rounded-xl border border-rose-200 bg-white/70 px-3 py-2 text-xs font-semibold text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100"
+                  >
+                    {warning.label} · {warning.periodStart} — {warning.periodEnd}
+                    <span className="ml-1 font-normal">no está cerrada.</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+      )}
 
       {!run ? (
         <Card className="overflow-hidden border-amber-300/70">
@@ -760,9 +1019,9 @@ export function PayrollDisbursementDemo() {
               />
               <Metric
                 icon={CircleDollarSign}
-                label="NETO A COBRAR"
+                label="NETO PRECALCULADO"
                 value={money.format(totals.payment)}
-                detail="MONTO FINAL A TRANSFERIR"
+                detail="INCLUYE ABIERTAS Y NO PAGADAS"
               />
               <Metric
                 icon={ShieldPlus}
@@ -777,6 +1036,41 @@ export function PayrollDisbursementDemo() {
                 detail="PAGO + CARGAS"
               />
             </div>
+
+            {module === "CONSOLIDATED" && (
+              <div
+                className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${isReconciled ? "border-emerald-300/70 bg-emerald-50/70 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-100" : "border-rose-300/70 bg-rose-50/70 text-rose-950 dark:border-rose-800 dark:bg-rose-950/20 dark:text-rose-100"}`}
+              >
+                <div className="flex items-start gap-3">
+                  <Calculator className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold">
+                      Conciliación del precálculo
+                    </p>
+                    <p className="mt-1 text-xs opacity-80">
+                      Consolidado vivo {money.format(consolidatedSourceTotals.total)}
+                      {" + "}comisión de kiosco {money.format(kioskSourceTotals.total)}
+                      {" = "}{money.format(expectedConsolidatedTotal)}.
+                    </p>
+                    <p className="mt-1 text-[10px] opacity-70">
+                      Kiosco se integra una sola vez al cierre mensual y se suma
+                      sobre la fila existente del gerente.
+                    </p>
+                  </div>
+                </div>
+                <Badge
+                  className={
+                    isReconciled
+                      ? "border border-emerald-400/40 bg-emerald-600 text-white"
+                      : "border border-rose-400/40 bg-rose-600 text-white"
+                  }
+                >
+                  {isReconciled
+                    ? "CUADRADO"
+                    : `DIFERENCIA ${money.format(reconciliationDifference)}`}
+                </Badge>
+              </div>
+            )}
 
             <Card className="overflow-hidden border-[color:var(--border-color)]">
               <CardHeader className="border-b border-[color:var(--border-color)] pb-4">
@@ -801,21 +1095,15 @@ export function PayrollDisbursementDemo() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>APELLIDO PATERNO</TableHead>
-                        <TableHead>APELLIDO MATERNO</TableHead>
-                        <TableHead>NOMBRE(S)</TableHead>
-                        <TableHead>PUESTO</TableHead>
-                        <TableHead>BANCO / CLABE</TableHead>
-                        <TableHead className="text-right">
-                          NETO A COBRAR
-                        </TableHead>
-                        <TableHead className="text-right">ISR</TableHead>
-                        <TableHead className="text-right">
-                          COSTO SOCIAL
-                        </TableHead>
-                        <TableHead className="text-right">
-                          COSTO TOTAL
-                        </TableHead>
+                        <SortableTableHead column="paternalSurname" label="APELLIDO PATERNO" kind="text" sort={tableSort} onSort={changeTableSort} />
+                        <SortableTableHead column="maternalSurname" label="APELLIDO MATERNO" kind="text" sort={tableSort} onSort={changeTableSort} />
+                        <SortableTableHead column="firstName" label="NOMBRE(S)" kind="text" sort={tableSort} onSort={changeTableSort} />
+                        <SortableTableHead column="position" label="PUESTO" kind="text" sort={tableSort} onSort={changeTableSort} />
+                        <SortableTableHead column="bank" label="BANCO / CLABE" kind="text" sort={tableSort} onSort={changeTableSort} />
+                        <SortableTableHead column="payment" label="NETO A COBRAR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                        <SortableTableHead column="isr" label="ISR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                        <SortableTableHead column="socialCost" label="COSTO SOCIAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                        <SortableTableHead column="total" label="COSTO TOTAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>

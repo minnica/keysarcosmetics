@@ -221,7 +221,20 @@ export interface DemoScheme {
   effectiveFrom?: string;
   createdAt?: string;
   deactivatedAt?: string | null;
+  version?: number;
+  previousVersionId?: string | null;
+  salaryPlan?: DemoSchemeSalaryPlan | null;
   tiers: CommissionTier[];
+}
+
+export type DemoSalaryPlanDuration = "INDEFINITE" | "MONTHS";
+
+export interface DemoSchemeSalaryPlan {
+  monthlySalary: number;
+  payrollModule: "FIXED" | "SPECIALIST";
+  duration: DemoSalaryPlanDuration;
+  durationMonths: number | null;
+  nextSchemeId: string | null;
 }
 
 export function schemeAppliesToPeriod(
@@ -241,6 +254,18 @@ export interface DemoSchemeAssignment {
   employeeId: string;
   schemeId: string;
   effectiveFrom: string;
+  createdAt: string;
+}
+
+export interface DemoSalaryAssignment {
+  id: string;
+  employeeId: string;
+  monthlySalary: number;
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED"> | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  sourceSchemeId: string | null;
+  reason: string;
   createdAt: string;
 }
 
@@ -677,6 +702,29 @@ export interface DemoViaticsEntry {
   createdAt: string;
 }
 
+export type DemoListSortMode =
+  | "DEFAULT"
+  | "ALPHABETICAL"
+  | "AMOUNT_DESC";
+
+export function sortByListMode<T>(
+  rows: readonly T[],
+  mode: DemoListSortMode,
+  label: (row: T) => string,
+  amount: (row: T) => number,
+): T[] {
+  if (mode === "DEFAULT") return [...rows];
+  return [...rows].sort((left, right) => {
+    if (mode === "AMOUNT_DESC") {
+      const amountDifference = amount(right) - amount(left);
+      if (amountDifference !== 0) return amountDifference;
+    }
+    return label(left).localeCompare(label(right), "es-MX", {
+      sensitivity: "base",
+    });
+  });
+}
+
 export interface DemoState {
   lastUpdatedAt: string | null;
   branches: DemoBranch[];
@@ -688,6 +736,7 @@ export interface DemoState {
   employees: DemoEmployee[];
   schemes: DemoScheme[];
   schemeAssignments: DemoSchemeAssignment[];
+  salaryAssignments: DemoSalaryAssignment[];
   sales: DemoSale[];
   bonusFineConcepts: DemoBonusFineConcept[];
   movements: DemoMovement[];
@@ -1353,6 +1402,126 @@ function addDays(date: string, days: number) {
   const parsed = new Date(`${date}T12:00:00`);
   parsed.setDate(parsed.getDate() + days);
   return isoDate(parsed);
+}
+
+function addMonths(date: string, months: number) {
+  const parsed = new Date(`${date}T12:00:00`);
+  const originalDay = parsed.getDate();
+  parsed.setDate(1);
+  parsed.setMonth(parsed.getMonth() + months);
+  const lastDay = new Date(
+    parsed.getFullYear(),
+    parsed.getMonth() + 1,
+    0,
+  ).getDate();
+  parsed.setDate(Math.min(originalDay, lastDay));
+  return isoDate(parsed);
+}
+
+function mergeSalaryAssignments(
+  existing: DemoSalaryAssignment[],
+  additions: DemoSalaryAssignment[],
+) {
+  return [...additions]
+    .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom))
+    .reduce<DemoSalaryAssignment[]>((result, addition) => {
+      const withoutSameStart = result.filter(
+        (item) =>
+          !(
+            item.employeeId === addition.employeeId &&
+            item.effectiveFrom === addition.effectiveFrom
+          ),
+      );
+      const closedPrevious = withoutSameStart.map((item) =>
+        item.employeeId === addition.employeeId &&
+        item.effectiveFrom < addition.effectiveFrom &&
+        (!item.effectiveTo || item.effectiveTo >= addition.effectiveFrom)
+          ? { ...item, effectiveTo: addDays(addition.effectiveFrom, -1) }
+          : item,
+      );
+      return [...closedPrevious, addition];
+    }, existing);
+}
+
+function buildAutomatedSchemePath(
+  schemes: DemoScheme[],
+  employeeId: string,
+  startingSchemeId: string,
+  effectiveFrom: string,
+) {
+  const schemeAssignments: DemoSchemeAssignment[] = [];
+  const salaryAssignments: DemoSalaryAssignment[] = [];
+  const visited = new Set<string>();
+  const managesSalary = Boolean(
+    schemes.find((scheme) => scheme.id === startingSchemeId)?.salaryPlan,
+  );
+  let schemeId: string | null = startingSchemeId;
+  let startsAt = effectiveFrom;
+
+  for (let step = 0; step < 12 && schemeId; step += 1) {
+    if (visited.has(schemeId)) break;
+    visited.add(schemeId);
+    const scheme = schemes.find((item) => item.id === schemeId);
+    if (!scheme) break;
+
+    schemeAssignments.push({
+      id: id("scheme-assignment"),
+      employeeId,
+      schemeId,
+      effectiveFrom: startsAt,
+      createdAt: new Date().toISOString(),
+    });
+
+    const salaryPlan = scheme.salaryPlan;
+    if (managesSalary) {
+      const nextStartsAt =
+        salaryPlan?.duration === "MONTHS" && salaryPlan.durationMonths
+          ? addMonths(startsAt, salaryPlan.durationMonths)
+          : null;
+      salaryAssignments.push({
+        id: id("salary-assignment"),
+        employeeId,
+        monthlySalary: salaryPlan?.monthlySalary ?? 0,
+        payrollModule: salaryPlan?.payrollModule ?? null,
+        effectiveFrom: startsAt,
+        effectiveTo: nextStartsAt ? addDays(nextStartsAt, -1) : null,
+        sourceSchemeId: scheme.id,
+        reason: salaryPlan
+          ? `SUELDO PROGRAMADO · ${scheme.name}`
+          : `FIN DE SUELDO PROGRAMADO · ${scheme.name}`,
+        createdAt: new Date().toISOString(),
+      });
+      if (
+        salaryPlan?.duration === "MONTHS" &&
+        nextStartsAt &&
+        (!salaryPlan.nextSchemeId ||
+          !schemes.some((item) => item.id === salaryPlan.nextSchemeId))
+      ) {
+        salaryAssignments.push({
+          id: id("salary-assignment"),
+          employeeId,
+          monthlySalary: 0,
+          payrollModule: null,
+          effectiveFrom: nextStartsAt,
+          effectiveTo: null,
+          sourceSchemeId: scheme.id,
+          reason: `VENCIMIENTO DE SUELDO · ${scheme.name}`,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    if (
+      salaryPlan?.duration !== "MONTHS" ||
+      !salaryPlan.durationMonths ||
+      !salaryPlan.nextSchemeId
+    )
+      break;
+    startsAt = addMonths(startsAt, salaryPlan.durationMonths);
+    schemeId = salaryPlan.nextSchemeId;
+  }
+
+  return { schemeAssignments, salaryAssignments };
 }
 
 function createInitialState(): DemoState {
@@ -2235,6 +2404,19 @@ function createInitialState(): DemoState {
       },
     ],
     employees,
+    salaryAssignments: employees
+      .filter((employee) => employee.monthlySalary > 0)
+      .map((employee) => ({
+        id: `salary-initial-${employee.id}`,
+        employeeId: employee.id,
+        monthlySalary: employee.monthlySalary,
+        payrollModule: employee.salaryPayrollModuleId,
+        effectiveFrom: employee.hireDate,
+        effectiveTo: null,
+        sourceSchemeId: null,
+        reason: "SUELDO INICIAL DEL EXPEDIENTE",
+        createdAt: employee.hireDate,
+      })),
     schemes: [
       {
         id: "scheme-growth",
@@ -2266,6 +2448,15 @@ function createInitialState(): DemoState {
         active: true,
         effectiveFrom: "2026-01-01",
         createdAt: "2026-01-01",
+        version: 1,
+        previousVersionId: null,
+        salaryPlan: {
+          monthlySalary: 12000,
+          payrollModule: "FIXED",
+          duration: "INDEFINITE",
+          durationMonths: null,
+          nextSchemeId: null,
+        },
         tiers: [
           { id: "tier-bs1", from: 0, to: 39999.99, rate: 0.08 },
           { id: "tier-bs2", from: 40000, to: 79999.99, rate: 0.1 },
@@ -3154,6 +3345,8 @@ interface DemoPayrollContextValue {
   isAuthenticated: boolean;
   periodOptions: PeriodOption[];
   currentPeriod: PeriodOption;
+  listSortMode: DemoListSortMode;
+  setListSortMode: (mode: DemoListSortMode) => void;
   refreshSystem: () => void;
   startSession: (employeeId: string) => void;
   endSession: () => void;
@@ -3221,12 +3414,14 @@ interface DemoPayrollContextValue {
     name: string,
     tiers: Omit<CommissionTier, "id">[],
     effectiveFrom?: string,
+    salaryPlan?: DemoSchemeSalaryPlan | null,
   ) => void;
   updateScheme: (
     schemeId: string,
     name: string,
     tiers: Omit<CommissionTier, "id">[],
     effectiveFrom?: string,
+    salaryPlan?: DemoSchemeSalaryPlan | null,
   ) => void;
   deleteScheme: (schemeId: string) => void;
   assignScheme: (
@@ -3483,6 +3678,8 @@ export function PayrollDemoProvider({
 }) {
   const [state, setState] = useState<DemoState>(() => createInitialState());
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [listSortMode, setListSortMode] =
+    useState<DemoListSortMode>("DEFAULT");
   const periodOptions = useMemo(() => buildPeriodOptions(), []);
   const currentPeriod =
     periodOptions[0]?.start === periodForDate(new Date()).start
@@ -3530,7 +3727,7 @@ export function PayrollDemoProvider({
         concept === "FINE" ||
         payrollModule === "CONSOLIDATED" ||
         Boolean(moduleDefinition?.concepts.includes(concept));
-      return state.employees
+      const lines = state.employees
         .filter((employee) => {
           const hasSettlementPayment = state.terminationSettlements.some(
             (settlement) =>
@@ -3684,11 +3881,49 @@ export function PayrollDemoProvider({
             0,
           );
           const rate = sales > 0 ? calculatedCommission / sales : 0;
-          const salaryModuleId = employeeSalaryPayrollModule(employee);
+          const employeeSalaryHistory = state.salaryAssignments.filter(
+            (assignment) => assignment.employeeId === employee.id,
+          );
+          const salaryAt = (date: string) => {
+            const assignment = employeeSalaryHistory
+              .filter(
+                (item) =>
+                  item.effectiveFrom <= date &&
+                  (!item.effectiveTo || item.effectiveTo >= date),
+              )
+              .sort((left, right) =>
+                right.effectiveFrom.localeCompare(left.effectiveFrom),
+              )[0];
+            if (assignment)
+              return {
+                monthlySalary: assignment.monthlySalary,
+                payrollModule: assignment.payrollModule,
+              };
+            return employeeSalaryHistory.length > 0
+              ? { monthlySalary: 0, payrollModule: null }
+              : {
+                  monthlySalary: employee.monthlySalary,
+                  payrollModule: employeeSalaryPayrollModule(employee),
+                };
+          };
+          const applicableSalary = salaryAt(configuredEnd);
+          const salaryModuleId = applicableSalary.payrollModule;
+          const salaryModulesInPeriod = new Set(
+            employeeSalaryHistory
+              .filter(
+                (assignment) =>
+                  assignment.effectiveFrom <= configuredEnd &&
+                  (!assignment.effectiveTo ||
+                    assignment.effectiveTo >= periodStart),
+              )
+              .map((assignment) => assignment.payrollModule),
+          );
+          if (employeeSalaryHistory.length === 0)
+            salaryModulesInPeriod.add(employeeSalaryPayrollModule(employee));
           const commissionModuleId = employeeCommissionModule;
           const salaryAssignedHere =
             payrollModule === "CONSOLIDATED" ||
-            salaryModuleId === payrollModule;
+            salaryModulesInPeriod.has(payrollModule);
           const commissionAssignedHere =
             payrollModule === "CONSOLIDATED" ||
             commissionModuleId === payrollModule ||
@@ -3874,13 +4109,26 @@ export function PayrollDemoProvider({
             !salaryAssignedHere || !includesConcept("SALARY")
               ? 0
               : isFullCalendarMonth
-                ? (employee.monthlySalary / 2) *
+                ? ((payrollModule === "CONSOLIDATED" ||
+                    salaryAt(`${periodStart.slice(0, 8)}15`).payrollModule ===
+                      payrollModule
+                      ? salaryAt(`${periodStart.slice(0, 8)}15`).monthlySalary
+                      : 0) /
+                    2) *
                     (Math.min(firstHalfWorkedDays, 15) / 15) +
-                  (employee.monthlySalary / 2) *
+                  ((payrollModule === "CONSOLIDATED" ||
+                    salaryAt(configuredEnd).payrollModule === payrollModule
+                      ? salaryAt(configuredEnd).monthlySalary
+                      : 0) /
+                    2) *
                     (Math.min(secondHalfWorkedDays, monthEndDay - 15) /
                       (monthEndDay - 15))
                 : isStandardFortnight
-                  ? (employee.monthlySalary / 2) * (workedDays / periodDays)
+                  ? (payrollModule === "CONSOLIDATED" ||
+                    applicableSalary.payrollModule === payrollModule
+                      ? (applicableSalary.monthlySalary / 2) *
+                        (workedDays / periodDays)
+                      : 0)
                   : 0;
           const fixedSalary =
             baseSalaryOverride === null
@@ -3891,14 +4139,14 @@ export function PayrollDemoProvider({
               entry.employeeId === employee.id &&
               entry.date >= employmentStart &&
               entry.date <= employmentEnd &&
-              entry.payrollModule === salaryModuleId &&
+              entry.payrollModule === salaryAt(entry.date).payrollModule &&
               (payrollModule === "CONSOLIDATED" ||
                 entry.payrollModule === payrollModule),
           );
           const doublePayAmount = doublePayDays.reduce(
             (sum, entry) =>
               sum +
-              (employee.monthlySalary / 30) *
+              (salaryAt(entry.date).monthlySalary / 30) *
                 Math.max(entry.multiplier - 1, 0),
             0,
           );
@@ -4116,8 +4364,14 @@ export function PayrollDemoProvider({
           };
         })
         .filter((line) => line.includedInModule);
+      return sortByListMode(
+        lines,
+        listSortMode,
+        (line) => line.employee.name,
+        (line) => line.total,
+      );
     },
-    [currentPeriod, periodOptions, state],
+    [currentPeriod, listSortMode, periodOptions, state],
   );
 
   const value = useMemo<DemoPayrollContextValue>(
@@ -4126,12 +4380,17 @@ export function PayrollDemoProvider({
       isAuthenticated,
       periodOptions,
       currentPeriod,
+      listSortMode,
+      setListSortMode,
       refreshSystem: () => update((current) => ({ ...current })),
       startSession: (employeeId) => {
         update((current) => ({ ...current, activeEmployeeId: employeeId }));
         setIsAuthenticated(true);
       },
-      endSession: () => setIsAuthenticated(false),
+      endSession: () => {
+        setListSortMode("DEFAULT");
+        setIsAuthenticated(false);
+      },
       setActiveEmployee: (employeeId) =>
         update((current) => ({ ...current, activeEmployeeId: employeeId })),
       addBranch: (branch) =>
@@ -4433,22 +4692,42 @@ export function PayrollDemoProvider({
           ),
         })),
       addEmployee: (employee) =>
-        update((current) => ({
-          ...current,
-          employees: [
-            ...current.employees,
-            {
-              ...employee,
-              id: id("employee"),
-              name: employee.name.toLocaleUpperCase("es-MX"),
-              position: employee.position.toLocaleUpperCase("es-MX"),
-              bank: employee.bank.toLocaleUpperCase("es-MX"),
-              costBranchIds: employee.costBranchIds.filter((branchId) =>
-                current.branches.some((branch) => branch.id === branchId),
-              ),
-            },
-          ],
-        })),
+        update((current) => {
+          const employeeId = id("employee");
+          return {
+            ...current,
+            employees: [
+              ...current.employees,
+              {
+                ...employee,
+                id: employeeId,
+                name: employee.name.toLocaleUpperCase("es-MX"),
+                position: employee.position.toLocaleUpperCase("es-MX"),
+                bank: employee.bank.toLocaleUpperCase("es-MX"),
+                costBranchIds: employee.costBranchIds.filter((branchId) =>
+                  current.branches.some((branch) => branch.id === branchId),
+                ),
+              },
+            ],
+            salaryAssignments:
+              employee.monthlySalary > 0
+                ? [
+                    ...current.salaryAssignments,
+                    {
+                      id: id("salary-assignment"),
+                      employeeId,
+                      monthlySalary: employee.monthlySalary,
+                      payrollModule: employee.salaryPayrollModuleId,
+                      effectiveFrom: employee.hireDate,
+                      effectiveTo: null,
+                      sourceSchemeId: null,
+                      reason: "SUELDO INICIAL DEL EXPEDIENTE",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : current.salaryAssignments,
+          };
+        }),
       updateEmployeeProfile: (employeeId, input) =>
         update((current) => {
           const previous = current.employees.find(
@@ -4463,8 +4742,31 @@ export function PayrollDemoProvider({
             previous.category === "MANAGEMENT" &&
             previous.name !== normalizedName;
           const effectiveFrom = isoDate(new Date());
+          const salaryEffectiveFrom = currentPeriod.start;
+          const salaryChanged =
+            previous.monthlySalary !== input.monthlySalary ||
+            previous.salaryPayrollModuleId !== input.salaryPayrollModuleId;
+          const salaryAssignments = salaryChanged
+            ? mergeSalaryAssignments(current.salaryAssignments, [
+                {
+                  id: id("salary-assignment"),
+                  employeeId,
+                  monthlySalary: input.monthlySalary,
+                  payrollModule:
+                    input.monthlySalary > 0
+                      ? input.salaryPayrollModuleId
+                      : null,
+                  effectiveFrom: salaryEffectiveFrom,
+                  effectiveTo: null,
+                  sourceSchemeId: null,
+                  reason: "CAMBIO MANUAL DE SUELDO",
+                  createdAt: new Date().toISOString(),
+                },
+              ])
+            : current.salaryAssignments;
           return {
             ...current,
+            salaryAssignments,
             employees: current.employees.map((employee) =>
               employee.id === employeeId
                 ? {
@@ -4533,7 +4835,12 @@ export function PayrollDemoProvider({
               : employee,
           ),
         })),
-      addScheme: (name, tiers, effectiveFrom = currentPeriod.start) =>
+      addScheme: (
+        name,
+        tiers,
+        effectiveFrom = currentPeriod.start,
+        salaryPlan = null,
+      ) =>
         update((current) => ({
           ...current,
           schemes: [
@@ -4545,27 +4852,115 @@ export function PayrollDemoProvider({
               effectiveFrom,
               createdAt: isoDate(new Date()),
               deactivatedAt: null,
+              version: 1,
+              previousVersionId: null,
+              salaryPlan,
               tiers: tiers.map((tier) => ({ ...tier, id: id("tier") })),
             },
           ],
         })),
-      updateScheme: (schemeId, name, tiers, effectiveFrom) =>
-        update((current) => ({
-          ...current,
-          schemes: current.schemes.map((scheme) =>
-            scheme.id === schemeId
-              ? {
-                  ...scheme,
-                  name: name.toLocaleUpperCase("es-MX"),
-                  effectiveFrom:
-                    effectiveFrom ??
-                    scheme.effectiveFrom ??
-                    currentPeriod.start,
-                  tiers: tiers.map((tier) => ({ ...tier, id: id("tier") })),
-                }
-              : scheme,
-          ),
-        })),
+      updateScheme: (
+        schemeId,
+        name,
+        tiers,
+        effectiveFrom = currentPeriod.start,
+        salaryPlan = null,
+      ) =>
+        update((current) => {
+          const previous = current.schemes.find(
+            (scheme) => scheme.id === schemeId,
+          );
+          if (!previous) return current;
+
+          const historicalSchemeId = id("scheme-history");
+          const historicalScheme: DemoScheme = {
+            ...previous,
+            id: historicalSchemeId,
+            active: false,
+            deactivatedAt: addDays(effectiveFrom, -1),
+          };
+          const nextScheme: DemoScheme = {
+            ...previous,
+            name: name.toLocaleUpperCase("es-MX"),
+            active: true,
+            effectiveFrom,
+            deactivatedAt: null,
+            version: (previous.version ?? 1) + 1,
+            previousVersionId: historicalSchemeId,
+            salaryPlan,
+            tiers: tiers.map((tier) => ({ ...tier, id: id("tier") })),
+          };
+          const versionedSchemes = [
+            ...current.schemes.map((scheme) =>
+              scheme.id === schemeId ? nextScheme : scheme,
+            ),
+            historicalScheme,
+          ];
+          const affectedEmployeeIds = current.employees
+            .filter((employee) => {
+              const assignment = current.schemeAssignments
+                .filter(
+                  (item) =>
+                    item.employeeId === employee.id &&
+                    item.effectiveFrom <= effectiveFrom,
+                )
+                .sort((left, right) =>
+                  right.effectiveFrom.localeCompare(left.effectiveFrom),
+                )[0];
+              return (
+                assignment?.schemeId === schemeId ||
+                (!assignment && employee.schemeId === schemeId)
+              );
+            })
+            .map((employee) => employee.id);
+          const remappedAssignments = current.schemeAssignments.map(
+            (assignment) =>
+              assignment.schemeId === schemeId &&
+              assignment.effectiveFrom < effectiveFrom
+                ? { ...assignment, schemeId: historicalSchemeId }
+                : assignment,
+          );
+          const generatedPaths = affectedEmployeeIds.map((employeeId) =>
+            buildAutomatedSchemePath(
+              versionedSchemes,
+              employeeId,
+              schemeId,
+              effectiveFrom,
+            ),
+          );
+          const assignmentMap = new Map<string, DemoSchemeAssignment>();
+          [
+            ...remappedAssignments,
+            ...generatedPaths.flatMap((path) => path.schemeAssignments),
+          ].forEach((assignment) =>
+            assignmentMap.set(
+              `${assignment.employeeId}:${assignment.effectiveFrom}`,
+              assignment,
+            ),
+          );
+          const salaryAdditions = generatedPaths.flatMap(
+            (path) => path.salaryAssignments,
+          );
+          const salaryBase =
+            salaryAdditions.length > 0
+              ? current.salaryAssignments.filter(
+                  (assignment) =>
+                    !(
+                      affectedEmployeeIds.includes(assignment.employeeId) &&
+                      assignment.effectiveFrom >= effectiveFrom
+                    ),
+                )
+              : current.salaryAssignments;
+          return {
+            ...current,
+            schemes: versionedSchemes,
+            schemeAssignments: Array.from(assignmentMap.values()),
+            salaryAssignments: mergeSalaryAssignments(
+              salaryBase,
+              salaryAdditions,
+            ),
+          };
+        }),
       deleteScheme: (schemeId) =>
         update((current) => ({
           ...current,
@@ -4584,32 +4979,58 @@ export function PayrollDemoProvider({
         schemeId,
         effectiveFrom = currentPeriod.start,
       ) =>
-        update((current) => ({
-          ...current,
-          employees: current.employees.map((employee) =>
-            employee.id === employeeId
-              ? {
-                  ...employee,
-                  schemeId,
-                  commissionPayrollModuleId: schemeId
-                    ? (employee.commissionPayrollModuleId ?? "COMMISSION")
-                    : employee.commissionPayrollModuleId,
-                }
-              : employee,
-          ),
-          schemeAssignments: schemeId
-            ? [
-                ...current.schemeAssignments,
-                {
-                  id: id("scheme-assignment"),
-                  employeeId,
-                  schemeId,
-                  effectiveFrom,
-                  createdAt: isoDate(new Date()),
-                },
-              ]
-            : current.schemeAssignments,
-        })),
+        update((current) => {
+          if (!schemeId) return current;
+          const path = buildAutomatedSchemePath(
+            current.schemes,
+            employeeId,
+            schemeId,
+            effectiveFrom,
+          );
+          const firstSalary = path.salaryAssignments[0];
+          const schemeAssignments = [
+            ...current.schemeAssignments.filter(
+              (assignment) =>
+                assignment.employeeId !== employeeId ||
+                assignment.effectiveFrom < effectiveFrom,
+            ),
+            ...path.schemeAssignments,
+          ];
+          const salaryBase =
+            path.salaryAssignments.length > 0
+              ? current.salaryAssignments.filter(
+                  (assignment) =>
+                    assignment.employeeId !== employeeId ||
+                    assignment.effectiveFrom < effectiveFrom,
+                )
+              : current.salaryAssignments;
+          return {
+            ...current,
+            employees: current.employees.map((employee) =>
+              employee.id === employeeId
+                ? {
+                    ...employee,
+                    schemeId,
+                    commissionPayrollModuleId:
+                      employee.commissionPayrollModuleId ?? "COMMISSION",
+                    monthlySalary:
+                      firstSalary && effectiveFrom <= currentPeriod.end
+                        ? firstSalary.monthlySalary
+                        : employee.monthlySalary,
+                    salaryPayrollModuleId:
+                      firstSalary && effectiveFrom <= currentPeriod.end
+                        ? firstSalary.payrollModule
+                        : employee.salaryPayrollModuleId,
+                  }
+                : employee,
+            ),
+            schemeAssignments,
+            salaryAssignments: mergeSalaryAssignments(
+              salaryBase,
+              path.salaryAssignments,
+            ),
+          };
+        }),
       updateSchemeAssignment: (assignmentId, schemeId, effectiveFrom) =>
         update((current) => ({
           ...current,
@@ -5689,12 +6110,30 @@ export function PayrollDemoProvider({
           const employee = current.employees.find(
             (item) => item.id === entry.employeeId,
           );
+          const salaryAssignment = current.salaryAssignments
+            .filter(
+              (item) =>
+                item.employeeId === entry.employeeId &&
+                item.effectiveFrom <= entry.date &&
+                (!item.effectiveTo || item.effectiveTo >= entry.date),
+            )
+            .sort((left, right) =>
+              right.effectiveFrom.localeCompare(left.effectiveFrom),
+            )[0];
+          const salaryAmount = salaryAssignment
+            ? salaryAssignment.monthlySalary
+            : (employee?.monthlySalary ?? 0);
+          const salaryModule = salaryAssignment
+            ? salaryAssignment.payrollModule
+            : employee
+              ? employeeSalaryPayrollModule(employee)
+              : null;
           if (
             !activeEmployee ||
             !roleHasPermission(activeRole, "payroll.create") ||
             !employee ||
-            employee.monthlySalary <= 0 ||
-            employeeSalaryPayrollModule(employee) !== entry.payrollModule ||
+            salaryAmount <= 0 ||
+            salaryModule !== entry.payrollModule ||
             entry.date < employee.hireDate ||
             (employee.terminationDate && entry.date > employee.terminationDate) ||
             current.doublePayDays.some(
@@ -6234,6 +6673,7 @@ export function PayrollDemoProvider({
     [
       currentPeriod,
       isAuthenticated,
+      listSortMode,
       payrollLines,
       periodOptions,
       state,

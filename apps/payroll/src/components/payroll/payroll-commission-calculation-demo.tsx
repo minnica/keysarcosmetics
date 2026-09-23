@@ -48,10 +48,18 @@ import { ReportExportButtons } from "./report-export-buttons";
 import {
   type DemoPayrollRun,
   type EmployeePayrollLine,
+  sortByListMode,
   temporaryBonusAwardsForPeriod,
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { employeeCostAllocationShares } from "./payroll-cost-branch-selector";
+import {
+  nextTableSort,
+  sortTableRows,
+  SortableTableHead,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -1266,12 +1274,13 @@ function CommissionBranchCostReport({
   periodEnd: string;
   payrollTotal: number;
 }) {
-  const { state } = usePayrollDemo();
+  const { state, listSortMode } = usePayrollDemo();
   const [search, setSearch] = useState("");
   const [positionFilter, setPositionFilter] = useState("ALL");
   const [branchFilter, setBranchFilter] = useState("ALL");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
+  const [matrixSort, setMatrixSort] = useState<TableSortState<string>>(null);
 
   const bonusBreakdownRows = useMemo<CommissionBonusCostRow[]>(() => {
     const lineByEmployee = new Map(
@@ -1394,13 +1403,19 @@ function CommissionBranchCostReport({
       });
     });
 
-    return rows.sort(
+    const defaultRows = rows.sort(
       (left, right) =>
         left.employeeName.localeCompare(right.employeeName, "es-MX") ||
         left.concept.localeCompare(right.concept, "es-MX") ||
         left.branchName.localeCompare(right.branchName, "es-MX"),
     );
-  }, [lines, periodEnd, periodStart, state]);
+    return sortByListMode(
+      defaultRows,
+      listSortMode,
+      (row) => `${row.employeeName} ${row.concept} ${row.branchName}`,
+      (row) => row.amount,
+    );
+  }, [lines, listSortMode, periodEnd, periodStart, state]);
 
   const bonusCostsByEmployee = useMemo(() => {
     const costs = new Map<string, Record<string, number>>();
@@ -1415,7 +1430,7 @@ function CommissionBranchCostReport({
 
   const rows = useMemo<CommissionBranchCostRow[]>(
     () =>
-      lines.map((line) => {
+      sortByListMode(lines.map((line) => {
         const salesFactor =
           line.grossSales > 0 ? line.sales / line.grossSales : 1;
         const branchSales = state.sales
@@ -1477,10 +1492,11 @@ function CommissionBranchCostReport({
           branchCosts,
           movementNet,
         };
-      }),
+      }), listSortMode, (row) => row.line.employee.name, (row) => row.line.total),
     [
       bonusCostsByEmployee,
       lines,
+      listSortMode,
       periodEnd,
       periodStart,
       state.branches,
@@ -1510,7 +1526,7 @@ function CommissionBranchCostReport({
     [rows],
   );
   const normalizedSearch = search.trim().toLocaleLowerCase("es-MX");
-  const filteredRows = rows.filter((row) => {
+  const filteredUnsortedRows = rows.filter((row) => {
     const matchesSearch =
       !normalizedSearch ||
       `${row.line.employee.name} ${row.line.employee.position} ${row.line.schemeName}`
@@ -1524,6 +1540,41 @@ function CommissionBranchCostReport({
       (row.branchSales[branchFilter] ?? 0) > 0;
     return matchesSearch && matchesPosition && matchesBranch;
   });
+  const filteredRows = sortTableRows(filteredUnsortedRows, matrixSort, {
+    employee: (row) => row.line.employee.name,
+    scheme: (row) =>
+      `${row.line.employee.position} ${row.line.schemeName}`,
+    sales: (row) =>
+      branchFilter === "ALL"
+        ? row.line.sales
+        : (row.branchSales[branchFilter] ?? 0),
+    commission: (row) =>
+      branchFilter === "ALL"
+        ? row.line.commission
+        : (row.branchCommissionCosts[branchFilter] ?? 0),
+    bonuses: (row) =>
+      branchFilter === "ALL"
+        ? row.line.bonuses
+        : (row.branchBonusCosts[branchFilter] ?? 0),
+    movements: (row) =>
+      branchFilter === "ALL"
+        ? row.movementNet
+        : (row.branchMovementCosts[branchFilter] ?? 0),
+    total: (row) =>
+      branchFilter === "ALL"
+        ? row.line.total
+        : (row.branchCosts[branchFilter] ?? 0),
+    ...Object.fromEntries(
+      visibleBranchColumns.map((branch) => [
+        `branch:${branch.id}`,
+        (row: CommissionBranchCostRow) => row.branchCosts[branch.id] ?? 0,
+      ]),
+    ),
+  });
+  function changeMatrixSort(key: string, kind: TableSortKind) {
+    setMatrixSort((current) => nextTableSort(current, key, kind));
+    setPage(1);
+  }
   const effectivePageSize =
     pageSize === "ALL" ? Math.max(filteredRows.length, 1) : Number(pageSize);
   const totalPages = Math.max(
@@ -1881,37 +1932,33 @@ function CommissionBranchCostReport({
             <Table className="min-w-max text-[10px]">
               <TableHeader className="bg-[linear-gradient(110deg,#28231f,#3b3027)] text-white">
                 <TableRow className="border-[#5a493b] hover:bg-transparent">
-                  <TableHead className="min-w-56 text-white/75">
-                    EMPLEADO
-                  </TableHead>
-                  <TableHead className="min-w-44 text-white/75">
-                    PUESTO / ESQUEMA
-                  </TableHead>
-                  <TableHead className="min-w-32 text-right text-white/75">
-                    VENTA CALCULADA
-                  </TableHead>
-                  <TableHead className="min-w-32 text-right text-white/75">
-                    COMISIÓN
-                  </TableHead>
-                  <TableHead className="min-w-32 text-right text-white/75">
-                    BONOS
-                  </TableHead>
-                  <TableHead className="min-w-36 text-right text-white/75">
-                    OTROS MOVIMIENTOS
-                  </TableHead>
+                  <SortableTableHead column="employee" label="EMPLEADO" kind="text" sort={matrixSort} onSort={changeMatrixSort} className="min-w-56 text-white/75" />
+                  <SortableTableHead column="scheme" label="PUESTO / ESQUEMA" kind="text" sort={matrixSort} onSort={changeMatrixSort} className="min-w-44 text-white/75" />
+                  <SortableTableHead column="sales" label="VENTA CALCULADA" kind="number" sort={matrixSort} onSort={changeMatrixSort} align="right" className="min-w-32 text-white/75" />
+                  <SortableTableHead column="commission" label="COMISIÓN" kind="number" sort={matrixSort} onSort={changeMatrixSort} align="right" className="min-w-32 text-white/75" />
+                  <SortableTableHead column="bonuses" label="BONOS" kind="number" sort={matrixSort} onSort={changeMatrixSort} align="right" className="min-w-32 text-white/75" />
+                  <SortableTableHead column="movements" label="OTROS MOVIMIENTOS" kind="number" sort={matrixSort} onSort={changeMatrixSort} align="right" className="min-w-36 text-white/75" />
                   {visibleBranchColumns.map((branch) => (
-                    <TableHead
+                    <SortableTableHead
                       key={branch.id}
+                      column={`branch:${branch.id}`}
+                      label={branch.name}
+                      kind="number"
+                      sort={matrixSort}
+                      onSort={changeMatrixSort}
+                      align="right"
                       className="min-w-36 text-right text-white/75"
-                    >
-                      {branch.name}
-                    </TableHead>
+                    />
                   ))}
-                  <TableHead className="min-w-36 text-right text-white/75">
-                    {branchFilter === "ALL"
-                      ? "TOTAL NÓMINA"
-                      : "COSTO SELECCIONADO"}
-                  </TableHead>
+                  <SortableTableHead
+                    column="total"
+                    label={branchFilter === "ALL" ? "TOTAL NÓMINA" : "COSTO SELECCIONADO"}
+                    kind="number"
+                    sort={matrixSort}
+                    onSort={changeMatrixSort}
+                    align="right"
+                    className="min-w-36 text-white/75"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>
