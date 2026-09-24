@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   Building2,
   CalendarRange,
   CircleDollarSign,
@@ -67,6 +68,7 @@ interface SellerSalesViewProps {
   layaways: LayawayRecord[];
   appointments: Appointment[];
   owedProducts: OwedProductRecord[];
+  companyName: string;
   onPreviewTicket: (ticket: Ticket) => void;
   onRegisterLayawayPayment: (
     layawayId: string,
@@ -74,6 +76,7 @@ interface SellerSalesViewProps {
     sellerId: string,
     deliveredCartItemIds: string[],
   ) => void;
+  onExpandLayaway: (layawayId: string) => void;
 }
 
 type SellerViewMode = "SALES" | "CLIENTS";
@@ -214,8 +217,10 @@ export function SellerSalesView({
   layaways,
   appointments,
   owedProducts,
+  companyName,
   onPreviewTicket,
   onRegisterLayawayPayment,
+  onExpandLayaway,
 }: SellerSalesViewProps) {
   const [accessCode, setAccessCode] = useState("");
   const [authorizedSellerId, setAuthorizedSellerId] = useState("");
@@ -375,6 +380,12 @@ export function SellerSalesView({
   const sellerSaleTickets = sellerTickets.filter(
     (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
   );
+  const completedSalesCount = sellerTickets.filter(
+    (ticket) =>
+      ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+      ticket.ticketType !== "REFUND" &&
+      ticket.status === "COMPLETED",
+  ).length;
   const overdueThreshold = new Date();
   overdueThreshold.setMonth(overdueThreshold.getMonth() - 4);
   const sellerLayaways = layaways.filter((layaway) =>
@@ -382,6 +393,7 @@ export function SellerSalesView({
   );
   const overdueLayaways = sellerLayaways.filter(
     (layaway) =>
+      layaway.collectionType !== "PENDING" &&
       layaway.status === "ACTIVE" &&
       new Date(layaway.createdAtIso) < overdueThreshold,
   );
@@ -634,7 +646,7 @@ export function SellerSalesView({
           <CardContent>
             <ReceiptText size={19} />
             <span>Mis tickets</span>
-            <strong>{sellerTickets.length}</strong>
+            <strong>{completedSalesCount}</strong>
           </CardContent>
         </Card>
         <Card>
@@ -731,6 +743,12 @@ export function SellerSalesView({
                     <TableRow key={ticket.id}>
                       <TableCell>
                         <strong>{ticket.id}</strong>
+                        {ticket.ticketType === "REFUND" && (
+                          <Badge variant="outline">REFUND</Badge>
+                        )}
+                        {ticket.status === "REFUNDED" && (
+                          <Badge variant="outline">CANCELADO</Badge>
+                        )}
                       </TableCell>
                       <TableCell>{ticket.createdAt}</TableCell>
                       <TableCell>
@@ -1000,7 +1018,9 @@ export function SellerSalesView({
                     <div className="seller-layaway-section">
                       <div className="section-title-row">
                         <div>
-                          <span className="section-kicker">APARTADOS</span>
+                          <span className="section-kicker">
+                            SALDOS Y APARTADOS
+                          </span>
                           <h3>Abonos y liquidación de saldo</h3>
                         </div>
                         <Badge variant="outline">
@@ -1047,9 +1067,11 @@ export function SellerSalesView({
                                 >
                                   {layaway.status === "PAID"
                                     ? "LIQUIDADO"
-                                    : isOverdue
-                                      ? "+4 MESES"
-                                      : "ACTIVO"}
+                                    : layaway.collectionType === "PENDING"
+                                      ? "PENDIENTE DE COBRO"
+                                      : isOverdue
+                                        ? "+4 MESES"
+                                        : "APARTADO ACTIVO"}
                                 </Badge>
                               </div>
                               <div className="layaway-products-summary">
@@ -1088,20 +1110,34 @@ export function SellerSalesView({
                                 ))}
                               </div>
                               {layaway.status === "ACTIVE" && (
-                                <LayawayPaymentDialog
-                                  layaway={layaway}
-                                  paymentMethods={paymentMethods}
-                                  bankCatalog={bankCatalog}
-                                  sellerId={authorizedSeller.id}
-                                  onRegister={(payments, deliveryIds) =>
-                                    onRegisterLayawayPayment(
-                                      layaway.id,
-                                      payments,
-                                      authorizedSeller.id,
-                                      deliveryIds,
-                                    )
-                                  }
-                                />
+                                <div className="layaway-account-actions">
+                                  {layaway.collectionType !== "PENDING" && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() => onExpandLayaway(layaway.id)}
+                                    >
+                                      <ArrowLeftRight size={16} /> Agrandar venta
+                                    </Button>
+                                  )}
+                                  <LayawayPaymentDialog
+                                    layaway={layaway}
+                                    paymentMethods={paymentMethods}
+                                    bankCatalog={bankCatalog}
+                                    clients={clients}
+                                    sellers={sellers}
+                                    companyName={companyName}
+                                    sellerId={authorizedSeller.id}
+                                    onRegister={(payments, deliveryIds) =>
+                                      onRegisterLayawayPayment(
+                                        layaway.id,
+                                        payments,
+                                        authorizedSeller.id,
+                                        deliveryIds,
+                                      )
+                                    }
+                                  />
+                                </div>
                               )}
                             </CardContent>
                           </Card>
@@ -1115,6 +1151,13 @@ export function SellerSalesView({
                         <span>
                           <strong>{ticket.id}</strong>
                           <small>{ticket.createdAt}</small>
+                          {ticket.expansionStatus === "EXPANDED" ? (
+                            <small>VENTA ORIGINAL AMPLIADA</small>
+                          ) : ticket.ticketType === "EXPANSION" ? (
+                            <small>
+                              INCREMENTO ATRIBUIDO · {formatCurrency(ticket.total)}
+                            </small>
+                          ) : null}
                         </span>
                         <Badge variant="outline">
                           {paymentStatusLabels[ticket.paymentStatus]}

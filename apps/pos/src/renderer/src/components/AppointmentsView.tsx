@@ -275,6 +275,7 @@ export function AppointmentsView({
                   <TableHead>FECHA Y HORA</TableHead>
                   <TableHead>SUCURSAL</TableHead>
                   <TableHead>VENDEDOR</TableHead>
+                  <TableHead>RESERVÓ / ORIGEN</TableHead>
                   <TableHead>TICKET / REGISTRO</TableHead>
                   <TableHead>ESTATUS</TableHead>
                 </TableRow>
@@ -331,6 +332,22 @@ export function AppointmentsView({
                         )
                         .filter(Boolean)
                         .join(" / ") || "Empresa"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="appointment-date-cell">
+                        <strong>
+                          {appointment.bookedByName ?? "Sin identificar"}
+                        </strong>
+                        <small>
+                          {appointment.bookingSource === "EXTERNAL_AGENDA"
+                            ? "Agenda externa"
+                            : appointment.bookingSource === "POS_MEMBERSHIP"
+                              ? "POS · Membresías"
+                              : appointment.bookingSource === "POS_CHECKOUT"
+                                ? "POS · Checkout"
+                                : "Registro anterior"}
+                        </small>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="appointment-date-cell">

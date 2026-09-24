@@ -2626,6 +2626,29 @@ button {
   gap: 12px;
   align-items: start;
 }
+
+.sale-expansion-banner {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #cfa77d;
+  border-radius: 14px;
+  background: #fff8ef;
+  padding: 12px 14px;
+  color: #754d30;
+}
+
+.sale-expansion-banner > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sale-expansion-banner small {
+  color: #8d735f;
+  font-size: 0.72rem;
+}
 .sale-catalog-navigation {
   position: sticky;
   top: 18px;
@@ -3228,6 +3251,22 @@ button {
 .membership-pass-sessions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .membership-pass-sessions span { display: grid; place-items: center; aspect-ratio: 1; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; color: rgba(255,255,255,.62); font-size: 11px; }
 .membership-pass-sessions span.is-used { color: #29201a; background: #e6c39e; }
+.membership-pass-sessions span.is-reserved {
+  border-color: #e6bd8f;
+  background: rgba(229, 184, 136, .16);
+  color: #ffe0bd;
+}
+.membership-pass-sessions span.is-reserved small {
+  display: -webkit-box;
+  overflow: hidden;
+  padding: 4px;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
 .membership-pass-balance { display: grid; gap: 4px; margin-top: 22px; }
 .membership-pass-balance span { color: #cda47d; font-size: 8px; font-weight: 800; letter-spacing: .12em; }
 .membership-pass-balance strong { font-family: var(--font-display); font-size: 42px; font-weight: 500; }
@@ -4402,6 +4441,11 @@ button {
   align-items: center;
   gap: 9px;
   color: var(--accent-dark);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
 }
 .membership-scheduling-heading > span {
   display: grid;
@@ -4418,6 +4462,42 @@ button {
 }
 .membership-scheduling-heading.is-exhausted {
   color: #9a5b37;
+}
+
+.appointment-authorization-card,
+.checkout-locked-client {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(180px, 240px);
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #d9bd9e;
+  border-radius: 12px;
+  background: #fffaf4;
+  padding: 11px 13px;
+}
+
+.checkout-locked-client {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.appointment-authorization-card > span,
+.checkout-locked-client > span {
+  display: grid;
+  gap: 2px;
+}
+
+.appointment-authorization-card small,
+.checkout-locked-client small {
+  color: var(--text-muted);
+  font-size: 8px;
+}
+
+.appointment-authorization-card small.is-valid {
+  color: var(--positive);
+}
+
+.appointment-authorization-card small.is-pending {
+  color: var(--destructive);
 }
 .membership-service-options {
   display: grid;
@@ -5051,6 +5131,34 @@ button {
 .receipt-payment-cell small {
   color: var(--text-muted);
   font-size: 8px;
+}
+.receipt-price-deviation {
+  display: inline-grid;
+  width: max-content;
+  min-width: 88px;
+  gap: 2px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-size: 9px;
+}
+.receipt-price-deviation small {
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+.receipt-price-deviation.is-below {
+  border-color: #efb6b8;
+  background: var(--negative-bg);
+  color: #bd3e46;
+}
+.receipt-price-deviation.is-spare {
+  border-color: #a8d7bf;
+  background: var(--positive-bg);
+  color: #2f8a64;
+}
+.receipt-price-deviation.is-neutral {
+  color: var(--text-muted);
 }
 .receipt-client-membership-mark {
   display: grid;
@@ -10695,6 +10803,15 @@ body.executive-ledger-theme .customer-membership-popover[role="dialog"] {
   font-size: 8px;
   font-weight: 700;
 }
+.customer-history-ticket-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.customer-history-ticket-actions button {
+  width: 30px;
+  height: 30px;
+}
 .customer-history-item footer {
   justify-content: flex-start;
   color: var(--text-muted);
@@ -12140,6 +12257,10 @@ body.executive-ledger-theme .customer-membership-popover[role="dialog"] {
   display: grid;
   gap: 8px;
 }
+.ticket-edit-line-shell {
+  display: grid;
+  gap: 7px;
+}
 .ticket-edit-line {
   display: grid;
   grid-template-columns: minmax(220px, 1.7fr) 80px 110px 100px 34px;
@@ -12148,6 +12269,51 @@ body.executive-ledger-theme .customer-membership-popover[role="dialog"] {
   padding: 10px;
   border-radius: 9px;
   background: var(--bg-page);
+}
+.ticket-product-exchange {
+  display: grid;
+  gap: 9px;
+  margin: -2px 10px 4px;
+  padding: 11px;
+  border: 1px solid #d9b68f;
+  border-radius: 10px;
+  background: #fff8ef;
+}
+.ticket-product-exchange-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-dark);
+}
+.ticket-product-exchange-heading > div {
+  display: grid;
+  gap: 2px;
+}
+.ticket-product-exchange-heading strong { font-size: 10px; }
+.ticket-product-exchange-heading small,
+.ticket-product-exchange-note { font-size: 8px; }
+.ticket-product-exchange-fields {
+  display: grid;
+  grid-template-columns: minmax(190px, .8fr) minmax(240px, 1.2fr);
+  gap: 9px;
+}
+.ticket-product-exchange-costs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ticket-product-exchange-costs span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-muted);
+  font-size: 7px;
+}
+.ticket-product-exchange-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #966018;
 }
 .ticket-edit-line-total {
   display: grid;
@@ -12211,7 +12377,8 @@ body.executive-ledger-theme .customer-membership-popover[role="dialog"] {
   .ticket-edit-grid,
   .ticket-edit-payment-grid,
   .ticket-edit-summary,
-  .ticket-edit-authorization {
+  .ticket-edit-authorization,
+  .ticket-product-exchange-fields {
     grid-template-columns: 1fr;
   }
   .ticket-edit-line {
@@ -15243,6 +15410,17 @@ body.executive-ledger-theme .receipt-membership-popover[role="dialog"] {
   justify-self: end;
 }
 
+.layaway-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.layaway-account-actions .layaway-add-payment-trigger {
+  justify-self: auto;
+}
+
 .layaway-status-paid {
   border-color: var(--positive) !important;
   background: var(--positive-bg) !important;
@@ -15281,6 +15459,78 @@ body.executive-ledger-theme .receipt-membership-popover[role="dialog"] {
   font-size: 1.1rem;
 }
 
+.layaway-owner-confirmation,
+.layaway-expansion-question {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-subtle);
+  padding: 12px;
+}
+
+.layaway-owner-confirmation.is-company {
+  border-color: #d4a77a;
+  background: #fff8ef;
+}
+
+.layaway-owner-confirmation > span,
+.layaway-expansion-question > span {
+  display: grid;
+  gap: 3px;
+}
+
+.layaway-owner-confirmation small,
+.layaway-expansion-question small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.layaway-payment-effective-date {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(190px, 230px);
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-subtle);
+  padding: 12px;
+}
+
+.layaway-payment-effective-date > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.layaway-payment-effective-date small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.layaway-payment-effective-date strong {
+  font-size: 0.9rem;
+}
+
+.layaway-payment-effective-date-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.layaway-payment-effective-date [data-slot="date-picker"],
+.layaway-payment-effective-date [data-slot="popover-trigger"],
+.layaway-payment-effective-date > button {
+  width: 100%;
+  min-width: 0;
+}
+
 .layaway-multi-payment-list {
   max-height: min(42vh, 390px);
   overflow-y: auto;
@@ -15288,19 +15538,53 @@ body.executive-ledger-theme .receipt-membership-popover[role="dialog"] {
 }
 
 .layaway-multi-payment-list .multi-payment-row {
-  grid-template-columns: auto minmax(145px, 1fr) minmax(110px, 0.7fr) minmax(145px, 1fr) minmax(130px, 0.8fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(120px, .65fr) 30px;
   align-items: end;
 }
 
+.layaway-payment-dialog {
+  width: min(760px, calc(100vw - 24px));
+  max-height: min(92vh, 820px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.layaway-payment-dialog .payment-reference-fields {
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.layaway-payment-dialog .field-stack,
+.layaway-payment-dialog [data-slot="select-trigger"],
+.layaway-payment-dialog input {
+  min-width: 0;
+  width: 100%;
+}
+
 @media (max-width: 780px) {
+  .sale-expansion-banner,
+  .appointment-authorization-card,
+  .checkout-locked-client,
   .layaway-payment-dialog-summary,
+  .layaway-payment-effective-date,
+  .layaway-owner-confirmation,
+  .layaway-expansion-question,
   .layaway-multi-payment-list .multi-payment-row {
     grid-template-columns: 1fr;
+  }
+
+  .layaway-payment-effective-date-icon {
+    display: none;
   }
 
   .layaway-add-payment-trigger {
     width: 100%;
     justify-self: stretch;
+  }
+
+  .layaway-account-actions,
+  .layaway-account-actions > button {
+    width: 100%;
   }
 }
 
@@ -15894,6 +16178,12 @@ body.executive-ledger-theme .receipt-membership-popover[role="dialog"] {
 }
 .receipt-detail-line span {
   max-width: 70%;
+}
+.receipt-detail-line span small {
+  display: block;
+  margin-top: 2px;
+  font-size: 7px;
+  line-height: 1.35;
 }
 .receipt-grand-total {
   margin-top: 9px !important;
@@ -16665,8 +16955,11 @@ body.executive-ledger-theme .receipt-membership-popover[role="dialog"] {
 .dashboard-scope-control > span { grid-column: 1; color: #9a7658; font-size: 7px; font-weight: 800; letter-spacing: .1em; }
 .dashboard-scope-control > [role="combobox"] { width: 100%; max-width: 100%; min-width: 0; background: #fff; }
 .dashboard-scope-control > .badge { grid-column: 2; grid-row: 1 / 3; align-self: center; }
-.master-dashboard-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.master-dashboard-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
 .master-dashboard-metrics article { position: relative; display: grid; gap: 4px; overflow: hidden; padding: 16px; border: 1px solid var(--border-color); border-radius: 15px; background: var(--bg-card); box-shadow: 0 8px 24px rgba(75, 57, 43, .06); }
+.master-dashboard-metrics article.is-alert { border-color: #e5aa8c; background: #fff3ed; }
+.master-dashboard-metrics article.is-alert > svg,
+.master-dashboard-metrics article.is-alert strong { color: #a24f38; }
 .master-dashboard-metrics article > svg { position: absolute; top: 14px; right: 14px; color: #a97951; }
 .master-dashboard-metrics article span { color: var(--text-muted); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
 .master-dashboard-metrics article strong { font-size: 24px; }

@@ -543,6 +543,7 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "COMPETITIONS",
       "REPORTS_COSTS",
       "BRANCHES",
+      "TICKET_CANCELLATION",
       "SESSION_EXIT",
       "USERS_ROLES",
     ],
@@ -586,6 +587,7 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "INVENTORY_CATALOG",
       "INVENTORY_MOVEMENTS",
       "CUSTOMER_FIELDS",
+      "TICKET_CANCELLATION",
     ],
   },
   {

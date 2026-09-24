@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  ArrowLeftRight,
   Building2,
+  CalendarDays,
   CircleDollarSign,
   LockKeyhole,
   Minus,
@@ -12,6 +15,7 @@ import {
 import {
   Badge,
   Button,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -38,11 +42,18 @@ import type {
   Ticket,
   TicketEditProductInput,
   TicketEditRequest,
+  TicketProductChangeDisposition,
 } from "../types";
 import { PaymentReferenceFields } from "./PaymentReferenceFields";
 
 interface EditableLine extends TicketEditProductInput {
   id: string;
+  originalLineIndex: number | null;
+  originalProductId: string | null;
+  originalProductName: string;
+  originalQuantity: number;
+  changeDisposition: TicketProductChangeDisposition | "";
+  changeReason: string;
 }
 
 interface TicketEditDialogProps {
@@ -52,11 +63,21 @@ interface TicketEditDialogProps {
   products: Product[];
   paymentMethods: PaymentMethodOption[];
   bankCatalog: BankCatalogEntry[];
+  branchStock: Record<string, number>;
+  authorizationRequired: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (ticketId: string, changes: TicketEditRequest) => boolean;
 }
 
 const installmentOptions = [1, 3, 6, 9, 12, 18, 24];
+
+const businessDateFromIso = (iso: string) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
 
 export function TicketEditDialog({
   open,
@@ -65,6 +86,8 @@ export function TicketEditDialog({
   products,
   paymentMethods,
   bankCatalog,
+  branchStock,
+  authorizationRequired,
   onOpenChange,
   onSave,
 }: TicketEditDialogProps) {
@@ -75,6 +98,7 @@ export function TicketEditDialog({
   const [discountAmount, setDiscountAmount] = useState(0);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("PAID");
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
+  const [paymentEffectiveDate, setPaymentEffectiveDate] = useState("");
   const [authorizationCode, setAuthorizationCode] = useState("");
 
   useEffect(() => {
@@ -86,6 +110,7 @@ export function TicketEditDialog({
     setPaymentStatus(
       ticket.ticketType === "LAYAWAY_PAYMENT" ? "PAID" : ticket.paymentStatus,
     );
+    setPaymentEffectiveDate(businessDateFromIso(ticket.createdAtIso));
     const fallbackMethod = paymentMethods.find((method) => method.active)?.id ?? "";
     setPayments(
       ticket.payments.length > 0
@@ -113,6 +138,12 @@ export function TicketEditDialog({
     setLines(
       ticket.products.map((line, index) => ({
         id: `${line.productId}-${index}-${crypto.randomUUID()}`,
+        originalLineIndex: index,
+        originalProductId: line.productId,
+        originalProductName: line.name,
+        originalQuantity: line.quantity,
+        changeDisposition: "",
+        changeReason: "",
         productId: line.productId,
         quantity: line.quantity,
         unitPrice:
@@ -175,10 +206,40 @@ export function TicketEditDialog({
     const product = productById.get(line.productId);
     return sum + (product?.minPrice ?? 0) * line.quantity;
   }, 0);
-  const requiresAuthorization =
+  const belowMinimumLines = lines.filter((line) => {
+    const product = productById.get(line.productId);
+    return Boolean(product && line.unitPrice < product.minPrice);
+  });
+  const requiresPriceAuthorization =
+    belowMinimumLines.length > 0 ||
     total - minimumTotal < Math.min(0, ticket?.deviation ?? 0);
+  const requiresAuthorization = authorizationRequired;
   const hasInvalidLine = lines.some(
     (line) => !line.productId || line.quantity < 1 || line.unitPrice < 0,
+  );
+  const productChanges = lines.flatMap((line) => {
+    if (
+      line.originalLineIndex === null ||
+      !line.originalProductId ||
+      line.productId === line.originalProductId
+    )
+      return [];
+    const originalProduct = productById.get(line.originalProductId);
+    if (originalProduct?.kind !== "PRODUCT") return [];
+    return [
+      {
+        originalLineIndex: line.originalLineIndex,
+        originalProductId: line.originalProductId,
+        replacementProductId: line.productId,
+        quantity: line.originalQuantity,
+        replacementQuantity: line.quantity,
+        disposition: line.changeDisposition,
+        reason: line.changeReason.trim(),
+      },
+    ];
+  });
+  const hasInvalidProductChange = productChanges.some(
+    (change) => !change.disposition || !change.reason,
   );
 
   const toggleSeller = (sellerId: string) => {
@@ -238,6 +299,12 @@ export function TicketEditDialog({
       ...current,
       {
         id: crypto.randomUUID(),
+        originalLineIndex: null,
+        originalProductId: null,
+        originalProductName: "",
+        originalQuantity: 0,
+        changeDisposition: "",
+        changeReason: "",
         productId: firstProduct.id,
         quantity: 1,
         unitPrice: firstProduct.maxPrice,
@@ -406,10 +473,19 @@ export function TicketEditDialog({
                 const hasCatalogProduct = products.some(
                   (product) => product.id === line.productId,
                 );
+                const originalProduct = line.originalProductId
+                  ? productById.get(line.originalProductId)
+                  : null;
+                const isPhysicalExchange = Boolean(
+                  originalProduct?.kind === "PRODUCT" &&
+                    line.originalProductId !== line.productId,
+                );
+                const replacementProduct = productById.get(line.productId);
                 return (
-                <div key={line.id} className="ticket-edit-line">
+                <div key={line.id} className="ticket-edit-line-shell">
+                <div className="ticket-edit-line">
                   <div className="field-stack ticket-edit-product-field">
-                    <Label>Producto o servicio</Label>
+                    <Label>{isPhysicalExchange ? "Producto de reemplazo" : "Producto o servicio"}</Label>
                     <Select
                       value={line.productId}
                       onValueChange={(productId) => {
@@ -417,6 +493,9 @@ export function TicketEditDialog({
                         updateLine(line.id, {
                           productId,
                           unitPrice: product?.maxPrice ?? line.unitPrice,
+                          ...(productId === line.originalProductId
+                            ? { changeDisposition: "" as const, changeReason: "" }
+                            : {}),
                         });
                       }}
                     >
@@ -432,11 +511,17 @@ export function TicketEditDialog({
                         {products
                           .filter(
                             (product) =>
-                              product.active || product.id === line.productId,
+                              (product.active || product.id === line.productId) &&
+                              (originalProduct?.kind === "PRODUCT"
+                                ? product.kind === "PRODUCT"
+                                : true),
                           )
                           .map((product) => (
                             <SelectItem key={product.id} value={product.id}>
                               {product.name}
+                              {product.kind === "PRODUCT"
+                                ? ` · ${branchStock[product.id] ?? 0} disponibles`
+                                : ""}
                             </SelectItem>
                           ))}
                       </SelectContent>
@@ -481,7 +566,9 @@ export function TicketEditDialog({
                     variant="outline"
                     size="icon"
                     aria-label="Quitar producto"
-                    disabled={lines.length === 1}
+                    disabled={
+                      lines.length === 1 || originalProduct?.kind === "PRODUCT"
+                    }
                     onClick={() =>
                       setLines((current) =>
                         current.filter((item) => item.id !== line.id),
@@ -490,6 +577,69 @@ export function TicketEditDialog({
                   >
                     <Minus size={15} />
                   </Button>
+                </div>
+                {isPhysicalExchange ? (
+                  <div
+                    className="ticket-product-exchange"
+                    role="group"
+                    aria-label={`Cambio de ${line.originalProductName}`}
+                  >
+                    <div className="ticket-product-exchange-heading">
+                      <ArrowLeftRight size={16} />
+                      <div>
+                        <strong>Cambio de producto</strong>
+                        <small>
+                          {line.originalQuantity} × {line.originalProductName} → {replacementProduct?.name ?? "Reemplazo"}
+                        </small>
+                      </div>
+                    </div>
+                    <div className="ticket-product-exchange-fields">
+                      <div className="field-stack">
+                        <Label>Destino del producto retirado</Label>
+                        <Select
+                          value={line.changeDisposition}
+                          onValueChange={(value) =>
+                            updateLine(line.id, {
+                              changeDisposition: value as TicketProductChangeDisposition,
+                            })
+                          }
+                        >
+                          <SelectTrigger aria-label={`Destino de ${line.originalProductName}`}>
+                            <SelectValue placeholder="Selecciona destino" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="RETURN_TO_STOCK">Regresar a inventario vendible</SelectItem>
+                            <SelectItem value="DEMO">Enviar a demo / tester</SelectItem>
+                            <SelectItem value="WRITE_OFF">Registrar como baja</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="field-stack">
+                        <Label htmlFor={`exchange-reason-${line.id}`}>Motivo obligatorio</Label>
+                        <Input
+                          id={`exchange-reason-${line.id}`}
+                          value={line.changeReason}
+                          onChange={(event) =>
+                            updateLine(line.id, { changeReason: event.target.value })
+                          }
+                          placeholder="Ej. cambio solicitado por clienta"
+                        />
+                      </div>
+                    </div>
+                    <div className="ticket-product-exchange-costs">
+                      <span>Entrada: {formatCurrency((originalProduct?.costMxn ?? 0) * line.originalQuantity)}</span>
+                      <span>
+                        Salida reemplazo: {formatCurrency((replacementProduct?.costMxn ?? 0) * line.quantity)}
+                      </span>
+                      {line.changeDisposition === "DEMO" || line.changeDisposition === "WRITE_OFF" ? (
+                        <span>Salida {line.changeDisposition === "DEMO" ? "demo" : "baja"}: {formatCurrency((originalProduct?.costMxn ?? 0) * line.originalQuantity)}</span>
+                      ) : null}
+                    </div>
+                    <small className="ticket-product-exchange-note">
+                      <AlertTriangle size={13} /> La operación quedará ligada al ticket, usuario, sucursal y costos de inventario.
+                    </small>
+                  </div>
+                ) : null}
                 </div>
                 );
               })}
@@ -504,6 +654,23 @@ export function TicketEditDialog({
                 <strong>Estado, método y saldo del ticket</strong>
               </div>
             </div>
+            {ticket.ticketType === "LAYAWAY_PAYMENT" ? (
+              <div className="ticket-edit-grid">
+                <div className="field-stack">
+                  <Label>Fecha efectiva del folio de pago</Label>
+                  <DatePicker
+                    value={paymentEffectiveDate}
+                    onChange={setPaymentEffectiveDate}
+                    placeholder="Selecciona fecha"
+                  />
+                  <small>
+                    <CalendarDays size={13} aria-hidden="true" /> La fecha real
+                    de captura permanece en la auditoría. Este cambio requiere
+                    acceso Master o permiso de edición del módulo.
+                  </small>
+                </div>
+              </div>
+            ) : null}
             <div className="ticket-edit-payment-status" role="group" aria-label="Estado de cobro">
               {(
                 [
@@ -600,20 +767,22 @@ export function TicketEditDialog({
                       />
                     </div>
                     {paymentNeedsAuthorization(payment.methodId) && (
-                      <PaymentReferenceFields
-                        payment={payment}
-                        isCard={paymentIsCard(payment.methodId)}
-                        bankCatalog={bankCatalog}
-                        installmentOptions={installmentOptions}
-                        ariaContext={`del pago editado ${index + 1}`}
-                        onChange={(nextPayment) =>
-                          setPayments((current) =>
-                            current.map((item) =>
-                              item.id === payment.id ? nextPayment : item,
-                            ),
-                          )
-                        }
-                      />
+                      <div className="payment-reference-fields">
+                        <PaymentReferenceFields
+                          payment={payment}
+                          isCard={paymentIsCard(payment.methodId)}
+                          bankCatalog={bankCatalog}
+                          installmentOptions={installmentOptions}
+                          ariaContext={`del pago editado ${index + 1}`}
+                          onChange={(nextPayment) =>
+                            setPayments((current) =>
+                              current.map((item) =>
+                                item.id === payment.id ? nextPayment : item,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
                     )}
                     <Button
                       type="button"
@@ -711,8 +880,9 @@ export function TicketEditDialog({
               <div>
                 <strong>Autorización administrativa requerida</strong>
                 <small>
-                  La nueva venta profundiza el importe autorizado bajo el
-                  mínimo combinado.
+                  {requiresPriceAuthorization
+                    ? `${belowMinimumLines.length} producto${belowMinimumLines.length === 1 ? "" : "s"} queda${belowMinimumLines.length === 1 ? "" : "n"} por debajo del precio mínimo. Ingresa un código master o utiliza un perfil con permiso de edición asignado.`
+                    : "Tu perfil no tiene edición asignada. Ingresa un código master válido para autorizar sólo esta operación."}
                 </small>
               </div>
               <Input
@@ -725,6 +895,18 @@ export function TicketEditDialog({
               />
             </section>
           )}
+          {requiresPriceAuthorization && !requiresAuthorization ? (
+            <section className="ticket-edit-authorization is-permitted">
+              <div>
+                <strong>Precio bajo mínimo autorizado por perfil</strong>
+                <small>
+                  Tu rol tiene permiso de edición asignado. La desviación
+                  quedará registrada en el ticket y los reportes.
+                </small>
+              </div>
+              <Badge variant="outline">PERMISO ASIGNADO</Badge>
+            </section>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -739,15 +921,19 @@ export function TicketEditDialog({
             type="button"
             disabled={
               !clientName.trim() ||
+              (ticket.ticketType === "LAYAWAY_PAYMENT" &&
+                !paymentEffectiveDate) ||
               sellerIds.length === 0 ||
               lines.length === 0 ||
               hasInvalidLine ||
+              hasInvalidProductChange ||
               !installmentTermsAreValid ||
               !paymentReferencesAreValid ||
               discountAmount < 0 ||
               discountAmount > subtotal ||
               invalidLayaway ||
               invalidPaid ||
+              (requiresAuthorization && !authorizationCode.trim()) ||
               (needsPaymentMethod &&
                 (payments.length === 0 ||
                   payments.some(
@@ -758,6 +944,7 @@ export function TicketEditDialog({
               const saved = onSave(ticket.id, {
                 clientName: clientName.trim(),
                 clientPhone: clientPhone.trim(),
+                paymentEffectiveDate,
                 sellerIds,
                 products: lines.map(({ productId, quantity, unitPrice }) => ({
                   productId,
@@ -770,6 +957,10 @@ export function TicketEditDialog({
                 paymentMethodId: payments[0]?.methodId ?? "",
                 payments: payments.map((payment) => ({ ...payment })),
                 authorizationCode,
+                productChanges: productChanges.map((change) => ({
+                  ...change,
+                  disposition: change.disposition as TicketProductChangeDisposition,
+                })),
               });
               if (saved) onOpenChange(false);
             }}

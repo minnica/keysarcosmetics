@@ -51,6 +51,7 @@ import type {
   AgendaReservationMode,
   AgendaSlot,
   AppointmentDraft,
+  AppointmentReservationActor,
   CartItem,
   CourtesyPackage,
   CourtesySettings,
@@ -111,7 +112,11 @@ interface CheckoutDialogProps {
   courtesySettings: CourtesySettings;
   companyName: string;
   companySalesNumber: string;
+  lockedClientId?: string;
   isMasterCode: (code: string) => boolean;
+  authorizeAppointmentCode: (
+    code: string,
+  ) => AppointmentReservationActor | null;
   onOpenChange: (open: boolean) => void;
   onComplete: (result: CheckoutResult) => void;
 }
@@ -247,7 +252,9 @@ export function CheckoutDialog({
   courtesySettings,
   companyName,
   companySalesNumber,
+  lockedClientId,
   isMasterCode,
+  authorizeAppointmentCode,
   onOpenChange,
   onComplete,
 }: CheckoutDialogProps) {
@@ -322,10 +329,26 @@ export function CheckoutDialog({
   const [nextSessionDate, setNextSessionDate] = useState("");
   const [nextSessionBranch, setNextSessionBranch] = useState("");
   const [nextSessionTime, setNextSessionTime] = useState("");
+  const [appointmentAuthorizationCode, setAppointmentAuthorizationCode] =
+    useState("");
 
   useEffect(() => {
     if (!open) return;
-    const firstSellerId = presentSellers[0]?.id ?? "";
+    const lockedClient = clients.find((client) => client.id === lockedClientId);
+    const lockedOwner = activeSellers.find(
+      (seller) => seller.id === lockedClient?.ownerId,
+    );
+    const lockedIsCompanyPortfolio = Boolean(
+      lockedClient &&
+        (lockedClient.companyLocked ||
+          (lockedClient.ownerId && !lockedOwner)),
+    );
+    const firstSellerId =
+      lockedOwner?.id ?? presentSellers[0]?.id ?? "";
+    const initialSellerIds = [
+      ...(lockedIsCompanyPortfolio ? [COMPANY_SALES_PARTICIPANT_ID] : []),
+      ...(firstSellerId ? [firstSellerId] : []),
+    ];
     const initialCourtesyPackage =
       availableCourtesyPackages.find(
         (option) => option.id === courtesySettings.defaultPackage,
@@ -333,13 +356,17 @@ export function CheckoutDialog({
     const firstPaymentMethod = paymentMethods.find((method) => method.active);
     setClientMode("search");
     setCheckoutStep(1);
-    setClientSearch("");
-    setSelectedClientId("");
+    setClientSearch(
+      lockedClient
+        ? `${lockedClient.firstName} ${lockedClient.lastName}`
+        : "",
+    );
+    setSelectedClientId(lockedClient?.id ?? "");
     setNewClient(emptyClient);
     setSplitMode("amount");
-    setSelectedSellerIds(firstSellerId ? [firstSellerId] : []);
-    setSplitValues(firstSellerId ? { [firstSellerId]: total } : {});
-    setClientOwnerId(firstSellerId);
+    setSelectedSellerIds(initialSellerIds);
+    setSplitValues(createEvenSplit(initialSellerIds, "amount", total));
+    setClientOwnerId(lockedOwner?.id ?? "");
     setOwnershipMasterOpen(false);
     setOwnershipMasterCode("");
     setOwnershipAuthorized(false);
@@ -358,6 +385,7 @@ export function CheckoutDialog({
     setNextSessionDate("");
     setNextSessionBranch("");
     setNextSessionTime("");
+    setAppointmentAuthorizationCode("");
     setPayments(
       firstPaymentMethod
         ? [
@@ -369,7 +397,7 @@ export function CheckoutDialog({
           ]
         : [],
     );
-  }, [availableCourtesyPackages, courtesySettings.defaultPackage, open, paymentMethods, presentSellers, total]);
+  }, [activeSellers, availableCourtesyPackages, clients, courtesySettings.defaultPackage, lockedClientId, open, paymentMethods, presentSellers, total]);
 
   useEffect(() => {
     if (courtesyBranch && !branches.includes(courtesyBranch)) {
@@ -418,6 +446,9 @@ export function CheckoutDialog({
   );
   const selectedNextSessionMembership = selectedClientMemberships.find(
     (membership) => membership.id === nextSessionMembershipId,
+  );
+  const appointmentReservationActor = authorizeAppointmentCode(
+    appointmentAuthorizationCode,
   );
   const clientHasSchedulableMemberships =
     selectedClientMemberships.length > 0;
@@ -602,10 +633,16 @@ export function CheckoutDialog({
             nextSessionBranch &&
             selectedNextSessionAgendaSlot,
           ));
+  const reservationNeedsAuthorization =
+    (clientMode === "new" && courtesySettings.required) ||
+    (clientMode === "search" && nextSessionAnswer === "YES");
+  const reservationIsAuthorized =
+    !reservationNeedsAuthorization || Boolean(appointmentReservationActor);
   const canComplete =
     clientIsValid &&
     sellerStepIsValid &&
     nextSessionIsValid &&
+    reservationIsAuthorized &&
     payments.length > 0 &&
     paymentReferencesAreValid;
 
@@ -822,6 +859,14 @@ export function CheckoutDialog({
                     agendaResourceName: slot.resourceName,
                     agendaReservationMode:
                       selectedCourtesyAgendaOption?.mode ?? "SINGLE",
+                    ...(appointmentReservationActor
+                      ? {
+                          bookingSource: "POS_CHECKOUT" as const,
+                          bookedById: appointmentReservationActor.id,
+                          bookedByName: appointmentReservationActor.name,
+                          bookedByRole: appointmentReservationActor.role,
+                        }
+                      : {}),
                   }
                 : {}),
             };
@@ -850,6 +895,14 @@ export function CheckoutDialog({
                     agendaResourceName:
                       selectedNextSessionAgendaSlot.resourceName,
                     agendaReservationMode: "SINGLE" as const,
+                    ...(appointmentReservationActor
+                      ? {
+                          bookingSource: "POS_CHECKOUT" as const,
+                          bookedById: appointmentReservationActor.id,
+                          bookedByName: appointmentReservationActor.name,
+                          bookedByRole: appointmentReservationActor.role,
+                        }
+                      : {}),
                   }
                 : {}),
             },
@@ -1002,7 +1055,7 @@ export function CheckoutDialog({
                 <UsersRound size={22} />
               </div>
 
-              <div className="segmented-control">
+              {!lockedClientId ? <div className="segmented-control">
                 <button
                   type="button"
                   className={clientMode === "search" ? "is-active" : ""}
@@ -1017,9 +1070,18 @@ export function CheckoutDialog({
                 >
                   <UserPlus size={16} /> Nuevo cliente
                 </button>
-              </div>
+              </div> : selectedClient ? (
+                <div className="checkout-locked-client" role="status">
+                  <LockKeyhole size={18} />
+                  <span>
+                    <small>CLIENTA DEL APARTADO · DATOS ORIGINALES PROTEGIDOS</small>
+                    <strong>{selectedClient.firstName} {selectedClient.lastName}</strong>
+                    <small>{selectedClient.phone} · {selectedClient.sourceLabel}</small>
+                  </span>
+                </div>
+              ) : null}
 
-              {clientMode === "search" ? (
+              {clientMode === "search" && !lockedClientId ? (
                 <div className="client-search-panel">
                   <div className="search-input-wrap">
                     <Search size={17} />
@@ -1072,7 +1134,7 @@ export function CheckoutDialog({
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : clientMode === "new" ? (
                 <div className="new-client-grid">
                   <div className="field-stack">
                     <Label htmlFor="client-first-name">
@@ -1423,7 +1485,7 @@ export function CheckoutDialog({
                     </p>
                   )}
                 </div>
-              )}
+              ) : null}
             </section>
           )}
 
@@ -1833,14 +1895,19 @@ export function CheckoutDialog({
 
               {clientMode === "search" && clientHasMembershipHistory && (
                   <div className="membership-scheduling-card">
-                    <div
+                    <button
+                      type="button"
                       className={`membership-scheduling-heading ${clientHasSchedulableMemberships ? "" : "is-exhausted"}`}
+                      onClick={() => {
+                        if (clientHasSchedulableMemberships)
+                          setNextSessionAnswer("YES");
+                      }}
                     >
                       <Crown size={18} aria-hidden="true" />
                       <span>
                         <strong>
                           {clientHasSchedulableMemberships
-                            ? "Servicios disponibles en membresías"
+                            ? "La clienta cuenta con membresía"
                             : "Membresía sin sesiones disponibles"}
                         </strong>
                         <small>
@@ -1849,7 +1916,7 @@ export function CheckoutDialog({
                             : "La opción de reservar con membresía fue desactivada. Sólo puedes elegir una cortesía por atención de queja."}
                         </small>
                       </span>
-                    </div>
+                    </button>
                     {clientHasSchedulableMemberships && (
                       <div className="membership-service-options">
                         {selectedClientMemberships.map((membership) => {
@@ -1923,6 +1990,45 @@ export function CheckoutDialog({
                     </div>
                   </div>
                 )}
+
+              {reservationNeedsAuthorization && (
+                <div className="appointment-authorization-card">
+                  <LockKeyhole size={18} aria-hidden="true" />
+                  <span>
+                    <strong>Autoriza quién realizó la reserva</strong>
+                    <small>
+                      Ingresa el código personal del vendedor, administrativo o
+                      Master. El código no se guarda; sólo se conserva la
+                      identidad autorizada.
+                    </small>
+                  </span>
+                  <div className="field-stack">
+                    <Label htmlFor="appointment-authorization-code">
+                      Código personal
+                    </Label>
+                    <Input
+                      id="appointment-authorization-code"
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={appointmentAuthorizationCode}
+                      onChange={(event) =>
+                        setAppointmentAuthorizationCode(event.target.value)
+                      }
+                      placeholder="••••"
+                    />
+                    <small
+                      className={
+                        appointmentReservationActor ? "is-valid" : "is-pending"
+                      }
+                    >
+                      {appointmentReservationActor
+                        ? `Reserva atribuida a ${appointmentReservationActor.name}`
+                        : "Código requerido para reservar"}
+                    </small>
+                  </div>
+                </div>
+              )}
 
               {clientMode === "search" && nextSessionAnswer === "YES" && (
                 <div className="next-session-scheduler">

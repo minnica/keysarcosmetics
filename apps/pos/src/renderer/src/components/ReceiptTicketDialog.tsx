@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Gift, PackageCheck, Printer, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Gift, PackageCheck, Printer, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -17,10 +17,15 @@ import {
 import { formatCurrency } from "../mock-data";
 import { cardNetworkLabels } from "../bank-catalog";
 import { getTicketTaxSummary } from "../tax";
+import { LayawayPaymentDialog } from "./LayawayPaymentDialog";
 import type {
+  BankCatalogEntry,
+  Client,
   LayawayRecord,
+  PaymentEntry,
   PaymentMethodOption,
   ReceiptSettings,
+  Seller,
   Ticket,
   VoucherIssue,
   VoucherTemplate,
@@ -33,9 +38,21 @@ interface ReceiptTicketDialogProps {
   settings: ReceiptSettings;
   branchAddresses: Record<string, string>;
   paymentMethods: PaymentMethodOption[];
+  bankCatalog: BankCatalogEntry[];
+  clients: Client[];
+  sellers: Seller[];
   voucherTemplates: VoucherTemplate[];
   allowPrint: boolean;
+  autoPrint: boolean;
+  allowVoucherIssue: boolean;
   onIssueVoucher: (ticket: Ticket, voucherId: string) => VoucherIssue | null;
+  onRegisterLayawayPayment: (
+    layawayId: string,
+    payments: PaymentEntry[],
+    sellerId: string,
+    deliveredCartItemIds: string[],
+  ) => void;
+  onExpandLayaway: (layawayId: string) => void;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -46,9 +63,16 @@ export function ReceiptTicketDialog({
   settings,
   branchAddresses,
   paymentMethods,
+  bankCatalog,
+  clients,
+  sellers,
   voucherTemplates,
   allowPrint,
+  autoPrint,
+  allowVoucherIssue,
   onIssueVoucher,
+  onRegisterLayawayPayment,
+  onExpandLayaway,
   onOpenChange,
 }: ReceiptTicketDialogProps) {
   const [selectedVoucherId, setSelectedVoucherId] = useState("");
@@ -57,12 +81,24 @@ export function ReceiptTicketDialog({
   useEffect(() => {
     setSelectedVoucherId("");
     setIssuedVoucher(null);
-  }, [open, ticket?.id]);
+  }, [allowVoucherIssue, open, ticket?.id]);
+
+  useEffect(() => {
+    if (!open || !ticket || !allowPrint || !autoPrint) return;
+    let printFrame = 0;
+    const renderFrame = window.requestAnimationFrame(() => {
+      printFrame = window.requestAnimationFrame(() => window.print());
+    });
+    return () => {
+      window.cancelAnimationFrame(renderFrame);
+      if (printFrame) window.cancelAnimationFrame(printFrame);
+    };
+  }, [allowPrint, autoPrint, open, ticket?.id]);
 
   if (!ticket) return null;
 
   const printTicketSequence = () => {
-    if (!issuedVoucher && selectedVoucherId) {
+    if (allowVoucherIssue && !issuedVoucher && selectedVoucherId) {
       const nextVoucher = onIssueVoucher(ticket, selectedVoucherId);
       if (!nextVoucher) return;
       setIssuedVoucher(nextVoucher);
@@ -85,6 +121,12 @@ export function ReceiptTicketDialog({
     ticket.branchAddress ||
     (ticketBranchKey ? branchAddresses[ticketBranchKey] : "") ||
     settings.address;
+  const layawaySellerId =
+    layaway?.sellerIds.find((sellerId) =>
+      sellers.some((seller) => seller.id === sellerId && seller.active),
+    ) ??
+    sellers.find((seller) => seller.active)?.id ??
+    "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -123,6 +165,16 @@ export function ReceiptTicketDialog({
               <span>FOLIO</span>
               <strong>{ticket.id}</strong>
               <small>{ticket.createdAt}</small>
+              {ticket.expandedFromTicketId ? (
+                <small>
+                  AMPLIACIÓN DEL APARTADO {ticket.expandedFromTicketId}
+                </small>
+              ) : null}
+              {ticket.expansionStatus === "EXPANDED" ? (
+                <small>
+                  VENTA ORIGINAL AMPLIADA · MOVIMIENTO {ticket.expandedByTicketId}
+                </small>
+              ) : null}
             </div>
 
             {(settings.showClientName ||
@@ -179,6 +231,55 @@ export function ReceiptTicketDialog({
                 ))}
               </section>
             )}
+
+            {(ticket.membershipRefundSessions?.length ?? 0) > 0 ? (
+              <section className="customer-ticket-deals">
+                <h3><AlertTriangle size={14} /> TICKET CANCELADO CON MEMBRESÍA TOMADA</h3>
+                {ticket.membershipRefundSessions?.map((membership) => (
+                  <div key={membership.membershipId}>
+                    <span>
+                      {membership.membershipName}
+                      <small>{membership.membershipFolio} · {membership.usedSessions} de {membership.totalSessions} sesiones tomadas · {membership.remainingSessions} sin usar</small>
+                      <small>
+                        {membership.disposition === "PENDING_REASSIGNMENT"
+                          ? "PENDIENTES DE REASIGNAR EN UNA NUEVA MEMBRESÍA"
+                          : membership.disposition === "REASSIGNED"
+                            ? `REASIGNADAS A ${membership.reassignedToMembershipFolio ?? "OTRA MEMBRESÍA"}`
+                            : "SESIONES PERDIDAS · CLIENTE PERDIDO"}
+                      </small>
+                    </span>
+                    <strong>{membership.usedSessions} SES.</strong>
+                  </div>
+                ))}
+              </section>
+            ) : null}
+
+            {(ticket.productChangeHistory?.length ?? 0) > 0 ? (
+              <section className="customer-ticket-deals">
+                <h3><ArrowLeftRight size={14} /> HISTORIAL DE CAMBIOS</h3>
+                {ticket.productChangeHistory?.map((change) => (
+                  <div key={change.id}>
+                    <span>
+                      {change.quantity} × {change.originalProductName} → {change.replacementQuantity} × {change.replacementProductName}
+                      <small>
+                        {change.disposition === "RETURN_TO_STOCK"
+                          ? "REGRESÓ A INVENTARIO"
+                          : change.disposition === "DEMO"
+                            ? "ENVIADO A DEMO / TESTER"
+                            : "BAJA REGISTRADA"}
+                      </small>
+                      <small>{change.changedAt} · {change.changedByName} · {change.reason}</small>
+                      <small>
+                        Entrada {formatCurrency(change.incomingTotalCostMxn)} · salida reemplazo {formatCurrency(change.outgoingTotalCostMxn)}
+                        {change.dispositionTotalCostMxn > 0
+                          ? ` · salida destino ${formatCurrency(change.dispositionTotalCostMxn)}`
+                          : ""}
+                      </small>
+                    </span>
+                  </div>
+                ))}
+              </section>
+            ) : null}
 
             <section className="customer-ticket-products">
               <div className="ticket-product-heading">
@@ -309,7 +410,11 @@ export function ReceiptTicketDialog({
                 })}
                 <div className={layaway.status === "PAID" ? "is-paid" : ""}>
                   <span>
-                    <strong>ESTATUS DEL APARTADO</strong>
+                    <strong>
+                      {layaway.collectionType === "PENDING"
+                        ? "ESTATUS DEL SALDO"
+                        : "ESTATUS DEL APARTADO"}
+                    </strong>
                   </span>
                   <span>
                     <strong>
@@ -341,7 +446,31 @@ export function ReceiptTicketDialog({
           </div>
         </div>
 
-        {ticket.ticketType !== "LAYAWAY_PAYMENT" && voucherTemplates.length > 0 && (
+        {layaway?.status === "ACTIVE" &&
+        layaway.collectionType !== "PENDING" ? (
+          <section className="layaway-expansion-question">
+            <ArrowLeftRight size={19} aria-hidden="true" />
+            <span>
+              <strong>¿Deseas agrandar la venta?</strong>
+              <small>
+                Se creará un ticket adicional ligado a este apartado. El
+                ticket, vendedor, pagos y monto originales no se modificarán.
+              </small>
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onExpandLayaway(layaway.id)}
+            >
+              Agrandar venta
+            </Button>
+          </section>
+        ) : null}
+
+        {allowVoucherIssue &&
+          ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+          ticket.ticketType !== "REFUND" &&
+          voucherTemplates.length > 0 && (
           <section className="receipt-voucher-picker">
             <div>
               <Gift size={18} />
@@ -384,6 +513,25 @@ export function ReceiptTicketDialog({
         )}
 
         <DialogFooter>
+          {layaway?.status === "ACTIVE" ? (
+            <LayawayPaymentDialog
+              layaway={layaway}
+              paymentMethods={paymentMethods}
+              bankCatalog={bankCatalog}
+              clients={clients}
+              sellers={sellers}
+              companyName={settings.companyName}
+              sellerId={layawaySellerId}
+              onRegister={(payments, deliveryIds) =>
+                onRegisterLayawayPayment(
+                  layaway.id,
+                  payments,
+                  layawaySellerId,
+                  deliveryIds,
+                )
+              }
+            />
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -396,7 +544,9 @@ export function ReceiptTicketDialog({
               <Printer size={16} />
               {issuedVoucher || selectedVoucherId
                 ? "Imprimir ticket y voucher"
-                : "Imprimir ticket"}
+                : allowVoucherIssue
+                  ? "Imprimir ticket"
+                  : "Reimprimir ticket"}
             </Button>
           ) : (
             <span className="receipt-print-restricted">

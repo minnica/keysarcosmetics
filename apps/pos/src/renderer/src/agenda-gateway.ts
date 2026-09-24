@@ -48,8 +48,22 @@ export interface AgendaMembershipResult {
 
 export interface AgendaAppointmentUpdate {
   externalAppointmentId: string;
-  status: "ATTENDED" | "CANCELLED" | "NO_SHOW";
+  status: "RESERVED" | "ATTENDED" | "CANCELLED" | "NO_SHOW";
   updatedAtIso: string;
+  reservationId?: string;
+  clientId?: string;
+  externalClientId?: string;
+  clientName?: string;
+  clientPhone?: string;
+  membershipId?: string;
+  externalMembershipId?: string;
+  service?: string;
+  externalSlotId?: string;
+  branch?: string;
+  date?: string;
+  startTime?: string;
+  resourceName?: string;
+  bookedByName?: string;
 }
 
 /**

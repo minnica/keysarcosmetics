@@ -65,6 +65,7 @@ import type {
 
 type ReportKey =
   | "SALES_DETAIL"
+  | "TICKET_CANCELLATIONS"
   | "BANK_RECONCILIATION"
   | "CASH_MOVEMENTS"
   | "SOLD_PRODUCTS"
@@ -126,6 +127,11 @@ const reportGroups: ReportGroup[] = [
         key: "SALES_DETAIL",
         label: "Detalle de ventas",
         description: "Ingresos, SPARE, impuestos, descuentos, cobros y tickets.",
+      },
+      {
+        key: "TICKET_CANCELLATIONS",
+        label: "Cancelaciones y refunds",
+        description: "Impacto por fecha efectiva, sucursal, usuario autorizador y ticket.",
       },
       {
         key: "BANK_RECONCILIATION",
@@ -414,7 +420,7 @@ export function ReportsView({
   const ticketBranch = (ticket: Ticket) =>
     ticket.branchName ?? receiptSettings.branchName;
   const isTicketInScope = (ticket: Ticket, from = dateFrom, to = dateTo) =>
-    ticket.status === "COMPLETED" &&
+    (ticket.status === "COMPLETED" || Boolean(ticket.refundTransactionId)) &&
     (activeReport === "BANK_RECONCILIATION" ||
       ticket.ticketType !== "LAYAWAY_PAYMENT") &&
     getBusinessDate(ticket.createdAtIso) >= from &&
@@ -451,6 +457,13 @@ export function ReportsView({
       tickets,
       validPeriod,
     ],
+  );
+  const saleOperationTickets = useMemo(
+    () =>
+      filteredTickets.filter(
+        (ticket) => ticket.ticketType !== "REFUND",
+      ),
+    [filteredTickets],
   );
 
   const filteredExpenses = useMemo(
@@ -577,13 +590,24 @@ export function ReportsView({
         (paymentMethodId === "ALL" || payment.methodId === paymentMethodId),
     ),
   ).length;
+  const refundTickets = useMemo(
+    () =>
+      filteredTickets.filter((ticket) => ticket.ticketType === "REFUND"),
+    [filteredTickets],
+  );
+  const refundCommercialTotal = Math.abs(
+    refundTickets.reduce((sum, ticket) => sum + ticket.total, 0),
+  );
+  const refundCashTotal = Math.abs(
+    refundTickets.reduce((sum, ticket) => sum + ticket.amountPaid, 0),
+  );
   const reconciliationPayments = useMemo(
     () =>
       filteredTickets.flatMap((ticket) =>
         ticket.payments
           .filter(
             (payment) =>
-              payment.amount > 0 &&
+              payment.amount !== 0 &&
               (paymentMethodId === "ALL" ||
                 payment.methodId === paymentMethodId),
           )
@@ -664,7 +688,9 @@ export function ReportsView({
   const marginRate = netSales > 0 ? (grossProfit / netSales) * 100 : 0;
   const unitsSold = saleLines.reduce((sum, line) => sum + line.quantity, 0);
   const averageTicket =
-    filteredTickets.length > 0 ? salesTotal / filteredTickets.length : 0;
+    saleOperationTickets.length > 0
+      ? salesTotal / saleOperationTickets.length
+      : 0;
   const activeExpenses = filteredExpenses.filter(
     (expense) => expense.status === "ACTIVE",
   );
@@ -756,10 +782,13 @@ export function ReportsView({
       sellers
         .filter((seller) => sellerId === "ALL" || seller.id === sellerId)
         .map((seller) => {
-          const sellerTickets = filteredTickets.filter((ticket) =>
+          const sellerLedgerTickets = filteredTickets.filter((ticket) =>
             ticket.sellerSales.some((sale) => sale.sellerId === seller.id),
           );
-          const allocatedSales = sellerTickets.reduce(
+          const sellerTickets = sellerLedgerTickets.filter(
+            (ticket) => ticket.ticketType !== "REFUND",
+          );
+          const allocatedSales = sellerLedgerTickets.reduce(
             (sum, ticket) =>
               sum +
               ticket.sellerSales
@@ -774,12 +803,12 @@ export function ReportsView({
             sellerTickets.map((ticket) => ticket.clientPhone || ticket.clientName),
           ).size;
           const largestTicket = Math.max(0, ...sellerTickets.map((ticket) => ticket.total));
-          const sellerUnits = sellerTickets.reduce(
+          const sellerUnits = sellerLedgerTickets.reduce(
             (sum, ticket) =>
               sum + ticket.products.reduce((lineSum, line) => lineSum + line.quantity, 0),
             0,
           );
-          const sellerDiscounts = sellerTickets.reduce(
+          const sellerDiscounts = sellerLedgerTickets.reduce(
             (sum, ticket) => sum + ticket.discountAmount,
             0,
           );
@@ -866,10 +895,13 @@ export function ReportsView({
     const query = search.trim().toLocaleLowerCase("es-MX");
     return clients
       .map((client) => {
-        const customerTickets = filteredTickets.filter(
+        const customerLedgerTickets = filteredTickets.filter(
           (ticket) =>
             (client.phone && ticket.clientPhone === client.phone) ||
             ticket.clientName === `${client.firstName} ${client.lastName}`,
+        );
+        const customerTickets = customerLedgerTickets.filter(
+          (ticket) => ticket.ticketType !== "REFUND",
         );
         const customerAppointments = appointments.filter((appointment) => {
           const date = getBusinessDate(appointment.recordedAtIso);
@@ -880,8 +912,11 @@ export function ReportsView({
             selectedBranches.includes(appointment.branch)
           );
         });
-        const total = customerTickets.reduce((sum, ticket) => sum + ticket.total, 0);
-        const pending = customerTickets.reduce(
+        const total = customerLedgerTickets.reduce(
+          (sum, ticket) => sum + ticket.total,
+          0,
+        );
+        const pending = customerLedgerTickets.reduce(
           (sum, ticket) => sum + ticket.balanceDue,
           0,
         );
@@ -1001,6 +1036,39 @@ export function ReportsView({
   }, [customerSummary]);
 
   const rawMetrics: MetricDefinition[] = (() => {
+    if (activeReport === "TICKET_CANCELLATIONS") {
+      const affectedSellers = new Set(
+        refundTickets.flatMap((ticket) =>
+          ticket.sellerSales.map((sale) => sale.sellerId),
+        ),
+      ).size;
+      const affectedBranches = new Set(refundTickets.map(ticketBranch)).size;
+      return [
+        {
+          label: "TICKETS CANCELADOS",
+          value: compactNumber(refundTickets.length),
+          detail: `${affectedBranches} sucursales afectadas`,
+          tone: refundTickets.length > 0 ? "negative" : "neutral",
+        },
+        {
+          label: "VENTA REVERSADA",
+          value: formatCurrency(refundCommercialTotal),
+          detail: "Impacto automático en venta y gráficas",
+          tone: refundCommercialTotal > 0 ? "negative" : "neutral",
+        },
+        {
+          label: "EFECTIVO DEVUELTO",
+          value: formatCurrency(refundCashTotal),
+          detail: "Monto cobrado que fue reembolsado",
+          tone: refundCashTotal > 0 ? "negative" : "neutral",
+        },
+        {
+          label: "VENDEDORES AFECTADOS",
+          value: compactNumber(affectedSellers),
+          detail: "Su venta neta ya descuenta el refund",
+        },
+      ];
+    }
     if (activeReport === "BANK_RECONCILIATION") {
       const leadingMethod = paymentUsage[0];
       const leadingInstallment = installmentUsage[0];
@@ -1210,13 +1278,19 @@ export function ReportsView({
       {
         label: "TICKET PROMEDIO",
         value: formatCurrency(averageTicket),
-        detail: `${filteredTickets.length} tickets`,
+        detail: `${saleOperationTickets.length} tickets · ${refundTickets.length} refunds`,
       },
       {
         label: "COBRADO",
         value: formatCurrency(collectedTotal),
         detail: `${formatCurrency(pendingTotal)} pendiente`,
         tone: "positive",
+      },
+      {
+        label: "REFUNDS",
+        value: formatCurrency(refundCommercialTotal),
+        detail: `${refundTickets.length} ${refundTickets.length === 1 ? "movimiento aplicado" : "movimientos aplicados"}`,
+        tone: refundTickets.length > 0 ? "negative" : "neutral",
       },
       {
         label: "DESCUENTOS",
@@ -1249,7 +1323,9 @@ export function ReportsView({
 
   const trendRows = useMemo(() => {
     const map = new Map<string, number>();
-    filteredTickets.forEach((ticket) => {
+    const trendTickets =
+      activeReport === "TICKET_CANCELLATIONS" ? refundTickets : filteredTickets;
+    trendTickets.forEach((ticket) => {
       const date = getBusinessDate(ticket.createdAtIso);
       const ticketCollected = ticket.payments.reduce(
         (sum, payment) =>
@@ -1265,7 +1341,9 @@ export function ReportsView({
           (activeReport === "CASH_MOVEMENTS" ||
           activeReport === "BANK_RECONCILIATION"
             ? ticketCollected
-            : ticket.total),
+            : activeReport === "TICKET_CANCELLATIONS"
+              ? Math.abs(ticket.total)
+              : ticket.total),
       );
     });
     if (activeReport === "CASH_MOVEMENTS") {
@@ -1279,9 +1357,26 @@ export function ReportsView({
     return Array.from(map, ([label, value]) => ({ label, value })).sort((left, right) =>
       left.label.localeCompare(right.label),
     );
-  }, [activeExpenses, activeReport, filteredTickets, paymentMethodId]);
+  }, [activeExpenses, activeReport, filteredTickets, paymentMethodId, refundTickets]);
 
   const distributionRows = useMemo(() => {
+    if (activeReport === "TICKET_CANCELLATIONS") {
+      const authorMap = new Map<string, number>();
+      refundTickets.forEach((refund) => {
+        const original = tickets.find(
+          (ticket) => ticket.id === refund.relatedTicketId,
+        );
+        const author =
+          refund.cancelledByName ?? original?.cancelledByName ?? "Sin usuario";
+        authorMap.set(
+          author,
+          (authorMap.get(author) ?? 0) + Math.abs(refund.total),
+        );
+      });
+      return Array.from(authorMap, ([label, value]) => ({ label, value })).sort(
+        (left, right) => right.value - left.value,
+      );
+    }
     if (activeReport === "BANK_RECONCILIATION") {
       return paymentUsage.map((item) => ({
         label: `${item.label} · ${item.count} ${item.count === 1 ? "cobro" : "cobros"}`,
@@ -1347,9 +1442,42 @@ export function ReportsView({
     movementTransfers,
     paymentMethods,
     paymentUsage,
+    refundTickets,
+    tickets,
   ]);
 
   const rawDetailRows: DetailRow[] = useMemo(() => {
+    if (activeReport === "TICKET_CANCELLATIONS") {
+      return refundTickets.map((refund) => {
+        const original = tickets.find(
+          (ticket) => ticket.id === refund.relatedTicketId,
+        );
+        return {
+          "Fecha efectiva": getBusinessDate(refund.createdAtIso),
+          "Fecha cancelación": refund.cancelledAtIso
+            ? getBusinessDate(refund.cancelledAtIso)
+            : original?.cancelledAtIso
+              ? getBusinessDate(original.cancelledAtIso)
+              : "—",
+          Refund: refund.id,
+          "Ticket original": refund.relatedTicketId ?? "—",
+          Sucursal: ticketBranch(refund),
+          Cliente: refund.clientName,
+          Vendedor: refund.sellerSummary,
+          "Autorizado por":
+            refund.cancelledByName ?? original?.cancelledByName ?? "Sin usuario",
+          Motivo: refund.refundReason ?? original?.refundReason ?? "Sin motivo",
+          "Venta reversada": roundCurrency(Math.abs(refund.total)),
+          "Monto devuelto": roundCurrency(Math.abs(refund.amountPaid)),
+          "Fecha aplicada":
+            refund.refundEffectiveDateMode === "ORIGINAL_SALE_DATE"
+              ? "Día de venta original"
+              : refund.refundEffectiveDateMode === "CUSTOM_DATE"
+                ? `Fecha personalizada · ${refund.refundEffectiveDate ?? getBusinessDate(refund.createdAtIso)}`
+                : "Día de cancelación",
+        };
+      });
+    }
     if (activeReport === "BANK_RECONCILIATION") {
       return reconciliationPayments
         .map(({ ticket, payment }) => ({
@@ -1404,17 +1532,25 @@ export function ReportsView({
             row: {
               Fecha: getBusinessDate(ticket.createdAtIso),
               Folio: ticket.id,
-              Movimiento: "INGRESO",
+              Movimiento:
+                ticket.ticketType === "REFUND" ? "REFUND" : "INGRESO",
               Tipo:
                 paymentMethods.find((method) => method.id === payment.methodId)
                   ?.label ?? payment.methodId,
               Usuario: ticket.sellerSummary,
               Sucursal: ticketBranch(ticket),
-              Concepto: `Cobro de ticket · ${ticket.clientName}`,
+              Concepto:
+                ticket.ticketType === "REFUND"
+                  ? `Devolución de ticket · ${ticket.relatedTicketId ?? ticket.clientName}`
+                  : `Cobro de ticket · ${ticket.clientName}`,
               Monto: roundCurrency(payment.amount),
               Impacto: roundCurrency(payment.amount),
-              Estado: "VIGENTE",
-              Autorización: "Cobro registrado en ticket",
+              Estado:
+                ticket.ticketType === "REFUND" ? "APLICADO" : "VIGENTE",
+              Autorización:
+                ticket.ticketType === "REFUND"
+                  ? ticket.cancelledByName ?? "Autorización administrativa"
+                  : "Cobro registrado en ticket",
               Comentario: "—",
             } satisfies DetailRow,
           })),
@@ -1586,8 +1722,10 @@ export function ReportsView({
     productSummary,
     products,
     reconciliationPayments,
+    refundTickets,
     receiptSettings.branchName,
     salesTotal,
+    tickets,
     unitsSold,
   ]);
 

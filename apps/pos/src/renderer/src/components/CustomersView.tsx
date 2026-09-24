@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   Building2,
   CakeSlice,
   CalendarDays,
@@ -105,12 +106,14 @@ interface CustomersViewProps {
   onUpdateClient: (client: Client) => void;
   onDeleteClient: (clientId: string) => void;
   onBulkImportClients: (clients: Client[]) => void;
+  onPreviewTicket: (ticket: Ticket, autoPrint?: boolean) => void;
   onRegisterLayawayPayment: (
     layawayId: string,
     payments: PaymentEntry[],
     sellerId: string,
     deliveredCartItemIds: string[],
   ) => void;
+  onExpandLayaway: (layawayId: string) => void;
 }
 
 const normalize = (value: string) =>
@@ -312,7 +315,9 @@ export function CustomersView({
   onUpdateClient,
   onDeleteClient,
   onBulkImportClients,
+  onPreviewTicket,
   onRegisterLayawayPayment,
+  onExpandLayaway,
 }: CustomersViewProps) {
   const [accessMode, setAccessMode] = useState<AccessMode>("search");
   const [nameSearch, setNameSearch] = useState("");
@@ -612,6 +617,11 @@ export function CustomersView({
 
   const printClient = (client: Client) => {
     const purchases = clientTickets(client);
+    const latestPurchase = purchases[0];
+    if (latestPurchase) {
+      onPreviewTicket(latestPurchase, true);
+      return;
+    }
     const customerAppointments = clientAppointments(client);
     const customerVouchers = clientVouchers(client);
     const membershipSummary = clientMembershipSummary(client.id);
@@ -1405,8 +1415,12 @@ export function CustomersView({
                                 type="button"
                                 variant="outline"
                                 size="icon"
-                                aria-label={`Imprimir expediente de ${client.firstName}`}
-                                title="Imprimir"
+                                aria-label={`Imprimir compra más reciente de ${client.firstName}`}
+                                title={
+                                  purchases.length > 0
+                                    ? "Imprimir ticket de compra más reciente"
+                                    : "Imprimir expediente sin compras"
+                                }
                                 onClick={() => printClient(client)}
                               >
                                 <Printer size={15} />
@@ -1532,7 +1546,7 @@ export function CustomersView({
                                           TICKETS Y PAGOS
                                         </span>
                                         <h3>
-                                          <CreditCard size={16} /> Apartados liquidados y Add payment
+                                          <CreditCard size={16} /> Saldos, apartados y pagos
                                         </h3>
                                       </div>
                                       <Badge variant="outline">
@@ -1543,6 +1557,11 @@ export function CustomersView({
                                     </div>
                                     {customerLayaways.map((layaway) => {
                                       const sellerId =
+                                        sellers.find(
+                                          (seller) =>
+                                            seller.id === sessionSellerId &&
+                                            seller.active,
+                                        )?.id ??
                                         layaway.sellerIds.find((id) =>
                                           sellers.some(
                                             (seller) =>
@@ -1597,7 +1616,9 @@ export function CustomersView({
                                               >
                                                 {layaway.status === "PAID"
                                                   ? "LIQUIDADO"
-                                                  : "PENDIENTE"}
+                                                  : layaway.collectionType === "PENDING"
+                                                    ? "PENDIENTE DE COBRO"
+                                                    : "APARTADO ACTIVO"}
                                               </Badge>
                                             </div>
                                             <div className="layaway-products-summary">
@@ -1635,20 +1656,37 @@ export function CustomersView({
                                               ))}
                                             </div>
                                             {layaway.status === "ACTIVE" && (
-                                              <LayawayPaymentDialog
-                                                layaway={layaway}
-                                                paymentMethods={paymentMethods}
-                                                bankCatalog={bankCatalog}
-                                                sellerId={sellerId}
-                                                onRegister={(payments, deliveryIds) =>
-                                                  onRegisterLayawayPayment(
-                                                    layaway.id,
-                                                    payments,
-                                                    sellerId,
-                                                    deliveryIds,
-                                                  )
-                                                }
-                                              />
+                                              <div className="layaway-account-actions">
+                                                {layaway.collectionType !== "PENDING" && (
+                                                  <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                      onExpandLayaway(layaway.id)
+                                                    }
+                                                  >
+                                                    <ArrowLeftRight size={16} />
+                                                    Agrandar venta
+                                                  </Button>
+                                                )}
+                                                <LayawayPaymentDialog
+                                                  layaway={layaway}
+                                                  paymentMethods={paymentMethods}
+                                                  bankCatalog={bankCatalog}
+                                                  clients={clients}
+                                                  sellers={sellers}
+                                                  companyName={receiptSettings.companyName}
+                                                  sellerId={sellerId}
+                                                  onRegister={(payments, deliveryIds) =>
+                                                    onRegisterLayawayPayment(
+                                                      layaway.id,
+                                                      payments,
+                                                      sellerId,
+                                                      deliveryIds,
+                                                    )
+                                                  }
+                                                />
+                                              </div>
                                             )}
                                           </CardContent>
                                         </Card>
@@ -1669,9 +1707,39 @@ export function CustomersView({
                                       >
                                         <div>
                                           <strong>{ticket.id}</strong>
-                                          <Badge variant="outline">
-                                            {ticket.paymentStatus}
-                                          </Badge>
+                                          <span className="customer-history-ticket-actions">
+                                            <Badge variant="outline">
+                                              {ticket.expansionStatus === "EXPANDED"
+                                                ? "VENTA AMPLIADA"
+                                                : ticket.ticketType === "EXPANSION"
+                                                  ? "INCREMENTO"
+                                                  : ticket.paymentStatus}
+                                            </Badge>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="icon"
+                                              title="Visualizar ticket original"
+                                              aria-label={`Visualizar ticket ${ticket.id}`}
+                                              onClick={() =>
+                                                onPreviewTicket(ticket)
+                                              }
+                                            >
+                                              <Eye size={14} />
+                                            </Button>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="icon"
+                                              title="Imprimir ticket original"
+                                              aria-label={`Imprimir ticket ${ticket.id}`}
+                                              onClick={() =>
+                                                onPreviewTicket(ticket, true)
+                                              }
+                                            >
+                                              <Printer size={14} />
+                                            </Button>
+                                          </span>
                                         </div>
                                         <p>
                                           {ticket.products

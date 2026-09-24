@@ -1230,3 +1230,296 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 - [ ] En una ventana angosta cada campo ocupa una fila completa.
 - [ ] Un nombre largo de membresía se trunca dentro de su selector y no empuja el campo `Día`.
 - [ ] El calendario, los selectores y sus iconos permanecen visibles y utilizables sin desplazamiento horizontal.
+
+## 47. Cancelación de tickets, refunds e impacto histórico
+
+- Cancelar un ticket es una acción administrativa protegida. Sólo puede ejecutarla un usuario master o un usuario cuyo rol activo tenga asignado expresamente el permiso `TICKET_CANCELLATION`; poder consultar Receipts o editar otros datos no concede este permiso.
+- La interfaz oculta la acción cuando falta el permiso y el backend vuelve a validarlo dentro de la misma transacción de cancelación. Si el permiso fue retirado con el diálogo abierto, la operación se rechaza sin cambios parciales.
+- El ticket original nunca se elimina ni cambia su folio o fecha. Pasa a estado cancelado/refunded y conserva cliente, sucursal, vendedores, productos, cobros, división, motivo, usuario que autorizó, fecha real de cancelación y todas las instantáneas históricas.
+- La cancelación crea un movimiento financiero independiente con folio `RF-*`, referencia al ticket original e importes negativos. La venta del vendedor, la venta de la sucursal, el cobro y el total general se reducen mediante ese movimiento compensatorio, no reescribiendo los importes originales.
+- Antes de confirmar se elige la fecha contable del refund: `Día de la cancelación` o `Día de la venta original`. La fecha real de la acción siempre permanece en la auditoría aunque su fecha de afectación contable sea la venta original.
+- El refund conserva el desglose negativo por vendedor y por método de pago. Si el ticket tenía división entre varios vendedores o empresa, cada participación se revierte por el mismo importe histórico; no se recalcula con reglas actuales.
+- El portal de cada vendedor muestra el ticket cancelado y su refund relacionado. El movimiento negativo descuenta su venta del periodo correspondiente, pero no cuenta como un ticket nuevo ni elimina el historial de participación.
+- Si hubo pagos parciales, el refund monetario no puede exceder el monto efectivamente cobrado. Cancelar una venta revierte el total comercial; el flujo conserva por separado el importe realmente devuelto al cliente.
+- Antes de confirmar se debe decidir por cada producto físico si regresa a stock, queda como regalo, queda como cortesía o se da de baja. Los servicios y membresías no generan entrada física de inventario.
+- Un producto marcado `Regresar a stock` genera una entrada `RETURN` en la sucursal del movimiento original, con existencia anterior, nueva existencia, ticket, usuario y fecha.
+- Un producto que no regresa no aumenta existencias. Su disposición `GIFT`, `COURTESY` o `WRITE_OFF` queda ligada al renglón original y aparece como baja en los reportes de inventario sin descontar por segunda vez el stock.
+- Las deudas de producto aún no entregadas se cancelan. Si ya habían comprometido inventario, el compromiso se revierte de forma auditable; una entrega histórica no se borra.
+- Las membresías originadas por el ticket pasan a `CANCELLED`, conservan su tarjetón e incorporan un cambio de estado con ticket, fecha y motivo. Ya no pueden consumir sesiones ni reservar como membresía.
+- Las citas relacionadas se cancelan y liberan su capacidad conforme a la integración de Agenda. La cancelación no se marca como asistencia ni consume sesiones.
+- Receipts, dashboard general, dashboard diario, Close day, reportes, conciliación bancaria y portal del vendedor usan el mismo libro financiero: ticket original positivo más refund negativo. No deben excluir el original y además restar el refund, porque eso duplicaría el impacto.
+- El historial muestra tanto el ticket cancelado como el folio del refund. Ambos pueden consultarse e imprimirse conforme a permisos, pero un refund no puede cancelarse otra vez ni generar vouchers, membresías, cortesías o inventario nuevo.
+- La operación completa —ticket, refund, vendedor, pagos, inventario, membresías, citas, apartados y deudas— debe confirmarse o revertirse como una sola transacción de backend y emitir una auditoría inmutable.
+
+### 47.1 Criterios de aceptación
+
+- [ ] Un usuario sin `TICKET_CANCELLATION` no ve la acción y la API rechaza un intento forzado.
+- [ ] Master y un rol administrativo expresamente autorizado pueden abrir y completar la cancelación.
+- [ ] Se exige un motivo y, cuando hubo cobro, un importe de refund mayor que cero y no superior a lo cobrado.
+- [ ] El usuario elige si el refund afecta el día de cancelación o el día de la venta original.
+- [ ] El ticket original permanece visible como cancelado y el refund aparece con folio independiente e importe negativo.
+- [ ] El total de sucursal y la venta de cada vendedor disminuyen exactamente una vez en el periodo elegido.
+- [ ] El refund no incrementa el número de tickets vendidos ni los rankings de ventas.
+- [ ] Cada producto físico permite elegir retorno, regalo, cortesía o baja.
+- [ ] Sólo los productos devueltos aumentan stock; regalos, cortesías y bajas aparecen en el reporte sin un segundo descuento físico.
+- [ ] Membresías, citas, apartados y deudas relacionados quedan conciliados sin borrar sus historiales.
+- [ ] Un refund no puede cancelarse, editarse como venta ni generar beneficios nuevos.
+- [ ] Un fallo en cualquier paso revierte toda la operación y no deja movimientos huérfanos.
+## 48. Impacto automático y trazabilidad de cancelaciones
+
+- Cada refund debe afectar automáticamente el corte de la sucursal en la fecha efectiva elegida para la cancelación.
+- El corte sólo debe calcular tickets, cobros, refunds y gastos de la fecha y sucursal seleccionadas; nunca debe mezclar el historial de otras fechas o tiendas.
+- El ticket de cierre debe mostrar por separado los tickets vigentes, la cantidad de cancelaciones, el monto devuelto y el detalle de los refunds.
+- Reportes debe incluir el submódulo **Cancelaciones y refunds**, con filtros existentes de periodo, sucursal, vendedor y método de pago.
+- Este reporte debe mostrar indicadores de tickets cancelados, venta reversada, efectivo devuelto, vendedores y sucursales afectadas.
+- Las gráficas deben considerar el impacto negativo del refund en ventas, cobros y desempeño del vendedor; el historial de cancelaciones debe agruparse también por el usuario que autorizó.
+- El perfil de cada usuario debe mostrar únicamente las cancelaciones que ese usuario autorizó, incluyendo fecha, ticket, cliente, sucursal, monto y motivo.
+- El usuario Master conserva acceso a sus propias cancelaciones desde su perfil y a la vista global mediante Reports.
+- El registro histórico del ticket original y su movimiento refund deben conservarse vinculados e inmutables para auditoría.
+
+## 49. Cambio de membresía y transferencia de sesiones
+
+- Una membresía activa o agotada puede cambiarse por otro producto de membresía cuando la clienta no se adapte al plan o solicite uno superior.
+- El cambio conserva el mismo tarjetón, cliente, folio, ticket original, asistencias, firmas e incidencias de Agenda; no crea asistencias duplicadas.
+- Todas las sesiones ya tomadas se transfieren al nuevo plan. El saldo disponible se calcula como `sesiones del nuevo plan - sesiones ya tomadas`.
+- No se permite cambiar a un plan cuyo total de sesiones sea menor que las sesiones ya utilizadas.
+- Una membresía agotada vuelve a estado `ACTIVE` cuando el nuevo plan tenga sesiones adicionales; si las sesiones transferidas consumen exactamente el nuevo total, permanece `EXHAUSTED`.
+- Cada cambio registra fecha, usuario, motivo, producto anterior, producto nuevo, sesiones anteriores, sesiones nuevas, sesiones transferidas, saldo resultante, precio anterior, precio nuevo y diferencia económica.
+- Una diferencia positiva se identifica como importe pendiente de conciliar con el ticket correspondiente; una diferencia negativa se muestra como saldo a favor sujeto a autorización administrativa. El cambio no debe borrar ni reescribir el cobro original.
+- El historial visible del tarjetón y la descarga de trazabilidad deben explicar qué membresía tenía, a cuál cambió, quién lo autorizó y cuántas sesiones se conservaron.
+- La vinculación con Agenda conserva el identificador del tarjetón y queda pendiente de sincronización hasta que el sistema externo confirme el nuevo plan y saldo.
+- El backend debe ejecutar la modificación del plan y su evento de auditoría en una sola transacción e impedir cambios sobre membresías canceladas.
+
+## 50. Refund de tickets con membresías utilizadas
+
+- Si el ticket cancelado contiene una membresía con una o más asistencias, el refund debe mostrar el folio del tarjetón, nombre del plan, sesiones contratadas, sesiones tomadas y sesiones que quedaron sin utilizar.
+- Antes de confirmar la cancelación se debe elegir el destino de las sesiones tomadas: `PENDING_REASSIGNMENT` para conservarlas hasta una compra futura o `LOST_CLIENT` para registrarlas definitivamente como pérdida por cliente perdido.
+- El ticket original cancelado y el movimiento `RF-*` deben guardar la misma instantánea de sesiones y su destino para que la auditoría financiera y operativa coincidan.
+- Una membresía con sesiones pendientes de reasignación permanece cancelada y no permite nuevas reservas; únicamente habilita la acción protegida **Reasignar sesiones tomadas**.
+- La reasignación sólo puede hacerse hacia otra membresía vigente de la misma clienta, comprada en un tarjetón distinto y con capacidad suficiente para recibir todas las sesiones tomadas.
+- Al reasignar, las asistencias se copian al nuevo tarjetón conservando fecha, sucursal, vendedor, firma, cita y folio de procedencia. No se crean asistencias nuevas ni se vuelve a afectar Agenda.
+- El saldo del nuevo tarjetón se recalcula sumando las sesiones tomadas transferidas a sus sesiones ya utilizadas. Si se alcanza el total contratado, queda agotado.
+- El tarjetón cancelado cambia de `PENDING_REASSIGNMENT` a `REASSIGNED` y conserva el folio de destino y la fecha del movimiento. El refund debe reflejar esa actualización.
+- Si se elige `LOST_CLIENT`, las sesiones quedan identificadas como pérdida histórica y no pueden reasignarse sin un proceso administrativo extraordinario posterior.
+- El historial visible y las exportaciones deben incluir el origen, destino, cantidad de sesiones, fecha y usuario que autorizó la reasignación.
+- Tanto la cancelación como la reasignación deben validarse nuevamente en backend según permisos y ejecutarse como transacciones atómicas e idempotentes.
+
+## 51. Cambio de producto dentro de un ticket
+
+- Un ticket vigente puede sustituir un producto físico por otro mediante la acción protegida de edición. El producto original, el reemplazo, sus cantidades, la sucursal y el folio del ticket deben quedar vinculados en un evento inmutable.
+- Al elegir un producto distinto, el sistema debe preguntar obligatoriamente el destino del artículo retirado: `RETURN_TO_STOCK`, `DEMO` o `WRITE_OFF`, además de exigir un motivo.
+- `RETURN_TO_STOCK` genera una entrada al inventario vendible de la misma sucursal. `DEMO` genera primero la recepción por cambio y después una salida a demo/tester. `WRITE_OFF` genera la recepción y después una salida por baja. Demo y baja no deben dejar el artículo disponible para venta.
+- El producto de reemplazo debe estar activo, ser físico y tener existencia suficiente en la sucursal del ticket. La operación se rechaza completa si la disponibilidad cambió antes de confirmar.
+- La salida del reemplazo se registra como movimiento de venta ligado al ticket editado. Nunca se elimina ni reescribe el movimiento de venta original; los movimientos compensatorios explican el cambio y evitan perder el historial.
+- Cada movimiento conserva existencia anterior y nueva, cantidad, costo unitario y total en MXN y USD, usuario, fecha, sucursal, motivo y folio del ticket.
+- El historial del ticket muestra producto original, producto nuevo, cantidades, destino, motivo, usuario, fecha, costo de entrada, costo de salida del reemplazo y, cuando aplique, costo de la salida a demo o baja.
+- El ticket conserva únicamente el producto vigente para cobro, división de venta, corte y reportes comerciales. El historial de cambios permanece visible sin sumar el producto original como una segunda venta.
+- Si cambia el precio total, deben reconciliarse cobro, saldo, división de vendedores, impuestos, apartados y dashboards con las reglas normales de edición; el inventario y su auditoría forman parte de la misma transacción.
+- Las reducciones de cantidad regresan únicamente la diferencia a inventario; los aumentos descuentan sólo la diferencia. Un cambio de cliente, vendedor, pago o precio sin variación física no crea movimientos de inventario ficticios.
+- El backend debe validar permisos, estado vigente del ticket, correspondencia con la línea original, existencia y destino dentro de una única transacción idempotente. Un error debe revertir ticket, stock, costos e historial.
+
+### 51.1 Criterios de aceptación
+
+- [ ] Cambiar un producto físico obliga a elegir reemplazo, destino del retirado y motivo.
+- [ ] Un reemplazo sin stock suficiente no puede confirmarse.
+- [ ] Regresar a stock incrementa el original y descontar el reemplazo reduce su existencia exactamente una vez.
+- [ ] Demo y baja no incrementan el stock vendible final del producto original.
+- [ ] Los movimientos muestran costos de entrada y salida en MXN y USD.
+- [ ] El detalle del ticket conserva y muestra todos los cambios con usuario, fecha y motivo.
+- [ ] Los movimientos originales no se eliminan al editar el ticket.
+- [ ] Una edición sin cambio físico no altera inventario ni crea movimientos nuevos.
+- [ ] La operación completa se confirma o revierte de forma atómica.
+
+## 52. Autorización de cambios sensibles
+
+- Cambiar el producto de una membresía exige un código master válido en cada operación, incluso si el usuario tiene permiso de edición del módulo o inició sesión como vendedor autorizado. El código sólo autoriza ese cambio y nunca se guarda en texto plano ni dentro del historial.
+- Cancelar un ticket siempre solicita un código al presionar eliminar y al confirmar. Se acepta un código master válido o el código personal del usuario de sesión cuando su rol activo tiene `TICKET_CANCELLATION` asignado.
+- Editar un ticket puede autorizarse mediante el permiso de edición asignado al módulo activo o mediante código master válido capturado al confirmar.
+- La posibilidad de abrir un diálogo no representa autorización. El backend debe volver a validar el código o permiso dentro de la misma transacción que modifica membresía, ticket, refund, inventario, pagos y reportes.
+- Si el permiso es retirado mientras el diálogo está abierto y no se proporciona código master válido, la operación se rechaza sin cambios parciales.
+- Los campos de código usan captura oculta, no autocompletan, se limpian al cerrar el diálogo y no se incluyen en descargas, logs, tickets ni eventos de auditoría.
+- El historial registra el usuario de sesión que ejecutó la acción y que fue autorizada con nivel master, pero nunca conserva el código utilizado.
+
+### 52.1 Criterios de aceptación
+
+- [ ] Ningún cambio de membresía se confirma sin un código master válido.
+- [ ] Todo intento de cancelación muestra y exige el campo de código de autorización.
+- [ ] Un usuario con `TICKET_CANCELLATION` puede autorizar con su código personal o con código master.
+- [ ] Un usuario sin `TICKET_CANCELLATION` puede cancelar únicamente con código master válido.
+- [ ] Un usuario con edición asignada al módulo puede editar tickets sin código adicional.
+- [ ] Un usuario sin edición asignada puede editar un ticket únicamente con código master válido.
+- [ ] Un código incorrecto no altera ticket, membresía, inventario, cobros ni historial.
+- [ ] Cerrar y volver a abrir cualquier diálogo sensible presenta el campo de código vacío.
+
+## 53. Sucursal, refunds y corte financiero
+
+- Cada ticket y cada movimiento `REFUND` debe conservar obligatoriamente el identificador y nombre histórico de la sucursal donde se originó la operación.
+- El historial de ventas debe mostrar una columna **Sucursal** por registro, tanto para tickets vigentes o cancelados como para refunds, sin depender de la sucursal que esté seleccionada al consultar.
+- Los dashboards generales y diarios deben calcular la venta neta con un libro financiero firmado: venta original positiva más refund negativo en su fecha efectiva. Nunca se elimina la venta original del cálculo y además se descuenta el refund, porque eso duplicaría el impacto.
+- El dashboard debe mostrar por separado la cantidad y el importe de refunds del alcance seleccionado. Un refund disminuye venta, cobro, productos netos y venta atribuida al vendedor, pero no cuenta como un ticket vendido adicional.
+- Los reportes comerciales, de caja, conciliación bancaria y cancelaciones deben incluir los refunds como movimientos negativos, con ticket original, sucursal, cliente, vendedor, método de pago, usuario autorizador, motivo y fecha efectiva.
+- El corte diario debe incorporar automáticamente todos los refunds cuya fecha efectiva corresponda al día y sucursal del corte.
+- El corte debe separar **venta bruta**, **venta reversada por refunds**, **venta neta**, **cobrado**, **refund de efectivo**, gastos y flujo final; también debe listar cada folio `RF-*` vinculado con su ticket original.
+- Si la venta y el refund ocurren el mismo día, el resultado neto de ambos se compensa. Si el refund se aplica en una fecha posterior, sólo el movimiento negativo afecta el corte de esa fecha y el ticket original conserva su impacto histórico.
+- Los filtros de sucursal y la opción de todas las sucursales deben aplicar el mismo criterio a tablas, tarjetas, gráficas y exportaciones.
+
+### 53.1 Criterios de aceptación
+
+- [ ] Todo renglón del historial identifica su sucursal.
+- [ ] Un refund aparece en dashboard y reportes con importe negativo y no incrementa el conteo de ventas.
+- [ ] Venta y refund del mismo día se compensan exactamente una vez.
+- [ ] Un refund de fecha posterior afecta únicamente el corte de su fecha efectiva.
+- [ ] El corte muestra cantidad, importe y detalle de refunds antes de autorizar el cierre.
+- [ ] Los totales por vendedor, método de pago y sucursal coinciden con el libro financiero firmado.
+
+## 54. Refund configurable, reimpresión y abonos posteriores
+
+- Al cancelar un ticket, la fecha efectiva del refund puede ser el día de cancelación, el día de la venta original o una fecha personalizada elegida mediante calendario.
+- La fecha personalizada determina el día que recibe el importe negativo en dashboard, reportes, conciliación y corte. La fecha real de autorización de la cancelación se conserva por separado para auditoría.
+- El corte del día debe imprimir cada refund sólo como información detallada: folio `RF-*`, ticket original, cliente, fecha efectiva, motivo, importe devuelto, mercancía regresada a stock y mercancía clasificada como regalo, cortesía o baja.
+- Los totales del corte ya deben incluir el impacto firmado del refund. La sección informativa nunca vuelve a restarlo.
+- La mercancía marcada **Regresar a stock** genera una entrada y aumenta existencia. Regalo, cortesía o baja conserva la salida original, no vuelve a descontar existencia y queda reclasificada en la fecha efectiva seleccionada.
+- Editar o agregar una línea por debajo del precio mínimo requiere código master o un rol con permiso de edición del módulo. La desviación autorizada permanece visible en ticket y reportes.
+- El icono de impresión asociado a un ticket debe recuperar el comprobante original de compra, incluso cuando se acceda desde un folio de abono.
+- La reimpresión debe incluir sucursal, fecha original, cliente, vendedores, productos, cantidades, precios, descuentos, impuestos configurados, formas de pago, historial de abonos y saldo pendiente.
+- Cuando el ticket corresponde a un apartado activo, su vista previa debe mostrar **Agregar pago**. El abono puede dividirse en varios métodos sin superar el saldo pendiente.
+- Cada complemento de pago genera un folio independiente y actualiza el importe pagado, saldo, estatus del apartado, historial del cliente, Receipts, reportes y corte del día.
+- Los selectores de método, tarjeta, banco, autorización y MSI deben reorganizarse de forma responsiva, sin texto vertical, campos recortados ni desbordamiento horizontal.
+
+### 54.1 Criterios de aceptación
+
+- [ ] Una fecha personalizada válida mueve el impacto financiero y de inventario al día elegido.
+- [ ] El ticket de cierre informa el refund sin descontarlo una segunda vez.
+- [ ] Regresar mercancía suma stock; regalo, cortesía o baja no provoca una segunda salida.
+- [ ] Un precio bajo mínimo se rechaza cuando no existe código master ni permiso asignado.
+- [ ] Imprimir desde cliente o ticket reproduce el comprobante original y todos sus pagos.
+- [ ] Un apartado activo permite registrar varios complementos de pago desde su vista previa.
+- [ ] El formulario de pagos es legible y no se desborda en escritorio, tableta o ventana reducida.
+
+## 55. Fecha efectiva de abonos e inventario negativo comprometido
+
+- Todo abono de un ticket con apartado genera un folio independiente con prefijo `APT-AAAAMMDD-` y, por defecto, queda registrado en la fecha real en que se recibe el pago.
+- La fecha efectiva del folio determina el día, sucursal y periodo en que el abono aparece en Receipts, dashboard, conciliación, reportes y corte. El folio original de la venta permanece sin cambios.
+- Al registrar el pago, la fecha efectiva queda bloqueada al día real del cobro para todos los usuarios, incluido Master. En ese flujo no se permite anticiparla ni enviarla a un día anterior.
+- La fecha sólo puede cambiarse posteriormente mediante **Editar ticket** sobre el folio de pago. Esta acción requiere usuario Master o permiso de edición asignado para el módulo de tickets; el backend debe volver a validar esa autorización al confirmar.
+- Cuando se mueve la fecha, se conservan por separado la fecha efectiva, la fecha y hora reales de captura, el usuario que realizó el movimiento y el usuario autorizado. Ninguno de estos datos puede sobrescribirse después.
+- Un usuario sin permiso siempre registra el abono con la fecha real de negocio, aunque intente enviar manualmente otra fecha.
+- Si una venta entrega o compromete un producto sin existencia suficiente, la sucursal permite saldo negativo: la existencia se calcula como `existencia anterior - cantidad vendida` y se crea la entrega pendiente vinculada al ticket, cliente, producto y sucursal.
+- Toda entrada o traspaso recibido suma sobre la existencia actual, incluso si es negativa. Ejemplo obligatorio: existencia `-3` más entrada o traspaso de `3` produce existencia `0`, nunca `3`.
+- Si la entrada es menor al faltante, el inventario permanece negativo por la diferencia. Si es mayor, primero cubre el negativo y sólo el excedente queda disponible para nuevas ventas.
+- El traspaso descuenta la cantidad de la sucursal origen y la suma una sola vez en la sucursal destino. El match de faltantes sólo se realiza contra producto y sucursal destino coincidentes.
+- Cubrir el saldo negativo significa que la mercancía entrante ya estaba comprometida. No debe duplicarse el stock al entregar posteriormente al cliente; la entrega pendiente cambia de estado y conserva su movimiento, pero no vuelve a restar las unidades previamente comprometidas.
+- Las recepciones desde bodega, entradas manuales y traspasos deben actualizar el mismo saldo de sucursal y la existencia visible del catálogo. El backend debe usar bloqueo o control de versión para evitar dobles aplicaciones concurrentes.
+- Cada movimiento conserva existencia anterior, cantidad, existencia nueva, origen, destino, ticket o entrega pendiente relacionada, costo, usuario y fecha. Una reversa restaura tanto el saldo como la entrega pendiente de forma atómica.
+
+### 55.1 Criterios de aceptación
+
+- [ ] Todo abono nuevo aparece inicialmente en el corte de la fecha real del cobro, sin calendario modificable durante el registro.
+- [ ] Sólo Master o un rol con permiso de edición de tickets puede mover posteriormente la fecha desde **Editar ticket**, y el impacto aparece únicamente en el día elegido.
+- [ ] La fecha real de captura continúa disponible para auditoría después de mover la fecha efectiva.
+- [ ] Una venta de 3 piezas con existencia 0 deja inventario `-3` y una entrega pendiente de 3.
+- [ ] Una entrada de 3 piezas sobre inventario `-3` deja el saldo exactamente en `0`.
+- [ ] Un traspaso de 3 piezas hacia una sucursal con inventario `-3` deja el destino en `0` y descuenta 3 del origen.
+- [ ] La entrega al cliente de mercancía ya comprometida no vuelve a descontar inventario.
+- [ ] Entradas parciales, excedentes, reversas y concurrencia mantienen consistencia entre stock, movimientos y entregas pendientes.
+
+## 56. Vouchers únicamente en emisión inicial y acciones de reimpresión
+
+- La selección y generación de voucher sólo se muestra inmediatamente después de finalizar un ticket nuevo.
+- Abrir un ticket desde búsqueda, Receipts, historial del cliente, membresías, portal del vendedor o cualquier consulta histórica siempre se considera reimpresión y nunca permite elegir, generar ni volver a imprimir un voucher nuevo.
+- Cambiar del ticket recién creado a cualquier otro ticket elimina de memoria la selección de voucher pendiente. Volver al ticket mediante historial no reactiva esa opción.
+- El backend debe aceptar la emisión únicamente dentro del contexto autorizado de finalización del ticket y rechazar solicitudes originadas desde una consulta o reimpresión. La validación del frontend no sustituye esta regla.
+- Para usuarios no Master o sin permisos de edición/cancelación, el historial muestra acciones de consulta y reimpresión, pero no muestra editar ni eliminar.
+- La reimpresión del ticket está disponible para todo usuario autenticado que tenga acceso de consulta al módulo donde se presenta el comprobante.
+- Al revisar un apartado activo debe mostrarse **Agregar pago**, además de **Reimprimir ticket**. Si el apartado está liquidado, **Agregar pago** desaparece.
+- **Agregar pago** conserva todas las reglas de autorización, fecha efectiva, métodos de pago, saldo e inventario ya definidas; consultar el ticket no amplía permisos.
+- El botón de cerrar el visor es navegación y no se considera una acción administrativa.
+
+### 56.1 Criterios de aceptación
+
+- [ ] Un ticket recién finalizado muestra el selector de voucher.
+- [ ] El mismo ticket abierto posteriormente desde Receipts no muestra el selector de voucher.
+- [ ] Una reimpresión nunca crea un segundo voucher.
+- [ ] Un usuario sin edición ni cancelación no ve esas acciones.
+- [ ] Ese usuario sí puede consultar y reimprimir el comprobante.
+- [ ] Un apartado activo revisado desde historial muestra **Agregar pago** y **Reimprimir ticket**.
+- [ ] Un ticket pagado muestra **Reimprimir ticket**, pero no **Agregar pago** ni voucher.
+
+## 57. Apartados ampliables y reservas de membresía sincronizadas
+
+### 57.1 Pagos posteriores y propiedad comercial
+
+- Al visualizar un apartado activo deben aparecer **Agregar pago**, **Reimprimir ticket** y la pregunta **¿Deseas agrandar la venta?**.
+- **Agregar pago** y **Agrandar venta** deben mostrarse en cualquier búsqueda autorizada del cliente o del ticket —Receipts, Customers, Mis ventas y vista del ticket— tanto para usuario Master como para usuario operativo. Liquidar un apartado no requiere permiso administrativo adicional.
+- **Agregar pago** admite los mismos métodos configurados en checkout: efectivo, transferencia, débito, crédito, banco, red Visa/Mastercard, cuatro dígitos de autorización y meses sin intereses cuando corresponda.
+- Antes de registrar el abono se confirma si la venta pertenece al vendedor vigente registrado para la clienta.
+- Si la clienta no tiene vendedor activo, su vendedor fue dado de baja o su procedencia bloquea la propiedad empresarial, se muestra el aviso **Esta clienta es cartera de la empresa** y el movimiento se atribuye a la empresa.
+- El abono conserva por separado el propietario comercial y el usuario que capturó el pago. Cambiar quién captura no reasigna la clienta ni modifica el ticket original.
+
+### 57.2 Agrandar una venta apartada
+
+- Sólo un apartado activo puede ampliarse. **Agrandar venta obliga a liquidar el saldo completo del ticket original** en la misma operación; no puede volver a quedar como apartado.
+- La clienta queda bloqueada a la misma ficha del apartado original. No se permite sustituirla ni registrar otra durante el flujo.
+- Si un ticket histórico o de venta mostrador no tiene una ficha de cliente vinculada, el POS debe recuperarla automáticamente con el nombre, teléfono, sucursal y vendedor disponibles antes de abrir Checkout; nunca debe dejar vacío el paso Cliente ni bloquear el avance a Vendedores, Citas o Cobro.
+- La ampliación carga la composición original en el carrito y únicamente dentro de este modo permite agregar, retirar o sustituir productos. **Agregar pago** nunca habilita cambios de productos y sólo disminuye el saldo del apartado.
+- El total final de una ampliación no puede ser menor al total original. Una reducción monetaria exige edición, cancelación o refund autorizado.
+- El checkout cobra `saldo pendiente original + incremento`. El importe que liquida el saldo genera su folio de abono, mientras el incremento genera un movimiento `EXPANSION` ligado por `expandedFromTicketId`.
+- El ticket original conserva su monto y división de vendedores históricos, queda pagado y muestra el estado **VENTA AMPLIADA** junto con el folio que lo amplió.
+- Sólo el incremento se asigna al vendedor, gerente o participantes capturados durante la ampliación. Si intervienen varias personas, la diferencia se reparte con la división en pesos o porcentaje acordada en el nuevo checkout.
+- El inventario se afecta por diferencia neta: producto agregado genera salida; producto retirado o sustituido genera retorno; los costos de entrada/salida y el vínculo con ambos folios quedan en movimientos.
+- La liquidación, diferencia, división, productos sustituidos, formas de pago, próxima cita y autor deben alimentar historial del cliente, perfil del vendedor, Receipts, corte diario, dashboards, reportes, gráficas, inventario y Agenda.
+- Los cambios de membresía no se procesan desde Agrandar venta; continúan usando el flujo exclusivo de Membresías con autorización Master.
+
+### 57.3 Cliente con membresía que compra otros productos
+
+- Cuando una clienta existente tiene una o más membresías con sesiones disponibles, el paso Citas muestra la acción **La clienta cuenta con membresía**.
+- Al activarla se selecciona el tarjetón que respaldará la próxima cita; deben mostrarse folio, nombre del plan y sesiones disponibles.
+- La reserva permite elegir cualquier sucursal autorizada y únicamente espacios disponibles o liberados por cancelación.
+- Comprar un producto físico no consume la membresía. La sesión sólo se descuenta cuando Agenda confirma asistencia.
+- Una membresía agotada o cancelada no puede seleccionarse para reservar; permanecen disponibles únicamente las cortesías autorizadas.
+
+### 57.4 Autor, origen y tarjetón
+
+- Toda reserva creada desde el POS exige el código personal del vendedor, administrativo o Master que la genera.
+- El código se valida para esa operación y nunca se guarda. La cita conserva identificador, nombre, rol del autorizador y origen `POS_CHECKOUT` o `POS_MEMBERSHIP`.
+- Cada cita futura ligada a membresía ocupa visualmente una casilla aún no utilizada del tarjetón con el texto compacto **Cita reservada · nombre de quien reservó**, sin aumentar el tamaño general de la tarjeta.
+- La casilla reservada no se marca como asistencia ni reduce el saldo. Al confirmar asistencia se transforma en sesión utilizada; al cancelar o registrar no-show queda como incidencia sin consumo.
+- La bitácora de Citas muestra quién reservó y si el origen fue Checkout, Membresías o Agenda externa.
+
+### 57.5 Sincronización bidireccional con Agenda
+
+- Una reserva creada en el POS debe registrarse en la agenda externa con llave idempotente, clienta, membresía, servicio, sucursal, cabina, horario, ticket y autor.
+- Una reserva creada en Agenda externa debe ingresar al POS como `EXTERNAL_AGENDA`, vincularse con la ficha y el tarjetón correctos y ocupar el mismo espacio disponible.
+- Asistencia, cancelación y no-show recibidos desde Agenda actualizan cita, tarjetón, saldo de sesiones, incidencias, disponibilidad, historial, dashboards, reportes y gráficas.
+- Los movimientos originados en POS deben alimentar los mismos reportes que los originados externamente. El origen nunca cambia la forma de contar una cita o sesión.
+- El backend debe conciliar por identificadores externos e idempotencia para impedir reservas, asistencias o descuentos duplicados. Si falta la clienta o membresía vinculada, el evento queda en cola de excepción y no se aplica parcialmente.
+
+### 57.6 Criterios de aceptación
+
+- [ ] Agregar pago muestra métodos completos y exige confirmar vendedor o cartera de empresa.
+- [ ] Agrandar venta carga la composición original, permite cambios, liquida el saldo y crea un movimiento de incremento sin duplicar la venta original.
+- [ ] Agregar pago sólo reduce el saldo y nunca modifica productos o inventario.
+- [ ] El ticket original muestra VENTA AMPLIADA; el incremento pertenece únicamente a los nuevos participantes conforme a su división.
+- [ ] La ampliación conserva la clienta y vuelve a solicitar vendedores, pagos y cita.
+- [ ] Una compra de producto permite reservar usando cualquiera de las membresías vigentes de la clienta.
+- [ ] Reservar desde POS exige código personal válido y registra quién reservó.
+- [ ] El tarjetón muestra la cita reservada dentro de una casilla sin consumir sesión.
+- [ ] Una reserva externa aparece en tarjetón, Citas, historial y reportes del POS.
+- [ ] Confirmar asistencia desde cualquiera de los dos sistemas descuenta una sola sesión.
+- [ ] Cancelación y no-show no descuentan sesión y liberan o actualizan el espacio correspondiente.
+
+## 58. Saldos pendientes, apartados y desviación contra precio mínimo
+
+- Todo ticket con saldo pendiente, ya sea un apartado formal o un cobro pendiente, debe permitir registrar uno o varios pagos hasta liquidar el saldo.
+- Un ticket generado por vender debajo del precio mínimo conserva el estado `PENDIENTE DE COBRO`; no se reclasifica como apartado y no habilita la acción **Agrandar venta**.
+- **Agregar pago** sólo disminuye el saldo del ticket original y conserva el historial de métodos, folios, fechas, vendedor y monto restante.
+- En la tabla de tickets se muestra la diferencia contra el precio mínimo: **Bajo mínimo** cuando es negativa y **SPARE positivo** cuando el precio vendido queda por encima del mínimo.
+- La columna de mínimo/SPARE es información administrativa. Sólo puede verla un usuario Master, un usuario que autorice el historial con código Master o un perfil con permiso de costos/reportes.
+
+### 58.1 Criterios de aceptación
+
+- [ ] Todo ticket `LAYAWAY` o `PENDING` con saldo mayor a cero ofrece **Agregar pago** y permite liquidarlo con uno o varios métodos.
+- [ ] El pago parcial mantiene el tipo de cobro original y el pago final cambia el ticket a liquidado.
+- [ ] Un `PENDING` por venta bajo mínimo nunca aparece como apartado ni permite **Agrandar venta**.
+- [ ] Operadores sin permiso administrativo no reciben ni pueden inspeccionar la columna de mínimo/SPARE.
+- [ ] Master y perfiles autorizados distinguen monto bajo mínimo, SPARE positivo y venta exactamente al mínimo.

@@ -120,6 +120,34 @@ export interface MembershipAttendance {
   signatureStatus: "NOT_REQUIRED" | "PENDING" | "SIGNED";
   externalAppointmentId?: string;
   agendaSyncStatus?: "SYNCED" | "PENDING_SYNC" | "ERROR";
+  reassignedFromMembershipId?: string;
+  reassignedFromMembershipFolio?: string;
+}
+
+export interface AppointmentReservationActor {
+  id: string;
+  name: string;
+  role: "MASTER" | "SELLER" | "ADMINISTRATIVE" | "EXTERNAL_AGENDA";
+}
+
+export type MembershipRefundDisposition =
+  | "PENDING_REASSIGNMENT"
+  | "REASSIGNED"
+  | "LOST_CLIENT";
+
+export interface TicketMembershipRefundSession {
+  membershipId: string;
+  membershipFolio: string;
+  clientId: string;
+  clientName: string;
+  membershipName: string;
+  totalSessions: number;
+  usedSessions: number;
+  remainingSessions: number;
+  disposition: MembershipRefundDisposition;
+  reassignedToMembershipId?: string;
+  reassignedToMembershipFolio?: string;
+  reassignedAtIso?: string;
 }
 
 export interface MembershipSellerChange {
@@ -138,6 +166,42 @@ export interface MembershipStatusChange {
   fromStatus: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
   toStatus: "ACTIVE" | "EXHAUSTED" | "CANCELLED";
   reason: string;
+}
+
+export interface MembershipPlanChange {
+  id: string;
+  changedAtIso: string;
+  fromProductId: string;
+  fromMembershipName: string;
+  fromTotalSessions: number;
+  fromListPrice: number;
+  toProductId: string;
+  toMembershipName: string;
+  toTotalSessions: number;
+  toListPrice: number;
+  priceDifference: number;
+  transferredUsedSessions: number;
+  remainingSessionsAfterChange: number;
+  reason: string;
+  changedById: string;
+  changedByName: string;
+}
+
+export interface MembershipPlanChangeRequest {
+  targetProductId: string;
+  reason: string;
+  authorizationCode: string;
+}
+
+export interface MembershipSessionTransfer {
+  id: string;
+  transferredAtIso: string;
+  sourceMembershipId: string;
+  sourceMembershipFolio: string;
+  sourceMembershipName: string;
+  transferredSessions: number;
+  authorizedById: string;
+  authorizedByName: string;
 }
 
 export interface ClientMembership {
@@ -163,10 +227,17 @@ export interface ClientMembership {
   attendance: MembershipAttendance[];
   sellerChanges: MembershipSellerChange[];
   statusChanges: MembershipStatusChange[];
+  planChanges?: MembershipPlanChange[];
+  sessionTransfers?: MembershipSessionTransfer[];
   agendaClientId?: string;
   externalMembershipId?: string;
   agendaSyncStatus?: "SYNCED" | "PENDING_SYNC" | "ERROR";
   agendaSyncedAtIso?: string;
+  refundTransactionId?: string;
+  refundSessionDisposition?: MembershipRefundDisposition;
+  reassignedToMembershipId?: string;
+  reassignedToMembershipFolio?: string;
+  reassignedAtIso?: string;
 }
 
 export interface CartItem {
@@ -248,6 +319,7 @@ export type EmployeeConfigurationPermission =
   | "COMPETITIONS"
   | "REPORTS_COSTS"
   | "BRANCHES"
+  | "TICKET_CANCELLATION"
   | "SESSION_EXIT"
   | "USERS_ROLES";
 
@@ -419,6 +491,7 @@ export interface Ticket {
   id: string;
   createdAt: string;
   createdAtIso: string;
+  recordedAtIso?: string;
   clientId?: string;
   clientName: string;
   clientPhone: string;
@@ -441,14 +514,30 @@ export interface Ticket {
   sellerSales: TicketSellerSale[];
   deals?: TicketDealSale[];
   status: "COMPLETED" | "REFUNDED";
-  ticketType?: "SALE" | "LAYAWAY_PAYMENT";
+  ticketType?: "SALE" | "LAYAWAY_PAYMENT" | "REFUND" | "EXPANSION";
   relatedTicketId?: string;
+  expandedFromTicketId?: string;
+  expansionStatus?: "EXPANDED";
+  expandedByTicketId?: string;
+  expandedAtIso?: string;
+  expansionIncrement?: number;
   inventoryDeductions?: TicketInventoryLine[];
   cancelledAt?: string;
   cancelledAtIso?: string;
   refundAmount?: number;
+  refundTransactionId?: string;
+  refundEffectiveDateMode?:
+    | "CANCELLATION_DATE"
+    | "ORIGINAL_SALE_DATE"
+    | "CUSTOM_DATE";
+  refundEffectiveDate?: string;
+  refundReason?: string;
+  cancelledById?: string;
+  cancelledByName?: string;
   returnedProducts?: TicketInventoryLine[];
   nonReturnedProducts?: TicketNonReturnLine[];
+  membershipRefundSessions?: TicketMembershipRefundSession[];
+  productChangeHistory?: TicketProductChangeRecord[];
   syncStatus?: "SYNCED" | "PENDING_SYNC";
   createdOffline?: boolean;
   syncedAtIso?: string | null;
@@ -462,13 +551,21 @@ export interface TicketInventoryLine {
 }
 
 export interface TicketNonReturnLine extends TicketInventoryLine {
-  disposition: "GIFT" | "COURTESY";
+  disposition: "GIFT" | "COURTESY" | "WRITE_OFF";
 }
 
 export interface TicketCancellationRequest {
   refundAmount: number;
+  effectiveDateMode:
+    | "CANCELLATION_DATE"
+    | "ORIGINAL_SALE_DATE"
+    | "CUSTOM_DATE";
+  customEffectiveDate: string;
+  reason: string;
+  authorizationCode: string;
   returnedProducts: TicketInventoryLine[];
   nonReturnedProducts: TicketNonReturnLine[];
+  membershipRefundSessions: TicketMembershipRefundSession[];
 }
 
 export interface TicketEditProductInput {
@@ -477,9 +574,46 @@ export interface TicketEditProductInput {
   unitPrice: number;
 }
 
+export type TicketProductChangeDisposition =
+  | "RETURN_TO_STOCK"
+  | "DEMO"
+  | "WRITE_OFF";
+
+export interface TicketProductChangeInput {
+  originalLineIndex: number;
+  originalProductId: string;
+  replacementProductId: string;
+  quantity: number;
+  replacementQuantity: number;
+  disposition: TicketProductChangeDisposition;
+  reason: string;
+}
+
+export interface TicketProductChangeRecord extends TicketProductChangeInput {
+  id: string;
+  changedAt: string;
+  changedAtIso: string;
+  branch: string;
+  originalProductName: string;
+  replacementProductName: string;
+  incomingUnitCostUsd: number;
+  incomingUnitCostMxn: number;
+  incomingTotalCostUsd: number;
+  incomingTotalCostMxn: number;
+  dispositionTotalCostUsd: number;
+  dispositionTotalCostMxn: number;
+  outgoingUnitCostUsd: number;
+  outgoingUnitCostMxn: number;
+  outgoingTotalCostUsd: number;
+  outgoingTotalCostMxn: number;
+  changedById: string;
+  changedByName: string;
+}
+
 export interface TicketEditRequest {
   clientName: string;
   clientPhone: string;
+  paymentEffectiveDate: string;
   sellerIds: string[];
   products: TicketEditProductInput[];
   discountAmount: number;
@@ -488,6 +622,7 @@ export interface TicketEditRequest {
   paymentMethodId: PaymentMethod;
   payments: PaymentEntry[];
   authorizationCode: string;
+  productChanges: TicketProductChangeInput[];
 }
 
 export type VoucherKind =
@@ -765,12 +900,18 @@ export interface LayawayPaymentRecord {
   folio: string;
   createdAt: string;
   createdAtIso: string;
+  recordedAtIso?: string;
+  effectiveDateAdjusted?: boolean;
+  effectiveDateAdjustedById?: string;
+  effectiveDateAdjustedByName?: string;
   amount: number;
   methodId: PaymentMethod;
   payments?: PaymentEntry[];
   balanceAfter?: number;
   sellerId?: string;
   sellerName?: string;
+  recordedBySellerId?: string;
+  recordedBySellerName?: string;
 }
 
 export interface LayawayRecord {
@@ -788,6 +929,7 @@ export interface LayawayRecord {
   balanceDue: number;
   items: LayawayItem[];
   payments: LayawayPaymentRecord[];
+  collectionType?: "LAYAWAY" | "PENDING";
   status: "ACTIVE" | "PAID";
 }
 
@@ -935,6 +1077,10 @@ export interface AppointmentDraft {
   externalSlotId?: string;
   agendaResourceName?: string;
   agendaReservationMode?: AgendaReservationMode;
+  bookingSource?: "POS_CHECKOUT" | "POS_MEMBERSHIP" | "EXTERNAL_AGENDA";
+  bookedById?: string;
+  bookedByName?: string;
+  bookedByRole?: AppointmentReservationActor["role"];
 }
 
 export interface Appointment extends AppointmentDraft {

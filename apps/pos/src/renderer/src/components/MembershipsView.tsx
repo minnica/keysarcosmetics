@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   ArrowRight,
   Award,
   BarChart3,
@@ -56,12 +57,15 @@ import type {
   Appointment,
   ClientMembership,
   MembershipClientProfile,
+  MembershipPlanChangeRequest,
   PosSessionUser,
+  Product,
   Seller,
 } from "../types";
 
 interface MembershipsViewProps {
   memberships: ClientMembership[];
+  membershipProducts: Product[];
   appointments: Appointment[];
   agendaSlots: AgendaSlot[];
   branches: string[];
@@ -72,6 +76,14 @@ interface MembershipsViewProps {
     membershipId: string,
     profile: MembershipClientProfile,
   ) => void;
+  onChangePlan: (
+    membershipId: string,
+    request: MembershipPlanChangeRequest,
+  ) => boolean;
+  onReassignRefundSessions: (
+    sourceMembershipId: string,
+    targetMembershipId: string,
+  ) => boolean;
   onConsumeSession: (
     membershipId: string,
     appointmentId: string,
@@ -79,6 +91,7 @@ interface MembershipsViewProps {
   onScheduleNextAppointment: (
     membershipId: string,
     agendaSlotId: string,
+    authorizationCode: string,
   ) => Promise<boolean>;
   onOpenTicket: (ticketId: string) => void;
 }
@@ -160,6 +173,7 @@ const rankMembershipSales = (
 
 export function MembershipsView({
   memberships,
+  membershipProducts,
   appointments,
   agendaSlots,
   branches,
@@ -167,6 +181,8 @@ export function MembershipsView({
   sellers,
   canEdit,
   onUpdateProfile,
+  onChangePlan,
+  onReassignRefundSessions,
   onConsumeSession,
   onScheduleNextAppointment,
   onOpenTicket,
@@ -187,12 +203,20 @@ export function MembershipsView({
   const [nextAppointmentBranch, setNextAppointmentBranch] = useState("");
   const [nextAppointmentDate, setNextAppointmentDate] = useState("");
   const [nextAgendaSlotId, setNextAgendaSlotId] = useState("");
+  const [nextAppointmentAuthorizationCode, setNextAppointmentAuthorizationCode] =
+    useState("");
   const [analysisMode, setAnalysisMode] =
     useState<MembershipAnalysisMode>("MONTHLY");
   const [analysisMonth, setAnalysisMonth] = useState(lastClosedMonthKey);
   const [analysisYear, setAnalysisYear] = useState(
     String(lastClosedMonth.getFullYear()),
   );
+  const [planChangeOpen, setPlanChangeOpen] = useState(false);
+  const [targetPlanId, setTargetPlanId] = useState("");
+  const [planChangeReason, setPlanChangeReason] = useState("");
+  const [planChangeAuthorizationCode, setPlanChangeAuthorizationCode] = useState("");
+  const [reassignmentOpen, setReassignmentOpen] = useState(false);
+  const [reassignmentTargetId, setReassignmentTargetId] = useState("");
 
   const viewerSeller = sellers.find(
     (seller) => seller.id === viewer.id && seller.active,
@@ -349,6 +373,67 @@ export function MembershipsView({
     (viewer.isMaster ? branchScopedMemberships : sellerHistoryMemberships).find(
       (membership) => membership.id === selectedId,
     ) ?? null;
+  const activeMembershipProducts = useMemo(
+    () =>
+      membershipProducts.filter(
+        (product) =>
+          product.active &&
+          product.kind === "MEMBERSHIP" &&
+          Boolean(product.membershipSessions),
+      ),
+    [membershipProducts],
+  );
+  const selectedCurrentProduct = selectedMembership
+    ? activeMembershipProducts.find(
+        (product) => product.id === selectedMembership.productId,
+      ) ?? null
+    : null;
+  const selectedTargetProduct = activeMembershipProducts.find(
+    (product) => product.id === targetPlanId,
+  ) ?? null;
+  const availableTargetProducts = useMemo(
+    () =>
+      selectedMembership
+        ? activeMembershipProducts.filter(
+            (product) =>
+              product.id !== selectedMembership.productId &&
+              product.branches.includes(selectedMembership.branch),
+          )
+        : [],
+    [
+      activeMembershipProducts,
+      selectedMembership?.branch,
+      selectedMembership?.productId,
+    ],
+  );
+  const selectedTargetSessions = selectedTargetProduct?.membershipSessions ?? 0;
+  const selectedPriceDifference = selectedTargetProduct && selectedMembership
+    ? selectedTargetProduct.maxPrice -
+      (selectedCurrentProduct?.maxPrice ?? selectedMembership.purchaseAmount)
+    : 0;
+  const canApplyPlanChange = Boolean(
+    selectedMembership &&
+      selectedTargetProduct &&
+      selectedTargetProduct.id !== selectedMembership.productId &&
+      selectedTargetSessions >= selectedMembership.usedSessions &&
+      planChangeReason.trim() &&
+      planChangeAuthorizationCode.trim(),
+  );
+  const availableReassignmentTargets = useMemo(
+    () =>
+      selectedMembership?.refundSessionDisposition ===
+      "PENDING_REASSIGNMENT"
+        ? scopedMemberships.filter(
+            (membership) =>
+              membership.id !== selectedMembership.id &&
+              membership.clientId === selectedMembership.clientId &&
+              membership.status !== "CANCELLED" &&
+              membership.usedSessions + selectedMembership.usedSessions <=
+                membership.totalSessions,
+          )
+        : [],
+    [scopedMemberships, selectedMembership],
+  );
   const agendaIncidentsByMembership = useMemo(
     () =>
       appointments.reduce<Record<string, Appointment[]>>(
@@ -580,6 +665,11 @@ export function MembershipsView({
     setNextAppointmentBranch(membership.branch);
     setNextAppointmentDate("");
     setNextAgendaSlotId("");
+    setPlanChangeOpen(false);
+    setTargetPlanId("");
+    setPlanChangeReason("");
+    setReassignmentOpen(false);
+    setReassignmentTargetId("");
   };
 
   const exportScopeLabel = viewer.isMaster
@@ -620,6 +710,8 @@ export function MembershipsView({
       Perfil: profileLabels[membership.profile],
       Estatus: membership.status,
       "Importe de compra": membership.purchaseAmount,
+      "Cambios de membresía": membership.planChanges?.length ?? 0,
+      "Destino sesiones refund": membership.refundSessionDisposition ?? "—",
     };
   });
 
@@ -647,6 +739,7 @@ export function MembershipsView({
               Sucursal: attendance.branch,
               Vendedor: attendance.sellerName,
               Firma: attendance.signatureStatus === "SIGNED" ? "Firmada" : "Sin firma",
+              "Reasignada desde": attendance.reassignedFromMembershipFolio ?? "—",
             })),
           ),
         ),
@@ -671,6 +764,22 @@ export function MembershipsView({
               Fecha: change.changedAtIso,
               Detalle: `${change.fromStatus} → ${change.toStatus}`,
               Motivo: change.reason,
+            })),
+            ...(membership.planChanges ?? []).map((change) => ({
+              "Folio membresía": membership.folio,
+              Cliente: membership.clientName,
+              Tipo: "Cambio de membresía",
+              Fecha: change.changedAtIso,
+              Detalle: `${change.fromMembershipName} → ${change.toMembershipName} · ${change.transferredUsedSessions} sesiones tomadas transferidas`,
+              Motivo: `${change.reason} · Diferencia ${formatCurrency(change.priceDifference)}`,
+            })),
+            ...(membership.sessionTransfers ?? []).map((transfer) => ({
+              "Folio membresía": membership.folio,
+              Cliente: membership.clientName,
+              Tipo: "Reasignación de sesiones refund",
+              Fecha: transfer.transferredAtIso,
+              Detalle: `${transfer.transferredSessions} sesiones desde ${transfer.sourceMembershipFolio}`,
+              Motivo: `Autorizó ${transfer.authorizedByName}`,
             })),
           ]),
         ),
@@ -1069,7 +1178,7 @@ export function MembershipsView({
                   <span><small>MEMBRESÍA</small><strong>{membership.membershipName}</strong><em>{membership.folio}</em></span>
                   <span><small>COMPRA</small><strong>{formatDate(membership.purchaseDateIso)}</strong><em>{membership.branch} · {membership.sellerName}</em></span>
                   <span className="membership-session-balance"><small>SALDO</small><strong>{remaining}<i>/{membership.totalSessions}</i></strong><em>sesiones</em></span>
-                  <span className="membership-record-status"><Badge variant={isLow ? "destructive" : "outline"}>{membership.status === "EXHAUSTED" ? "AGOTADA" : isLow ? "POR TERMINAR" : "ACTIVA"}</Badge><small>Ver tarjetón <ArrowRight size={13} /></small></span>
+                  <span className="membership-record-status"><Badge variant={membership.status === "CANCELLED" || isLow ? "destructive" : "outline"}>{membership.status === "CANCELLED" ? "CANCELADA" : membership.status === "EXHAUSTED" ? "AGOTADA" : isLow ? "POR TERMINAR" : "ACTIVA"}</Badge><small>Ver tarjetón <ArrowRight size={13} /></small></span>
                 </button>
               </article>
             );
@@ -1089,9 +1198,33 @@ export function MembershipsView({
                 <h2>{selectedMembership.clientName}</h2>
                 <p>{selectedMembership.membershipName}</p>
                 <div className="membership-pass-sessions">
-                  {Array.from({ length: selectedMembership.totalSessions }, (_, index) => (
-                    <span key={index} className={index < selectedMembership.usedSessions ? "is-used" : ""}>{index < selectedMembership.usedSessions ? <Check size={15} /> : index + 1}</span>
-                  ))}
+                  {Array.from({ length: selectedMembership.totalSessions }, (_, index) => {
+                    const isUsed = index < selectedMembership.usedSessions;
+                    const reservation = !isUsed
+                      ? eligibleAppointments[index - selectedMembership.usedSessions]
+                      : null;
+                    return (
+                      <span
+                        key={index}
+                        className={isUsed ? "is-used" : reservation ? "is-reserved" : ""}
+                        title={
+                          reservation
+                            ? `${reservation.date} · ${reservation.time} · ${reservation.branch} · ${reservation.bookedByName ?? "Agenda externa"}`
+                            : undefined
+                        }
+                      >
+                        {isUsed ? (
+                          <Check size={15} />
+                        ) : reservation ? (
+                          <small>
+                            Cita reservada · {reservation.bookedByName ?? "Agenda externa"}
+                          </small>
+                        ) : (
+                          index + 1
+                        )}
+                      </span>
+                    );
+                  })}
                 </div>
                 <div className="membership-pass-balance"><span>SESIONES DISPONIBLES</span><strong>{remainingSessions(selectedMembership)}</strong></div>
                 <footer><span>{selectedMembership.folio}</span><span>{selectedMembership.branch}</span></footer>
@@ -1118,14 +1251,24 @@ export function MembershipsView({
                 <div className="membership-detail-actions">
                   <div className="field-stack"><Label>Perfilamiento comercial</Label><Select value={selectedMembership.profile} disabled={!canEdit} onValueChange={(value) => onUpdateProfile(selectedMembership.id, value as MembershipClientProfile)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(profileLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
                   <Button type="button" variant="outline" onClick={() => onOpenTicket(selectedMembership.purchaseTicketId)}><TicketCheck size={16} /> Ir al ticket</Button>
+                  <Button type="button" variant="outline" disabled={selectedMembership.status === "CANCELLED"} onClick={() => { setTargetPlanId(""); setPlanChangeReason(""); setPlanChangeAuthorizationCode(""); setPlanChangeOpen(true); }}><ArrowLeftRight size={16} /> Cambiar membresía</Button>
+                  {selectedMembership.refundSessionDisposition === "PENDING_REASSIGNMENT" ? <Button type="button" disabled={!canEdit} onClick={() => { setReassignmentTargetId(availableReassignmentTargets[0]?.id ?? ""); setReassignmentOpen(true); }}><ArrowLeftRight size={16} /> Reasignar sesiones tomadas</Button> : null}
                 </div>
+
+                {selectedMembership.refundSessionDisposition ? (
+                  <div className={`membership-agenda-incidents ${selectedMembership.refundSessionDisposition === "LOST_CLIENT" ? "is-repeated" : ""}`}>
+                    <AlertTriangle size={18} />
+                    <span><strong>Refund con membresía utilizada</strong><small>{selectedMembership.usedSessions} sesiones tomadas · {selectedMembership.refundSessionDisposition === "PENDING_REASSIGNMENT" ? "pendientes de reasignar a una compra futura" : selectedMembership.refundSessionDisposition === "REASSIGNED" ? `reasignadas a ${selectedMembership.reassignedToMembershipFolio ?? "otra membresía"}` : "registradas como pérdida por cliente perdido"}</small></span>
+                    <Badge variant="outline">{selectedMembership.refundSessionDisposition === "PENDING_REASSIGNMENT" ? "PENDIENTE" : selectedMembership.refundSessionDisposition === "REASSIGNED" ? "REASIGNADA" : "PÉRDIDA"}</Badge>
+                  </div>
+                ) : null}
 
                 <div className="membership-agenda-link">
                   <div><CalendarDays size={19} /><span><strong>Vincular asistencia desde Agenda</strong><small>La cita no consume saldo hasta confirmar que la clienta asistió.</small></span></div>
                   {eligibleAppointments.length > 0 ? (
                     <div className="membership-agenda-controls">
                       <Select value={selectedAppointmentId} onValueChange={setSelectedAppointmentId}><SelectTrigger aria-label="Elegir cita para asistencia"><SelectValue placeholder="Selecciona una cita" /></SelectTrigger><SelectContent>{eligibleAppointments.map((appointment) => <SelectItem key={appointment.id} value={appointment.id}>{appointment.date} · {appointment.time} · {appointment.branch}</SelectItem>)}</SelectContent></Select>
-                      <Button type="button" disabled={!canEdit || !selectedAppointmentId || remainingSessions(selectedMembership) === 0} onClick={async () => { const consumed = await onConsumeSession(selectedMembership.id, selectedAppointmentId); if (!consumed) return; setSelectedAppointmentId(""); setScheduleNextOpen(true); setNextAppointmentBranch(selectedMembership.branch); setNextAppointmentDate(""); setNextAgendaSlotId(""); }}><Check size={16} /> Confirmar asistencia</Button>
+                      <Button type="button" disabled={!canEdit || !selectedAppointmentId || remainingSessions(selectedMembership) === 0} onClick={async () => { const consumed = await onConsumeSession(selectedMembership.id, selectedAppointmentId); if (!consumed) return; setSelectedAppointmentId(""); setScheduleNextOpen(true); setNextAppointmentAuthorizationCode(""); setNextAppointmentBranch(selectedMembership.branch); setNextAppointmentDate(""); setNextAgendaSlotId(""); }}><Check size={16} /> Confirmar asistencia</Button>
                     </div>
                   ) : <p>No hay citas pendientes compatibles para esta clienta.</p>}
                 </div>
@@ -1206,18 +1349,38 @@ export function MembershipsView({
                           </small>
                         )}
                       </div>
+                      <div className="field-stack">
+                        <Label>Código personal de quien reserva</Label>
+                        <Input
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          value={nextAppointmentAuthorizationCode}
+                          onChange={(event) =>
+                            setNextAppointmentAuthorizationCode(
+                              event.target.value,
+                            )
+                          }
+                          placeholder="••••"
+                        />
+                      </div>
                       <Button
                         type="button"
-                        disabled={!nextAgendaSlotId}
+                        disabled={
+                          !nextAgendaSlotId ||
+                          !nextAppointmentAuthorizationCode.trim()
+                        }
                         onClick={async () => {
                           if (
                             await onScheduleNextAppointment(
                               selectedMembership.id,
                               nextAgendaSlotId,
+                              nextAppointmentAuthorizationCode,
                             )
                           ) {
                             setScheduleNextOpen(false);
                             setNextAgendaSlotId("");
+                            setNextAppointmentAuthorizationCode("");
                           }
                         }}
                       >
@@ -1228,14 +1391,101 @@ export function MembershipsView({
                 )}
 
                 <div className="membership-history-grid">
-                  <section><h3><History size={16} /> Historial de asistencias</h3>{selectedMembership.attendance.map((attendance, index) => <div key={attendance.id}><span><i>{index + 1}</i><b>{formatDate(attendance.attendedAtIso)}</b><small>{attendance.branch} · {attendance.sellerName}</small></span><Badge variant="outline">{attendance.signatureStatus === "SIGNED" ? "FIRMADA" : "SIN FIRMA"}</Badge></div>)}{selectedMembership.attendance.length === 0 && <p>Sin sesiones consumidas.</p>}</section>
-                  <section><h3><ShieldCheck size={16} /> Cambios y trazabilidad</h3><div><span><i><UserRound size={13} /></i><b>Vendedor original</b><small>{selectedMembership.originalSellerName}</small></span></div>{selectedMembership.sellerChanges.map((change) => <div key={change.id}><span><i><ArrowRight size={13} /></i><b>{change.fromSellerName} → {change.toSellerName}</b><small>{formatDate(change.changedAtIso)} · {change.reason}</small></span></div>)}{selectedMembership.statusChanges.map((change) => <div key={change.id}><span><i><History size={13} /></i><b>{change.fromStatus} → {change.toStatus}</b><small>{formatDate(change.changedAtIso)} · {change.reason}</small></span></div>)}</section>
+                  <section><h3><History size={16} /> Historial de asistencias</h3>{selectedMembership.attendance.map((attendance, index) => <div key={attendance.id}><span><i>{index + 1}</i><b>{formatDate(attendance.attendedAtIso)}</b><small>{attendance.branch} · {attendance.sellerName}{attendance.reassignedFromMembershipFolio ? ` · reasignada desde ${attendance.reassignedFromMembershipFolio}` : ""}</small></span><Badge variant="outline">{attendance.signatureStatus === "SIGNED" ? "FIRMADA" : "SIN FIRMA"}</Badge></div>)}{selectedMembership.attendance.length === 0 && <p>Sin sesiones consumidas.</p>}</section>
+                  <section><h3><ShieldCheck size={16} /> Cambios y trazabilidad</h3><div><span><i><UserRound size={13} /></i><b>Vendedor original</b><small>{selectedMembership.originalSellerName}</small></span></div>{(selectedMembership.sessionTransfers ?? []).map((transfer) => <div key={transfer.id}><span><i><ArrowLeftRight size={13} /></i><b>{transfer.transferredSessions} sesiones reasignadas desde {transfer.sourceMembershipFolio}</b><small>{formatDate(transfer.transferredAtIso)} · {transfer.sourceMembershipName} · autorizó {transfer.authorizedByName}</small></span></div>)}{(selectedMembership.planChanges ?? []).map((change) => <div key={change.id}><span><i><ArrowLeftRight size={13} /></i><b>{change.fromMembershipName} → {change.toMembershipName}</b><small>{formatDate(change.changedAtIso)} · {change.transferredUsedSessions} sesiones tomadas transferidas · {change.remainingSessionsAfterChange} disponibles · {change.priceDifference >= 0 ? "Diferencia" : "Saldo a favor"} {formatCurrency(Math.abs(change.priceDifference))} · {change.changedByName} · {change.reason}</small></span></div>)}{selectedMembership.sellerChanges.map((change) => <div key={change.id}><span><i><ArrowRight size={13} /></i><b>{change.fromSellerName} → {change.toSellerName}</b><small>{formatDate(change.changedAtIso)} · {change.reason}</small></span></div>)}{selectedMembership.statusChanges.map((change) => <div key={change.id}><span><i><History size={13} /></i><b>{change.fromStatus} → {change.toStatus}</b><small>{formatDate(change.changedAtIso)} · {change.reason}</small></span></div>)}</section>
                 </div>
 
                 <div className="membership-touch-roadmap"><ShieldCheck size={18} /><span><strong>Preparado para firma touch</strong><small>Cada asistencia ya reserva estado de firma, fecha, terminal y evidencia para una implementación posterior.</small></span><Badge variant="outline">SIGUIENTE ETAPA</Badge></div>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={planChangeOpen} onOpenChange={(open) => { setPlanChangeOpen(open); if (!open) { setTargetPlanId(""); setPlanChangeReason(""); setPlanChangeAuthorizationCode(""); } }}>
+        <DialogContent className="sm:max-w-[680px]">
+          {selectedMembership ? (
+            <>
+              <DialogHeader>
+                <span className="section-kicker">CAMBIO DE MEMBRESÍA</span>
+                <DialogTitle>Conservar sesiones y cambiar de plan</DialogTitle>
+                <DialogDescription>Las {selectedMembership.usedSessions} sesiones ya tomadas y todo su historial permanecerán en el mismo tarjetón.</DialogDescription>
+              </DialogHeader>
+              <div className="field-stack">
+                <Label>Nueva membresía</Label>
+                <Select value={targetPlanId} onValueChange={setTargetPlanId}>
+                  <SelectTrigger aria-label="Seleccionar nueva membresía"><SelectValue placeholder="Elige un plan diferente" /></SelectTrigger>
+                  <SelectContent>
+                    {availableTargetProducts.map((product) => {
+                      const sessions = product.membershipSessions ?? 0;
+                      return <SelectItem key={product.id} value={product.id} disabled={sessions < selectedMembership.usedSessions}>{product.name} · {sessions} sesiones · {formatCurrency(product.maxPrice)}</SelectItem>;
+                    })}
+                    {availableTargetProducts.length === 0 ? <SelectItem value="NO_OPTIONS" disabled>Sin otros planes disponibles en esta sucursal</SelectItem> : null}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedTargetProduct ? (
+                <div className="membership-detail-meta">
+                  <span><History size={16} /><small>SESIONES TOMADAS</small><strong>{selectedMembership.usedSessions} transferidas</strong></span>
+                  <span><CalendarCheck2 size={16} /><small>SESIONES DISPONIBLES</small><strong>{Math.max(0, selectedTargetSessions - selectedMembership.usedSessions)}</strong></span>
+                  <span><CreditCard size={16} /><small>{selectedPriceDifference >= 0 ? "DIFERENCIA ESTIMADA" : "SALDO A FAVOR"}</small><strong>{formatCurrency(Math.abs(selectedPriceDifference))}</strong></span>
+                </div>
+              ) : null}
+              <div className="field-stack">
+                <Label htmlFor="membership-plan-change-reason">Motivo del cambio</Label>
+                <Input id="membership-plan-change-reason" value={planChangeReason} onChange={(event) => setPlanChangeReason(event.target.value)} placeholder="Ej. No se adaptó al tratamiento o desea un plan superior" />
+                <small>La diferencia económica queda registrada para conciliación con el ticket correspondiente.</small>
+              </div>
+              <div className="field-stack">
+                <Label htmlFor="membership-plan-change-code">Código master obligatorio</Label>
+                <Input id="membership-plan-change-code" type="password" inputMode="numeric" autoComplete="off" value={planChangeAuthorizationCode} onChange={(event) => setPlanChangeAuthorizationCode(event.target.value)} placeholder="Ingresa el código master" />
+                <small>El código se valida nuevamente al confirmar y no se guarda en el historial.</small>
+              </div>
+              {selectedTargetProduct && selectedTargetSessions < selectedMembership.usedSessions ? (
+                <div className="membership-agenda-incidents is-repeated"><AlertTriangle size={18} /><span><strong>Cambio no permitido</strong><small>El nuevo plan tiene menos sesiones que las {selectedMembership.usedSessions} ya utilizadas.</small></span></div>
+              ) : null}
+              <div className="membership-detail-actions">
+                <Button type="button" variant="outline" onClick={() => setPlanChangeOpen(false)}>Cancelar</Button>
+                <Button type="button" disabled={!canApplyPlanChange} onClick={() => { if (!selectedTargetProduct) return; const changed = onChangePlan(selectedMembership.id, { targetProductId: selectedTargetProduct.id, reason: planChangeReason, authorizationCode: planChangeAuthorizationCode }); if (changed) { setPlanChangeOpen(false); setTargetPlanId(""); setPlanChangeReason(""); setPlanChangeAuthorizationCode(""); } }}><ArrowLeftRight size={16} /> Confirmar cambio</Button>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reassignmentOpen} onOpenChange={(open) => { setReassignmentOpen(open); if (!open) setReassignmentTargetId(""); }}>
+        <DialogContent className="sm:max-w-[680px]">
+          {selectedMembership ? (
+            <>
+              <DialogHeader>
+                <span className="section-kicker">REASIGNACIÓN DE SESIONES REFUND</span>
+                <DialogTitle>Aplicar asistencias a la nueva compra</DialogTitle>
+                <DialogDescription>Se transferirán {selectedMembership.usedSessions} sesiones tomadas desde {selectedMembership.folio}. La membresía cancelada conservará su historial y quedará ligada al nuevo tarjetón.</DialogDescription>
+              </DialogHeader>
+              <div className="field-stack">
+                <Label>Nueva membresía de la clienta</Label>
+                <Select value={reassignmentTargetId} onValueChange={setReassignmentTargetId}>
+                  <SelectTrigger aria-label="Membresía destino para sesiones refund"><SelectValue placeholder="Selecciona una compra nueva" /></SelectTrigger>
+                  <SelectContent>
+                    {availableReassignmentTargets.map((membership) => (
+                      <SelectItem key={membership.id} value={membership.id}>{membership.membershipName} · {membership.folio} · {remainingSessions(membership)} disponibles</SelectItem>
+                    ))}
+                    {availableReassignmentTargets.length === 0 ? <SelectItem value="NO_TARGET" disabled>La clienta aún no tiene una membresía compatible</SelectItem> : null}
+                  </SelectContent>
+                </Select>
+                <small>La suma de sesiones tomadas no puede superar el total de la nueva membresía.</small>
+              </div>
+              <div className="membership-detail-meta">
+                <span><History size={16} /><small>ORIGEN</small><strong>{selectedMembership.folio}</strong></span>
+                <span><Check size={16} /><small>SESIONES A REASIGNAR</small><strong>{selectedMembership.usedSessions}</strong></span>
+                <span><ShieldCheck size={16} /><small>ESTADO</small><strong>Pendiente de confirmar</strong></span>
+              </div>
+              <div className="membership-detail-actions">
+                <Button type="button" variant="outline" onClick={() => setReassignmentOpen(false)}>Cancelar</Button>
+                <Button type="button" disabled={!reassignmentTargetId} onClick={() => { const reassigned = onReassignRefundSessions(selectedMembership.id, reassignmentTargetId); if (reassigned) { setReassignmentOpen(false); setReassignmentTargetId(""); } }}><ArrowLeftRight size={16} /> Confirmar reasignación</Button>
+              </div>
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

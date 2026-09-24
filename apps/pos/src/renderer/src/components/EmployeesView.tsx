@@ -163,6 +163,7 @@ const configurationOptions: Array<{
   { id: "COMPETITIONS", label: "Competiciones", description: "Tipos, periodos y objetivos." },
   { id: "REPORTS_COSTS", label: "Reportes y costos", description: "Costos, utilidad y reportes administrativos." },
   { id: "BRANCHES", label: "Sucursales", description: "Alta, activación e inactivación." },
+  { id: "TICKET_CANCELLATION", label: "Cancelar tickets y generar refunds", description: "Autoriza cancelaciones, refunds negativos y decisiones de devolución o baja de inventario." },
   { id: "SESSION_EXIT", label: "Salir sin Close day", description: "Cerrar únicamente la sesión del usuario sin generar ni modificar el corte." },
   { id: "USERS_ROLES", label: "Usuarios y roles", description: "Asignaciones y permisos del personal." },
 ];
@@ -399,6 +400,7 @@ export function EmployeesView({
         ...current,
         moduleAccess:
           permission !== "SESSION_EXIT" &&
+          permission !== "TICKET_CANCELLATION" &&
           !selected &&
           !current.moduleAccess.includes("settings")
             ? [...current.moduleAccess, "settings"]
@@ -425,7 +427,9 @@ export function EmployeesView({
       return;
     }
     const hasSettingsConfiguration = roleDraft.configurationAccess.some(
-      (permission) => permission !== "SESSION_EXIT",
+      (permission) =>
+        permission !== "SESSION_EXIT" &&
+        permission !== "TICKET_CANCELLATION",
     );
     const normalizedModuleAccess =
       hasSettingsConfiguration &&

@@ -188,7 +188,9 @@ import type {
   InventoryMovementReason,
   InventoryAuditLine,
   InventoryCountAudit,
+  AppointmentReservationActor,
   MembershipClientProfile,
+  MembershipPlanChangeRequest,
   WarehouseMovement,
   WarehouseMovementCategory,
   WarehouseMovementLine,
@@ -218,6 +220,7 @@ import type {
   TicketCancellationRequest,
   TicketEditRequest,
   TicketInventoryLine,
+  TicketMembershipRefundSession,
   VoucherIssue,
   VoucherTemplate,
 } from "./types";
@@ -472,6 +475,73 @@ const operationalBusinessDate = (iso: string) =>
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(iso));
+
+const recoverLayawayFromTicket = (
+  ticket: Ticket,
+  clients: Client[],
+  catalogProducts: Product[],
+  fallbackBranch: string,
+): LayawayRecord => {
+  const linkedClient = clients.find(
+    (client) =>
+      (ticket.clientPhone && client.phone === ticket.clientPhone) ||
+      `${client.firstName} ${client.lastName}`.trim() === ticket.clientName,
+  );
+  const primarySeller = ticket.sellerSales[0];
+  return {
+    id: `layaway-${ticket.id}`,
+    originalTicketId: ticket.id,
+    createdAt: ticket.createdAt,
+    createdAtIso: ticket.createdAtIso,
+    clientId: linkedClient?.id ?? `ticket-client-${ticket.id}`,
+    clientName: ticket.clientName,
+    clientPhone: ticket.clientPhone,
+    branch: ticket.branchName?.replace(/^Sucursal\s+/i, "") ?? fallbackBranch,
+    sellerIds: ticket.sellerSales.map((sale) => sale.sellerId),
+    total: ticket.total,
+    amountPaid: ticket.amountPaid,
+    balanceDue: ticket.balanceDue,
+    items: ticket.products.map((product, index) => {
+      const catalogProduct = catalogProducts.find(
+        (candidate) => candidate.id === product.productId,
+      );
+      return {
+        cartItemId: `${ticket.id}-${product.productId}-${index}`,
+        productId: product.productId,
+        productName: product.name,
+        kind: catalogProduct?.kind ?? "SERVICE",
+        quantity: product.quantity,
+        deliveredQuantity:
+          catalogProduct?.kind === "PRODUCT" ? product.quantity : 0,
+      };
+    }),
+    payments:
+      ticket.amountPaid > 0
+        ? [
+            {
+              id: `recovered-payment-${ticket.id}`,
+              folio: `ORIGINAL-${ticket.id}`,
+              createdAt: ticket.createdAt,
+              createdAtIso: ticket.createdAtIso,
+              amount: ticket.amountPaid,
+              methodId:
+                ticket.payments[0]?.methodId ?? ticket.paymentMethod,
+              payments: ticket.payments,
+              balanceAfter: ticket.balanceDue,
+              ...(primarySeller
+                ? {
+                    sellerId: primarySeller.sellerId,
+                    sellerName: primarySeller.sellerName,
+                  }
+                : {}),
+            },
+          ]
+        : [],
+    collectionType:
+      ticket.paymentStatus === "PENDING" ? "PENDING" : "LAYAWAY",
+    status: "ACTIVE",
+  };
+};
 
 const createInitialOperationalNotifications = (): OperationalNotification[] => {
   const currentDate = operationalBusinessDate(new Date().toISOString());
@@ -1026,6 +1096,9 @@ function App() {
   const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [expandingLayawayId, setExpandingLayawayId] = useState<string | null>(
+    null,
+  );
   const [cart, setCart] = useState<CartItem[]>([]);
   const [catalogProducts, setCatalogProducts] = useState<Product[]>(
     getInitialCatalogProducts,
@@ -1160,6 +1233,8 @@ function App() {
   const [selectedReceiptTicket, setSelectedReceiptTicket] =
     useState<Ticket | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [receiptAutoPrint, setReceiptAutoPrint] = useState(false);
+  const [receiptVoucherEligible, setReceiptVoucherEligible] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
   const [ticketEditOpen, setTicketEditOpen] = useState(false);
   const [cancellingTicket, setCancellingTicket] = useState<Ticket | null>(null);
@@ -1313,6 +1388,42 @@ function App() {
     );
   };
 
+  const authorizeAppointmentCode = (
+    code: string,
+  ): AppointmentReservationActor | null => {
+    const normalizedCode = code.trim();
+    if (!normalizedCode) return null;
+    if (normalizedCode === administratorCode) {
+      return {
+        id: masterUser.id,
+        name: masterUser.name,
+        role: "MASTER",
+      };
+    }
+    const seller = sellers.find(
+      (candidate) =>
+        candidate.active && candidate.accessCode === normalizedCode,
+    );
+    if (seller) {
+      return {
+        id: seller.id,
+        name: seller.name,
+        role: "SELLER",
+      };
+    }
+    const administrative = sellers.find(
+      (candidate) =>
+        candidate.active && candidate.masterAccessCode === normalizedCode,
+    );
+    return administrative
+      ? {
+          id: administrative.id,
+          name: administrative.name,
+          role: "ADMINISTRATIVE",
+        }
+      : null;
+  };
+
   const markAllOperationalNotificationsRead = (userId: string) => {
     setOperationalNotifications((current) =>
       current.map((notification) =>
@@ -1378,6 +1489,18 @@ function App() {
     sessionUser?.isMaster ||
       sessionEmployeeRole?.configurationAccess.includes("SESSION_EXIT"),
   );
+  const hasAssignedTicketCancellationPermission = Boolean(
+    sessionEmployeeRole?.configurationAccess.includes("TICKET_CANCELLATION"),
+  );
+  const canCancelTickets = Boolean(
+    sessionUser?.isMaster || hasAssignedTicketCancellationPermission,
+  );
+  const canViewReceiptPriceDeviation = Boolean(
+    sessionUser?.isMaster ||
+      receiptHistoryAuthorized ||
+      costAccessAuthorized ||
+      sessionEmployeeRole?.configurationAccess.includes("REPORTS_COSTS"),
+  );
 
   useEffect(() => {
     if (!sessionUser || allowedScreens.includes(activeScreen)) return;
@@ -1400,6 +1523,9 @@ function App() {
     sessionUser?.isMaster ||
       activeScreen === "my-account" ||
       sessionEmployeeRole?.moduleEditAccess.includes(activeScreen),
+  );
+  const hasAssignedTicketEditPermission = Boolean(
+    sessionEmployeeRole?.moduleEditAccess.includes(activeScreen),
   );
   const canPrintActiveModule = Boolean(
     sessionUser?.isMaster ||
@@ -2123,6 +2249,26 @@ function App() {
         ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[destination]?.[line.productId] ?? 0) + line.quantity])),
       },
     }));
+    if (affectsRetailStock && destination === "Polanco") {
+      const receivedByProduct = new Map<string, number>();
+      movement.lines.forEach((line) =>
+        receivedByProduct.set(
+          line.productId,
+          (receivedByProduct.get(line.productId) ?? 0) + line.quantity,
+        ),
+      );
+      setCatalogProducts((current) =>
+        current.map((product) => {
+          const received = receivedByProduct.get(product.id);
+          return product.stock === null || received === undefined
+            ? product
+            : {
+                ...product,
+                stock: (destinationStock[product.id] ?? 0) + received,
+              };
+        }),
+      );
+    }
     const inventoryRecords: InventoryMovement[] = affectsRetailStock ? movement.lines.map((line, index) => ({
       id: `warehouse-inventory-${crypto.randomUUID()}`,
       folio: `${movement.folio}-${index + 1}`,
@@ -3146,11 +3292,18 @@ function App() {
     }
     const closeDayTickets = tickets.filter(
       (ticket) =>
-        ticket.status === "COMPLETED" &&
+        (ticket.status === "COMPLETED" ||
+          Boolean(ticket.refundTransactionId)) &&
         ticket.ticketType !== "LAYAWAY_PAYMENT" &&
         (ticket.branchName ?? receiptSettings.branchName) === activeBranch &&
         operationalBusinessDate(ticket.createdAtIso) ===
           operationalBusinessDate(clockOutDate.toISOString()),
+    );
+    const closeDaySaleTickets = closeDayTickets.filter(
+      (ticket) => ticket.ticketType !== "REFUND",
+    );
+    const closeDayRefundTickets = closeDayTickets.filter(
+      (ticket) => ticket.ticketType === "REFUND",
     );
     const closeDaySalesTotal = closeDayTickets.reduce(
       (sum, ticket) => sum + ticket.total,
@@ -3167,7 +3320,8 @@ function App() {
     const branchMonthlySales = tickets
       .filter(
         (ticket) =>
-          ticket.status === "COMPLETED" &&
+          (ticket.status === "COMPLETED" ||
+            Boolean(ticket.refundTransactionId)) &&
           ticket.ticketType !== "LAYAWAY_PAYMENT" &&
           (ticket.branchName ?? receiptSettings.branchName) === activeBranch,
       )
@@ -3194,7 +3348,7 @@ function App() {
     pushOperationalNotification({
       type: "CLOSE_DAY",
       title: `Corte realizado · ${activeBranch}`,
-      detail: `${closeDayTickets.length} tickets · Venta ${formatCurrency(closeDaySalesTotal)} · Gastos ${formatCurrency(closeDayExpenseTotal)} · Neto ${formatCurrency(closeDaySalesTotal - closeDayExpenseTotal)}.`,
+      detail: `${closeDaySaleTickets.length} tickets · ${closeDayRefundTickets.length} refunds · Venta neta ${formatCurrency(closeDaySalesTotal)} · Gastos ${formatCurrency(closeDayExpenseTotal)} · Flujo ${formatCurrency(closeDaySalesTotal - closeDayExpenseTotal)}.`,
       moduleLabel: "Close day",
       branch: activeBranch,
       actorId: authorizedBy.id,
@@ -3432,7 +3586,19 @@ function App() {
     return true;
   };
   const activeTickets = useMemo(
-    () => tickets.filter((ticket) => ticket.status === "COMPLETED"),
+    () =>
+      tickets.filter(
+        (ticket) =>
+          ticket.status === "COMPLETED" && ticket.ticketType !== "REFUND",
+      ),
+    [tickets],
+  );
+  const financialTickets = useMemo(
+    () =>
+      tickets.filter(
+        (ticket) =>
+          ticket.status === "COMPLETED" || Boolean(ticket.refundTransactionId),
+      ),
     [tickets],
   );
   useEffect(() => {
@@ -3487,6 +3653,31 @@ function App() {
         : [];
     });
   }, [activeBranch, cancellingTicket, catalogProducts]);
+  const cancellationMembershipSessions = useMemo<
+    TicketMembershipRefundSession[]
+  >(() => {
+    if (!cancellingTicket) return [];
+    return clientMemberships
+      .filter(
+        (membership) =>
+          membership.purchaseTicketId === cancellingTicket.id &&
+          membership.usedSessions > 0,
+      )
+      .map((membership) => ({
+        membershipId: membership.id,
+        membershipFolio: membership.folio,
+        clientId: membership.clientId,
+        clientName: membership.clientName,
+        membershipName: membership.membershipName,
+        totalSessions: membership.totalSessions,
+        usedSessions: membership.usedSessions,
+        remainingSessions: Math.max(
+          0,
+          membership.totalSessions - membership.usedSessions,
+        ),
+        disposition: "PENDING_REASSIGNMENT" as const,
+      }));
+  }, [cancellingTicket, clientMemberships]);
 
   const saleProducts = useMemo(
     () =>
@@ -3600,6 +3791,15 @@ function App() {
   );
   const discountDraftTotal = Math.max(0, cartSubtotal - discountDraftAmount);
   const ticketTotal = Math.max(0, cartSubtotal - ticketDiscountAmount);
+  const activeExpansionLayaway = expandingLayawayId
+    ? layaways.find((layaway) => layaway.id === expandingLayawayId) ?? null
+    : null;
+  const expansionIncrement = activeExpansionLayaway
+    ? Math.max(0, roundCurrency(ticketTotal - activeExpansionLayaway.total))
+    : 0;
+  const checkoutChargeTotal = activeExpansionLayaway
+    ? roundCurrency(activeExpansionLayaway.balanceDue + expansionIncrement)
+    : ticketTotal;
   const ticketDeviation = cartDeviation - ticketDiscountAmount;
   const dialogOtherItems = cart.filter(
     (item) => item.id !== editingCartItem?.id,
@@ -3734,7 +3934,117 @@ function App() {
       );
       return;
     }
+    if (
+      activeExpansionLayaway &&
+      ticketTotal + 0.01 < activeExpansionLayaway.total
+    ) {
+      toast.error(
+        "Agrandar venta no puede reducir el total original. Para devolver importe utiliza edición o cancelación autorizada.",
+      );
+      return;
+    }
     setCheckoutOpen(true);
+  };
+
+  const startLayawayExpansion = (layawayId: string) => {
+    const layaway = layaways.find((candidate) => candidate.id === layawayId);
+    if (
+      !layaway ||
+      layaway.status !== "ACTIVE" ||
+      layaway.collectionType === "PENDING"
+    ) {
+      toast.error("Sólo se pueden ampliar apartados activos.");
+      return;
+    }
+    if (cart.length > 0) {
+      toast.error(
+        "Termina o vacía el ticket que está en curso antes de ampliar el apartado.",
+      );
+      return;
+    }
+    const originalTicket = tickets.find(
+      (ticket) => ticket.id === layaway.originalTicketId,
+    );
+    if (!originalTicket) {
+      toast.error("No se encontró el ticket original del apartado.");
+      return;
+    }
+    const originalCart = originalTicket.products.flatMap((line, index) => {
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === line.productId,
+      );
+      return product
+        ? [
+            {
+              id: `expansion-original-${line.productId}-${index}`,
+              product,
+              quantity: line.quantity,
+              unitPrice: line.quantity > 0 ? line.total / line.quantity : 0,
+              comment: `Producto original de ${originalTicket.id}`,
+              adminAuthorized: true,
+            } satisfies CartItem,
+          ]
+        : [];
+    });
+    if (originalCart.length === 0) {
+      toast.error(
+        "Los productos originales ya no están disponibles en el catálogo para realizar el cambio.",
+      );
+      return;
+    }
+    const linkedClient = clients.find(
+      (client) =>
+        client.id === layaway.clientId ||
+        (layaway.clientPhone && client.phone === layaway.clientPhone) ||
+        `${client.firstName} ${client.lastName}`.trim() === layaway.clientName,
+    );
+    if (!linkedClient) {
+      const nameParts = layaway.clientName.trim().split(/\s+/).filter(Boolean);
+      const owner = sellers.find(
+        (seller) => seller.active && layaway.sellerIds.includes(seller.id),
+      );
+      const recoveredClient: Client = {
+        id: layaway.clientId,
+        registrationFolio: `CLI-REC-${originalTicket.id}`,
+        registeredAtIso: originalTicket.createdAtIso,
+        firstName: nameParts[0] ?? "Cliente",
+        lastName: nameParts.slice(1).join(" ") || "de apartado",
+        birthday: "",
+        gender: "",
+        phone: layaway.clientPhone,
+        whatsapp: layaway.clientPhone,
+        source: "RECOVERED_TICKET",
+        sourceLabel: "Ticket histórico recuperado",
+        companyName: owner ? "" : receiptSettings.companyName,
+        companyLocked: !owner,
+        ownerId: owner?.id ?? null,
+        saleSellerIds: [...layaway.sellerIds],
+        registrationBranch: layaway.branch,
+      };
+      setClients((current) =>
+        current.some((client) => client.id === recoveredClient.id)
+          ? current
+          : [recoveredClient, ...current],
+      );
+    } else if (linkedClient.id !== layaway.clientId) {
+      setLayaways((current) =>
+        current.map((record) =>
+          record.id === layaway.id
+            ? { ...record, clientId: linkedClient.id }
+            : record,
+        ),
+      );
+    }
+    setExpandingLayawayId(layaway.id);
+    setCart(originalCart);
+    setDiscountMode("PERCENT");
+    setDiscountValue(0);
+    setReceiptPreviewOpen(false);
+    setReceiptVoucherEligible(false);
+    setActiveScreen("sale");
+    toast.info(
+      `Ampliación iniciada para ${layaway.clientName}. Modifica la composición final; el historial original se conservará.`,
+    );
   };
 
   const reserveAgendaSlotIds = (slotIds: string[]) => {
@@ -3774,7 +4084,599 @@ function App() {
     return true;
   };
 
+  const completeLayawayExpansion = async (
+    result: CheckoutResult,
+    expansionSource: LayawayRecord,
+  ) => {
+    const originalTicket = tickets.find(
+      (ticket) => ticket.id === expansionSource.originalTicketId,
+    );
+    if (!originalTicket) {
+      toast.error("No se encontró el ticket original que se desea ampliar.");
+      return false;
+    }
+    const finalTotal = roundCurrency(ticketTotal);
+    const increment = roundCurrency(finalTotal - expansionSource.total);
+    const chargeTotal = roundCurrency(expansionSource.balanceDue + increment);
+    if (increment < 0) {
+      toast.error(
+        "La ampliación no puede reducir el total original. Usa edición o cancelación autorizada.",
+      );
+      return false;
+    }
+    if (
+      result.paymentStatus !== "PAID" ||
+      Math.abs(result.amountPaid - chargeTotal) > 0.01
+    ) {
+      toast.error(
+        `Agrandar venta debe liquidar el apartado. El cobro requerido es ${formatCurrency(chargeTotal)}.`,
+      );
+      return false;
+    }
+
+    const originalMembershipQuantities = new Map<string, number>();
+    originalTicket.products.forEach((line) => {
+      if (
+        catalogProducts.find((product) => product.id === line.productId)
+          ?.kind === "MEMBERSHIP"
+      ) {
+        originalMembershipQuantities.set(
+          line.productId,
+          (originalMembershipQuantities.get(line.productId) ?? 0) +
+            line.quantity,
+        );
+      }
+    });
+    const finalMembershipQuantities = new Map<string, number>();
+    cart.forEach((item) => {
+      if (item.product.kind === "MEMBERSHIP")
+        finalMembershipQuantities.set(
+          item.product.id,
+          (finalMembershipQuantities.get(item.product.id) ?? 0) +
+            item.quantity,
+        );
+    });
+    if (
+      Array.from(
+        new Set([
+          ...originalMembershipQuantities.keys(),
+          ...finalMembershipQuantities.keys(),
+        ]),
+      ).some(
+        (productId) =>
+          (originalMembershipQuantities.get(productId) ?? 0) !==
+          (finalMembershipQuantities.get(productId) ?? 0),
+      )
+    ) {
+      toast.error(
+        "Los cambios de membresía se realizan desde el módulo Membresías con autorización Master.",
+      );
+      return false;
+    }
+
+    const requestedAgendaSlotIds = result.appointments.flatMap((appointment) =>
+      appointment.agendaSlotId ? [appointment.agendaSlotId] : [],
+    );
+    const expansionTicketId = `AMP-${createUniqueFolio(tickets)}`;
+    const createdAt = new Date();
+    const createdAtIso = createdAt.toISOString();
+    const createdAtLabel = new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Mexico_City",
+    }).format(createdAt);
+    let agendaClientId = result.client.agendaClientId;
+    let agendaReservation: Awaited<
+      ReturnType<typeof agendaGateway.reserve>
+    > | null = null;
+    if (isOnline && requestedAgendaSlotIds.length > 0) {
+      try {
+        if (!agendaClientId) {
+          agendaClientId = (
+            await agendaGateway.upsertClient(result.client)
+          ).externalClientId;
+        }
+        const reservableAppointments = result.appointments.filter(
+          (appointment) => appointment.agendaSlotId,
+        );
+        const requestedSeats = Array.from(
+          requestedAgendaSlotIds.reduce<Map<string, number>>((summary, id) => {
+            summary.set(id, (summary.get(id) ?? 0) + 1);
+            return summary;
+          }, new Map()),
+        );
+        const membershipAppointment = reservableAppointments.find(
+          (appointment) => appointment.membershipId,
+        );
+        agendaReservation = await agendaGateway.reserve({
+          idempotencyKey: `expansion-${expansionTicketId}-agenda`,
+          clientId: result.client.id,
+          externalClientId: agendaClientId,
+          clientName: `${result.client.firstName} ${result.client.lastName}`.trim(),
+          ticketId: expansionTicketId,
+          membershipId: membershipAppointment?.membershipId ?? null,
+          services: reservableAppointments.map(
+            (appointment) => appointment.service,
+          ),
+          slots: requestedSeats.map(([slotId, seats]) => ({
+            externalSlotId:
+              agendaSlots.find((slot) => slot.id === slotId)?.externalSlotId ??
+              slotId,
+            seats,
+          })),
+          source: membershipAppointment ? "MEMBERSHIP" : "NEXT_SESSION",
+        });
+        if (agendaReservation.status === "CONFLICT") {
+          toast.error(
+            agendaReservation.conflictReason ??
+              "La agenda rechazó el horario seleccionado.",
+          );
+          return false;
+        }
+      } catch {
+        toast.error("No fue posible registrar la cita de la ampliación en Agenda.");
+        return false;
+      }
+    }
+    if (!reserveAgendaSlotIds(requestedAgendaSlotIds)) {
+      if (agendaReservation)
+        await agendaGateway.cancel(
+          agendaReservation.reservationId,
+          "Conflicto local de capacidad",
+        );
+      return false;
+    }
+
+    const splitPaymentsAt = (payments: PaymentEntry[], target: number) => {
+      let remainingTarget = target;
+      const allocated: PaymentEntry[] = [];
+      const remainder: PaymentEntry[] = [];
+      payments.forEach((payment) => {
+        const applied = Math.min(
+          remainingTarget,
+          Math.max(0, payment.amount),
+        );
+        const leftover = roundCurrency(payment.amount - applied);
+        if (applied > 0)
+          allocated.push({ ...payment, amount: roundCurrency(applied) });
+        if (leftover > 0)
+          remainder.push({
+            ...payment,
+            id: `${payment.id}-increment`,
+            amount: leftover,
+          });
+        remainingTarget = roundCurrency(remainingTarget - applied);
+      });
+      return { allocated, remainder };
+    };
+    const paymentSplit = splitPaymentsAt(
+      result.payments,
+      expansionSource.balanceDue,
+    );
+    const settlementFolio = `APT-${operationalBusinessDate(createdAtIso).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+    const settlementPayments = paymentSplit.allocated.map((payment) => ({
+      ...payment,
+      folio: settlementFolio,
+      createdAt: createdAtLabel,
+      createdAtIso,
+      relatedTicketId: originalTicket.id,
+    }));
+    const incrementPayments = paymentSplit.remainder.map((payment) => ({
+      ...payment,
+      folio: expansionTicketId,
+      createdAt: createdAtLabel,
+      createdAtIso,
+      relatedTicketId: originalTicket.id,
+    }));
+
+    const humanSellerSales = result.sellerSales.filter(
+      (sale) => sale.participantKind !== "COMPANY",
+    );
+    const splitWeight = result.sellerSales.reduce(
+      (sum, sale) => sum + Math.max(0, sale.amount),
+      0,
+    );
+    let allocatedIncrement = 0;
+    const expansionSellerSales = result.sellerSales.map((sale, index) => {
+      const amount =
+        index === result.sellerSales.length - 1
+          ? roundCurrency(increment - allocatedIncrement)
+          : roundCurrency(
+              increment *
+                (splitWeight > 0
+                  ? Math.max(0, sale.amount) / splitWeight
+                  : 1 / Math.max(result.sellerSales.length, 1)),
+            );
+      allocatedIncrement = roundCurrency(allocatedIncrement + amount);
+      return { ...sale, amount };
+    });
+
+    const originalLines = new Map(
+      originalTicket.products.map((line) => [line.productId, line]),
+    );
+    const finalLines = new Map<
+      string,
+      { name: string; quantity: number; total: number }
+    >();
+    cart.forEach((item) => {
+      const current = finalLines.get(item.product.id);
+      finalLines.set(item.product.id, {
+        name: item.product.name,
+        quantity: (current?.quantity ?? 0) + item.quantity,
+        total:
+          (current?.total ?? 0) + item.unitPrice * item.quantity,
+      });
+    });
+    const changedProductIds = Array.from(
+      new Set([...originalLines.keys(), ...finalLines.keys()]),
+    );
+    const expansionProducts = changedProductIds.flatMap((productId) => {
+      const original = originalLines.get(productId);
+      const final = finalLines.get(productId);
+      const quantity = (final?.quantity ?? 0) - (original?.quantity ?? 0);
+      const amount = roundCurrency((final?.total ?? 0) - (original?.total ?? 0));
+      if (quantity === 0 && Math.abs(amount) < 0.01) return [];
+      return [
+        {
+          productId,
+          name:
+            quantity < 0
+              ? `${original?.name ?? final?.name ?? productId} · RETIRADO`
+              : quantity > 0
+                ? `${final?.name ?? original?.name ?? productId} · AGREGADO`
+                : `${final?.name ?? original?.name ?? productId} · AJUSTE`,
+          quantity: quantity === 0 ? 1 : quantity,
+          total: amount,
+        },
+      ];
+    });
+    if (expansionProducts.length === 0 && increment > 0) {
+      expansionProducts.push({
+        productId: `expansion-adjustment-${originalTicket.id}`,
+        name: "Ajuste por ampliación de venta",
+        quantity: 1,
+        total: increment,
+      });
+    }
+
+    const branch = expansionSource.branch;
+    const nextBranchStock = { ...(branchInventory[branch] ?? {}) };
+    const inventoryMovements: InventoryMovement[] = [];
+    const finalLayawayItems = cart.map((item) => ({
+      cartItemId: item.id,
+      productId: item.product.id,
+      productName: item.product.name,
+      kind: item.product.kind,
+      quantity: item.quantity,
+      deliveredQuantity:
+        item.product.kind === "PRODUCT" ? item.quantity : 0,
+    }));
+    const committedByProduct = expansionSource.items.reduce<Map<string, number>>(
+      (summary, item) => {
+        if (item.kind === "PRODUCT")
+          summary.set(
+            item.productId,
+            (summary.get(item.productId) ?? 0) + item.deliveredQuantity,
+          );
+        return summary;
+      },
+      new Map(),
+    );
+    const desiredByProduct = cart.reduce<Map<string, number>>(
+      (summary, item) => {
+        if (item.product.kind === "PRODUCT")
+          summary.set(
+            item.product.id,
+            (summary.get(item.product.id) ?? 0) + item.quantity,
+          );
+        return summary;
+      },
+      new Map(),
+    );
+    Array.from(
+      new Set([...committedByProduct.keys(), ...desiredByProduct.keys()]),
+    ).forEach((productId) => {
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === productId,
+      );
+      if (!product) return;
+      const difference =
+        (desiredByProduct.get(productId) ?? 0) -
+        (committedByProduct.get(productId) ?? 0);
+      if (difference === 0) return;
+      const previousStock = nextBranchStock[productId] ?? 0;
+      const newStock = previousStock - difference;
+      nextBranchStock[productId] = newStock;
+      inventoryMovements.push({
+        id: crypto.randomUUID(),
+        folio: `AMP-INV-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+        createdAt: createdAtLabel,
+        createdAtIso,
+        productId,
+        productName: product.name,
+        direction: difference > 0 ? "REMOVE" : "ADD",
+        reason: `Ampliación ${expansionTicketId}`,
+        quantity: Math.abs(difference),
+        previousStock,
+        newStock,
+        sourceBranch: branch,
+        destinationBranch: null,
+        destinationPreviousStock: null,
+        destinationNewStock: null,
+        comment:
+          difference > 0
+            ? `Salida neta por ampliación del ticket ${originalTicket.id}`
+            : `Retorno neto por sustitución en el ticket ${originalTicket.id}`,
+        category: difference > 0 ? "SALE" : "RETURN",
+        unitCostUsd: product.costUsd,
+        unitCostMxn: product.costMxn,
+        totalCostUsd: product.costUsd * Math.abs(difference),
+        totalCostMxn: product.costMxn * Math.abs(difference),
+      });
+    });
+
+    const expansionTicket: Ticket = {
+      id: expansionTicketId,
+      createdAt: createdAtLabel,
+      createdAtIso,
+      clientId: result.client.id,
+      clientName: `${result.client.firstName} ${result.client.lastName}`.trim(),
+      clientPhone: result.client.phone,
+      branchName: branch,
+      branchAddress: branchAddresses[branch] ?? receiptSettings.address,
+      sellerSummary: result.sellerSummary,
+      items: expansionProducts.reduce(
+        (sum, product) => sum + Math.abs(product.quantity),
+        0,
+      ),
+      discountAmount: ticketDiscountAmount,
+      subtotal: increment,
+      total: increment,
+      deviation: 0,
+      paymentMethod:
+        incrementPayments[0]?.methodId ??
+        settlementPayments[0]?.methodId ??
+        result.paymentMethod,
+      payments: incrementPayments,
+      amountPaid: increment,
+      balanceDue: 0,
+      paymentStatus: "PAID",
+      products: expansionProducts,
+      sellerSales: expansionSellerSales,
+      status: "COMPLETED",
+      ticketType: "EXPANSION",
+      relatedTicketId: originalTicket.id,
+      expandedFromTicketId: originalTicket.id,
+      expansionIncrement: increment,
+      inventoryDeductions: inventoryMovements.flatMap((movement) =>
+        movement.direction === "REMOVE"
+          ? [
+              {
+                productId: movement.productId,
+                productName: movement.productName,
+                quantity: movement.quantity,
+                branch,
+              },
+            ]
+          : [],
+      ),
+      syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+      createdOffline: !isOnline,
+      syncedAtIso: isOnline ? createdAtIso : null,
+    };
+    const settlementTicket: Ticket | null =
+      expansionSource.balanceDue > 0
+        ? {
+            id: settlementFolio,
+            createdAt: createdAtLabel,
+            createdAtIso,
+            clientId: result.client.id,
+            clientName: expansionTicket.clientName,
+            clientPhone: result.client.phone,
+            branchName: branch,
+            ...(expansionTicket.branchAddress
+              ? { branchAddress: expansionTicket.branchAddress }
+              : {}),
+            sellerSummary: originalTicket.sellerSummary,
+            items: 1,
+            discountAmount: 0,
+            subtotal: expansionSource.balanceDue,
+            total: expansionSource.balanceDue,
+            deviation: 0,
+            paymentMethod:
+              settlementPayments[0]?.methodId ?? result.paymentMethod,
+            payments: settlementPayments,
+            amountPaid: expansionSource.balanceDue,
+            balanceDue: 0,
+            paymentStatus: "PAID",
+            products: [
+              {
+                productId: `layaway-settlement-${originalTicket.id}`,
+                name: `Liquidación por ampliación ${originalTicket.id}`,
+                quantity: 1,
+                total: expansionSource.balanceDue,
+              },
+            ],
+            sellerSales: originalTicket.sellerSales.map((sale) => ({
+              ...sale,
+              amount: 0,
+            })),
+            status: "COMPLETED",
+            ticketType: "LAYAWAY_PAYMENT",
+            relatedTicketId: originalTicket.id,
+            syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+            createdOffline: !isOnline,
+            syncedAtIso: isOnline ? createdAtIso : null,
+          }
+        : null;
+
+    const paymentRecorder =
+      humanSellerSales[0] ??
+      result.sellerSales[0] ?? {
+        sellerId: masterUser.id,
+        sellerName: masterUser.name,
+        amount: 0,
+      };
+    setLayaways((current) =>
+      current.map((layaway) =>
+        layaway.id === expansionSource.id
+          ? {
+              ...layaway,
+              amountPaid: layaway.total,
+              balanceDue: 0,
+              status: "PAID",
+              items: finalLayawayItems,
+              payments: [
+                ...layaway.payments,
+                ...(settlementTicket
+                  ? [
+                      {
+                        id: crypto.randomUUID(),
+                        folio: settlementFolio,
+                        createdAt: createdAtLabel,
+                        createdAtIso,
+                        amount: expansionSource.balanceDue,
+                        methodId:
+                          settlementPayments[0]?.methodId ?? result.paymentMethod,
+                        payments: settlementPayments,
+                        balanceAfter: 0,
+                        ...(originalTicket.sellerSales[0]
+                          ? {
+                              sellerId:
+                                originalTicket.sellerSales[0].sellerId,
+                              sellerName:
+                                originalTicket.sellerSales[0].sellerName,
+                            }
+                          : {}),
+                        recordedBySellerId: paymentRecorder.sellerId,
+                        recordedBySellerName: paymentRecorder.sellerName,
+                      },
+                    ]
+                  : []),
+              ],
+            }
+          : layaway,
+      ),
+    );
+    setTickets((current) => [
+      expansionTicket,
+      ...(settlementTicket ? [settlementTicket] : []),
+      ...current.map((ticket) =>
+        ticket.id === originalTicket.id
+          ? {
+              ...ticket,
+              amountPaid: ticket.total,
+              balanceDue: 0,
+              paymentStatus: "PAID" as const,
+              expansionStatus: "EXPANDED" as const,
+              expandedByTicketId: expansionTicketId,
+              expandedAtIso: createdAtIso,
+              syncStatus: isOnline ? "SYNCED" as const : "PENDING_SYNC" as const,
+              syncedAtIso: isOnline ? createdAtIso : null,
+            }
+          : ticket,
+      ),
+    ]);
+    if (inventoryMovements.length > 0) {
+      setInventoryMovements((current) => [
+        ...inventoryMovements,
+        ...current,
+      ]);
+      setBranchInventory((current) => ({
+        ...current,
+        [branch]: nextBranchStock,
+      }));
+      setCatalogProducts((current) =>
+        current.map((product) =>
+          product.stock === null
+            ? product
+            : { ...product, stock: nextBranchStock[product.id] ?? 0 },
+        ),
+      );
+    }
+    let externalAppointmentIndex = 0;
+    const createdAppointments: Appointment[] = result.appointments.map(
+      (appointment, index) => {
+        const hasAgendaSlot = Boolean(appointment.agendaSlotId);
+        const externalAppointmentId = hasAgendaSlot
+          ? agendaReservation?.externalAppointmentIds[externalAppointmentIndex++]
+          : undefined;
+        return {
+          ...appointment,
+          id: `appointment-expansion-${crypto.randomUUID()}`,
+          clientId: result.client.id,
+          clientName: expansionTicket.clientName,
+          clientPhone: result.client.phone,
+          ticketId: expansionTicketId,
+          sellerIds: humanSellerSales.map((sale) => sale.sellerId),
+          recordedAt: createdAtLabel,
+          recordedAtIso: createdAtIso,
+          status:
+            appointment.kind === "NO_APPOINTMENT" ? "PENDING" : "SCHEDULED",
+          ...(hasAgendaSlot
+            ? {
+                ...(agendaClientId ? { agendaClientId } : {}),
+                ...(agendaReservation
+                  ? { agendaReservationId: agendaReservation.reservationId }
+                  : {}),
+                ...(externalAppointmentId ? { externalAppointmentId } : {}),
+                agendaSyncStatus: isOnline
+                  ? ("RESERVED" as const)
+                  : ("PENDING_SYNC" as const),
+                ...(isOnline ? { agendaSyncedAtIso: createdAtIso } : {}),
+              }
+            : {}),
+        };
+      },
+    );
+    if (createdAppointments.length > 0)
+      setAppointments((current) => [...createdAppointments, ...current]);
+    pushOperationalNotification({
+      type: "SALE_COMPLETED",
+      title: `Venta ampliada · ${originalTicket.id}`,
+      detail: `${expansionTicket.clientName} · incremento ${formatCurrency(increment)} · ${result.sellerSummary}`,
+      moduleLabel: "Ventas",
+      branch,
+      actorId: paymentRecorder.sellerId,
+      actorName: paymentRecorder.sellerName,
+      reference: expansionTicketId,
+      createdAtIso,
+    });
+    setCart([]);
+    setDiscountMode("PERCENT");
+    setDiscountValue(0);
+    setCheckoutOpen(false);
+    setExpandingLayawayId(null);
+    setSelectedReceiptTicket(expansionTicket);
+    setReceiptAutoPrint(false);
+    setReceiptVoucherEligible(false);
+    setReceiptPreviewOpen(true);
+    toast.success(
+      `Ticket ${originalTicket.id} liquidado y ampliado. El incremento de ${formatCurrency(increment)} quedó en ${expansionTicketId}.`,
+    );
+    return true;
+  };
+
   const completeTicket = async (result: CheckoutResult) => {
+    const expansionSource = expandingLayawayId
+      ? layaways.find((layaway) => layaway.id === expandingLayawayId)
+      : null;
+    if (
+      expansionSource &&
+      result.client.id !== expansionSource.clientId
+    ) {
+      toast.error(
+        "La ampliación debe conservar la misma clienta del apartado original.",
+      );
+      return;
+    }
+    if (expansionSource) {
+      await completeLayawayExpansion(result, expansionSource);
+      return;
+    }
     const humanSellerSales = result.sellerSales.filter(
       (sale) => sale.participantKind !== "COMPANY",
     );
@@ -4296,8 +5198,11 @@ function App() {
     setDiscountValue(0);
     setDiscountOpen(false);
     setCheckoutOpen(false);
+    setExpandingLayawayId(null);
     if (allowedScreens.includes("receipts")) setActiveScreen("receipts");
     setSelectedReceiptTicket(ticket);
+    setReceiptAutoPrint(false);
+    setReceiptVoucherEligible(true);
     setReceiptPreviewOpen(true);
     toast.success(
       result.paymentStatus === "PAID"
@@ -5778,9 +6683,49 @@ function App() {
     sellerId: string,
     deliveredCartItemIds: string[],
   ) => {
-    const layaway = layaways.find((item) => item.id === layawayId);
-    const seller = sellers.find((item) => item.id === sellerId);
-    if (!layaway || layaway.status === "PAID" || !seller) return;
+    const storedLayaway = layaways.find((item) => item.id === layawayId);
+    const recoverableTicket = tickets.find(
+      (ticket) =>
+        ticket.id === layawayId.replace(/^layaway-/, "") &&
+        ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+        (ticket.paymentStatus === "LAYAWAY" ||
+          ticket.paymentStatus === "PENDING") &&
+        ticket.balanceDue > 0,
+    );
+    const layaway =
+      storedLayaway ??
+      (recoverableTicket
+        ? recoverLayawayFromTicket(
+            recoverableTicket,
+            clients,
+            catalogProducts,
+            activeBranch,
+          )
+        : undefined);
+    if (!storedLayaway && layaway) {
+      setLayaways((current) =>
+        current.some((item) => item.id === layaway.id)
+          ? current
+          : [layaway, ...current],
+      );
+    }
+    const recordingSeller = sellers.find((item) => item.id === sellerId);
+    const layawayClient = clients.find(
+      (client) => client.id === layaway?.clientId,
+    );
+    const registeredSeller = sellers.find(
+      (seller) =>
+        seller.id === layawayClient?.ownerId &&
+        seller.active &&
+        !layawayClient?.companyLocked,
+    );
+    const attributedSellerId = registeredSeller?.id ?? "company-sales";
+    const attributedSellerName =
+      registeredSeller?.name ||
+      layawayClient?.companyName ||
+      receiptSettings.companyName ||
+      "Keysar Cosmetics";
+    if (!layaway || layaway.status === "PAID" || !recordingSeller) return;
     let remainingPaymentCapacity = layaway.balanceDue;
     const appliedPayments = requestedPayments
       .map((payment) => {
@@ -5800,15 +6745,20 @@ function App() {
       toast.error("Ingresa un monto de abono mayor a cero.");
       return;
     }
-    const createdAt = new Date();
+    const recordedAt = new Date();
+    const realPaymentDate = operationalBusinessDate(recordedAt.toISOString());
+    const requestedEffectiveDate = realPaymentDate;
+    const effectiveDateAdjusted = false;
+    const createdAt = recordedAt;
     const createdAtLabel = new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
       month: "short",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "America/Mexico_City",
     }).format(createdAt);
-    const paymentFolio = `APT-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+    const paymentFolio = `APT-${requestedEffectiveDate.replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const balanceDue = Math.max(0, layaway.balanceDue - amount);
     const isLiquidation = balanceDue < 0.01;
     const liquidationDeliveryIds = new Set(deliveredCartItemIds);
@@ -6033,15 +6983,28 @@ function App() {
       folio: paymentFolio,
       createdAt: createdAtLabel,
       createdAtIso: createdAt.toISOString(),
+      recordedAtIso: recordedAt.toISOString(),
+      effectiveDateAdjusted,
+      ...(effectiveDateAdjusted
+        ? {
+            effectiveDateAdjustedById: sessionUser?.id ?? masterUser.id,
+            effectiveDateAdjustedByName: sessionUser?.name ?? masterUser.name,
+          }
+        : {}),
       amount,
       methodId: paymentEntries[0]?.methodId ?? "CASH",
       payments: paymentEntries,
       balanceAfter: balanceDue,
-      sellerId: seller.id,
-      sellerName: seller.name,
+      sellerId: attributedSellerId,
+      sellerName: attributedSellerName,
+      recordedBySellerId: recordingSeller.id,
+      recordedBySellerName: recordingSeller.name,
     };
-    setLayaways((current) =>
-      current.map((item) =>
+    setLayaways((current) => {
+      const records = current.some((item) => item.id === layaway.id)
+        ? current
+        : [layaway, ...current];
+      return records.map((item) =>
         item.id === layaway.id
           ? {
               ...item,
@@ -6052,8 +7015,8 @@ function App() {
               payments: [...item.payments, paymentRecord],
             }
           : item,
-      ),
-    );
+      );
+    });
     if (isLiquidation) {
       setBranchInventory((current) => ({
         ...current,
@@ -6087,12 +7050,13 @@ function App() {
       id: paymentFolio,
       createdAt: createdAtLabel,
       createdAtIso: createdAt.toISOString(),
+      recordedAtIso: recordedAt.toISOString(),
       clientName: layaway.clientName,
       clientPhone: layaway.clientPhone,
       branchName: layaway.branch,
       branchAddress:
         branchAddresses[layaway.branch] ?? "Dirección pendiente de configurar",
-      sellerSummary: seller.name,
+      sellerSummary: attributedSellerName,
       items: 1,
       discountAmount: 0,
       subtotal: amount,
@@ -6102,17 +7066,30 @@ function App() {
       payments: paymentEntries,
       amountPaid: amount,
       balanceDue,
-      paymentStatus: isLiquidation ? "PAID" : "LAYAWAY",
+      paymentStatus: isLiquidation
+        ? "PAID"
+        : layaway.collectionType === "PENDING"
+          ? "PENDING"
+          : "LAYAWAY",
       products: [
         {
           productId: `layaway-payment-${layaway.id}`,
-          name: `Abono a apartado ${layaway.originalTicketId}`,
+          name:
+            layaway.collectionType === "PENDING"
+              ? `Pago a saldo pendiente ${layaway.originalTicketId}`
+              : `Abono a apartado ${layaway.originalTicketId}`,
           quantity: 1,
           total: amount,
         },
       ],
       sellerSales: [
-        { sellerId: seller.id, sellerName: seller.name, amount: 0 },
+        {
+          sellerId: attributedSellerId,
+          sellerName: attributedSellerName,
+          amount: 0,
+          participantKind: registeredSeller ? "SELLER" : "COMPANY",
+          participantCode: registeredSeller?.id ?? receiptSettings.companySalesNumber,
+        },
       ],
       status: "COMPLETED",
       ticketType: "LAYAWAY_PAYMENT",
@@ -6120,7 +7097,7 @@ function App() {
       inventoryDeductions: liquidationDeliveredLines,
       syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
       createdOffline: !isOnline,
-      syncedAtIso: isOnline ? createdAt.toISOString() : null,
+      syncedAtIso: isOnline ? recordedAt.toISOString() : null,
     };
     setTickets((current) => [
       paymentTicket,
@@ -6132,19 +7109,23 @@ function App() {
               balanceDue,
               paymentStatus: isLiquidation
                 ? ("PAID" as const)
-                : ("LAYAWAY" as const),
+                : layaway.collectionType === "PENDING"
+                  ? ("PENDING" as const)
+                  : ("LAYAWAY" as const),
               syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
-              syncedAtIso: isOnline ? createdAt.toISOString() : null,
+              syncedAtIso: isOnline ? recordedAt.toISOString() : null,
             }
           : ticket,
       ),
     ]);
     setSelectedReceiptTicket(paymentTicket);
+    setReceiptAutoPrint(false);
+    setReceiptVoucherEligible(false);
     setReceiptPreviewOpen(true);
     toast.success(
       isLiquidation
-        ? `Apartado liquidado. Se generó ${paymentFolio}.`
-        : `Abono registrado con folio ${paymentFolio}.`,
+        ? `${layaway.collectionType === "PENDING" ? "Saldo pendiente" : "Apartado"} liquidado. Se generó ${paymentFolio}.`
+        : `${layaway.collectionType === "PENDING" ? "Pago" : "Abono"} registrado con folio ${paymentFolio}.`,
     );
   };
 
@@ -6227,10 +7208,127 @@ function App() {
     toast.success(`${type.name} se eliminó de nuevos registros.`);
   };
 
-  const previewTicket = (ticket: Ticket) => {
-    setSelectedReceiptTicket(ticket);
+  const previewTicket = (ticket: Ticket, autoPrint = false) => {
+    const printableTicket =
+      ticket.ticketType === "LAYAWAY_PAYMENT" && ticket.relatedTicketId
+        ? tickets.find(
+            (candidate) => candidate.id === ticket.relatedTicketId,
+          ) ?? ticket
+        : ticket;
+    if (
+      (printableTicket.paymentStatus === "LAYAWAY" ||
+        printableTicket.paymentStatus === "PENDING") &&
+      printableTicket.balanceDue > 0
+    ) {
+      setLayaways((current) => {
+        if (
+          current.some(
+            (layaway) => layaway.originalTicketId === printableTicket.id,
+          )
+        )
+          return current;
+        const linkedClient = clients.find(
+          (client) =>
+            (printableTicket.clientPhone &&
+              client.phone === printableTicket.clientPhone) ||
+            `${client.firstName} ${client.lastName}`.trim() ===
+              printableTicket.clientName,
+        );
+        const primarySeller = printableTicket.sellerSales[0];
+        const recoveredLayaway: LayawayRecord = {
+          id: `layaway-${printableTicket.id}`,
+          originalTicketId: printableTicket.id,
+          createdAt: printableTicket.createdAt,
+          createdAtIso: printableTicket.createdAtIso,
+          clientId: linkedClient?.id ?? `ticket-client-${printableTicket.id}`,
+          clientName: printableTicket.clientName,
+          clientPhone: printableTicket.clientPhone,
+          branch:
+            printableTicket.branchName?.replace(/^Sucursal\s+/i, "") ??
+            activeBranch,
+          sellerIds: printableTicket.sellerSales.map((sale) => sale.sellerId),
+          total: printableTicket.total,
+          amountPaid: printableTicket.amountPaid,
+          balanceDue: printableTicket.balanceDue,
+          items: printableTicket.products.map((product, index) => {
+            const catalogProduct = catalogProducts.find(
+              (candidate) => candidate.id === product.productId,
+            );
+            return {
+              cartItemId: `${printableTicket.id}-${product.productId}-${index}`,
+              productId: product.productId,
+              productName: product.name,
+              kind: catalogProduct?.kind ?? "SERVICE",
+              quantity: product.quantity,
+              deliveredQuantity:
+                catalogProduct?.kind === "PRODUCT" ? product.quantity : 0,
+            };
+          }),
+          payments:
+            printableTicket.amountPaid > 0
+              ? [
+                  {
+                    id: `recovered-payment-${printableTicket.id}`,
+                    folio: `ORIGINAL-${printableTicket.id}`,
+                    createdAt: printableTicket.createdAt,
+                    createdAtIso: printableTicket.createdAtIso,
+                    amount: printableTicket.amountPaid,
+                    methodId:
+                      printableTicket.payments[0]?.methodId ??
+                      printableTicket.paymentMethod,
+                    payments: printableTicket.payments,
+                    balanceAfter: printableTicket.balanceDue,
+                    ...(primarySeller
+                      ? {
+                          sellerId: primarySeller.sellerId,
+                          sellerName: primarySeller.sellerName,
+                        }
+                      : {}),
+                  },
+                ]
+              : [],
+          collectionType:
+            printableTicket.paymentStatus === "PENDING"
+              ? "PENDING"
+              : "LAYAWAY",
+          status: "ACTIVE",
+        };
+        return [recoveredLayaway, ...current];
+      });
+    }
+    setSelectedReceiptTicket(printableTicket);
+    setReceiptAutoPrint(autoPrint);
+    setReceiptVoucherEligible(false);
     setReceiptPreviewOpen(true);
   };
+
+  useEffect(() => {
+    setLayaways((current) => {
+      const knownTicketIds = new Set(
+        current.map((layaway) => layaway.originalTicketId),
+      );
+      const recovered = tickets
+        .filter(
+          (ticket) =>
+            ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+            ticket.status !== "REFUNDED" &&
+            !ticket.cancelledAtIso &&
+            (ticket.paymentStatus === "LAYAWAY" ||
+              ticket.paymentStatus === "PENDING") &&
+            ticket.balanceDue > 0 &&
+            !knownTicketIds.has(ticket.id),
+        )
+        .map((ticket) =>
+          recoverLayawayFromTicket(
+            ticket,
+            clients,
+            catalogProducts,
+            activeBranch,
+          ),
+        );
+      return recovered.length > 0 ? [...recovered, ...current] : current;
+    });
+  }, [activeBranch, catalogProducts, clients, tickets]);
 
   const updateMembershipProfile = (
     membershipId: string,
@@ -6243,6 +7341,228 @@ function App() {
       ),
     );
     toast.success("Perfilamiento de la clienta actualizado.");
+  };
+
+  const changeMembershipPlan = (
+    membershipId: string,
+    request: MembershipPlanChangeRequest,
+  ) => {
+    if (!isMasterAccessCode(request.authorizationCode)) {
+      toast.error("El código master para cambiar la membresía es incorrecto.");
+      return false;
+    }
+    const membership = clientMemberships.find(
+      (candidate) => candidate.id === membershipId,
+    );
+    const targetProduct = catalogProducts.find(
+      (product) =>
+        product.id === request.targetProductId &&
+        product.kind === "MEMBERSHIP" &&
+        product.active,
+    );
+    const currentProduct = catalogProducts.find(
+      (product) => product.id === membership?.productId,
+    );
+    const targetSessions = targetProduct?.membershipSessions ?? 0;
+    if (!membership || membership.status === "CANCELLED" || !targetProduct) {
+      toast.error("La membresía o el nuevo plan ya no están disponibles.");
+      return false;
+    }
+    if (targetProduct.id === membership.productId) {
+      toast.error("Selecciona una membresía diferente a la actual.");
+      return false;
+    }
+    if (targetSessions < membership.usedSessions) {
+      toast.error(
+        `El nuevo plan debe aceptar las ${membership.usedSessions} sesiones ya tomadas.`,
+      );
+      return false;
+    }
+    if (!request.reason.trim()) {
+      toast.error("Registra el motivo del cambio de membresía.");
+      return false;
+    }
+
+    const changedAtIso = new Date().toISOString();
+    const previousListPrice = currentProduct?.maxPrice ?? membership.purchaseAmount;
+    const priceDifference = roundCurrency(
+      targetProduct.maxPrice - previousListPrice,
+    );
+    const nextStatus =
+      membership.usedSessions >= targetSessions ? "EXHAUSTED" : "ACTIVE";
+    setClientMemberships((current) =>
+      current.map((candidate) => {
+        if (candidate.id !== membershipId) return candidate;
+        return {
+          ...candidate,
+          productId: targetProduct.id,
+          membershipName: targetProduct.name,
+          totalSessions: targetSessions,
+          status: nextStatus,
+          planChanges: [
+            ...(candidate.planChanges ?? []),
+            {
+              id: `membership-plan-change-${crypto.randomUUID()}`,
+              changedAtIso,
+              fromProductId: candidate.productId,
+              fromMembershipName: candidate.membershipName,
+              fromTotalSessions: candidate.totalSessions,
+              fromListPrice: previousListPrice,
+              toProductId: targetProduct.id,
+              toMembershipName: targetProduct.name,
+              toTotalSessions: targetSessions,
+              toListPrice: targetProduct.maxPrice,
+              priceDifference,
+              transferredUsedSessions: candidate.usedSessions,
+              remainingSessionsAfterChange: Math.max(
+                0,
+                targetSessions - candidate.usedSessions,
+              ),
+              reason: request.reason.trim(),
+              changedById: sessionUser?.id ?? masterUser.id,
+              changedByName: sessionUser?.name ?? masterUser.name,
+            },
+          ],
+          statusChanges:
+            candidate.status !== nextStatus
+              ? [
+                  ...candidate.statusChanges,
+                  {
+                    id: `membership-status-${crypto.randomUUID()}`,
+                    changedAtIso,
+                    fromStatus: candidate.status,
+                    toStatus: nextStatus,
+                    reason: `Cambio de plan a ${targetProduct.name}; se conservaron ${candidate.usedSessions} sesiones tomadas.`,
+                  },
+                ]
+              : candidate.statusChanges,
+          agendaSyncStatus: "PENDING_SYNC",
+        };
+      }),
+    );
+    toast.success(
+      `Membresía cambiada a ${targetProduct.name}. Se conservaron ${membership.usedSessions} sesiones tomadas.`,
+    );
+    return true;
+  };
+
+  const reassignRefundMembershipSessions = (
+    sourceMembershipId: string,
+    targetMembershipId: string,
+  ) => {
+    if (!canEditActiveModule) {
+      toast.error("Tu perfil no tiene permiso para reasignar sesiones.");
+      return false;
+    }
+    const source = clientMemberships.find(
+      (membership) => membership.id === sourceMembershipId,
+    );
+    const target = clientMemberships.find(
+      (membership) => membership.id === targetMembershipId,
+    );
+    if (
+      !source ||
+      !target ||
+      source.status !== "CANCELLED" ||
+      source.refundSessionDisposition !== "PENDING_REASSIGNMENT" ||
+      source.clientId !== target.clientId ||
+      target.status === "CANCELLED"
+    ) {
+      toast.error("La reasignación ya no está disponible para estas membresías.");
+      return false;
+    }
+    const nextUsedSessions = target.usedSessions + source.usedSessions;
+    if (nextUsedSessions > target.totalSessions) {
+      toast.error(
+        "La nueva membresía no tiene capacidad para todas las sesiones tomadas.",
+      );
+      return false;
+    }
+    const transferredAtIso = new Date().toISOString();
+    const nextTargetStatus =
+      nextUsedSessions >= target.totalSessions ? "EXHAUSTED" : "ACTIVE";
+    setClientMemberships((current) =>
+      current.map((membership) => {
+        if (membership.id === sourceMembershipId) {
+          return {
+            ...membership,
+            refundSessionDisposition: "REASSIGNED" as const,
+            reassignedToMembershipId: target.id,
+            reassignedToMembershipFolio: target.folio,
+            reassignedAtIso: transferredAtIso,
+          };
+        }
+        if (membership.id !== targetMembershipId) return membership;
+        return {
+          ...membership,
+          usedSessions: nextUsedSessions,
+          status: nextTargetStatus,
+          attendance: [
+            ...membership.attendance,
+            ...source.attendance.map((attendance) => ({
+              ...attendance,
+              id: `reassigned-${target.id}-${attendance.id}`,
+              reassignedFromMembershipId: source.id,
+              reassignedFromMembershipFolio: source.folio,
+            })),
+          ],
+          sessionTransfers: [
+            ...(membership.sessionTransfers ?? []),
+            {
+              id: `membership-session-transfer-${crypto.randomUUID()}`,
+              transferredAtIso,
+              sourceMembershipId: source.id,
+              sourceMembershipFolio: source.folio,
+              sourceMembershipName: source.membershipName,
+              transferredSessions: source.usedSessions,
+              authorizedById: sessionUser?.id ?? masterUser.id,
+              authorizedByName: sessionUser?.name ?? masterUser.name,
+            },
+          ],
+          statusChanges:
+            membership.status !== nextTargetStatus
+              ? [
+                  ...membership.statusChanges,
+                  {
+                    id: `membership-status-${crypto.randomUUID()}`,
+                    changedAtIso: transferredAtIso,
+                    fromStatus: membership.status,
+                    toStatus: nextTargetStatus,
+                    reason: `${source.usedSessions} sesiones reasignadas desde ${source.folio}.`,
+                  },
+                ]
+              : membership.statusChanges,
+          agendaSyncStatus: "PENDING_SYNC",
+        };
+      }),
+    );
+    setTickets((current) =>
+      current.map((ticket) =>
+        ticket.membershipRefundSessions?.some(
+          (record) => record.membershipId === sourceMembershipId,
+        )
+          ? {
+              ...ticket,
+              membershipRefundSessions: ticket.membershipRefundSessions.map(
+                (record) =>
+                  record.membershipId === sourceMembershipId
+                    ? {
+                        ...record,
+                        disposition: "REASSIGNED" as const,
+                        reassignedToMembershipId: target.id,
+                        reassignedToMembershipFolio: target.folio,
+                        reassignedAtIso: transferredAtIso,
+                      }
+                    : record,
+              ),
+            }
+          : ticket,
+      ),
+    );
+    toast.success(
+      `${source.usedSessions} sesiones tomadas fueron reasignadas a ${target.folio}.`,
+    );
+    return true;
   };
 
   const consumeMembershipSession = async (
@@ -6356,7 +7676,113 @@ function App() {
       (candidate) =>
         candidate.externalAppointmentId === update.externalAppointmentId,
     );
+    if (!appointment && update.status === "RESERVED") {
+      const membership = clientMemberships.find(
+        (candidate) =>
+          candidate.id === update.membershipId ||
+          candidate.externalMembershipId === update.externalMembershipId,
+      );
+      const client = clients.find(
+        (candidate) =>
+          candidate.id === update.clientId ||
+          candidate.agendaClientId === update.externalClientId ||
+          candidate.id === membership?.clientId,
+      );
+      const slot = agendaSlots.find(
+        (candidate) => candidate.externalSlotId === update.externalSlotId,
+      );
+      if (!membership || !client) return;
+      const externalAppointment: Appointment = {
+        id: `appointment-external-${update.externalAppointmentId}`,
+        kind: "NEXT_SESSION",
+        service: update.service ?? membership.membershipName,
+        date: update.date ?? slot?.date ?? operationalBusinessDate(update.updatedAtIso),
+        branch: update.branch ?? slot?.branch ?? membership.branch,
+        time: update.startTime ?? slot?.startTime ?? "Horario externo",
+        ...(slot
+          ? {
+              agendaSlotId: slot.id,
+              externalSlotId: slot.externalSlotId,
+              agendaResourceName:
+                update.resourceName ?? slot.resourceName,
+              agendaReservationMode: "SINGLE" as const,
+            }
+          : update.externalSlotId
+            ? { externalSlotId: update.externalSlotId }
+            : {}),
+        clientId: client.id,
+        clientName:
+          update.clientName ??
+          `${client.firstName} ${client.lastName}`.trim(),
+        clientPhone: update.clientPhone ?? client.phone,
+        ticketId: membership.purchaseTicketId,
+        sellerIds: [],
+        recordedAt: new Intl.DateTimeFormat("es-MX", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "America/Mexico_City",
+        }).format(new Date(update.updatedAtIso)),
+        recordedAtIso: update.updatedAtIso,
+        status: "SCHEDULED",
+        membershipId: membership.id,
+        ...((update.externalClientId ?? membership.agendaClientId)
+          ? {
+              agendaClientId:
+                update.externalClientId ?? membership.agendaClientId,
+            }
+          : {}),
+        ...(update.reservationId
+          ? { agendaReservationId: update.reservationId }
+          : {}),
+        externalAppointmentId: update.externalAppointmentId,
+        agendaSyncStatus: "RESERVED",
+        agendaSyncedAtIso: update.updatedAtIso,
+        bookingSource: "EXTERNAL_AGENDA",
+        bookedById: "external-agenda",
+        bookedByName: update.bookedByName ?? "Agenda externa",
+        bookedByRole: "EXTERNAL_AGENDA",
+      };
+      setAppointments((current) => [externalAppointment, ...current]);
+      if (slot) {
+        setAgendaSlots((current) =>
+          current.map((candidate) =>
+            candidate.id === slot.id
+              ? {
+                  ...candidate,
+                  reservedCount: Math.min(
+                    candidate.capacity,
+                    candidate.reservedCount + 1,
+                  ),
+                  status:
+                    candidate.reservedCount + 1 >= candidate.capacity
+                      ? "BOOKED"
+                      : "AVAILABLE",
+                  updatedAtIso: update.updatedAtIso,
+                }
+              : candidate,
+          ),
+        );
+      }
+      return;
+    }
     if (!appointment) return;
+    if (update.status === "RESERVED") {
+      setAppointments((current) =>
+        current.map((candidate) =>
+          candidate.id === appointment.id
+            ? {
+                ...candidate,
+                agendaSyncStatus: "RESERVED",
+                agendaSyncedAtIso: update.updatedAtIso,
+              }
+            : candidate,
+        ),
+      );
+      return;
+    }
     if (update.status === "ATTENDED") {
       if (appointment.status === "ATTENDED") return;
       if (appointment.membershipId) {
@@ -6405,7 +7831,8 @@ function App() {
         candidate.id === appointment.id
           ? {
               ...candidate,
-              status: update.status,
+              status:
+                update.status === "RESERVED" ? "SCHEDULED" : update.status,
               agendaSyncStatus: update.status,
               agendaSyncedAtIso: update.updatedAtIso,
             }
@@ -6437,13 +7864,27 @@ function App() {
       disposed = true;
       window.clearInterval(intervalId);
     };
-  }, [agendaGateway, appointments, isOnline]);
+  }, [
+    agendaGateway,
+    agendaSlots,
+    appointments,
+    clientMemberships,
+    clients,
+    isOnline,
+  ]);
 
   const scheduleMembershipNextAppointment = async (
     membershipId: string,
     agendaSlotId: string,
+    authorizationCode: string,
   ) => {
-    if (!canEditActiveModule) return false;
+    const reservationActor = authorizeAppointmentCode(authorizationCode);
+    if (!reservationActor) {
+      toast.error(
+        "Código personal inválido. La cita no fue reservada.",
+      );
+      return false;
+    }
     const membership = clientMemberships.find(
       (candidate) => candidate.id === membershipId,
     );
@@ -6515,7 +7956,11 @@ function App() {
       clientName: membership.clientName,
       clientPhone: membership.clientPhone,
       ticketId: membership.purchaseTicketId,
-      sellerIds: [membership.sellerId],
+      sellerIds:
+        reservationActor.role === "SELLER" ||
+        reservationActor.role === "ADMINISTRATIVE"
+          ? [reservationActor.id]
+          : [membership.sellerId],
       recordedAt: new Intl.DateTimeFormat("es-MX", {
         day: "2-digit",
         month: "short",
@@ -6526,6 +7971,10 @@ function App() {
       recordedAtIso,
       status: "SCHEDULED",
       membershipId,
+      bookingSource: "POS_MEMBERSHIP",
+      bookedById: reservationActor.id,
+      bookedByName: reservationActor.name,
+      bookedByRole: reservationActor.role,
       ...(agendaClientId ? { agendaClientId } : {}),
       ...(reservation
         ? {
@@ -6552,7 +8001,7 @@ function App() {
       );
     }
     toast.success(
-      `Próxima cita reservada: ${slot.date} · ${slot.startTime} · ${slot.resourceName}.`,
+      `Próxima cita reservada por ${reservationActor.name}: ${slot.date} · ${slot.startTime} · ${slot.resourceName}.`,
     );
     return true;
   };
@@ -6568,6 +8017,15 @@ function App() {
   };
 
   const issueVoucher = (ticket: Ticket, voucherId: string): VoucherIssue | null => {
+    if (
+      !receiptVoucherEligible ||
+      selectedReceiptTicket?.id !== ticket.id
+    ) {
+      toast.error(
+        "Los vouchers sólo pueden emitirse al finalizar un ticket nuevo, no desde una reimpresión.",
+      );
+      return null;
+    }
     const template = voucherTemplates.find(
       (candidate) =>
         candidate.id === voucherId &&
@@ -6634,8 +8092,49 @@ function App() {
     ticketId: string,
     changes: TicketEditRequest,
   ): boolean => {
+    if (
+      !hasAssignedTicketEditPermission &&
+      !isMasterAccessCode(changes.authorizationCode)
+    ) {
+      toast.error(
+        "Editar el ticket requiere código master o permiso de edición asignado. No se registró ningún movimiento.",
+      );
+      return false;
+    }
     const ticket = tickets.find((item) => item.id === ticketId);
     if (!ticket || ticket.status === "REFUNDED") return false;
+    const isPaymentFolio = ticket.ticketType === "LAYAWAY_PAYMENT";
+    const originalPaymentEffectiveDate = operationalBusinessDate(
+      ticket.createdAtIso,
+    );
+    if (
+      isPaymentFolio &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(changes.paymentEffectiveDate)
+    ) {
+      toast.error("Selecciona una fecha válida para el folio de pago.");
+      return false;
+    }
+    const paymentEffectiveDate = isPaymentFolio
+      ? changes.paymentEffectiveDate
+      : originalPaymentEffectiveDate;
+    const paymentDateChanged =
+      isPaymentFolio && paymentEffectiveDate !== originalPaymentEffectiveDate;
+    const paymentEffectiveAt = paymentDateChanged
+      ? new Date(`${paymentEffectiveDate}T12:00:00-06:00`)
+      : new Date(ticket.createdAtIso);
+    const paymentEffectiveAtLabel = new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Mexico_City",
+    }).format(paymentEffectiveAt);
+    const recordedPaymentDate = operationalBusinessDate(
+      ticket.recordedAtIso ?? ticket.createdAtIso,
+    );
+    const paymentEffectiveDateAdjusted =
+      isPaymentFolio && paymentEffectiveDate !== recordedPaymentDate;
     const currentLayaway = layaways.find(
       (layaway) => layaway.originalTicketId === ticketId,
     );
@@ -6707,6 +8206,106 @@ function App() {
       toast.error("Uno de los productos ya no está disponible para editar.");
       return false;
     }
+    const ticketInventoryBranch =
+      ticket.inventoryDeductions?.[0]?.branch ??
+      (ticket.branchName && branchInventory[ticket.branchName]
+        ? ticket.branchName
+        : activeBranch);
+    const replacementDemand = new Map<string, number>();
+    for (const change of changes.productChanges) {
+      const originalLine = ticket.products[change.originalLineIndex];
+      const editedLine = changes.products[change.originalLineIndex];
+      const originalProduct = catalogProducts.find(
+        (candidate) => candidate.id === change.originalProductId,
+      );
+      const replacementProduct = catalogProducts.find(
+        (candidate) => candidate.id === change.replacementProductId,
+      );
+      if (
+        !originalLine ||
+        !editedLine ||
+        originalLine.productId !== change.originalProductId ||
+        editedLine.productId !== change.replacementProductId ||
+        originalProduct?.kind !== "PRODUCT" ||
+        replacementProduct?.kind !== "PRODUCT" ||
+        !replacementProduct.active ||
+        change.originalProductId === change.replacementProductId ||
+        change.quantity !== originalLine.quantity ||
+        change.replacementQuantity !== editedLine.quantity ||
+        !(["RETURN_TO_STOCK", "DEMO", "WRITE_OFF"] as const).includes(
+          change.disposition,
+        ) ||
+        !change.reason.trim()
+      ) {
+        toast.error(
+          "El cambio de producto está incompleto o ya no coincide con el ticket original.",
+        );
+        return false;
+      }
+      replacementDemand.set(
+        replacementProduct.id,
+        (replacementDemand.get(replacementProduct.id) ?? 0) +
+          change.replacementQuantity,
+      );
+    }
+    const ticketBranchStock = branchInventory[ticketInventoryBranch] ?? {};
+    const unavailableReplacement = Array.from(replacementDemand.entries()).find(
+      ([productId, quantity]) => (ticketBranchStock[productId] ?? 0) < quantity,
+    );
+    if (unavailableReplacement) {
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === unavailableReplacement[0],
+      );
+      toast.error(
+        `${product?.name ?? "El producto de reemplazo"} no tiene existencias suficientes en ${ticketInventoryBranch}.`,
+      );
+      return false;
+    }
+    const productChangedAt = new Date();
+    const productChangedAtLabel = new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(productChangedAt);
+    const productChangeRecords = changes.productChanges.map((change) => {
+      const originalProduct = catalogProducts.find(
+        (candidate) => candidate.id === change.originalProductId,
+      )!;
+      const replacementProduct = catalogProducts.find(
+        (candidate) => candidate.id === change.replacementProductId,
+      )!;
+      return {
+        ...change,
+        id: crypto.randomUUID(),
+        changedAt: productChangedAtLabel,
+        changedAtIso: productChangedAt.toISOString(),
+        branch: ticketInventoryBranch,
+        originalProductName: originalProduct.name,
+        replacementProductName: replacementProduct.name,
+        incomingUnitCostUsd: originalProduct.costUsd,
+        incomingUnitCostMxn: originalProduct.costMxn,
+        incomingTotalCostUsd: originalProduct.costUsd * change.quantity,
+        incomingTotalCostMxn: originalProduct.costMxn * change.quantity,
+        dispositionTotalCostUsd:
+          change.disposition === "RETURN_TO_STOCK"
+            ? 0
+            : originalProduct.costUsd * change.quantity,
+        dispositionTotalCostMxn:
+          change.disposition === "RETURN_TO_STOCK"
+            ? 0
+            : originalProduct.costMxn * change.quantity,
+        outgoingUnitCostUsd: replacementProduct.costUsd,
+        outgoingUnitCostMxn: replacementProduct.costMxn,
+        outgoingTotalCostUsd:
+          replacementProduct.costUsd * change.replacementQuantity,
+        outgoingTotalCostMxn:
+          replacementProduct.costMxn * change.replacementQuantity,
+        changedById: sessionUser?.id ?? masterUser.id,
+        changedByName: sessionUser?.name ?? masterUser.name,
+      };
+    });
     const editedLineByOriginalProductId = new Map(
       ticket.products.flatMap((originalLine, index) => {
         const editedLine = nextProducts[index];
@@ -6771,12 +8370,20 @@ function App() {
       return sum + (product?.minPrice ?? 0) * line.quantity;
     }, 0);
     const nextDeviation = total - minimumTotal;
+    const hasLineBelowMinimum = changes.products.some((line) => {
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === line.productId,
+      );
+      return Boolean(product && line.unitPrice < product.minPrice);
+    });
     if (
-      nextDeviation < Math.min(0, ticket.deviation) &&
+      (hasLineBelowMinimum ||
+        nextDeviation < Math.min(0, ticket.deviation)) &&
+      !hasAssignedTicketEditPermission &&
       !isMasterAccessCode(changes.authorizationCode)
     ) {
       toast.error(
-        "La edición queda por debajo del mínimo combinado. Ingresa el código master.",
+        "Un producto quedó por debajo del mínimo. Ingresa código master o usa un perfil con permiso de edición asignado.",
       );
       return false;
     }
@@ -6860,6 +8467,16 @@ function App() {
         amount: payments[0].amount + remainingOriginalPayment,
       };
     }
+    const effectivePayments: PaymentEntry[] = isPaymentFolio
+      ? payments.map((payment) => ({
+          ...payment,
+          createdAt: paymentEffectiveAtLabel,
+          createdAtIso: paymentEffectiveAt.toISOString(),
+          ...(ticket.relatedTicketId
+            ? { relatedTicketId: ticket.relatedTicketId }
+            : {}),
+        }))
+      : payments;
     const balanceDue = Math.max(0, total - amountPaid);
     const relatedPaymentUpdates = new Map<string, Ticket>();
     relatedPaymentTickets.forEach((paymentTicket) => {
@@ -6948,11 +8565,21 @@ function App() {
       netTotal,
       vatAmount,
       deviation: nextDeviation,
-      payments,
+      ...(isPaymentFolio
+        ? {
+            createdAt: paymentEffectiveAtLabel,
+            createdAtIso: paymentEffectiveAt.toISOString(),
+          }
+        : {}),
+      payments: effectivePayments,
       amountPaid,
       balanceDue,
       paymentStatus,
-      paymentMethod: payments[0]?.methodId ?? defaultPaymentMethod,
+      paymentMethod: effectivePayments[0]?.methodId ?? defaultPaymentMethod,
+      productChangeHistory: [
+        ...(ticket.productChangeHistory ?? []),
+        ...productChangeRecords,
+      ],
       syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
       ...(ticket.createdOffline === undefined
         ? {}
@@ -7046,13 +8673,80 @@ function App() {
       const branchStock = nextInventory[inventoryBranch] ?? {};
       nextInventory[inventoryBranch] = branchStock;
       const previousDelivered = new Map<string, number>();
+      const returnMovements: InventoryMovement[] = [];
+      const dispositionMovements: InventoryMovement[] = [];
+      const changeByOriginalProductId = new Map(
+        changes.productChanges.map((change) => [
+          change.originalProductId,
+          change,
+        ]),
+      );
       originalInventoryDeductions.forEach((line) => {
-        branchStock[line.productId] =
-          (branchStock[line.productId] ?? 0) + line.quantity;
+        const previousStock = branchStock[line.productId] ?? 0;
+        const restoredStock = previousStock + line.quantity;
+        branchStock[line.productId] = restoredStock;
         previousDelivered.set(
           line.productId,
           (previousDelivered.get(line.productId) ?? 0) + line.quantity,
         );
+        const productChange = changeByOriginalProductId.get(line.productId);
+        if (!productChange) return;
+        const product = catalogProducts.find(
+          (candidate) => candidate.id === line.productId,
+        );
+        if (!product) return;
+        returnMovements.push({
+          id: crypto.randomUUID(),
+          folio: `CAM-${ticketId}-ENT-${returnMovements.length + 1}`,
+          createdAt: productChangedAtLabel,
+          createdAtIso: productChangedAt.toISOString(),
+          productId: product.id,
+          productName: product.name,
+          direction: "ADD",
+          reason: `Entrada por cambio de producto · ${ticketId}`,
+          quantity: line.quantity,
+          previousStock,
+          newStock: restoredStock,
+          sourceBranch: inventoryBranch,
+          destinationBranch: null,
+          destinationPreviousStock: null,
+          destinationNewStock: null,
+          comment: `${productChange.reason} · recibido de ${changes.clientName}`,
+          category: "RETURN",
+          unitCostUsd: product.costUsd,
+          unitCostMxn: product.costMxn,
+          totalCostUsd: product.costUsd * line.quantity,
+          totalCostMxn: product.costMxn * line.quantity,
+        });
+        if (productChange.disposition === "RETURN_TO_STOCK") return;
+        const dispositionStock = restoredStock - line.quantity;
+        branchStock[line.productId] = dispositionStock;
+        const dispositionLabel =
+          productChange.disposition === "DEMO" ? "Demo / tester" : "Baja";
+        dispositionMovements.push({
+          id: crypto.randomUUID(),
+          folio: `CAM-${ticketId}-${productChange.disposition === "DEMO" ? "DEM" : "BAJ"}-${dispositionMovements.length + 1}`,
+          createdAt: productChangedAtLabel,
+          createdAtIso: productChangedAt.toISOString(),
+          productId: product.id,
+          productName: product.name,
+          direction: "REMOVE",
+          reason: `${dispositionLabel} por cambio de producto · ${ticketId}`,
+          quantity: line.quantity,
+          previousStock: restoredStock,
+          newStock: dispositionStock,
+          sourceBranch: inventoryBranch,
+          destinationBranch: null,
+          destinationPreviousStock: null,
+          destinationNewStock: null,
+          comment: `${productChange.reason} · producto retirado del ticket de ${changes.clientName}`,
+          category:
+            productChange.disposition === "DEMO" ? "DEMO" : "WRITE_OFF",
+          unitCostUsd: product.costUsd,
+          unitCostMxn: product.costMxn,
+          totalCostUsd: product.costUsd * line.quantity,
+          totalCostMxn: product.costMxn * line.quantity,
+        });
       });
       owedProducts
         .filter(
@@ -7079,18 +8773,24 @@ function App() {
       }).format(editedAt);
       const deductions: TicketInventoryLine[] = [];
       const replacementMovements: InventoryMovement[] = [];
+      const quantityReturnMovements: InventoryMovement[] = [];
       const replacementDebts: OwedProductRecord[] = [];
-      changes.products.forEach((line) => {
+      changes.products.forEach((line, lineIndex) => {
         const product = catalogProducts.find(
           (candidate) => candidate.id === line.productId,
         );
         if (!product || product.kind !== "PRODUCT") return;
+        const productChange = changes.productChanges.find(
+          (change) => change.originalLineIndex === lineIndex,
+        );
         const requestedQuantity =
           paymentStatus === "PAID"
             ? line.quantity
             : Math.min(
                 line.quantity,
-                previousDelivered.get(line.productId) ?? 0,
+                previousDelivered.get(
+                  productChange?.originalProductId ?? line.productId,
+                ) ?? 0,
               );
         const available = branchStock[line.productId] ?? 0;
         const delivered = Math.min(Math.max(available, 0), requestedQuantity);
@@ -7105,7 +8805,15 @@ function App() {
             branch: inventoryBranch,
           });
         }
-        if (requestedQuantity > 0) {
+        const originalLine = ticket.products[lineIndex];
+        const originalComparableQuantity =
+          originalLine?.productId === line.productId
+            ? originalLine.quantity
+            : 0;
+        const outgoingMovementQuantity = productChange
+          ? requestedQuantity
+          : Math.max(0, requestedQuantity - originalComparableQuantity);
+        if (outgoingMovementQuantity > 0) {
           replacementMovements.push({
             id: crypto.randomUUID(),
             folio: `VEN-${ticketId}-EDIT-${replacementMovements.length + 1}`,
@@ -7115,8 +8823,8 @@ function App() {
             productName: product.name,
             direction: "REMOVE",
             reason: `Venta ${ticketId} · ticket editado`,
-            quantity: requestedQuantity,
-            previousStock: available,
+            quantity: outgoingMovementQuantity,
+            previousStock: newStock + outgoingMovementQuantity,
             newStock,
             sourceBranch: inventoryBranch,
             destinationBranch: null,
@@ -7124,13 +8832,44 @@ function App() {
             destinationNewStock: null,
             comment:
               shortage > 0
-                ? `Actualización de ticket · ${changes.clientName} · ${delivered} entregado(s), ${shortage} pendiente(s)`
-                : `Actualización automática de ticket · ${changes.clientName}`,
+                ? `Cambio de producto · ${changes.clientName} · ${delivered} entregado(s), ${shortage} pendiente(s)`
+                : productChange
+                  ? `${productChange.reason} · reemplazo de ${ticket.products[lineIndex]?.name ?? "producto"}`
+                  : `Aumento de cantidad en ticket · ${changes.clientName}`,
             category: "SALE",
             unitCostUsd: product.costUsd,
             unitCostMxn: product.costMxn,
-            totalCostUsd: product.costUsd * requestedQuantity,
-            totalCostMxn: product.costMxn * requestedQuantity,
+            totalCostUsd: product.costUsd * outgoingMovementQuantity,
+            totalCostMxn: product.costMxn * outgoingMovementQuantity,
+          });
+        }
+        const returnedQuantity = Math.max(
+          0,
+          originalComparableQuantity - requestedQuantity,
+        );
+        if (returnedQuantity > 0) {
+          quantityReturnMovements.push({
+            id: crypto.randomUUID(),
+            folio: `CAM-${ticketId}-AJU-${quantityReturnMovements.length + 1}`,
+            createdAt: editedAtLabel,
+            createdAtIso: editedAt.toISOString(),
+            productId: product.id,
+            productName: product.name,
+            direction: "ADD",
+            reason: `Reducción de cantidad · ticket ${ticketId}`,
+            quantity: returnedQuantity,
+            previousStock: newStock - returnedQuantity,
+            newStock,
+            sourceBranch: inventoryBranch,
+            destinationBranch: null,
+            destinationPreviousStock: null,
+            destinationNewStock: null,
+            comment: `Cantidad ajustada en edición · ${changes.clientName}`,
+            category: "RETURN",
+            unitCostUsd: product.costUsd,
+            unitCostMxn: product.costMxn,
+            totalCostUsd: product.costUsd * returnedQuantity,
+            totalCostMxn: product.costMxn * returnedQuantity,
           });
         }
         if (shortage > 0) {
@@ -7175,15 +8914,11 @@ function App() {
         ),
       );
       setInventoryMovements((current) => [
+        ...dispositionMovements,
         ...replacementMovements,
-        ...current.filter(
-          (movement) =>
-            !(
-              movement.category === "SALE" &&
-              (movement.folio.includes(ticketId) ||
-                movement.reason.includes(ticketId))
-            ),
-        ),
+        ...quantityReturnMovements,
+        ...returnMovements,
+        ...current,
       ]);
       setOwedProducts((current) => [
         ...replacementDebts,
@@ -7251,14 +8986,31 @@ function App() {
                   0,
                   layaway.total - nextAmountPaid,
                 );
+                const previousPayment = layaway.payments.find(
+                  (payment) => payment.folio === ticketId,
+                );
                 const nextPayment = {
-                  id: payments[0]?.id ?? crypto.randomUUID(),
+                  ...(previousPayment ?? {}),
+                  id: effectivePayments[0]?.id ?? crypto.randomUUID(),
                   folio: ticketId,
-                  createdAt: ticket.createdAt,
-                  createdAtIso: ticket.createdAtIso,
+                  createdAt: paymentEffectiveAtLabel,
+                  createdAtIso: paymentEffectiveAt.toISOString(),
+                  recordedAtIso:
+                    previousPayment?.recordedAtIso ??
+                    ticket.recordedAtIso ??
+                    ticket.createdAtIso,
+                  effectiveDateAdjusted: paymentEffectiveDateAdjusted,
+                  ...(paymentDateChanged
+                    ? {
+                        effectiveDateAdjustedById:
+                          sessionUser?.id ?? masterUser.id,
+                        effectiveDateAdjustedByName:
+                          sessionUser?.name ?? masterUser.name,
+                      }
+                    : {}),
                   amount: amountPaid,
                   methodId: defaultPaymentMethod,
-                  payments,
+                  payments: effectivePayments,
                   balanceAfter: nextBalanceDue,
                 };
                 const hasPayment = layaway.payments.some(
@@ -7453,14 +9205,38 @@ function App() {
   };
 
   const openTicketCancellation = (ticket: Ticket) => {
-    if (ticket.status === "REFUNDED") return;
+    if (ticket.status === "REFUNDED" || ticket.ticketType === "REFUND") return;
     setCancellingTicket(ticket);
     setTicketCancellationOpen(true);
   };
 
   const cancelTicket = async (request: TicketCancellationRequest) => {
     const ticket = cancellingTicket;
-    if (!ticket || ticket.status === "REFUNDED") return;
+    const assignedUserCodeIsValid = Boolean(
+      hasAssignedTicketCancellationPermission &&
+        sessionUser &&
+        sellers.some(
+          (seller) =>
+            seller.id === sessionUser.id &&
+            seller.active &&
+            seller.accessCode === request.authorizationCode.trim(),
+        ),
+    );
+    if (
+      !assignedUserCodeIsValid &&
+      !isMasterAccessCode(request.authorizationCode)
+    ) {
+      toast.error(
+        "Código de autorización incorrecto. Usa un código master o tu código personal si tienes TICKET_CANCELLATION asignado.",
+      );
+      return;
+    }
+    if (
+      !ticket ||
+      ticket.status === "REFUNDED" ||
+      ticket.ticketType === "REFUND"
+    )
+      return;
     const ticketAppointments = appointments.filter(
       (appointment) => appointment.ticketId === ticket.id,
     );
@@ -7498,6 +9274,99 @@ function App() {
       hour: "2-digit",
       minute: "2-digit",
     }).format(cancelledAt);
+    const customEffectiveAt =
+      request.effectiveDateMode === "CUSTOM_DATE" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(request.customEffectiveDate)
+        ? new Date(`${request.customEffectiveDate}T12:00:00`)
+        : null;
+    if (
+      request.effectiveDateMode === "CUSTOM_DATE" &&
+      (!customEffectiveAt || Number.isNaN(customEffectiveAt.getTime()))
+    ) {
+      toast.error("Selecciona una fecha válida para el movimiento personalizado.");
+      return;
+    }
+    const refundEffectiveAt =
+      request.effectiveDateMode === "ORIGINAL_SALE_DATE"
+        ? new Date(ticket.createdAtIso)
+        : customEffectiveAt ?? cancelledAt;
+    const refundEffectiveAtLabel = new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(refundEffectiveAt);
+    const refundTransactionId = `RF-${ticket.id}-${cancelledAt
+      .toISOString()
+      .replace(/\D/g, "")
+      .slice(0, 14)}`;
+    const refundRatio =
+      ticket.amountPaid > 0
+        ? Math.min(1, request.refundAmount / ticket.amountPaid)
+        : 0;
+    const refundPayments = ticket.payments.map((payment) => ({
+      ...payment,
+      id: crypto.randomUUID(),
+      amount: -roundCurrency(payment.amount * refundRatio),
+      createdAt: refundEffectiveAtLabel,
+      createdAtIso: refundEffectiveAt.toISOString(),
+      relatedTicketId: ticket.id,
+    }));
+    const refundTicket: Ticket = {
+      ...ticket,
+      id: refundTransactionId,
+      createdAt: refundEffectiveAtLabel,
+      createdAtIso: refundEffectiveAt.toISOString(),
+      ticketType: "REFUND",
+      relatedTicketId: ticket.id,
+      items: -ticket.items,
+      discountAmount: 0,
+      subtotal: -ticket.subtotal,
+      total: -ticket.total,
+      ...(typeof ticket.netTotal === "number"
+        ? { netTotal: -ticket.netTotal }
+        : {}),
+      ...(typeof ticket.vatAmount === "number"
+        ? { vatAmount: -ticket.vatAmount }
+        : {}),
+      deviation: -ticket.deviation,
+      payments: refundPayments,
+      amountPaid: -request.refundAmount,
+      balanceDue: 0,
+      paymentStatus: "PAID",
+      products: ticket.products.map((line) => ({
+        ...line,
+        quantity: -line.quantity,
+        total: -line.total,
+        ...(typeof line.netTotal === "number"
+          ? { netTotal: -line.netTotal }
+          : {}),
+        ...(typeof line.vatAmount === "number"
+          ? { vatAmount: -line.vatAmount }
+          : {}),
+      })),
+      sellerSales: ticket.sellerSales.map((sale) => ({
+        ...sale,
+        amount: -sale.amount,
+      })),
+      deals: [],
+      status: "COMPLETED",
+      inventoryDeductions: [],
+      refundAmount: request.refundAmount,
+      refundEffectiveDateMode: request.effectiveDateMode,
+      refundEffectiveDate: operationalBusinessDate(
+        refundEffectiveAt.toISOString(),
+      ),
+      refundReason: request.reason,
+      cancelledAt: cancelledAtLabel,
+      cancelledAtIso: cancelledAt.toISOString(),
+      cancelledById: sessionUser?.id ?? masterUser.id,
+      cancelledByName: sessionUser?.name ?? masterUser.name,
+      returnedProducts: request.returnedProducts,
+      nonReturnedProducts: request.nonReturnedProducts,
+      membershipRefundSessions: request.membershipRefundSessions,
+    };
     const cancelledTicketIds = new Set([
       ticket.id,
       ...tickets
@@ -7530,8 +9399,8 @@ function App() {
           {
             id: crypto.randomUUID(),
             folio: `CAN-${ticket.id}-${index + 1}`,
-            createdAt: cancelledAtLabel,
-            createdAtIso: cancelledAt.toISOString(),
+            createdAt: refundEffectiveAtLabel,
+            createdAtIso: refundEffectiveAt.toISOString(),
             productId: line.productId,
             productName: line.productName,
             direction: "ADD",
@@ -7578,8 +9447,8 @@ function App() {
           {
             id: crypto.randomUUID(),
             folio: `CAN-DEU-${ticket.id}-${index + 1}`,
-            createdAt: cancelledAtLabel,
-            createdAtIso: cancelledAt.toISOString(),
+            createdAt: refundEffectiveAtLabel,
+            createdAtIso: refundEffectiveAt.toISOString(),
             productId: record.productId,
             productName: record.productName,
             direction: "ADD",
@@ -7631,9 +9500,16 @@ function App() {
           (movement.folio.includes(ticket.id) ||
             movement.reason.includes(ticket.id));
         if (!disposition || !belongsToTicket) return movement;
-        const label = disposition === "GIFT" ? "Regalo" : "Cortesía";
+        const label =
+          disposition === "GIFT"
+            ? "Regalo"
+            : disposition === "COURTESY"
+              ? "Cortesía"
+              : "Baja";
         return {
           ...movement,
+          createdAt: refundEffectiveAtLabel,
+          createdAtIso: refundEffectiveAt.toISOString(),
           category: "WRITE_OFF" as const,
           reason: `${label} por cancelación ${ticket.id}`,
           comment: `${movement.comment} · conservado como ${label.toLocaleLowerCase("es-MX")}`,
@@ -7641,17 +9517,26 @@ function App() {
       }),
     ]);
 
-    setTickets((current) =>
-      current.map((item) => {
+    setTickets((current) => {
+      const updatedTickets = current.map((item) => {
         if (item.id === ticket.id) {
           return {
             ...item,
-            status: "REFUNDED",
+            status: "REFUNDED" as const,
             cancelledAt: cancelledAtLabel,
             cancelledAtIso: cancelledAt.toISOString(),
             refundAmount: request.refundAmount,
+            refundTransactionId,
+            refundEffectiveDateMode: request.effectiveDateMode,
+            refundEffectiveDate: operationalBusinessDate(
+              refundEffectiveAt.toISOString(),
+            ),
+            refundReason: request.reason,
+            cancelledById: sessionUser?.id ?? masterUser.id,
+            cancelledByName: sessionUser?.name ?? masterUser.name,
             returnedProducts: request.returnedProducts,
             nonReturnedProducts: request.nonReturnedProducts,
+            membershipRefundSessions: request.membershipRefundSessions,
           };
         }
         if (
@@ -7660,7 +9545,7 @@ function App() {
         ) {
           return {
             ...item,
-            status: "REFUNDED",
+            status: "REFUNDED" as const,
             cancelledAt: cancelledAtLabel,
             cancelledAtIso: cancelledAt.toISOString(),
             refundAmount: item.amountPaid,
@@ -7678,12 +9563,14 @@ function App() {
             ...item,
             amountPaid,
             balanceDue,
-            paymentStatus: amountPaid > 0 ? "LAYAWAY" : "PENDING",
+            paymentStatus:
+              amountPaid > 0 ? ("LAYAWAY" as const) : ("PENDING" as const),
           };
         }
         return item;
-      }),
-    );
+      });
+      return [refundTicket, ...updatedTickets];
+    });
     const releasedAgendaSeats = ticketAppointments.reduce<Map<string, number>>(
       (summary, appointment) => {
         if (!appointment.agendaSlotId || appointment.status === "CANCELLED")
@@ -7728,6 +9615,36 @@ function App() {
           : appointment,
       ),
     );
+    setClientMemberships((current) =>
+      current.map((membership) => {
+        if (
+          membership.purchaseTicketId !== ticket.id ||
+          membership.status === "CANCELLED"
+        )
+          return membership;
+        const refundSession = request.membershipRefundSessions.find(
+          (record) => record.membershipId === membership.id,
+        );
+        return {
+          ...membership,
+          status: "CANCELLED",
+          refundTransactionId,
+          ...(refundSession
+            ? { refundSessionDisposition: refundSession.disposition }
+            : {}),
+          statusChanges: [
+            ...membership.statusChanges,
+            {
+              id: crypto.randomUUID(),
+              changedAtIso: cancelledAt.toISOString(),
+              fromStatus: membership.status,
+              toStatus: "CANCELLED",
+              reason: `Cancelación del ticket ${ticket.id} · ${request.reason}${refundSession ? ` · ${refundSession.usedSessions} sesiones tomadas ${refundSession.disposition === "PENDING_REASSIGNMENT" ? "pendientes de reasignación" : "registradas como pérdida por cliente perdido"}` : ""}`,
+            },
+          ],
+        };
+      }),
+    );
     setOwedProducts((current) =>
       current.map((record) =>
         cancelledTicketIds.has(record.ticketId) && record.status === "PENDING"
@@ -7759,13 +9676,13 @@ function App() {
     setReceiptPreviewOpen(false);
     setTicketEditOpen(false);
     toast.success(
-      `Ticket ${ticket.id} cancelado. Venta, cobros y citas fueron revertidos${
+      `Ticket ${ticket.id} cancelado y refund ${refundTransactionId} registrado en negativo. Venta, vendedor, cobros, membresías y citas fueron revertidos${
         returnMovements.length > 0 || debtReversalMovements.length > 0
           ? `; ${returnMovements.length} devoluciones y ${debtReversalMovements.length} compromisos se ajustaron en inventario`
           : " sin devolución de inventario"
       }${
         request.nonReturnedProducts.length > 0
-          ? ` y ${request.nonReturnedProducts.length} quedaron registrados como regalo o cortesía`
+          ? ` y ${request.nonReturnedProducts.length} quedaron registrados como regalo, cortesía o baja`
           : ""
       }.`,
     );
@@ -7773,6 +9690,33 @@ function App() {
 
   const renderSale = () => (
     <div className="sale-layout">
+      {expandingLayawayId ? (
+        <section className="sale-expansion-banner" role="status">
+          <ArrowLeftRight size={19} aria-hidden="true" />
+          <span>
+            <small>AMPLIACIÓN DE APARTADO</small>
+            <strong>
+              {layaways.find((layaway) => layaway.id === expandingLayawayId)
+                ?.clientName ?? "Clienta"}
+            </strong>
+            <small>
+              Puedes añadir o sustituir productos. Al finalizar se liquidará
+              el saldo original y sólo el incremento se asignará a los nuevos
+              vendedores. El inventario se afectará por la diferencia neta.
+            </small>
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setCart([]);
+              setExpandingLayawayId(null);
+            }}
+          >
+            Cancelar ampliación
+          </Button>
+        </section>
+      ) : null}
       <aside className="sale-catalog-navigation">
         <header className="sale-catalog-navigation-header">
           <button
@@ -8273,6 +10217,11 @@ function App() {
     const receiptBranches = [...operationalBranches].sort((left, right) =>
       left.localeCompare(right, "es-MX"),
     );
+    const receiptTicketBranch = (ticket: Ticket) =>
+      (ticket.branchName ?? receiptSettings.branchName).replace(
+        /^Sucursal\s+/i,
+        "",
+      );
     const effectiveReceiptBranch = receiptHistoryAuthorized
       ? receiptBranch
       : activeBranch;
@@ -8298,8 +10247,13 @@ function App() {
         ticket.id.toLocaleLowerCase("es-MX").includes(normalizedSearch);
       return matchesDate && matchesBranch && matchesSearch;
     });
+    const financialFilteredTickets = filteredTickets.filter(
+      (ticket) =>
+        ticket.status === "COMPLETED" || Boolean(ticket.refundTransactionId),
+    );
     const activeFilteredTickets = filteredTickets.filter(
-      (ticket) => ticket.status === "COMPLETED",
+      (ticket) =>
+        ticket.status === "COMPLETED" && ticket.ticketType !== "REFUND",
     );
     const receiptPageCount = Math.max(
       1,
@@ -8312,6 +10266,18 @@ function App() {
     );
     const filteredSaleTickets = activeFilteredTickets.filter(
       (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
+    );
+    const filteredFinancialSales = financialFilteredTickets.filter(
+      (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
+    );
+    const filteredRefundTickets = filteredFinancialSales.filter(
+      (ticket) => ticket.ticketType === "REFUND",
+    );
+    const filteredRefundTotal = Math.abs(
+      filteredRefundTickets.reduce(
+        (sum, ticket) => sum + ticket.total,
+        0,
+      ),
     );
     const completedReceiptTicketIds = new Set(
       filteredSaleTickets.map((ticket) => ticket.id),
@@ -8327,11 +10293,11 @@ function App() {
       summary.set(membership.purchaseTicketId, ticketMemberships);
       return summary;
     }, new Map());
-    const total = filteredSaleTickets.reduce(
+    const total = filteredFinancialSales.reduce(
       (sum, ticket) => sum + ticket.total,
       0,
     );
-    const collected = activeFilteredTickets.reduce(
+    const collected = financialFilteredTickets.reduce(
       (sum, ticket) =>
         sum +
         ticket.payments.reduce(
@@ -8345,7 +10311,7 @@ function App() {
       0,
     );
     const salesByDate = Array.from(
-      filteredSaleTickets
+      filteredFinancialSales
         .reduce<Map<string, number>>((summary, ticket) => {
           const date = new Intl.DateTimeFormat("es-MX", {
             day: "2-digit",
@@ -8360,7 +10326,7 @@ function App() {
     const maxDailySale = Math.max(1, ...salesByDate.map(([, value]) => value));
     const paymentDashboard = paymentMethods.map((method) => ({
       ...method,
-      total: activeFilteredTickets.reduce(
+      total: financialFilteredTickets.reduce(
         (ticketSum, ticket) =>
           ticketSum +
           ticket.payments.reduce(
@@ -8389,6 +10355,7 @@ function App() {
     const reportScopeTickets = tickets.filter(
       (ticket) =>
         ticket.status === "COMPLETED" &&
+        ticket.ticketType !== "REFUND" &&
         ticket.ticketType !== "LAYAWAY_PAYMENT" &&
         (effectiveReceiptBranch === "ALL" ||
           (ticket.branchName ?? receiptSettings.branchName) === effectiveReceiptBranch),
@@ -8428,16 +10395,22 @@ function App() {
                 <small>
                   {receiptHistoryAuthorized
                     ? "SESIÓN MASTER"
+                    : canCancelTickets
+                      ? "ADMINISTRATIVO AUTORIZADO"
                     : "ACCESO OPERATIVO"}
                 </small>
                 <strong>
                   {receiptHistoryAuthorized
                     ? "Historial completo habilitado"
+                    : canCancelTickets
+                      ? `Cancelación habilitada · ${businessToday}`
                     : `Sólo tickets del día ${businessToday}`}
                 </strong>
                 <p>
                   {receiptHistoryAuthorized
                     ? "Puedes consultar fechas anteriores, editar y cancelar tickets."
+                    : canCancelTickets
+                      ? "Puedes cancelar tickets del día vigente. El historial de fechas anteriores continúa protegido."
                     : "Sin autorización master únicamente puedes visualizar e imprimir."}
                 </p>
               </span>
@@ -8482,10 +10455,16 @@ function App() {
         </Card>
         <div className="metric-grid three-columns">
           <MetricCard
-            label="VENTA DEL DÍA"
+            label="VENTA NETA"
             value={formatCurrency(total)}
             icon={CircleDollarSign}
             tone="neutral"
+          />
+          <MetricCard
+            label={`REFUNDS (${filteredRefundTickets.length})`}
+            value={`-${formatCurrency(filteredRefundTotal)}`}
+            icon={RotateCcw}
+            tone={filteredRefundTickets.length > 0 ? "negative" : "neutral"}
           />
           <MetricCard
             label="TOTAL COBRADO"
@@ -8739,11 +10718,15 @@ function App() {
                   <TableRow>
                     <TableHead>TICKET</TableHead>
                     <TableHead>FECHA</TableHead>
+                    <TableHead>SUCURSAL</TableHead>
                     <TableHead>CLIENTE</TableHead>
                     <TableHead>MEMBRESÍA</TableHead>
                     <TableHead>VENDEDOR</TableHead>
                     <TableHead>PIEZAS</TableHead>
                     <TableHead>DESCUENTO</TableHead>
+                    {canViewReceiptPriceDeviation && (
+                      <TableHead>MÍNIMO / SPARE</TableHead>
+                    )}
                     <TableHead>TOTAL</TableHead>
                     <TableHead>COBRO</TableHead>
                     <TableHead>SALDO</TableHead>
@@ -8755,13 +10738,31 @@ function App() {
                     <TableRow key={ticket.id}>
                       <TableCell>
                         <strong>{ticket.id}</strong>
-                        {ticket.status === "REFUNDED" && (
+                          {ticket.status === "REFUNDED" && (
                           <Badge variant="outline" className="cancelled-ticket-badge">
                             CANCELADO
                           </Badge>
                         )}
+                          {ticket.ticketType === "REFUND" && (
+                            <Badge variant="outline" className="cancelled-ticket-badge">
+                              REFUND
+                            </Badge>
+                          )}
+                          {ticket.expansionStatus === "EXPANDED" && (
+                            <Badge variant="outline">VENTA AMPLIADA</Badge>
+                          )}
+                          {ticket.ticketType === "EXPANSION" && (
+                            <Badge variant="outline">
+                              INCREMENTO {formatCurrency(ticket.expansionIncrement ?? ticket.total)}
+                            </Badge>
+                          )}
                       </TableCell>
                       <TableCell>{ticket.createdAt}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          <Store size={13} /> {receiptTicketBranch(ticket)}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <ReceiptClientMembershipMark
                           ticket={ticket}
@@ -8789,6 +10790,32 @@ function App() {
                           "—"
                         )}
                       </TableCell>
+                      {canViewReceiptPriceDeviation && (
+                        <TableCell>
+                          {ticket.ticketType === "LAYAWAY_PAYMENT" ||
+                          ticket.ticketType === "REFUND" ? (
+                            "—"
+                          ) : ticket.deviation < -0.01 ? (
+                            <span className="receipt-price-deviation is-below">
+                              <small>BAJO MÍNIMO</small>
+                              <strong>
+                                -{formatCurrency(Math.abs(ticket.deviation))}
+                              </strong>
+                            </span>
+                          ) : ticket.deviation > 0.01 ? (
+                            <span className="receipt-price-deviation is-spare">
+                              <small>SPARE POSITIVO</small>
+                              <strong>
+                                +{formatCurrency(ticket.deviation)}
+                              </strong>
+                            </span>
+                          ) : (
+                            <span className="receipt-price-deviation is-neutral">
+                              EN MÍNIMO
+                            </span>
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell>
                         <strong>{formatCurrency(ticket.total)}</strong>
                       </TableCell>
@@ -8822,7 +10849,16 @@ function App() {
                       </TableCell>
                       <TableCell>
                         <div className="receipt-row-actions">
-                          {receiptHistoryAuthorized && (
+                          <button
+                            type="button"
+                            onClick={() => previewTicket(ticket, true)}
+                            aria-label={`Reimprimir ticket ${ticket.id}`}
+                            title="Reimprimir"
+                          >
+                            <Printer size={15} />
+                          </button>
+                          {canEditActiveModule &&
+                            ticket.ticketType !== "REFUND" && (
                             <button
                               type="button"
                               onClick={() => editTicket(ticket)}
@@ -8841,7 +10877,8 @@ function App() {
                           >
                             <Eye size={15} />
                           </button>
-                          {receiptHistoryAuthorized && (
+                          {canCancelTickets &&
+                            ticket.ticketType !== "REFUND" && (
                             <button
                               type="button"
                               className="is-destructive"
@@ -8859,7 +10896,9 @@ function App() {
                   ))}
                   {filteredTickets.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={11}>
+                      <TableCell
+                        colSpan={canViewReceiptPriceDeviation ? 13 : 12}
+                      >
                         No se encontraron tickets con esos filtros.
                       </TableCell>
                     </TableRow>
@@ -9651,7 +11690,7 @@ function App() {
       new Intl.DateTimeFormat("en-CA", {
         timeZone: "America/Mexico_City",
       }).format(new Date(createdAtIso)) === businessToday;
-    const dailyActiveTickets = activeTickets.filter((ticket) =>
+    const dailyActiveTickets = financialTickets.filter((ticket) =>
       isToday(ticket.createdAtIso),
     );
     const reportTickets = dailyActiveTickets.filter(
@@ -10246,16 +12285,45 @@ function App() {
   };
 
   const renderCloseDay = () => {
-    const saleTickets = activeTickets.filter(
-      (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
-    );
-    const total = saleTickets.reduce((sum, ticket) => sum + ticket.total, 0);
     const closeDayDate = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Mexico_City",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
+    const closeDayFinancialTickets = financialTickets.filter(
+      (ticket) =>
+        operationalBusinessDate(ticket.createdAtIso) === closeDayDate &&
+        (ticket.branchName ?? receiptSettings.branchName) === activeBranch,
+    );
+    const saleTickets = closeDayFinancialTickets.filter(
+      (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
+    );
+    const completedCloseDayTickets = closeDayFinancialTickets.filter(
+      (ticket) =>
+        ticket.status === "COMPLETED" &&
+        ticket.ticketType !== "REFUND" &&
+        ticket.ticketType !== "LAYAWAY_PAYMENT",
+    );
+    const grossSaleTickets = closeDayFinancialTickets.filter(
+      (ticket) =>
+        ticket.ticketType !== "REFUND" &&
+        ticket.ticketType !== "LAYAWAY_PAYMENT",
+    );
+    const refundTickets = closeDayFinancialTickets.filter(
+      (ticket) => ticket.ticketType === "REFUND",
+    );
+    const refundCashTotal = Math.abs(
+      refundTickets.reduce((sum, ticket) => sum + ticket.amountPaid, 0),
+    );
+    const refundCommercialTotal = Math.abs(
+      refundTickets.reduce((sum, ticket) => sum + ticket.total, 0),
+    );
+    const grossSalesTotal = grossSaleTickets.reduce(
+      (sum, ticket) => sum + ticket.total,
+      0,
+    );
+    const total = saleTickets.reduce((sum, ticket) => sum + ticket.total, 0);
     const closeDayDisplayDate = new Intl.DateTimeFormat("es-MX", {
       timeZone: "America/Mexico_City",
       day: "2-digit",
@@ -10311,7 +12379,7 @@ function App() {
       },
       { net: 0, vat: 0 },
     );
-    const collected = activeTickets.reduce(
+    const collected = closeDayFinancialTickets.reduce(
       (sum, ticket) =>
         sum +
         ticket.payments.reduce(
@@ -10363,7 +12431,7 @@ function App() {
     );
     const paymentTotals = paymentMethods.map((method) => ({
       ...method,
-      total: activeTickets.reduce(
+      total: closeDayFinancialTickets.reduce(
         (ticketSum, ticket) =>
           ticketSum +
           ticket.payments.reduce(
@@ -10412,7 +12480,10 @@ function App() {
             <h2>Terminal lista para cierre</h2>
             <div className="closing-checks">
               <span>
-                <CheckCircle2 size={18} /> {activeTickets.length} tickets conciliados
+                <CheckCircle2 size={18} /> {completedCloseDayTickets.length} tickets vigentes conciliados
+              </span>
+              <span>
+                <CheckCircle2 size={18} /> {refundTickets.length} cancelaciones / refunds conciliados
               </span>
               <span>
                 <CheckCircle2 size={18} /> Caja contada
@@ -10459,7 +12530,15 @@ function App() {
             {dailyExpenses.length > 0 ? (
               <div className="closing-expense-summary">
                 <div>
-                  <span>SUBTOTAL DE VENTA</span>
+                  <span>VENTA BRUTA</span>
+                  <strong>{formatCurrency(grossSalesTotal)}</strong>
+                </div>
+                <div className="is-expense">
+                  <span>REFUNDS DEL DÍA</span>
+                  <strong>-{formatCurrency(refundCommercialTotal)}</strong>
+                </div>
+                <div>
+                  <span>VENTA NETA</span>
                   <strong>{formatCurrency(total)}</strong>
                 </div>
                 <div className="is-expense">
@@ -10478,9 +12557,19 @@ function App() {
                 </div>
               </div>
             ) : (
-              <div className="closing-total">
-                <span>TOTAL DEL DÍA</span>
-                <strong>{formatCurrency(total)}</strong>
+              <div className="closing-expense-summary">
+                <div>
+                  <span>VENTA BRUTA</span>
+                  <strong>{formatCurrency(grossSalesTotal)}</strong>
+                </div>
+                <div className="is-expense">
+                  <span>REFUNDS DEL DÍA</span>
+                  <strong>-{formatCurrency(refundCommercialTotal)}</strong>
+                </div>
+                <div className="closing-total">
+                  <span>VENTA NETA DEL DÍA</span>
+                  <strong>{formatCurrency(total)}</strong>
+                </div>
               </div>
             )}
             <div className="close-day-actions">
@@ -10630,6 +12719,41 @@ function App() {
             ))}
           </section>
 
+          {refundTickets.length > 0 ? (
+            <section>
+              <h3>CANCELACIONES Y REFUNDS</h3>
+              {refundTickets.map((refund) => {
+                const returnedUnits = (refund.returnedProducts ?? []).reduce(
+                  (sum, line) => sum + line.quantity,
+                  0,
+                );
+                const writtenOffUnits = (
+                  refund.nonReturnedProducts ?? []
+                ).reduce((sum, line) => sum + line.quantity, 0);
+                return (
+                  <div className="receipt-detail-line" key={refund.id}>
+                    <span>
+                      {refund.id} · original {refund.relatedTicketId ?? "—"} ·{" "}
+                      {refund.clientName}
+                      <small>
+                        Fecha efectiva{" "}
+                        {refund.refundEffectiveDate ??
+                          operationalBusinessDate(refund.createdAtIso)}
+                        {" · "}
+                        {returnedUnits} pz regresaron a stock ·{" "}
+                        {writtenOffUnits} pz regalo, cortesía o baja
+                      </small>
+                      {refund.refundReason ? (
+                        <small>Motivo: {refund.refundReason}</small>
+                      ) : null}
+                    </span>
+                    <strong>-{formatCurrency(Math.abs(refund.amountPaid))}</strong>
+                  </div>
+                );
+              })}
+            </section>
+          ) : null}
+
           {dailyExpenses.length > 0 && (
             <section>
               <h3>GASTOS POR VENDEDOR</h3>
@@ -10653,7 +12777,15 @@ function App() {
 
           <section className="receipt-totals">
             <div>
-              <span>{dailyExpenses.length > 0 ? "Subtotal de venta" : "Venta final"}</span>
+              <span>Venta bruta</span>
+              <strong>{formatCurrency(grossSalesTotal)}</strong>
+            </div>
+            <div className="receipt-expense-total">
+              <span>Venta reversada por refunds</span>
+              <strong>-{formatCurrency(refundCommercialTotal)}</strong>
+            </div>
+            <div>
+              <span>Venta neta</span>
               <strong>{formatCurrency(total)}</strong>
             </div>
             <div>
@@ -10672,6 +12804,10 @@ function App() {
               <span>Total cobrado</span>
               <strong>{formatCurrency(collected)}</strong>
             </div>
+            <div className="receipt-expense-total">
+              <span>Refunds del día ({refundTickets.length})</span>
+              <strong>-{formatCurrency(refundCashTotal)}</strong>
+            </div>
             <div>
               <span>Saldo pendiente</span>
               <strong>{formatCurrency(pending)}</strong>
@@ -10689,8 +12825,8 @@ function App() {
               </>
             )}
             <div className="receipt-grand-total">
-              <span>TICKETS</span>
-              <strong>{activeTickets.length}</strong>
+              <span>TICKETS VIGENTES / CANCELADOS</span>
+              <strong>{completedCloseDayTickets.length} / {refundTickets.length}</strong>
             </div>
           </section>
           {canViewInventoryDifferences && closingInventoryErrors.length > 0 && (
@@ -10869,7 +13005,7 @@ function App() {
         return (
           <SellerSalesView
             sellers={sellers}
-            tickets={activeTickets}
+            tickets={financialTickets}
             branches={operationalBranches}
             clients={clients}
             memberships={clientMemberships}
@@ -10878,8 +13014,10 @@ function App() {
             layaways={layaways}
             appointments={appointments}
             owedProducts={owedProducts}
+            companyName={receiptSettings.companyName}
             onPreviewTicket={previewTicket}
             onRegisterLayawayPayment={registerLayawayPayment}
+            onExpandLayaway={startLayawayExpansion}
           />
         );
       case "receipts":
@@ -10905,7 +13043,9 @@ function App() {
             onUpdateClient={updateClientRecord}
             onDeleteClient={deleteClientRecord}
             onBulkImportClients={importClientRecords}
+            onPreviewTicket={previewTicket}
             onRegisterLayawayPayment={registerLayawayPayment}
+            onExpandLayaway={startLayawayExpansion}
           />
         );
       case "appointments":
@@ -10922,6 +13062,7 @@ function App() {
         return (
           <MembershipsView
             memberships={clientMemberships}
+            membershipProducts={catalogProducts}
             appointments={appointments}
             agendaSlots={agendaSlots}
             branches={operationalBranches}
@@ -10929,6 +13070,8 @@ function App() {
             sellers={sellers}
             canEdit={canEditActiveModule}
             onUpdateProfile={updateMembershipProfile}
+            onChangePlan={changeMembershipPlan}
+            onReassignRefundSessions={reassignRefundMembershipSessions}
             onConsumeSession={consumeMembershipSession}
             onScheduleNextAppointment={scheduleMembershipNextAppointment}
             onOpenTicket={openMembershipTicket}
@@ -11205,6 +13348,18 @@ function App() {
             cards={billingCards}
             locations={billingLocations}
             history={billingHistory}
+            cancellations={tickets
+              .filter(
+                (ticket) =>
+                  ticket.status === "REFUNDED" &&
+                  ticket.ticketType !== "REFUND" &&
+                  ticket.cancelledById === sessionUser?.id,
+              )
+              .sort((left, right) =>
+                (right.cancelledAtIso ?? "").localeCompare(
+                  left.cancelledAtIso ?? "",
+                ),
+              )}
             isMasterCode={isMasterAccessCode}
             onAuthorize={() => setMyAccountAuthorized(true)}
             onLock={() => setMyAccountAuthorized(false)}
@@ -11654,7 +13809,7 @@ function App() {
       />
       <CheckoutDialog
         open={checkoutOpen}
-        total={ticketTotal}
+        total={checkoutChargeTotal}
         discountAmount={ticketDiscountAmount}
         cart={cart}
         clients={clients}
@@ -11670,7 +13825,12 @@ function App() {
         courtesySettings={courtesySettings}
         companyName={receiptSettings.companyName}
         companySalesNumber={receiptSettings.companySalesNumber}
+        lockedClientId={
+          layaways.find((layaway) => layaway.id === expandingLayawayId)
+            ?.clientId ?? ""
+        }
         isMasterCode={isMasterAccessCode}
+        authorizeAppointmentCode={authorizeAppointmentCode}
         onOpenChange={setCheckoutOpen}
         onComplete={completeTicket}
       />
@@ -11699,12 +13859,25 @@ function App() {
         settings={receiptSettings}
         branchAddresses={branchAddresses}
         paymentMethods={paymentMethods}
+        bankCatalog={bankCatalog}
+        clients={clients}
+        sellers={sellers}
         voucherTemplates={voucherTemplates.filter(
           (voucher) => voucher.active && voucher.visibleToSellers,
         )}
-        allowPrint={canPrintActiveModule}
+        allowPrint={Boolean(sessionUser)}
+        autoPrint={receiptAutoPrint}
+        allowVoucherIssue={receiptVoucherEligible}
         onIssueVoucher={issueVoucher}
-        onOpenChange={setReceiptPreviewOpen}
+        onRegisterLayawayPayment={registerLayawayPayment}
+        onExpandLayaway={startLayawayExpansion}
+        onOpenChange={(open) => {
+          setReceiptPreviewOpen(open);
+          if (!open) {
+            setReceiptAutoPrint(false);
+            setReceiptVoucherEligible(false);
+          }
+        }}
       />
       <TicketEditDialog
         open={ticketEditOpen}
@@ -11713,6 +13886,16 @@ function App() {
         products={catalogProducts}
         paymentMethods={paymentMethods}
         bankCatalog={bankCatalog}
+        branchStock={
+          branchInventory[
+            editingTicket?.inventoryDeductions?.[0]?.branch ??
+              (editingTicket?.branchName &&
+              branchInventory[editingTicket.branchName]
+                ? editingTicket.branchName
+                : activeBranch)
+          ] ?? {}
+        }
+        authorizationRequired={!hasAssignedTicketEditPermission}
         onOpenChange={setTicketEditOpen}
         onSave={saveTicketChanges}
       />
@@ -11720,6 +13903,8 @@ function App() {
         open={ticketCancellationOpen}
         ticket={cancellingTicket}
         returnableProducts={cancellationReturnableProducts}
+        membershipSessions={cancellationMembershipSessions}
+        authorizationRequired
         onOpenChange={(open) => {
           setTicketCancellationOpen(open);
           if (!open) setCancellingTicket(null);

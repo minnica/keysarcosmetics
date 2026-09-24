@@ -118,7 +118,8 @@ export function XReportExecutiveExport({
     [branchOptions, dateFrom, dateTo, receiptSettings.branchName, selectedBranch, tickets],
   );
   const activePeriodTickets = periodTickets.filter(
-    (ticket) => ticket.status === "COMPLETED",
+    (ticket) =>
+      ticket.status === "COMPLETED" || Boolean(ticket.refundTransactionId),
   );
   const saleTickets = activePeriodTickets.filter(
     (ticket) => ticket.ticketType !== "LAYAWAY_PAYMENT",
@@ -176,7 +177,11 @@ export function XReportExecutiveExport({
     0,
   );
   const totalSpare = saleTickets.reduce(
-    (sum, ticket) => sum + getTicketSpare(ticket, products),
+    (sum, ticket) =>
+      sum +
+      (ticket.ticketType === "REFUND"
+        ? 0
+        : getTicketSpare(ticket, products)),
     0,
   );
   const refundedAmount = cancelledSaleTickets.reduce(

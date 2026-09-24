@@ -10,6 +10,7 @@ import {
 import {
   Badge,
   Button,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -29,15 +30,18 @@ import type {
   Ticket,
   TicketCancellationRequest,
   TicketInventoryLine,
+  TicketMembershipRefundSession,
 } from "../types";
 
 type ReturnMode = "ALL" | "SELECT" | "NONE";
-type ProductDecision = "RETURN" | "GIFT" | "COURTESY";
+type ProductDecision = "RETURN" | "GIFT" | "COURTESY" | "WRITE_OFF";
 
 interface TicketCancellationDialogProps {
   open: boolean;
   ticket: Ticket | null;
   returnableProducts: TicketInventoryLine[];
+  membershipSessions: TicketMembershipRefundSession[];
+  authorizationRequired: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (request: TicketCancellationRequest) => void;
 }
@@ -46,25 +50,48 @@ export function TicketCancellationDialog({
   open,
   ticket,
   returnableProducts,
+  membershipSessions,
+  authorizationRequired,
   onOpenChange,
   onConfirm,
 }: TicketCancellationDialogProps) {
   const [returnMode, setReturnMode] = useState<ReturnMode>("ALL");
   const [refundAmount, setRefundAmount] = useState(0);
+  const [effectiveDateMode, setEffectiveDateMode] = useState<
+    "CANCELLATION_DATE" | "ORIGINAL_SALE_DATE" | "CUSTOM_DATE"
+  >("CANCELLATION_DATE");
+  const [customEffectiveDate, setCustomEffectiveDate] = useState("");
+  const [reason, setReason] = useState("");
+  const [authorizationCode, setAuthorizationCode] = useState("");
   const [productDecisions, setProductDecisions] = useState<
     Record<string, ProductDecision>
+  >({});
+  const [membershipDecisions, setMembershipDecisions] = useState<
+    Record<string, "PENDING_REASSIGNMENT" | "LOST_CLIENT">
   >({});
 
   useEffect(() => {
     if (!open || !ticket) return;
     setReturnMode(returnableProducts.length > 0 ? "ALL" : "NONE");
     setRefundAmount(ticket.amountPaid);
+    setEffectiveDateMode("CANCELLATION_DATE");
+    setCustomEffectiveDate("");
+    setReason("");
+    setAuthorizationCode("");
     setProductDecisions(
       Object.fromEntries(
         returnableProducts.map((line) => [line.productId, "RETURN"]),
       ),
     );
-  }, [open, returnableProducts, ticket]);
+    setMembershipDecisions(
+      Object.fromEntries(
+        membershipSessions.map((membership) => [
+          membership.membershipId,
+          "PENDING_REASSIGNMENT",
+        ]),
+      ),
+    );
+  }, [membershipSessions, open, returnableProducts, ticket]);
 
   const returnedProducts = useMemo(() => {
     if (returnMode === "NONE") return [];
@@ -77,14 +104,32 @@ export function TicketCancellationDialog({
   }, [productDecisions, returnMode, returnableProducts]);
 
   const nonReturnedProducts = useMemo(() => {
+    if (returnMode === "NONE") {
+      return returnableProducts.map((line) => ({
+        ...line,
+        disposition: "WRITE_OFF" as const,
+      }));
+    }
     if (returnMode !== "SELECT") return [];
     return returnableProducts.flatMap((line) => {
       const decision = productDecisions[line.productId];
-      return decision === "GIFT" || decision === "COURTESY"
+      return decision === "GIFT" ||
+        decision === "COURTESY" ||
+        decision === "WRITE_OFF"
         ? [{ ...line, disposition: decision }]
         : [];
     });
   }, [productDecisions, returnMode, returnableProducts]);
+  const membershipRefundSessions = useMemo(
+    () =>
+      membershipSessions.map((membership) => ({
+        ...membership,
+        disposition:
+          membershipDecisions[membership.membershipId] ??
+          "PENDING_REASSIGNMENT",
+      })),
+    [membershipDecisions, membershipSessions],
+  );
 
   if (!ticket) return null;
 
@@ -120,8 +165,8 @@ export function TicketCancellationDialog({
               {(
                 [
                   ["ALL", "Sí, regresar todo"],
-                  ["NONE", "No regresar"],
-                  ["SELECT", "Elegir regalo o cortesía"],
+                  ["NONE", "Dar de baja todo"],
+                  ["SELECT", "Decidir por producto"],
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -203,18 +248,80 @@ export function TicketCancellationDialog({
                           <Sparkles size={14} /> Producto de cortesía
                         </span>
                       </SelectItem>
+                      <SelectItem value="WRITE_OFF">
+                        <span className="ticket-decision-option">
+                          <XCircle size={14} /> Dar de baja
+                        </span>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               ))}
               <small>
                 Sólo los productos marcados para regresar se sumarán al
-                inventario. Regalos y cortesías quedarán documentados en el
-                ticket cancelado.
+                inventario. Regalos, cortesías y bajas quedarán documentados
+                en el ticket cancelado y en el reporte de inventario.
               </small>
             </div>
           )}
         </section>
+
+        {membershipSessions.length > 0 ? (
+          <section className="ticket-cancellation-section">
+            <div className="ticket-cancellation-heading">
+              <div>
+                <span>MEMBRESÍA CON ASISTENCIAS</span>
+                <h3>¿Qué pasará con las sesiones ya tomadas?</h3>
+              </div>
+              <Sparkles size={20} />
+            </div>
+            <div className="ticket-return-product-list ticket-return-decision-list">
+              {membershipSessions.map((membership) => (
+                <div key={membership.membershipId}>
+                  <span>
+                    <strong>{membership.membershipName}</strong>
+                    <small>
+                      {membership.membershipFolio} · {membership.usedSessions} de {membership.totalSessions} sesiones tomadas · {membership.remainingSessions} sin usar
+                    </small>
+                  </span>
+                  <Select
+                    value={
+                      membershipDecisions[membership.membershipId] ??
+                      "PENDING_REASSIGNMENT"
+                    }
+                    onValueChange={(value) =>
+                      setMembershipDecisions((current) => ({
+                        ...current,
+                        [membership.membershipId]: value as
+                          | "PENDING_REASSIGNMENT"
+                          | "LOST_CLIENT",
+                      }))
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label={`Destino de sesiones de ${membership.membershipName}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PENDING_REASSIGNMENT">
+                        Guardar para próxima membresía
+                      </SelectItem>
+                      <SelectItem value="LOST_CLIENT">
+                        Sesiones perdidas · cliente perdido
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+              <small>
+                Guardar para próxima membresía permite transferir estas
+                asistencias cuando la clienta compre otro plan. La opción de
+                cliente perdido cierra definitivamente el saldo histórico.
+              </small>
+            </div>
+          </section>
+        ) : null}
 
         <section className="ticket-cancellation-section">
           <div className="field-stack">
@@ -234,6 +341,80 @@ export function TicketCancellationDialog({
               en los módulos.
             </small>
           </div>
+          <div className="field-stack">
+            <Label>Fecha de afectación del refund</Label>
+            <Select
+              value={effectiveDateMode}
+              onValueChange={(value) =>
+                setEffectiveDateMode(
+                  value as
+                    | "CANCELLATION_DATE"
+                    | "ORIGINAL_SALE_DATE"
+                    | "CUSTOM_DATE",
+                )
+              }
+            >
+              <SelectTrigger aria-label="Fecha contable del refund">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CANCELLATION_DATE">
+                  Día de la cancelación
+                </SelectItem>
+                <SelectItem value="ORIGINAL_SALE_DATE">
+                  Día de la venta original
+                </SelectItem>
+                <SelectItem value="CUSTOM_DATE">
+                  Movimiento personalizado
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            {effectiveDateMode === "CUSTOM_DATE" ? (
+              <DatePicker
+                value={customEffectiveDate}
+                onChange={setCustomEffectiveDate}
+                placeholder="Selecciona la fecha contable"
+              />
+            ) : null}
+            <small>
+              El refund se registra como movimiento negativo. El ticket
+              original nunca cambia de fecha ni se elimina. La fecha
+              personalizada afectará el dashboard, reporte, corte e inventario
+              del día elegido.
+            </small>
+          </div>
+          <div className="field-stack">
+            <Label htmlFor="ticket-cancellation-reason">
+              Motivo de cancelación
+            </Label>
+            <Input
+              id="ticket-cancellation-reason"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Describe la causa para la auditoría"
+              maxLength={240}
+            />
+          </div>
+          {authorizationRequired ? (
+            <div className="field-stack">
+              <Label htmlFor="ticket-cancellation-code">
+                Código master
+              </Label>
+              <Input
+                id="ticket-cancellation-code"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                value={authorizationCode}
+                onChange={(event) => setAuthorizationCode(event.target.value)}
+                placeholder="Ingresa el código master"
+              />
+              <small>
+                Ingresa un código master o tu código personal si tu perfil
+                tiene TICKET_CANCELLATION. Autoriza únicamente esta acción.
+              </small>
+            </div>
+          ) : null}
         </section>
 
         <DialogFooter>
@@ -249,7 +430,12 @@ export function TicketCancellationDialog({
             className="ticket-cancel-confirm"
             disabled={
               refundAmount < 0 ||
+              (ticket.amountPaid > 0 && refundAmount <= 0) ||
               refundAmount > ticket.amountPaid ||
+              reason.trim().length < 5 ||
+              (effectiveDateMode === "CUSTOM_DATE" &&
+                !customEffectiveDate) ||
+              (authorizationRequired && !authorizationCode.trim()) ||
               (returnMode === "SELECT" &&
                 returnedProducts.length === 0 &&
                 nonReturnedProducts.length === 0)
@@ -257,8 +443,13 @@ export function TicketCancellationDialog({
             onClick={() =>
               onConfirm({
                 refundAmount,
+                effectiveDateMode,
+                customEffectiveDate,
+                reason: reason.trim(),
+                authorizationCode,
                 returnedProducts,
                 nonReturnedProducts,
+                membershipRefundSessions,
               })
             }
           >

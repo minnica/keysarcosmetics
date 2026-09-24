@@ -546,9 +546,20 @@ export function MasterDashboard({
   };
   const scopedTickets = tickets.filter(
     (ticket) =>
-      ticket.status === "COMPLETED" &&
+      (ticket.status === "COMPLETED" ||
+        Boolean(ticket.refundTransactionId)) &&
       matchesScope(ticket.branchName) &&
       businessDate(ticket.createdAtIso) === sessionBusinessDate,
+  );
+  const completedTicketCount = scopedTickets.filter(
+    (ticket) =>
+      ticket.status === "COMPLETED" && ticket.ticketType !== "REFUND",
+  ).length;
+  const refundTickets = scopedTickets.filter(
+    (ticket) => ticket.ticketType === "REFUND",
+  );
+  const refundTotal = Math.abs(
+    refundTickets.reduce((sum, ticket) => sum + ticket.total, 0),
   );
   const scopedMovements = movements.filter(
     (movement) =>
@@ -599,7 +610,9 @@ export function MasterDashboard({
   const installmentTotals = Array.from(
     scopedTickets
       .flatMap((ticket) => ticket.payments)
-      .filter((payment) => payment.cardType === "CREDIT")
+      .filter(
+        (payment) => payment.cardType === "CREDIT" && payment.amount > 0,
+      )
       .reduce<Map<number, { months: number; count: number; total: number }>>(
         (summary, payment) => {
           const months = payment.installmentMonths ?? 1;
@@ -972,7 +985,8 @@ export function MasterDashboard({
         </div>
       </section>
       <section className="master-dashboard-metrics">
-        <article><ShoppingBag size={18} /><span>Venta del día</span><strong>{formatCurrency(sales)}</strong><small>{scopedTickets.length} tickets</small></article>
+        <article><ShoppingBag size={18} /><span>Venta del día</span><strong>{formatCurrency(sales)}</strong><small>{completedTicketCount} tickets · refunds aplicados</small></article>
+        <article className={refundTickets.length > 0 ? "is-alert" : ""}><ArrowLeft size={18} /><span>Refunds del día</span><strong>-{formatCurrency(refundTotal)}</strong><small>{refundTickets.length} {refundTickets.length === 1 ? "movimiento conciliado" : "movimientos conciliados"}</small></article>
         <article><WalletCards size={18} /><span>Cobrado</span><strong>{formatCurrency(collected)}</strong><small>{formatCurrency(sales - collected)} pendiente</small></article>
         <article><TrendingUp size={18} /><span>Flujo después de gastos</span><strong>{formatCurrency(collected - expenseTotal)}</strong><small>-{formatCurrency(expenseTotal)} gastos</small></article>
         <article><PackageCheck size={18} /><span>Productos vendidos</span><strong>{unitsSold}</strong><small>{writeOffs} bajas adicionales</small></article>

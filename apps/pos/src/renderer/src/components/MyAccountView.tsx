@@ -48,7 +48,9 @@ import type {
   BillingLocation,
   BillingProfile,
   Seller,
+  Ticket,
 } from "../types";
+import { formatCurrency } from "../mock-data";
 import { HistoryPagination, useHistoryPagination } from "./HistoryPagination";
 
 interface MyAccountViewProps {
@@ -59,6 +61,7 @@ interface MyAccountViewProps {
   cards: BillingCard[];
   locations: BillingLocation[];
   history: BillingHistoryEntry[];
+  cancellations: Ticket[];
   isMasterCode: (code: string) => boolean;
   onAuthorize: () => void;
   onLock: () => void;
@@ -84,10 +87,76 @@ interface MyAccountViewProps {
 
 interface SellerAccessAccountProps {
   seller: Seller | null;
+  cancellations: Ticket[];
   onSave: MyAccountViewProps["onSaveSellerAccess"];
 }
 
-function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
+function UserCancellationHistory({ cancellations }: { cancellations: Ticket[] }) {
+  const pagination = useHistoryPagination(cancellations, "user-cancellations");
+  const refundTotal = cancellations.reduce(
+    (sum, ticket) => sum + (ticket.refundAmount ?? 0),
+    0,
+  );
+
+  return (
+    <Card className="data-card billing-history-card">
+      <CardContent className="p-0">
+        <div className="data-card-heading account-section-heading">
+          <div>
+            <span>CANCELACIONES AUTORIZADAS</span>
+            <h2>Historial personal de refunds</h2>
+            <p>
+              {cancellations.length} movimientos · {formatCurrency(refundTotal)} devuelto
+            </p>
+          </div>
+          <ReceiptText size={20} />
+        </div>
+        <div className="table-scroll">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>FECHA</TableHead>
+                <TableHead>TICKET</TableHead>
+                <TableHead>CLIENTE</TableHead>
+                <TableHead>SUCURSAL</TableHead>
+                <TableHead>REFUND</TableHead>
+                <TableHead>MOTIVO</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pagination.paginatedItems.length > 0 ? (
+                pagination.paginatedItems.map((ticket) => (
+                  <TableRow key={ticket.id}>
+                    <TableCell>{ticket.cancelledAt ?? "Sin fecha"}</TableCell>
+                    <TableCell><strong>{ticket.id}</strong></TableCell>
+                    <TableCell>{ticket.clientName}</TableCell>
+                    <TableCell>{ticket.branchName ?? "Sin sucursal"}</TableCell>
+                    <TableCell><strong>-{formatCurrency(ticket.refundAmount ?? 0)}</strong></TableCell>
+                    <TableCell>{ticket.refundReason ?? "Sin motivo"}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6}>No has autorizado cancelaciones.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        <HistoryPagination
+          total={cancellations.length}
+          page={pagination.page}
+          pageSize={pagination.pageSize}
+          pageCount={pagination.pageCount}
+          onPageChange={pagination.setPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function SellerAccessAccount({ seller, cancellations, onSave }: SellerAccessAccountProps) {
   const [alias, setAlias] = useState(seller?.alias ?? "");
   const [currentCode, setCurrentCode] = useState("");
   const [newCode, setNewCode] = useState("");
@@ -258,6 +327,7 @@ function SellerAccessAccount({ seller, onSave }: SellerAccessAccountProps) {
           </div>
         </CardContent>
       </Card>
+      <UserCancellationHistory cancellations={cancellations} />
     </div>
   );
 }
@@ -297,6 +367,7 @@ export function MyAccountView({
   cards,
   locations,
   history,
+  cancellations,
   isMasterCode,
   onAuthorize,
   onLock,
@@ -332,7 +403,13 @@ export function MyAccountView({
   const billingPagination = useHistoryPagination(history, "billing-history");
 
   if (!isMasterSession) {
-    return <SellerAccessAccount seller={currentSeller} onSave={onSaveSellerAccess} />;
+    return (
+      <SellerAccessAccount
+        seller={currentSeller}
+        cancellations={cancellations}
+        onSave={onSaveSellerAccess}
+      />
+    );
   }
 
   const authorize = () => {
@@ -550,6 +627,8 @@ export function MyAccountView({
           </CardContent>
         </Card>
       </div>
+
+      <UserCancellationHistory cancellations={cancellations} />
 
       {upcomingLocations.length > 0 && (
         <Card className="billing-reminder-card">

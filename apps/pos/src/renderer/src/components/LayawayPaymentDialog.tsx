@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
 import {
+  Building2,
+  CalendarDays,
   CheckCircle2,
   CreditCard,
+  LockKeyhole,
   PlusCircle,
   Trash2,
+  UserRound,
   WalletCards,
 } from "lucide-react";
 import {
@@ -27,9 +31,11 @@ import { formatCurrency } from "../mock-data";
 import { paymentReferenceIsValid } from "../bank-catalog";
 import type {
   BankCatalogEntry,
+  Client,
   LayawayRecord,
   PaymentEntry,
   PaymentMethodOption,
+  Seller,
 } from "../types";
 import { PaymentReferenceFields } from "./PaymentReferenceFields";
 
@@ -39,12 +45,23 @@ interface LayawayPaymentDialogProps {
   layaway: LayawayRecord;
   paymentMethods: PaymentMethodOption[];
   bankCatalog: BankCatalogEntry[];
+  clients: Client[];
+  sellers: Seller[];
+  companyName: string;
   sellerId: string;
   onRegister: (
     payments: PaymentEntry[],
     deliveredCartItemIds: string[],
   ) => void;
 }
+
+const currentBusinessDate = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 
 const createPayment = (methodId: string, amount: number): PaymentEntry => ({
   id: crypto.randomUUID(),
@@ -58,6 +75,9 @@ export function LayawayPaymentDialog({
   layaway,
   paymentMethods,
   bankCatalog,
+  clients,
+  sellers,
+  companyName,
   sellerId,
   onRegister,
 }: LayawayPaymentDialogProps) {
@@ -69,6 +89,20 @@ export function LayawayPaymentDialog({
   const [open, setOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [deliveryIds, setDeliveryIds] = useState<string[]>([]);
+  const paymentDate = currentBusinessDate();
+  const [ownershipConfirmed, setOwnershipConfirmed] = useState(false);
+  const layawayClient = clients.find((client) => client.id === layaway.clientId);
+  const activeOwner = sellers.find(
+    (seller) => seller.id === layawayClient?.ownerId && seller.active,
+  );
+  const isCompanyPortfolio = Boolean(
+    !activeOwner ||
+      layawayClient?.companyLocked ||
+      (layawayClient?.ownerId && !activeOwner),
+  );
+  const ownershipName = isCompanyPortfolio
+    ? layawayClient?.companyName || companyName || "Keysar Cosmetics"
+    : activeOwner?.name ?? companyName ?? "Keysar Cosmetics";
 
   const paymentNeedsAuthorization = (methodId: string) => {
     const method = paymentMethods.find((candidate) => candidate.id === methodId);
@@ -101,9 +135,11 @@ export function LayawayPaymentDialog({
   );
   const canRegister =
     Boolean(sellerId) &&
+    Boolean(paymentDate) &&
     payments.length > 0 &&
     totalPayment > 0 &&
     totalPayment <= layaway.balanceDue + 0.01 &&
+    ownershipConfirmed &&
     referencesAreValid;
 
   const startPayment = () => {
@@ -113,6 +149,7 @@ export function LayawayPaymentDialog({
         : [],
     );
     setDeliveryIds([]);
+    setOwnershipConfirmed(false);
     setOpen(true);
   };
 
@@ -155,7 +192,11 @@ export function LayawayPaymentDialog({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="layaway-payment-dialog sm:max-w-[760px]">
           <DialogHeader>
-            <DialogTitle>Registrar pago del apartado</DialogTitle>
+            <DialogTitle>
+              {layaway.collectionType === "PENDING"
+                ? "Registrar pago del saldo pendiente"
+                : "Registrar pago del apartado"}
+            </DialogTitle>
             <DialogDescription>
               Ticket {layaway.originalTicketId} · saldo actual {formatCurrency(layaway.balanceDue)}.
               Este ingreso generará un folio de pago independiente.
@@ -164,10 +205,59 @@ export function LayawayPaymentDialog({
 
           <div className="layaway-payment-dialog-summary">
             <span><small>SALDO ANTERIOR</small><strong>{formatCurrency(layaway.balanceDue)}</strong></span>
-            <span><small>ABONO DE HOY</small><strong>{formatCurrency(totalPayment)}</strong></span>
+            <span><small>ABONO A REGISTRAR</small><strong>{formatCurrency(totalPayment)}</strong></span>
             <span className={willLiquidate ? "is-paid" : ""}>
               <small>SALDO POSTERIOR</small><strong>{formatCurrency(remaining)}</strong>
             </span>
+          </div>
+
+          <div
+            className={`layaway-owner-confirmation ${isCompanyPortfolio ? "is-company" : ""}`}
+            role="alert"
+          >
+            {isCompanyPortfolio ? (
+              <Building2 size={20} aria-hidden="true" />
+            ) : (
+              <UserRound size={20} aria-hidden="true" />
+            )}
+            <span>
+              <small>PROPIEDAD DE LA VENTA</small>
+              <strong>
+                {isCompanyPortfolio
+                  ? "Esta clienta es cartera de la empresa"
+                  : `¿La venta pertenece a ${ownershipName}?`}
+              </strong>
+              <small>
+                {isCompanyPortfolio
+                  ? "El vendedor anterior ya no está activo o la procedencia mantiene la clienta ligada a la empresa."
+                  : "El abono conservará la atribución del vendedor registrado para la clienta."}
+              </small>
+            </span>
+            <Button
+              type="button"
+              variant={ownershipConfirmed ? "default" : "outline"}
+              onClick={() => setOwnershipConfirmed(true)}
+            >
+              <CheckCircle2 size={15} />
+              {ownershipConfirmed ? "Confirmado" : "Confirmar"}
+            </Button>
+          </div>
+
+          <div className="layaway-payment-effective-date">
+            <span className="layaway-payment-effective-date-icon">
+              <CalendarDays size={18} aria-hidden="true" />
+            </span>
+            <span>
+              <small>FECHA DEL FOLIO DE PAGO</small>
+              <strong>Día real del cobro</strong>
+              <small>
+                El folio se registra hoy. Sólo puede cambiarse después desde
+                Editar ticket con acceso Master o permiso de edición asignado.
+              </small>
+            </span>
+            <Badge variant="outline">
+              <LockKeyhole size={13} aria-hidden="true" /> {paymentDate}
+            </Badge>
           </div>
 
           <div className="multi-payment-list layaway-multi-payment-list">
@@ -239,20 +329,22 @@ export function LayawayPaymentDialog({
                     />
                   </div>
                   {requiresAuthorization && (
-                    <PaymentReferenceFields
-                      payment={payment}
-                      isCard={paymentIsCard(payment.methodId)}
-                      bankCatalog={bankCatalog}
-                      installmentOptions={installmentOptions}
-                      ariaContext={`del abono ${index + 1}`}
-                      onChange={(nextPayment) =>
-                        setPayments((current) =>
-                          current.map((item) =>
-                            item.id === payment.id ? nextPayment : item,
-                          ),
-                        )
-                      }
-                    />
+                    <div className="payment-reference-fields">
+                      <PaymentReferenceFields
+                        payment={payment}
+                        isCard={paymentIsCard(payment.methodId)}
+                        bankCatalog={bankCatalog}
+                        installmentOptions={installmentOptions}
+                        ariaContext={`del abono ${index + 1}`}
+                        onChange={(nextPayment) =>
+                          setPayments((current) =>
+                            current.map((item) =>
+                              item.id === payment.id ? nextPayment : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
                   )}
                   {payments.length > 1 && (
                     <button
