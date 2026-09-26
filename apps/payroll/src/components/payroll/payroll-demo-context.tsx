@@ -798,6 +798,8 @@ export interface EmployeePayrollLine {
   settlementPayment: number;
   christmasBonusPayment: number;
   baseSalaryOverride: number | null;
+  payrollBeforeDeductions: number;
+  totalDeductions: number;
   total: number;
   socialCost: number;
   isrCost: number;
@@ -4219,6 +4221,23 @@ export function PayrollDemoProvider({
                   balance.payrollModule === payrollModule),
             )
             .reduce((sum, balance) => sum + balance.amount, 0);
+          const ordinaryBeforeDeductions =
+            employee.category === "CONTRACTOR"
+              ? invoiceSubtotal + ivaAmount - isrRetention - ivaRetention
+              : fixedSalary +
+                doublePayAmount +
+                commission +
+                bonuses +
+                totalExternalAdditions;
+          const payrollBeforeDeductions =
+            ordinaryBeforeDeductions +
+            settlementPayment +
+            christmasBonusPayment;
+          const totalDeductions =
+            fines +
+            loanDeduction +
+            totalExternalDeductions +
+            carriedNegativeBalance;
           const ordinaryBalanceAdjustedTotal =
             ordinaryBeforeCarry - carriedNegativeBalance;
           const ordinaryTotal = Math.max(ordinaryBalanceAdjustedTotal, 0);
@@ -4347,6 +4366,8 @@ export function PayrollDemoProvider({
             settlementPayment,
             christmasBonusPayment,
             baseSalaryOverride,
+            payrollBeforeDeductions,
+            totalDeductions,
             total,
             socialCost,
             isrCost,

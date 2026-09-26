@@ -101,6 +101,8 @@ interface DisbursementRow {
   position: string;
   bank: string;
   clabe: string;
+  grossPayment: number;
+  deductions: number;
   payment: number;
   isr: number;
   socialCost: number;
@@ -109,6 +111,8 @@ interface DisbursementRow {
 }
 
 interface DisbursementTotals {
+  grossPayment: number;
+  deductions: number;
   payment: number;
   isr: number;
   socialCost: number;
@@ -128,6 +132,8 @@ type DisbursementSortKey =
   | "firstName"
   | "position"
   | "bank"
+  | "grossPayment"
+  | "deductions"
   | "payment"
   | "isr"
   | "socialCost"
@@ -165,12 +171,21 @@ function addDays(value: string, days: number) {
 function sumDisbursementRows(rows: DisbursementRow[]): DisbursementTotals {
   return rows.reduce(
     (result, row) => ({
+      grossPayment: result.grossPayment + row.grossPayment,
+      deductions: result.deductions + row.deductions,
       payment: result.payment + row.payment,
       isr: result.isr + row.isr,
       socialCost: result.socialCost + row.socialCost,
       total: result.total + row.total,
     }),
-    { payment: 0, isr: 0, socialCost: 0, total: 0 },
+    {
+      grossPayment: 0,
+      deductions: 0,
+      payment: 0,
+      isr: 0,
+      socialCost: 0,
+      total: 0,
+    },
   );
 }
 
@@ -392,6 +407,8 @@ export function PayrollDisbursementDemo() {
             clabe:
               row.manager.clabe ??
               `CLABE DEMO ${row.manager.account.replace(/\D/g, "").padStart(18, "0")}`,
+            grossPayment: row.commission,
+            deductions: 0,
             payment: row.commission,
             isr: row.isr,
             socialCost: row.socialCost,
@@ -427,6 +444,8 @@ export function PayrollDisbursementDemo() {
         clabe:
           line.employee.clabe ??
           `CLABE DEMO ${line.employee.account.replace(/\D/g, "").padStart(18, "0")}`,
+        grossPayment: line.payrollBeforeDeductions,
+        deductions: line.totalDeductions,
         payment: line.total,
         isr: line.isrCost,
         socialCost: line.socialCost,
@@ -458,6 +477,8 @@ export function PayrollDisbursementDemo() {
       }
       combinedRows.set(kioskRow.id, {
         ...existing,
+        grossPayment: existing.grossPayment + kioskRow.grossPayment,
+        deductions: existing.deductions + kioskRow.deductions,
         payment: existing.payment + kioskRow.payment,
         isr: existing.isr + kioskRow.isr,
         socialCost: existing.socialCost + kioskRow.socialCost,
@@ -489,6 +510,8 @@ export function PayrollDisbursementDemo() {
         firstName: (row) => row.firstName,
         position: (row) => `${row.position} ${row.branch}`,
         bank: (row) => `${row.bank} ${row.clabe}`,
+        grossPayment: (row) => row.grossPayment,
+        deductions: (row) => row.deductions,
         payment: (row) => row.payment,
         isr: (row) => row.isr,
         socialCost: (row) => row.socialCost,
@@ -610,6 +633,8 @@ export function PayrollDisbursementDemo() {
     position: "",
     bank: "",
     clabe: "",
+    grossPayment: totals.grossPayment,
+    deductions: totals.deductions,
     payment: totals.payment,
     isr: totals.isr,
     socialCost: totals.socialCost,
@@ -662,6 +687,16 @@ export function PayrollDisbursementDemo() {
         label: "Personal",
         value: String(rows.length),
         detail: "Registros para dispersión",
+      },
+      {
+        label: "Antes de descuentos",
+        value: money.format(totals.grossPayment),
+        detail: "Cargo bruto de nómina",
+      },
+      {
+        label: "Descuentos",
+        value: money.format(totals.deductions),
+        detail: "Movimiento de reducción",
       },
       {
         label: "Neto precalculado",
@@ -724,6 +759,18 @@ export function PayrollDisbursementDemo() {
         header: "CLABE interbancaria",
         accessor: (row) => row.clabe,
         width: 23,
+      },
+      {
+        header: "Antes de descuentos",
+        accessor: (row) => row.grossPayment,
+        format: "currency",
+        width: 20,
+      },
+      {
+        header: "Descuentos",
+        accessor: (row) => row.deductions,
+        format: "currency",
+        width: 17,
       },
       {
         header: "Neto a cobrar",
@@ -1010,12 +1057,24 @@ export function PayrollDisbursementDemo() {
               </CardContent>
             </Card>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               <Metric
                 icon={UsersRound}
                 label="PERSONAL"
                 value={String(rows.length)}
                 detail="REGISTROS PARA DISPERSIÓN"
+              />
+              <Metric
+                icon={Calculator}
+                label="ANTES DE DESCUENTOS"
+                value={money.format(totals.grossPayment)}
+                detail="CARGO BRUTO DE NÓMINA"
+              />
+              <Metric
+                icon={AlertTriangle}
+                label="DESCUENTOS"
+                value={money.format(totals.deductions)}
+                detail="MOVIMIENTO DE REDUCCIÓN"
               />
               <Metric
                 icon={CircleDollarSign}
@@ -1100,6 +1159,8 @@ export function PayrollDisbursementDemo() {
                         <SortableTableHead column="firstName" label="NOMBRE(S)" kind="text" sort={tableSort} onSort={changeTableSort} />
                         <SortableTableHead column="position" label="PUESTO" kind="text" sort={tableSort} onSort={changeTableSort} />
                         <SortableTableHead column="bank" label="BANCO / CLABE" kind="text" sort={tableSort} onSort={changeTableSort} />
+                        <SortableTableHead column="grossPayment" label="ANTES DE DESCUENTOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                        <SortableTableHead column="deductions" label="DESCUENTOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
                         <SortableTableHead column="payment" label="NETO A COBRAR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
                         <SortableTableHead column="isr" label="ISR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
                         <SortableTableHead column="socialCost" label="COSTO SOCIAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
@@ -1129,6 +1190,12 @@ export function PayrollDisbursementDemo() {
                             </p>
                           </TableCell>
                           <TableCell className="number-display text-right">
+                            {money.format(row.grossPayment)}
+                          </TableCell>
+                          <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
+                            −{money.format(row.deductions)}
+                          </TableCell>
+                          <TableCell className="number-display text-right">
                             {money.format(row.payment)}
                           </TableCell>
                           <TableCell className="number-display text-right">
@@ -1150,6 +1217,12 @@ export function PayrollDisbursementDemo() {
                           className="text-right font-semibold"
                         >
                           TOTAL {moduleCopy[module].label}
+                        </TableCell>
+                        <TableCell className="number-display text-right">
+                          {money.format(totals.grossPayment)}
+                        </TableCell>
+                        <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
+                          −{money.format(totals.deductions)}
                         </TableCell>
                         <TableCell className="number-display text-right">
                           {money.format(totals.payment)}
@@ -1198,6 +1271,18 @@ export function PayrollDisbursementDemo() {
                           </p>
                         </div>
                         <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <p className="label-caps">ANTES</p>
+                            <p className="number-display mt-1 text-xs">
+                              {money.format(row.grossPayment)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="label-caps">DESCUENTOS</p>
+                            <p className="number-display mt-1 text-xs text-rose-700 dark:text-rose-300">
+                              −{money.format(row.deductions)}
+                            </p>
+                          </div>
                           <div>
                             <p className="label-caps">COSTO</p>
                             <p className="number-display mt-1 text-xs">

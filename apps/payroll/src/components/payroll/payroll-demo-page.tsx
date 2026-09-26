@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  CircleMinus,
   Clock3,
   FileCheck2,
   KeyRound,
@@ -113,6 +114,8 @@ type PayrollColumnSortKey =
   | "carriedBalance"
   | "christmasBonus"
   | "settlement"
+  | "payrollBeforeDeductions"
+  | "totalDeductions"
   | "payroll"
   | "socialCost"
   | "isr"
@@ -1033,6 +1036,8 @@ function PayrollTable({
         carriedBalance: (line) => line.carriedNegativeBalance,
         christmasBonus: (line) => line.christmasBonusPayment,
         settlement: (line) => line.settlementPayment,
+        payrollBeforeDeductions: (line) => line.payrollBeforeDeductions,
+        totalDeductions: (line) => line.totalDeductions,
         payroll: (line) => line.total,
         socialCost: (line) => line.socialCost,
         isr: (line) => line.isrCost,
@@ -1078,6 +1083,14 @@ function PayrollTable({
   );
   const payrollTotal = filteredLines.reduce(
     (sum, line) => sum + line.total,
+    0,
+  );
+  const payrollBeforeDeductionsTotal = filteredLines.reduce(
+    (sum, line) => sum + line.payrollBeforeDeductions,
+    0,
+  );
+  const deductionsTotal = filteredLines.reduce(
+    (sum, line) => sum + line.totalDeductions,
     0,
   );
   const socialTotal = filteredLines.reduce(
@@ -1199,6 +1212,8 @@ function PayrollTable({
     settlement: line.settlementPayment > 0 ? line.settlementPayment : null,
     christmasBonus:
       line.christmasBonusPayment > 0 ? line.christmasBonusPayment : null,
+    payrollBeforeDeductions: line.payrollBeforeDeductions,
+    totalDeductions: line.totalDeductions,
     payroll: line.total,
     socialCost: line.socialCost,
     isr: line.isrCost,
@@ -1428,7 +1443,20 @@ function PayrollTable({
           ]
         : []),
       {
-        header: "NÓMINA",
+        header: "NÓMINA ANTES DE DESCUENTOS",
+        accessor: (row: (typeof reportRows)[number]) =>
+          row.payrollBeforeDeductions,
+        format: "currency" as const,
+        width: 22,
+      },
+      {
+        header: "DESCUENTOS TOTALES",
+        accessor: (row: (typeof reportRows)[number]) => row.totalDeductions,
+        format: "currency" as const,
+        width: 19,
+      },
+      {
+        header: "NETO A PAGAR",
         accessor: (row: (typeof reportRows)[number]) => row.payroll,
         format: "currency" as const,
         width: 16,
@@ -1703,8 +1731,24 @@ function PayrollTable({
                   />
                 )}
                 <SortableTableHead
+                  column="payrollBeforeDeductions"
+                  label="ANTES DE DESCUENTOS"
+                  kind="number"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                  align="right"
+                />
+                <SortableTableHead
+                  column="totalDeductions"
+                  label="DESCUENTOS TOTALES"
+                  kind="number"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                  align="right"
+                />
+                <SortableTableHead
                   column="payroll"
-                  label="NÓMINA"
+                  label="NETO A PAGAR"
                   kind="number"
                   sort={tableSort}
                   onSort={changeTableSort}
@@ -1935,6 +1979,12 @@ function PayrollTable({
                         : "—"}
                     </TableCell>
                   )}
+                  <TableCell className="number-display bg-sky-50/50 text-right dark:bg-sky-950/15">
+                    {money.format(line.payrollBeforeDeductions)}
+                  </TableCell>
+                  <TableCell className="number-display bg-rose-50/50 text-right text-rose-700 dark:bg-rose-950/15 dark:text-rose-300">
+                    −{money.format(line.totalDeductions)}
+                  </TableCell>
                   <TableCell className="number-display text-right text-base">
                     {money.format(line.total)}
                   </TableCell>
@@ -2008,6 +2058,12 @@ function PayrollTable({
                     {money.format(settlementTotal)}
                   </TableCell>
                 )}
+                <TableCell className="number-display bg-sky-50/50 text-right font-semibold dark:bg-sky-950/15">
+                  {money.format(payrollBeforeDeductionsTotal)}
+                </TableCell>
+                <TableCell className="number-display bg-rose-50/50 text-right font-semibold text-rose-700 dark:bg-rose-950/15 dark:text-rose-300">
+                  −{money.format(deductionsTotal)}
+                </TableCell>
                 <TableCell className="number-display text-right">
                   {money.format(payrollTotal)}
                 </TableCell>
@@ -2112,6 +2168,14 @@ function ConsolidatedDashboard({
       item.periodEnd === config.periodEnd,
   );
   const totalSales = lines.reduce((sum, line) => sum + line.sales, 0);
+  const payrollBeforeDeductions = lines.reduce(
+    (sum, line) => sum + line.payrollBeforeDeductions,
+    0,
+  );
+  const payrollDeductions = lines.reduce(
+    (sum, line) => sum + line.totalDeductions,
+    0,
+  );
   const payrollBase = lines.reduce((sum, line) => sum + line.total, 0);
   const socialCost = lines.reduce((sum, line) => sum + line.socialCost, 0);
   const isrCost = lines.reduce((sum, line) => sum + line.isrCost, 0);
@@ -2174,6 +2238,15 @@ function ConsolidatedDashboard({
         (sum, { line, share }) => sum + line.total * share,
         0,
       );
+      const payrollGross = branchAllocations.reduce(
+        (sum, { line, share }) =>
+          sum + line.payrollBeforeDeductions * share,
+        0,
+      );
+      const deductions = branchAllocations.reduce(
+        (sum, { line, share }) => sum + line.totalDeductions * share,
+        0,
+      );
       const social = branchAllocations.reduce(
         (sum, { line, share }) => sum + line.socialCost * share,
         0,
@@ -2194,6 +2267,8 @@ function ConsolidatedDashboard({
       );
       return {
         ...branch,
+        payrollGross,
+        deductions,
         payroll,
         social,
         isr,
@@ -2322,6 +2397,8 @@ function ConsolidatedDashboard({
       position: string;
       employees: Set<string>;
       moduleAmounts: Record<string, number>;
+      payrollGross: number;
+      deductions: number;
       payroll: number;
       social: number;
       isr: number;
@@ -2338,12 +2415,16 @@ function ConsolidatedDashboard({
       position: line.employee.position,
       employees: new Set<string>(),
       moduleAmounts: {},
+      payrollGross: 0,
+      deductions: 0,
       payroll: 0,
       social: 0,
       isr: 0,
       total: 0,
     };
     const payroll = line.total * share;
+    const payrollGross = line.payrollBeforeDeductions * share;
+    const deductions = line.totalDeductions * share;
     const social = line.socialCost * share;
     const isr = line.isrCost * share;
     row.employees.add(line.employee.id);
@@ -2368,6 +2449,8 @@ function ConsolidatedDashboard({
       row.moduleAmounts[fallbackModuleId] =
         (row.moduleAmounts[fallbackModuleId] ?? 0) + unassignedPayroll * share;
     }
+    row.payrollGross += payrollGross;
+    row.deductions += deductions;
     row.payroll += payroll;
     row.social += social;
     row.isr += isr;
@@ -2480,6 +2563,8 @@ function ConsolidatedDashboard({
     position: row.position,
     employees: row.employees.size,
     moduleAmounts: row.moduleAmounts,
+    payrollGross: row.payrollGross,
+    deductions: row.deductions,
     payroll: row.payroll,
     social: row.social,
     isr: row.isr,
@@ -2499,7 +2584,9 @@ function ConsolidatedDashboard({
     ],
     metrics: [
       { label: "Ventas", value: money.format(totalSales), detail: "Periodo conciliado" },
-      { label: "Nómina base", value: money.format(payrollBase), detail: "Antes de cargas" },
+      { label: "Antes de descuentos", value: money.format(payrollBeforeDeductions), detail: "Cargo bruto de nómina" },
+      { label: "Descuentos", value: money.format(payrollDeductions), detail: "Movimiento de reducción" },
+      { label: "Neto a pagar", value: money.format(payrollBase), detail: "Bruto menos descuentos" },
       { label: "Cargas", value: money.format(socialCost + isrCost), detail: "Social + ISR" },
       { label: "Costo general", value: money.format(totalPayroll), detail: `${lines.length} empleados` },
     ],
@@ -2542,7 +2629,21 @@ function ConsolidatedDashboard({
         width: 16,
       })),
       {
-        header: "NÓMINA BASE",
+        header: "ANTES DE DESCUENTOS",
+        accessor: (row: (typeof reconciliationReportRows)[number]) =>
+          row.payrollGross,
+        format: "currency" as const,
+        width: 20,
+      },
+      {
+        header: "DESCUENTOS",
+        accessor: (row: (typeof reconciliationReportRows)[number]) =>
+          row.deductions,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "NETO NÓMINA",
         accessor: (row: (typeof reconciliationReportRows)[number]) =>
           row.payroll,
         format: "currency" as const,
@@ -2572,7 +2673,7 @@ function ConsolidatedDashboard({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Metric
           icon={TrendingUp}
           label="VENTAS DEL PERIODO"
@@ -2581,21 +2682,27 @@ function ConsolidatedDashboard({
         />
         <Metric
           icon={WalletCards}
-          label="NÓMINA BASE"
-          value={money.format(payrollBase)}
-          detail={`Variable y bonos ${money.format(totalVariable)}`}
+          label="ANTES DE DESCUENTOS"
+          value={money.format(payrollBeforeDeductions)}
+          detail={`Percepciones · variable y bonos ${money.format(totalVariable)}`}
+        />
+        <Metric
+          icon={CircleMinus}
+          label="DESCUENTOS"
+          value={money.format(payrollDeductions)}
+          detail="Multas, préstamos, ajustes y saldos"
         />
         <Metric
           icon={Sparkles}
-          label="CARGAS SOCIALES"
-          value={money.format(socialCost + isrCost)}
-          detail={`Social ${money.format(socialCost)} · ISR ${money.format(isrCost)}`}
+          label="NETO DE NÓMINA"
+          value={money.format(payrollBase)}
+          detail="Importe final después de descuentos"
         />
         <Metric
           icon={BadgeCheck}
           label="COSTO GENERAL"
           value={money.format(totalPayroll)}
-          detail={`${authorized} de ${lines.length} empleados validados`}
+          detail={`Neto + social ${money.format(socialCost)} + ISR ${money.format(isrCost)} · ${authorized}/${lines.length} validados`}
         />
       </div>
 
@@ -2844,6 +2951,14 @@ function ConsolidatedDashboard({
 
           <div className="space-y-4">
             {branchPositionCosts.map(({ branch, rows }) => {
+              const branchPayrollGross = rows.reduce(
+                (sum, row) => sum + row.payrollGross,
+                0,
+              );
+              const branchDeductions = rows.reduce(
+                (sum, row) => sum + row.deductions,
+                0,
+              );
               const branchPayroll = rows.reduce(
                 (sum, row) => sum + row.payroll,
                 0,
@@ -2877,7 +2992,19 @@ function ConsolidatedDashboard({
                     </div>
                     <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
                       <span>
-                        Nómina{" "}
+                        Antes de descuentos{" "}
+                        <strong className="number-display">
+                          {money.format(branchPayrollGross)}
+                        </strong>
+                      </span>
+                      <span>
+                        Descuentos{" "}
+                        <strong className="number-display text-rose-200">
+                          −{money.format(branchDeductions)}
+                        </strong>
+                      </span>
+                      <span>
+                        Neto{" "}
                         <strong className="number-display">
                           {money.format(branchPayroll)}
                         </strong>
@@ -2919,7 +3046,13 @@ function ConsolidatedDashboard({
                             </TableHead>
                           ))}
                           <TableHead className="text-right">
-                            NÓMINA BASE
+                            ANTES DE DESCUENTOS
+                          </TableHead>
+                          <TableHead className="text-right">
+                            DESCUENTOS
+                          </TableHead>
+                          <TableHead className="text-right">
+                            NETO NÓMINA
                           </TableHead>
                           <TableHead className="text-right">
                             COSTO SOCIAL
@@ -2949,6 +3082,12 @@ function ConsolidatedDashboard({
                                 )}
                               </TableCell>
                             ))}
+                            <TableCell className="number-display text-right">
+                              {money.format(row.payrollGross)}
+                            </TableCell>
+                            <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
+                              −{money.format(row.deductions)}
+                            </TableCell>
                             <TableCell className="number-display text-right">
                               {money.format(row.payroll)}
                             </TableCell>
@@ -2982,6 +3121,12 @@ function ConsolidatedDashboard({
                               )}
                             </TableCell>
                           ))}
+                          <TableCell className="number-display text-right">
+                            {money.format(branchPayrollGross)}
+                          </TableCell>
+                          <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
+                            −{money.format(branchDeductions)}
+                          </TableCell>
                           <TableCell className="number-display text-right">
                             {money.format(branchPayroll)}
                           </TableCell>

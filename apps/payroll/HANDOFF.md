@@ -92,7 +92,7 @@ negocio definitiva.
 
 ## Dispersión final de nómina
 
-- Información que necesita mostrar: corrida cerrada, tipo de nómina, periodo, fecha de pago, apellido paterno, apellido materno, nombre, puesto, banco, CLABE interbancaria, monto de pago, ISR, costo social y costo total.
+- Información que necesita mostrar: corrida cerrada, tipo de nómina, periodo, fecha de pago, apellido paterno, apellido materno, nombre, puesto, banco, CLABE interbancaria, nómina antes de descuentos, descuentos totales, neto a cobrar, ISR, costo social y costo total.
 - Información que captura o modifica: ninguna; es una vista exclusivamente informativa alimentada por la corrida autorizada o pagada.
 - Reglas y validaciones observadas: una corrida en borrador no puede visualizarse ni exportarse; cada tipo de nómina produce un formato independiente; el personal se ordena por apellido paterno, materno y nombre; los totales del formato deben coincidir con la corrida cerrada.
 - Comisión de kiosco: solo entran meses terminados; la dispersión consolida en una sola transferencia las comisiones de todas las sucursales asociadas al mismo gerente y conserva el origen de cada costo.
@@ -100,6 +100,7 @@ negocio definitiva.
 - Acciones y permisos esperados: consulta, impresión y descarga en PDF/Excel para usuarios autorizados; no inicia transferencias bancarias.
 - Dudas por resolver: fuente validada de nombres separados y CLABE, momento exacto de congelamiento del archivo, firma de autorización y mecanismo de versionado ante una reapertura.
 - Bloqueo de cierre: producción deberá guardar una fotografía inmutable de cada corrida cerrada. Toda reapertura exigirá permiso maestro, segunda autenticación, motivo obligatorio y bitácora con usuario, fecha y versión anterior.
+- Conciliación contable: cada línea debe producir dos movimientos identificables —cargo bruto por la nómina antes de descuentos y movimiento de reducción por multas, préstamos, adelantos, ajustes negativos, viáticos descontables y saldos arrastrados—. El neto bancario es `máximo(bruto - descuentos, 0)` y el costo final es `neto + costo social + ISR`; los dos movimientos se reportan por separado, pero nunca se suman ambos como gasto.
 
 ## Catálogo y sincronización de sucursales con POS
 
@@ -425,7 +426,7 @@ negocio definitiva.
 ## Dispersión consolidada e historial de periodos
 
 - Inclusión de personal: `Nómina > Dispersión de nómina` consume directamente `payrollLines` y ya no vuelve a excluir empleados por la categoría de su puesto. Cada tipo de nómina conserva a todo el personal asignado por configuración o actividad; la pestaña `TODAS LAS NÓMINAS` presenta una sola fila por empleado incluido en el periodo con su neto final.
-- Importe bancario: `NETO A COBRAR` usa el total pagable de la línea de nómina después de percepciones, deducciones, préstamos, adelantos, multas, movimientos y saldos. ISR y costo social se muestran como cargas separadas; `COSTO TOTAL` es el costo patronal y no debe usarse como importe de transferencia.
+- Importe bancario: `ANTES DE DESCUENTOS` conserva todas las percepciones del periodo; `DESCUENTOS` agrupa multas, préstamos, adelantos, ajustes negativos, viáticos descontables y saldo anterior; `NETO A COBRAR` es la diferencia pagable sin permitir valores negativos. ISR y costo social se muestran como cargas separadas; `COSTO TOTAL` es `neto + cargas` y no debe usarse como importe de transferencia.
 - Periodo actual: una corrida en borrador se muestra como precálculo vivo y suma sus empleados e importes aunque todavía no esté cerrada ni pagada. Debajo de los tipos de nómina aparece una alerta roja que enumera el nombre y las fechas exactas de cada corrida abierta. Impresión, PDF y Excel permanecen bloqueados hasta el cierre; al cerrar o pagar toman todos los registros del periodo, no sólo la página visible.
 - Conciliación: `TODAS LAS NÓMINAS` conserva como fuente principal la línea consolidada —para no duplicar sueldo, comisión, bonos, movimientos o cargas— y en el último corte del mes incorpora una sola vez la comisión mensual de kiosco. Si el gerente ya existe, kiosco se suma sobre su misma fila. La pantalla muestra la igualdad `consolidado vivo + kiosco = total precalculado` y marca cualquier diferencia mayor a un centavo.
 - Historial: el selector de periodo permanece visible y controla simultáneamente pantalla, impresión, PDF y Excel. Los periodos anteriores conservan su fecha, estado y folio; la comisión de kiosco muestra también el mes actual como borrador/precálculo y continúa usando cierres mensuales, mientras las demás nóminas usan los cortes configurados.
