@@ -100,6 +100,23 @@ el diseño y el autocuidado.
 | `hr`          | Next.js                 | 3007       | Recursos Humanos, turnos, vacaciones y expedientes      |
 | `backend/api` | Express                 | 4000       | API REST compartida                                     |
 
+### Migración activa de `apps/landing`
+
+- Rama de trabajo: `feature/landing`.
+- La landing pública se migra desde el repo hermano `../keysar-landing`, usado
+  únicamente como referencia, hacia `apps/landing`.
+- El destino conserva el stack del monorepo: Next.js 14 App Router, React 18,
+  TypeScript, Tailwind CSS 3, pnpm y Turborepo. No se incorpora Astro ni la
+  configuración o lockfile del repo fuente.
+- El plan por fases, estado transferible, decisiones y comandos de validación
+  viven en `docs/LANDING_MIGRATION.md`. Leerlo antes de tocar la landing y
+  actualizar su checklist al cerrar cada fase.
+- La migración funcional quedó completada el 2026-09-25: `/` se prerenderiza,
+  TypeScript y ESLint pasan, el build de producción termina correctamente y se
+  verificaron flujos desktop/móvil. Consultar la bitácora del plan para el QA.
+- La persona responsable del repositorio hará los commits y push; los chats de
+  migración deben dejar cambios sin confirmar.
+
 ## Estado actual de `apps/pos`
 
 - La Fase 5 de `PLAN_BACKEND_SCHEDULER.md` sustituyó en repositorio a Agenda CRM como autoridad final de citas del POS. `AGENDA_PROVIDER=internal` es el default y trabaja sólo con Prisma/Scheduler; `http` conserva temporalmente el adaptador anterior como rollback. En modo interno, disponibilidad se deriva de catálogos, horarios, bloqueos, profesionales, recursos y citas canónicas; la confirmación de `SchedulerAppointment(origin = POS)`, ticket y `PosAppointment.schedulerAppointmentId` ocurre en una sola transacción serializable.
