@@ -7,6 +7,49 @@ import type { SchedulerClient } from "./scheduler-client-presentation";
 
 export const schedulerCustomerQueryPrefix = "customers";
 
+export interface SchedulerCustomerRegistrationMatches {
+  phoneMatch: SchedulerClient | null;
+  nameMatches: SchedulerClient[];
+}
+
+export function normalizeSchedulerCustomerIdentityName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("es-MX");
+}
+
+export function findSchedulerCustomerRegistrationMatches(
+  customers: SchedulerClient[],
+  displayName: string,
+  phone: string,
+): SchedulerCustomerRegistrationMatches {
+  const normalizedName = normalizeSchedulerCustomerIdentityName(displayName);
+  const hasFullName = normalizedName.split(" ").filter(Boolean).length >= 2;
+  const normalizedPhone = phone.replace(/\D/g, "");
+  const uniqueCustomers = [
+    ...new Map(customers.map((customer) => [customer.id, customer])).values(),
+  ];
+
+  return {
+    phoneMatch:
+      (normalizedPhone
+        ? uniqueCustomers.find(
+            (customer) => customer.normalizedPhone === normalizedPhone,
+          )
+        : undefined) ?? null,
+    nameMatches: hasFullName
+      ? uniqueCustomers.filter(
+          (customer) =>
+            normalizeSchedulerCustomerIdentityName(customer.fullName) ===
+            normalizedName,
+        )
+      : [],
+  };
+}
+
 export function adaptSchedulerCustomerSummary(
   customer: Pick<
     SchedulerCustomerSummaryDto,

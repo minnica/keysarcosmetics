@@ -57,7 +57,11 @@ import {
   type CommerceOption,
 } from "@/lib/scheduler-presentation";
 import type { SchedulerClient } from "@/lib/scheduler-client-presentation";
-import { adaptSchedulerCustomerSummary } from "@/lib/scheduler-customer-data";
+import {
+  adaptSchedulerCustomerSummary,
+  findSchedulerCustomerRegistrationMatches,
+  normalizeSchedulerCustomerIdentityName,
+} from "@/lib/scheduler-customer-data";
 import type { SchedulerFinancialProfile } from "@/lib/scheduler-access";
 import {
   getSchedulerAgendaSlotMinutes,
@@ -103,6 +107,17 @@ interface SensitiveRequest {
 interface FinancialRecord {
   profile: SchedulerFinancialProfile;
   data: SchedulerCustomerFinancialHistoryDto;
+}
+
+interface CustomerRegistrationReview {
+  kind: "phone" | "name";
+  customers: SchedulerClient[];
+  selectedCustomerId: string;
+}
+
+interface SaveBookingOptions {
+  allowNameDuplicate?: boolean;
+  customer?: SchedulerClient;
 }
 
 const createStatuses: BookingStatus[] = ["pending", "reserved", "confirmed"];
@@ -263,6 +278,8 @@ export function ApiAgendaWorkspace() {
   const [conflict, setConflict] = useState<string | null>(null);
   const [clientSearchInput, setClientSearchInput] = useState("");
   const [clientSearch, setClientSearch] = useState("");
+  const [customerRegistrationReview, setCustomerRegistrationReview] =
+    useState<CustomerRegistrationReview | null>(null);
   const [sensitiveRequest, setSensitiveRequest] =
     useState<SensitiveRequest | null>(null);
   const [financialRecords, setFinancialRecords] = useState<
@@ -611,6 +628,7 @@ export function ApiAgendaWorkspace() {
     setHistoryEntries([]);
     setRecordBooking(null);
     setCustomerDetail(null);
+    setCustomerRegistrationReview(null);
     Object.values(sensitiveTimersRef.current).forEach((timer) =>
       window.clearTimeout(timer),
     );
@@ -785,7 +803,42 @@ export function ApiAgendaWorkspace() {
     );
   }
 
-  async function saveBooking() {
+  async function loadCustomerRegistrationMatches(
+    displayName: string,
+    phone: string,
+  ) {
+    const normalizedName = normalizeSchedulerCustomerIdentityName(displayName);
+    const hasFullName = normalizedName.split(" ").filter(Boolean).length >= 2;
+    const normalizedPhone = phone.replace(/\D/g, "");
+    const queries = [
+      ...(hasFullName ? [displayName.trim()] : []),
+      ...(normalizedPhone ? [normalizedPhone] : []),
+    ];
+    const pages = await Promise.all(
+      [...new Set(queries)].map((query) =>
+        schedulerApi.searchCustomers({
+          query,
+          branchId: selectedBranch,
+          page: 1,
+          pageSize: 100,
+        }),
+      ),
+    );
+    const customersById = new Map<string, SchedulerClient>();
+    for (const page of pages) {
+      for (const customer of page.items) {
+        const adapted = adaptSchedulerCustomerSummary(customer);
+        customersById.set(adapted.id, adapted);
+      }
+    }
+    return findSchedulerCustomerRegistrationMatches(
+      [...customersById.values()],
+      displayName,
+      phone,
+    );
+  }
+
+  async function saveBooking(options: SaveBookingOptions = {}) {
     if (!bookingDraft || !branchProfile) return;
     if (bookingDraft.customerName.trim().length < 2) {
       toast.error("Selecciona un cliente o captura un nombre válido.");
@@ -813,6 +866,7 @@ export function ApiAgendaWorkspace() {
     setConflict(null);
     try {
       let customerId =
+        options.customer?.id ??
         bookingDraft.clientId ??
         createdCustomerByIntentRef.current[bookingIntentKey] ??
         null;
@@ -821,6 +875,26 @@ export function ApiAgendaWorkspace() {
           throw new Error(
             "No tienes permiso para crear clientes. Selecciona un registro existente.",
           );
+        const matches = await loadCustomerRegistrationMatches(
+          bookingDraft.customerName,
+          bookingDraft.phone,
+        );
+        if (matches.phoneMatch) {
+          setCustomerRegistrationReview({
+            kind: "phone",
+            customers: [matches.phoneMatch],
+            selectedCustomerId: matches.phoneMatch.id,
+          });
+          return;
+        }
+        if (matches.nameMatches.length && !options.allowNameDuplicate) {
+          setCustomerRegistrationReview({
+            kind: "name",
+            customers: matches.nameMatches,
+            selectedCustomerId: matches.nameMatches[0]!.id,
+          });
+          return;
+        }
         const customer = await schedulerApi.createCustomer({
           displayName: bookingDraft.customerName.trim(),
           phone: bookingDraft.phone.trim() || null,
@@ -918,6 +992,7 @@ export function ApiAgendaWorkspace() {
       toast.success(existing ? "Reserva actualizada." : "Reserva creada.");
       setBookingDialogOpen(false);
       setBookingDraft(null);
+      setCustomerRegistrationReview(null);
       setClientSearchInput("");
       delete createdCustomerByIntentRef.current[bookingIntentKey];
       await agenda.reload();
@@ -1286,6 +1361,11 @@ export function ApiAgendaWorkspace() {
       financialPayments(record.data),
     ]),
   );
+  const registrationReviewCustomer =
+    customerRegistrationReview?.customers.find(
+      (customer) =>
+        customer.id === customerRegistrationReview.selectedCustomerId,
+    ) ?? null;
   const noop = () => undefined;
 
   return (
@@ -1519,6 +1599,7 @@ export function ApiAgendaWorkspace() {
             setSelectedBranch(branchId);
             setBookingDialogOpen(false);
             setBookingDraft(null);
+            setCustomerRegistrationReview(null);
             toast.info(
               "Sucursal actualizada. Abre de nuevo la reserva para consultar su disponibilidad.",
             );
@@ -1530,6 +1611,7 @@ export function ApiAgendaWorkspace() {
             if (!open) {
               setBookingDraft(null);
               setClientSearchInput("");
+              setCustomerRegistrationReview(null);
             }
           }}
           onSave={() => {
@@ -1599,6 +1681,108 @@ export function ApiAgendaWorkspace() {
         }}
         open={Boolean(recordBooking && customerDetail)}
       />
+
+      <AlertDialog
+        open={Boolean(customerRegistrationReview)}
+        onOpenChange={(open) => {
+          if (!open) setCustomerRegistrationReview(null);
+        }}
+      >
+        <AlertDialogContent className="scheduler-modal-shell max-w-xl rounded-2xl border-0 bg-white">
+          <AlertDialogHeader>
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+                <AlertTriangle className="h-5 w-5" />
+              </span>
+              <div>
+                <AlertDialogTitle>
+                  {customerRegistrationReview?.kind === "phone"
+                    ? "Teléfono ya registrado"
+                    : "Posible cliente duplicado"}
+                </AlertDialogTitle>
+                <AlertDialogDescription className="mt-1">
+                  {customerRegistrationReview?.kind === "phone"
+                    ? "Este número pertenece a un cliente existente. El teléfono debe ser único y no se puede crear otro perfil con el mismo número."
+                    : "Encontramos uno o más perfiles con el mismo nombre y apellidos. Selecciona el cliente que deseas usar o confirma que se trata de otra persona."}
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </AlertDialogHeader>
+
+          <div className="space-y-2" role="radiogroup" aria-label="Clientes coincidentes">
+            {customerRegistrationReview?.customers.map((customer) => {
+              const selected =
+                customer.id === customerRegistrationReview.selectedCustomerId;
+              return (
+                <button
+                  aria-checked={selected}
+                  className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                    selected
+                      ? "border-[var(--scheduler-accent)] bg-[var(--scheduler-accent-soft)]"
+                      : "border-[rgba(236,209,200,0.95)] bg-white hover:bg-[rgba(245,237,228,0.55)]"
+                  }`}
+                  key={customer.id}
+                  onClick={() =>
+                    setCustomerRegistrationReview((current) =>
+                      current
+                        ? { ...current, selectedCustomerId: customer.id }
+                        : current,
+                    )
+                  }
+                  role="radio"
+                  type="button"
+                >
+                  <span className="block font-semibold text-[var(--scheduler-ink-strong)]">
+                    {customer.fullName}
+                  </span>
+                  <span className="mt-1 block text-sm text-slate-600">
+                    {customer.phone || "Sin teléfono"}
+                    {customer.email ? ` · ${customer.email}` : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <AlertDialogFooter className="sm:flex-wrap">
+            <AlertDialogCancel>Revisar datos</AlertDialogCancel>
+            {customerRegistrationReview?.kind === "name" ? (
+              <AlertDialogAction
+                className="border border-[rgba(236,209,200,0.95)] bg-white text-[var(--scheduler-ink-strong)] hover:bg-[rgba(245,237,228,0.75)]"
+                onClick={() => {
+                  setCustomerRegistrationReview(null);
+                  void saveBooking({ allowNameDuplicate: true });
+                }}
+              >
+                Crear perfil independiente
+              </AlertDialogAction>
+            ) : null}
+            <AlertDialogAction
+              disabled={!registrationReviewCustomer}
+              onClick={() => {
+                if (!registrationReviewCustomer) return;
+                const customer = registrationReviewCustomer;
+                setCustomerRegistrationReview(null);
+                setClientSearchInput(customer.fullName);
+                setBookingDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        clientId: customer.id,
+                        customerName: customer.fullName,
+                        customerEmail: customer.email,
+                        phone: customer.phone,
+                      }
+                    : current,
+                );
+                void saveBooking({ customer });
+              }}
+            >
+              Usar cliente seleccionado
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={Boolean(cancelRequest)}

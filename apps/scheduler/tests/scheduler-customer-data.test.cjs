@@ -29,6 +29,8 @@ const {
   authorizationRetentionMs,
   customerFieldDraftValue,
   customerFieldWriteValue,
+  findSchedulerCustomerRegistrationMatches,
+  normalizeSchedulerCustomerIdentityName,
   splitCustomerList,
 } = exported;
 
@@ -78,6 +80,63 @@ test("uses the server authorization expiry to limit sensitive retention", () => 
       "2026-09-06T11:59:00.000Z",
       Date.parse("2026-09-06T12:00:00.000Z"),
     ),
+    0,
+  );
+});
+
+test("matches an existing customer by exact normalized phone", () => {
+  const existing = adaptSchedulerCustomerSummary({
+    id: "customer-1",
+    displayName: "María Celis",
+    aliases: [],
+    phone: "+52 55 1234 5678",
+    email: "maria@example.com",
+  });
+  const result = findSchedulerCustomerRegistrationMatches(
+    [existing],
+    "Otra Persona",
+    "52 (55) 1234-5678",
+  );
+
+  assert.equal(result.phoneMatch?.id, "customer-1");
+  assert.equal(result.nameMatches.length, 0);
+});
+
+test("asks about an exact full-name match but ignores partial names", () => {
+  const existing = adaptSchedulerCustomerSummary({
+    id: "customer-1",
+    displayName: "María José Pérez López",
+    aliases: [],
+    phone: "+52 55 9999 0000",
+    email: null,
+  });
+
+  assert.equal(
+    normalizeSchedulerCustomerIdentityName("  MARÍA José   Pérez Lopez "),
+    "maria jose perez lopez",
+  );
+  assert.equal(
+    findSchedulerCustomerRegistrationMatches(
+      [existing],
+      "María José Pérez Lopez",
+      "5511112222",
+    ).nameMatches.length,
+    1,
+  );
+  assert.equal(
+    findSchedulerCustomerRegistrationMatches(
+      [existing],
+      "María Pérez",
+      "5511112222",
+    ).nameMatches.length,
+    0,
+  );
+  assert.equal(
+    findSchedulerCustomerRegistrationMatches(
+      [existing],
+      "María",
+      "5511112222",
+    ).nameMatches.length,
     0,
   );
 });
