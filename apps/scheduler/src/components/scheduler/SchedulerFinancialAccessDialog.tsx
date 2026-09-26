@@ -67,7 +67,10 @@ export function SchedulerFinancialAccessDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scheduler-dialog border-0 bg-transparent p-0 shadow-none sm:max-w-[440px]">
+      <DialogContent
+        className="scheduler-dialog border-0 bg-transparent p-0 shadow-none sm:max-w-[440px]"
+        hideCloseButton
+      >
         <div className="scheduler-modal-shell overflow-hidden rounded-2xl">
           <DialogHeader className="border-b border-[rgba(236,209,200,0.88)] px-5 py-4">
             <div className="flex items-start justify-between gap-4">
