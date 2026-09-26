@@ -20,11 +20,7 @@ import {
   Label,
   Textarea,
 } from "@cosmetics/ui";
-import {
-  administratorCode,
-  formatCurrency,
-  getSellerSku,
-} from "../mock-data";
+import { formatCurrency, getSellerSku } from "../mock-data";
 import type { CartItem, Product } from "../types";
 
 interface ProductDialogProps {
@@ -63,7 +59,7 @@ export function ProductDialog({
     setQuantity(cartItem?.quantity ?? 1);
     setPriceInput(String(cartItem?.unitPrice ?? product.maxPrice));
     setComment(cartItem?.comment ?? "");
-    setAdminCode(cartItem?.adminAuthorized ? administratorCode : "");
+    setAdminCode("");
   }, [cartItem, open, product]);
 
   const priceState = useMemo(() => {
@@ -248,20 +244,24 @@ export function ProductDialog({
                 <ShieldCheck size={20} />
                 <div className="field-stack">
                   <Label htmlFor="admin-code">
-                    Autorización de administrador
+                    Token de autorización comercial
                   </Label>
                   <Input
                     id="admin-code"
                     type="password"
                     inputMode="numeric"
-                    placeholder="Código de 4 dígitos"
+                    maxLength={6}
+                    autoComplete="off"
+                    placeholder="Token de 4 a 6 dígitos"
                     value={adminCode}
-                    onChange={(event) => setAdminCode(event.target.value)}
+                    onChange={(event) =>
+                      setAdminCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
                   />
                   <span>
                     {priceState.authorized
                       ? "Código autorizado. El ticket bajo piso quedará en el reporte administrativo."
-                      : "Mock de demostración: usa 2468."}
+                      : "Solicita el token vigente a Master o personal autorizado."}
                   </span>
                 </div>
               </div>

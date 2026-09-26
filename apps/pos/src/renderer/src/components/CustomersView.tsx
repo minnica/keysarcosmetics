@@ -107,6 +107,8 @@ interface CustomersViewProps {
   onDeleteClient: (clientId: string) => void;
   onBulkImportClients: (clients: Client[]) => void;
   onPreviewTicket: (ticket: Ticket, autoPrint?: boolean) => void;
+  canEditTickets: boolean;
+  onEditTicket: (ticket: Ticket) => void;
   onRegisterLayawayPayment: (
     layawayId: string,
     payments: PaymentEntry[],
@@ -316,6 +318,8 @@ export function CustomersView({
   onDeleteClient,
   onBulkImportClients,
   onPreviewTicket,
+  canEditTickets,
+  onEditTicket,
   onRegisterLayawayPayment,
   onExpandLayaway,
 }: CustomersViewProps) {
@@ -332,6 +336,7 @@ export function CustomersView({
   const [debtOnly, setDebtOnly] = useState(false);
   const [accessError, setAccessError] = useState("");
   const [expandedClientId, setExpandedClientId] = useState("");
+  const [expandedHistoryTicketId, setExpandedHistoryTicketId] = useState("");
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [deletingClient, setDeletingClient] = useState<Client | null>(null);
   const [deleteFolio, setDeleteFolio] = useState("");
@@ -437,13 +442,20 @@ export function CustomersView({
   const clientTickets = (client: Client) => {
     const phone = normalizePhone(client.phone);
     const fullName = normalize(`${client.firstName} ${client.lastName}`);
-    return tickets.filter(
-      (ticket) =>
-        ticket.status === "COMPLETED" &&
-        ticket.ticketType !== "LAYAWAY_PAYMENT" &&
-        ((phone && normalizePhone(ticket.clientPhone) === phone) ||
-          normalize(ticket.clientName) === fullName),
-    );
+    return tickets
+      .filter(
+        (ticket) =>
+          ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+          ticket.ticketType !== "REFUND" &&
+          (ticket.clientId === client.id ||
+            (phone && normalizePhone(ticket.clientPhone) === phone) ||
+            normalize(ticket.clientName) === fullName),
+      )
+      .sort(
+        (first, second) =>
+          new Date(second.createdAtIso).getTime() -
+          new Date(first.createdAtIso).getTime(),
+      );
   };
 
   const clientAppointments = (client: Client) =>
@@ -466,7 +478,15 @@ export function CustomersView({
 
   const clientOutstandingBalance = (client: Client) =>
     clientTickets(client).reduce(
-      (sum, ticket) => sum + Math.max(0, ticket.balanceDue),
+      (sum, ticket) =>
+        sum + (ticket.status === "COMPLETED" ? Math.max(0, ticket.balanceDue) : 0),
+      0,
+    );
+
+  const clientPurchaseTotal = (client: Client) =>
+    clientTickets(client).reduce(
+      (sum, ticket) =>
+        sum + (ticket.status === "COMPLETED" ? ticket.total : 0),
       0,
     );
 
@@ -503,10 +523,7 @@ export function CustomersView({
 
       const purchases = clientTickets(client);
       if (debtOnly && clientOutstandingBalance(client) <= 0.01) return false;
-      const purchaseTotal = purchases.reduce(
-        (sum, ticket) => sum + ticket.total,
-        0,
-      );
+      const purchaseTotal = clientPurchaseTotal(client);
       if (minimum !== null && purchaseTotal < minimum) return false;
       if (maximum !== null && purchaseTotal > maximum) return false;
       if (
@@ -1348,10 +1365,7 @@ export function CustomersView({
                         normalizePhone(layaway.clientPhone) ===
                           normalizePhone(client.phone),
                     );
-                    const purchaseTotal = purchases.reduce(
-                      (sum, ticket) => sum + ticket.total,
-                      0,
-                    );
+                    const purchaseTotal = clientPurchaseTotal(client);
                     const outstandingBalance = clientOutstandingBalance(client);
                     const outstandingTickets = purchases.filter(
                       (ticket) => ticket.balanceDue > 0.01,
@@ -1366,13 +1380,23 @@ export function CustomersView({
                           </TableCell>
                           <TableCell>
                             <div className="customer-table-name">
-                              <span>
-                                {client.firstName.charAt(0)}
-                                {client.lastName.charAt(0)}
-                              </span>
-                              <strong>
-                                {client.firstName} {client.lastName}
-                              </strong>
+                              <button
+                                type="button"
+                                className="customer-name-history-trigger"
+                                aria-expanded={expanded}
+                                aria-label={`Mostrar historial de compras de ${client.firstName} ${client.lastName}`}
+                                onClick={() =>
+                                  setExpandedClientId(expanded ? "" : client.id)
+                                }
+                              >
+                                <span>
+                                  {client.firstName.charAt(0)}
+                                  {client.lastName.charAt(0)}
+                                </span>
+                                <strong>
+                                  {client.firstName} {client.lastName}
+                                </strong>
+                              </button>
                               {outstandingBalance > 0.01 && (
                                 <span className="customer-debt-badge">
                                   <AlertTriangle size={12} /> Adeudo {formatCurrency(outstandingBalance)}
@@ -1538,6 +1562,220 @@ export function CustomersView({
                                     </span>
                                   </div>
                                 </div>
+                                <section className="customer-ticket-ledger">
+                                  <div className="section-title-row">
+                                    <div>
+                                      <span className="section-kicker">
+                                        HISTORIAL DE COMPRA
+                                      </span>
+                                      <h3>
+                                        <ReceiptText size={16} /> Tickets del cliente
+                                      </h3>
+                                    </div>
+                                    <Badge variant="outline">
+                                      {purchases.length} {purchases.length === 1 ? "ticket" : "tickets"}
+                                    </Badge>
+                                  </div>
+                                  {purchases.length > 0 ? (
+                                    <div className="customer-ticket-list">
+                                      <div className="customer-ticket-list-header" aria-hidden="true">
+                                        <span>FECHA</span>
+                                        <span>FOLIO</span>
+                                        <span>TIPO / ESTATUS</span>
+                                        <span>COMPRA</span>
+                                        <span>TOTAL</span>
+                                        <span>SALDO</span>
+                                        <span>ACCIONES</span>
+                                      </div>
+                                      {purchases.map((ticket) => {
+                                        const layaway = customerLayaways.find(
+                                          (record) =>
+                                            record.originalTicketId === ticket.id,
+                                        );
+                                        const ticketExpanded =
+                                          expandedHistoryTicketId === ticket.id;
+                                        const ticketBalance =
+                                          layaway?.balanceDue ?? ticket.balanceDue;
+                                        const ticketStatus =
+                                          ticket.status === "REFUNDED"
+                                            ? "CANCELADO"
+                                            : ticket.ticketType === "EXPANSION"
+                                              ? "VENTA AMPLIADA"
+                                              : layaway?.status === "PAID"
+                                                ? "LIQUIDADO"
+                                                : layaway?.collectionType === "PENDING"
+                                                  ? "PENDIENTE DE COBRO"
+                                                  : layaway?.status === "ACTIVE"
+                                                    ? "APARTADO ACTIVO"
+                                                    : ticket.paymentStatus === "PAID"
+                                                      ? "PAGADO"
+                                                      : ticket.paymentStatus === "LAYAWAY"
+                                                        ? "APARTADO"
+                                                        : "PENDIENTE";
+                                        const ticketKind = layaway
+                                          ? layaway.collectionType === "PENDING"
+                                            ? "Pendiente"
+                                            : "Apartado"
+                                          : ticket.ticketType === "EXPANSION"
+                                            ? "Ampliación"
+                                            : "Compra";
+                                        const ticketCanBeEdited =
+                                          canEditTickets &&
+                                          ticket.status !== "REFUNDED" &&
+                                          ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+                                          ticket.ticketType !== "REFUND";
+                                        return (
+                                          <article
+                                            key={ticket.id}
+                                            className={`customer-ticket-list-item${ticketExpanded ? " is-open" : ""}`}
+                                          >
+                                            <div className="customer-ticket-list-row">
+                                              <span data-label="Fecha">
+                                                <strong>{ticket.createdAt}</strong>
+                                              </span>
+                                              <span data-label="Folio">
+                                                <button
+                                                  type="button"
+                                                  className="customer-history-ticket-trigger"
+                                                  onClick={() => onPreviewTicket(ticket)}
+                                                  aria-label={`Visualizar ticket ${ticket.id}`}
+                                                >
+                                                  {ticket.id}
+                                                </button>
+                                              </span>
+                                              <span data-label="Tipo / estatus">
+                                                <small>{ticketKind}</small>
+                                                <Badge variant="outline">{ticketStatus}</Badge>
+                                              </span>
+                                              <span data-label="Compra">
+                                                <strong>
+                                                  {ticket.products.reduce(
+                                                    (sum, product) => sum + product.quantity,
+                                                    0,
+                                                  )} {ticket.products.length === 1 ? "producto" : "productos"}
+                                                </strong>
+                                                <small>{ticket.sellerSummary}</small>
+                                              </span>
+                                              <span data-label="Total">
+                                                <strong>{formatCurrency(ticket.total)}</strong>
+                                              </span>
+                                              <span data-label="Saldo">
+                                                <strong className={ticketBalance > 0.01 ? "has-balance" : undefined}>
+                                                  {formatCurrency(ticketBalance)}
+                                                </strong>
+                                              </span>
+                                              <span className="customer-ticket-row-actions" data-label="Acciones">
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="icon"
+                                                  title={ticketExpanded ? "Ocultar información" : "Desplegar información"}
+                                                  aria-label={`${ticketExpanded ? "Ocultar" : "Mostrar"} información de ${ticket.id}`}
+                                                  aria-expanded={ticketExpanded}
+                                                  onClick={() =>
+                                                    setExpandedHistoryTicketId(
+                                                      ticketExpanded ? "" : ticket.id,
+                                                    )
+                                                  }
+                                                >
+                                                  {ticketExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="icon"
+                                                  title="Visualizar ticket"
+                                                  aria-label={`Visualizar ticket ${ticket.id}`}
+                                                  onClick={() => onPreviewTicket(ticket)}
+                                                >
+                                                  <Eye size={14} />
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="icon"
+                                                  title="Imprimir ticket"
+                                                  aria-label={`Imprimir ticket ${ticket.id}`}
+                                                  onClick={() => onPreviewTicket(ticket, true)}
+                                                >
+                                                  <Printer size={14} />
+                                                </Button>
+                                                {ticketCanBeEdited && (
+                                                  <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="icon"
+                                                    title="Editar ticket"
+                                                    aria-label={`Editar ticket ${ticket.id}`}
+                                                    onClick={() => onEditTicket(ticket)}
+                                                  >
+                                                    <Pencil size={14} />
+                                                  </Button>
+                                                )}
+                                              </span>
+                                            </div>
+                                            {ticketExpanded && (
+                                              <div className="customer-ticket-list-details">
+                                                <section>
+                                                  <h4>Productos y servicios</h4>
+                                                  {ticket.products.map((product, index) => (
+                                                    <div key={`${ticket.id}-${product.productId}-${index}`}>
+                                                      <span>{product.quantity} × {product.name}</span>
+                                                      <strong>{formatCurrency(product.total)}</strong>
+                                                    </div>
+                                                  ))}
+                                                </section>
+                                                <section>
+                                                  <h4>Información del cobro</h4>
+                                                  <div>
+                                                    <span>Pagado</span>
+                                                    <strong>{formatCurrency(layaway?.amountPaid ?? ticket.amountPaid)}</strong>
+                                                  </div>
+                                                  {ticket.payments.map((payment) => (
+                                                    <div key={payment.id}>
+                                                      <span>
+                                                        {paymentLabel(payment.methodId)}
+                                                        {payment.cardType === "CREDIT" && payment.installmentMonths
+                                                          ? ` · ${payment.installmentMonths} MSI`
+                                                          : ""}
+                                                      </span>
+                                                      <strong>{formatCurrency(payment.amount)}</strong>
+                                                    </div>
+                                                  ))}
+                                                  {ticket.payments.length === 0 && (
+                                                    <small>Sin pago inicial registrado.</small>
+                                                  )}
+                                                </section>
+                                                {layaway && (
+                                                  <section>
+                                                    <h4>Historial del {layaway.collectionType === "PENDING" ? "pendiente" : "apartado"}</h4>
+                                                    <div>
+                                                      <span>Fecha de apertura</span>
+                                                      <strong>{layaway.createdAt}</strong>
+                                                    </div>
+                                                    {layaway.payments.map((payment) => (
+                                                      <div key={payment.id}>
+                                                        <span>
+                                                          {payment.folio} · {payment.createdAt}
+                                                        </span>
+                                                        <strong>{formatCurrency(payment.amount)}</strong>
+                                                      </div>
+                                                    ))}
+                                                    {layaway.payments.length === 0 && (
+                                                      <small>Sin abonos posteriores.</small>
+                                                    )}
+                                                  </section>
+                                                )}
+                                              </div>
+                                            )}
+                                          </article>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <p className="empty-inline">Sin tickets registrados.</p>
+                                  )}
+                                </section>
                                 {customerLayaways.length > 0 && (
                                   <div className="customer-layaway-section">
                                     <div className="section-title-row">
@@ -1556,6 +1794,10 @@ export function CustomersView({
                                       </Badge>
                                     </div>
                                     {customerLayaways.map((layaway) => {
+                                      const originalTicket = tickets.find(
+                                        (ticket) =>
+                                          ticket.id === layaway.originalTicketId,
+                                      );
                                       const sellerId =
                                         sellers.find(
                                           (seller) =>
@@ -1579,9 +1821,17 @@ export function CustomersView({
                                           <CardContent>
                                             <div className="layaway-account-heading">
                                               <span>
-                                                <strong>
+                                                <button
+                                                  type="button"
+                                                  className="customer-history-ticket-trigger"
+                                                  disabled={!originalTicket}
+                                                  onClick={() => {
+                                                    if (originalTicket)
+                                                      onPreviewTicket(originalTicket);
+                                                  }}
+                                                >
                                                   {layaway.originalTicketId}
-                                                </strong>
+                                                </button>
                                                 <small>
                                                   {layaway.createdAt} · {layaway.branch}
                                                 </small>
@@ -1697,96 +1947,6 @@ export function CustomersView({
                                 <div className="customer-history-columns">
                                   <section>
                                     <h3>
-                                      <ReceiptText size={16} /> Historial de
-                                      compra
-                                    </h3>
-                                    {purchases.map((ticket) => (
-                                      <article
-                                        key={ticket.id}
-                                        className="customer-history-item"
-                                      >
-                                        <div>
-                                          <strong>{ticket.id}</strong>
-                                          <span className="customer-history-ticket-actions">
-                                            <Badge variant="outline">
-                                              {ticket.expansionStatus === "EXPANDED"
-                                                ? "VENTA AMPLIADA"
-                                                : ticket.ticketType === "EXPANSION"
-                                                  ? "INCREMENTO"
-                                                  : ticket.paymentStatus}
-                                            </Badge>
-                                            <Button
-                                              type="button"
-                                              variant="outline"
-                                              size="icon"
-                                              title="Visualizar ticket original"
-                                              aria-label={`Visualizar ticket ${ticket.id}`}
-                                              onClick={() =>
-                                                onPreviewTicket(ticket)
-                                              }
-                                            >
-                                              <Eye size={14} />
-                                            </Button>
-                                            <Button
-                                              type="button"
-                                              variant="outline"
-                                              size="icon"
-                                              title="Imprimir ticket original"
-                                              aria-label={`Imprimir ticket ${ticket.id}`}
-                                              onClick={() =>
-                                                onPreviewTicket(ticket, true)
-                                              }
-                                            >
-                                              <Printer size={14} />
-                                            </Button>
-                                          </span>
-                                        </div>
-                                        <p>
-                                          {ticket.products
-                                            .map(
-                                              (product) =>
-                                                `${product.quantity} × ${product.name}`,
-                                            )
-                                            .join(" · ")}
-                                        </p>
-                                        {ticket.payments.length > 0 && (
-                                          <div className="customer-history-payment-summary">
-                                            {ticket.payments.map((payment) => (
-                                              <small key={payment.id}>
-                                                {paymentLabel(payment.methodId)}
-                                                {payment.cardType === "CREDIT"
-                                                  ? payment.installmentMonths &&
-                                                    payment.installmentMonths > 1
-                                                    ? ` · ${payment.installmentMonths} MSI`
-                                                    : " · una exhibición"
-                                                  : payment.cardType === "DEBIT"
-                                                    ? " · débito"
-                                                    : ""}
-                                                {` · ${formatCurrency(payment.amount)}`}
-                                              </small>
-                                            ))}
-                                          </div>
-                                        )}
-                                        <footer>
-                                          <span>
-                                            <Store size={13} />{" "}
-                                            {ticket.branchName ?? "Polanco"}
-                                          </span>
-                                          <span>{ticket.createdAt}</span>
-                                          <strong>
-                                            {formatCurrency(ticket.total)}
-                                          </strong>
-                                        </footer>
-                                      </article>
-                                    ))}
-                                    {purchases.length === 0 && (
-                                      <p className="empty-inline">
-                                        Sin compras registradas.
-                                      </p>
-                                    )}
-                                  </section>
-                                  <section>
-                                    <h3>
                                       <CalendarDays size={16} /> Citas y
                                       cortesías
                                     </h3>
@@ -1798,7 +1958,9 @@ export function CustomersView({
                                         <div>
                                           <strong>{appointment.service}</strong>
                                           <Badge variant="outline">
-                                            {appointment.status}
+                                            {appointment.courtesyReason === "PURCHASE"
+                                              ? "FACIAL POR COMPRA"
+                                              : appointment.status}
                                           </Badge>
                                         </div>
                                         <p>

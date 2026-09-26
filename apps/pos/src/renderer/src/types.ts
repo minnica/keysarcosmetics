@@ -320,6 +320,7 @@ export type EmployeeConfigurationPermission =
   | "REPORTS_COSTS"
   | "BRANCHES"
   | "TICKET_CANCELLATION"
+  | "COMMERCIAL_AUTHORIZATION_TOKEN"
   | "SESSION_EXIT"
   | "USERS_ROLES";
 
@@ -497,6 +498,8 @@ export interface Ticket {
   clientPhone: string;
   branchName?: string;
   branchAddress?: string;
+  originBranchName?: string;
+  collectionBranchName?: string;
   sellerSummary: string;
   items: number;
   discountAmount: number;
@@ -556,10 +559,7 @@ export interface TicketNonReturnLine extends TicketInventoryLine {
 
 export interface TicketCancellationRequest {
   refundAmount: number;
-  effectiveDateMode:
-    | "CANCELLATION_DATE"
-    | "ORIGINAL_SALE_DATE"
-    | "CUSTOM_DATE";
+  effectiveDateMode: "CANCELLATION_DATE" | "ORIGINAL_SALE_DATE" | "CUSTOM_DATE";
   customEffectiveDate: string;
   reason: string;
   authorizationCode: string;
@@ -672,6 +672,7 @@ export interface ReceiptSettings {
   showSellerName: boolean;
   showVatBreakdown: boolean;
   showSpareCoverageMessage: boolean;
+  attributeCrossBranchPaymentsToCollectingBranch: boolean;
 }
 
 export type InventoryMovementDirection = "ADD" | "REMOVE" | "TRANSFER";
@@ -735,6 +736,8 @@ export interface InventoryMovement {
   settledQuantity?: number;
   approvalBatchId?: string | null;
   reversalOfMovementId?: string | null;
+  responsibleId?: string | null;
+  responsibleName?: string | null;
 }
 
 export interface InventoryMovementDraft {
@@ -756,9 +759,17 @@ export interface InventoryAdjustmentBatch {
   adjustments: InventoryMovementDraft[];
   status: "PENDING" | "APPROVED" | "CANCELLED" | "REVERSED";
   resolvedAt: string | null;
+  requestedById?: string | null;
+  requestedByName?: string | null;
+  resolvedById?: string | null;
+  resolvedByName?: string | null;
 }
 
-export type WarehouseMovementKind = "ENTRY" | "SHIPMENT" | "BRANCH_REQUEST" | "PURCHASE_ORDER";
+export type WarehouseMovementKind =
+  | "ENTRY"
+  | "SHIPMENT"
+  | "BRANCH_REQUEST"
+  | "PURCHASE_ORDER";
 export type WarehouseRequestType = "PRODUCT" | "TESTER" | "SUPPLY";
 
 export type WarehouseMovementStatus =
@@ -802,8 +813,8 @@ export interface WarehouseMovement {
   requestType?: WarehouseRequestType;
   priceListId?: string | null;
   priceListName?: string | null;
-  customerId?: string | null;
-  customerName?: string | null;
+  businessCustomerId?: string | null;
+  businessCustomerName?: string | null;
   supplierId?: string | null;
   supplierName?: string | null;
   categoryId: string;
@@ -865,6 +876,18 @@ export interface WarehouseSupplier {
   createdAtIso: string;
 }
 
+export interface WarehouseBusinessCustomer {
+  id: string;
+  folio: string;
+  businessName: string;
+  contactName: string;
+  rfc: string;
+  phone: string;
+  email: string;
+  active: boolean;
+  createdAtIso: string;
+}
+
 export interface WarehousePriceListItem {
   productId: string;
   priceMxn: number;
@@ -876,14 +899,14 @@ export interface WarehousePriceList {
   name: string;
   active: boolean;
   branchNames: string[];
-  clientIds: string[];
+  businessCustomerIds: string[];
   items: WarehousePriceListItem[];
   createdAtIso: string;
 }
 
 export interface WarehousePricingSelection {
   priceListId: string | null;
-  customerId: string | null;
+  businessCustomerId: string | null;
 }
 
 export interface LayawayItem {
@@ -912,6 +935,9 @@ export interface LayawayPaymentRecord {
   sellerName?: string;
   recordedBySellerId?: string;
   recordedBySellerName?: string;
+  originBranch?: string;
+  collectionBranch?: string;
+  attributedBranch?: string;
 }
 
 export interface LayawayRecord {
@@ -1032,11 +1058,7 @@ export interface TicketSellerSale {
   participantCode?: string;
 }
 
-export type AgendaSlotStatus =
-  | "AVAILABLE"
-  | "CANCELLED"
-  | "BOOKED"
-  | "BLOCKED";
+export type AgendaSlotStatus = "AVAILABLE" | "CANCELLED" | "BOOKED" | "BLOCKED";
 
 export interface AgendaSlot {
   id: string;
@@ -1070,7 +1092,10 @@ export interface AppointmentDraft {
   branch: string;
   time: string;
   membershipId?: string;
-  courtesyReason?: "WELCOME" | "COMPLAINT";
+  membershipProductId?: string;
+  firstMembershipAppointment?: boolean;
+  courtesyReason?: "WELCOME" | "COMPLAINT" | "PURCHASE";
+  commercialAuthorizationUsed?: boolean;
   courtesyPackageId?: string;
   courtesyPackageName?: string;
   agendaSlotId?: string;
@@ -1092,18 +1117,19 @@ export interface Appointment extends AppointmentDraft {
   sellerIds: string[];
   recordedAt: string;
   recordedAtIso: string;
-  status:
-    | "SCHEDULED"
-    | "PENDING"
-    | "ATTENDED"
-    | "CANCELLED"
-    | "NO_SHOW";
+  status: "SCHEDULED" | "PENDING" | "ATTENDED" | "CANCELLED" | "NO_SHOW";
   membershipId?: string;
   membershipSessionConsumedAtIso?: string;
   agendaClientId?: string;
   agendaReservationId?: string;
   externalAppointmentId?: string;
-  agendaSyncStatus?: "RESERVED" | "ATTENDED" | "PENDING_SYNC" | "CONFLICT" | "CANCELLED" | "NO_SHOW";
+  agendaSyncStatus?:
+    | "RESERVED"
+    | "ATTENDED"
+    | "PENDING_SYNC"
+    | "CONFLICT"
+    | "CANCELLED"
+    | "NO_SHOW";
   agendaSyncedAtIso?: string;
 }
 

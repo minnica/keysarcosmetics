@@ -103,10 +103,7 @@ import { DealsView } from "./components/DealsView";
 import { DigitalCatalogView } from "./components/DigitalCatalogView";
 import { EmployeesView } from "./components/EmployeesView";
 import { InventoryMovementsView } from "./components/InventoryMovementsView";
-import {
-  WarehouseView,
-  type WarehouseScope,
-} from "./components/WarehouseView";
+import { WarehouseView, type WarehouseScope } from "./components/WarehouseView";
 import { WarehouseSettings } from "./components/WarehouseSettings";
 import { SuppliersView } from "./components/SuppliersView";
 import { HistoryPagination } from "./components/HistoryPagination";
@@ -194,6 +191,7 @@ import type {
   WarehouseMovement,
   WarehouseMovementCategory,
   WarehouseMovementLine,
+  WarehouseBusinessCustomer,
   WarehousePriceList,
   WarehousePricingSelection,
   WarehouseRequestType,
@@ -241,9 +239,9 @@ import { initialBankCatalog } from "./bank-catalog";
 const getSaleProductBrand = (product: Product) =>
   product.kind === "SERVICE"
     ? "Keysar Experiences"
-    : product.supplierName
-      ?.replace(" International", "")
-      .replace(" México", "") ?? product.family;
+    : (product.supplierName
+        ?.replace(" International", "")
+        .replace(" México", "") ?? product.family);
 
 const formatSaleCount = (count: number, singular: string, plural: string) =>
   `${count} ${count === 1 ? singular : plural}`;
@@ -267,11 +265,36 @@ const initialCourtesySettings: CourtesySettings = {
     },
   ],
   packages: [
-    { id: "FACIAL", name: "Facial", serviceIds: ["courtesy-facial"], active: true },
-    { id: "BODY", name: "Corporal", serviceIds: ["courtesy-body"], active: true },
-    { id: "DOUBLE_FACIAL", name: "Doble facial", serviceIds: ["courtesy-facial", "courtesy-facial"], active: true },
-    { id: "DOUBLE_BODY", name: "Doble corporal", serviceIds: ["courtesy-body", "courtesy-body"], active: true },
-    { id: "MIXED", name: "Mixto", serviceIds: ["courtesy-facial", "courtesy-body"], active: true },
+    {
+      id: "FACIAL",
+      name: "Facial",
+      serviceIds: ["courtesy-facial"],
+      active: true,
+    },
+    {
+      id: "BODY",
+      name: "Corporal",
+      serviceIds: ["courtesy-body"],
+      active: true,
+    },
+    {
+      id: "DOUBLE_FACIAL",
+      name: "Doble facial",
+      serviceIds: ["courtesy-facial", "courtesy-facial"],
+      active: true,
+    },
+    {
+      id: "DOUBLE_BODY",
+      name: "Doble corporal",
+      serviceIds: ["courtesy-body", "courtesy-body"],
+      active: true,
+    },
+    {
+      id: "MIXED",
+      name: "Mixto",
+      serviceIds: ["courtesy-facial", "courtesy-body"],
+      active: true,
+    },
   ],
 };
 
@@ -302,16 +325,17 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
     subtitle: "Tarjetones, sesiones, asistencia y análisis comercial",
   },
   inventory: {
-    title: "Inventory",
-    subtitle: "Productos, existencias, pedidos y sucursales",
+    title: "Catálogo e inventario",
+    subtitle: "Productos, existencias por sucursal y resurtidos sugeridos",
   },
   warehouse: {
-    title: "Pedido sucursales",
-    subtitle: "Existencias, compras, solicitudes recibidas y distribución",
+    title: "Almacén matriz",
+    subtitle:
+      "Existencias centrales, compras, entradas, recepción y distribución",
   },
   "branch-inventory": {
-    title: "Almacén matriz",
-    subtitle: "Solicitudes de productos, testers e insumos a bodega matriz",
+    title: "Solicitudes de sucursal",
+    subtitle: "Productos, testers e insumos solicitados al almacén matriz",
   },
   suppliers: {
     title: "Proveedores",
@@ -371,32 +395,95 @@ const screenMetadata: Record<ScreenId, { title: string; subtitle: string }> = {
 
 type InterfaceLanguage = "ES" | "EN";
 
-const screenMetadataEnglish: Record<ScreenId, { title: string; subtitle: string }> = {
-  dashboard: { title: "Dashboard", subtitle: "Executive control of the day and inventory" },
+const screenMetadataEnglish: Record<
+  ScreenId,
+  { title: string; subtitle: string }
+> = {
+  dashboard: {
+    title: "Dashboard",
+    subtitle: "Executive control of the day and inventory",
+  },
   sale: { title: "Sale", subtitle: "Retail sales" },
-  "seller-sales": { title: "My sales", subtitle: "Personal sales, customers and payments" },
+  "seller-sales": {
+    title: "My sales",
+    subtitle: "Personal sales, customers and payments",
+  },
   receipts: { title: "Receipts", subtitle: "Tickets, payments and discounts" },
-  customers: { title: "Customers", subtitle: "Customer directory and ownership" },
-  appointments: { title: "Appointments", subtitle: "Courtesy services and upcoming sessions" },
-  memberships: { title: "Memberships", subtitle: "Cards, sessions, attendance and commercial analysis" },
-  inventory: { title: "Inventory", subtitle: "Products, stock, orders and locations" },
-  warehouse: { title: "Central warehouse", subtitle: "Central stock, purchases, requests and shipments" },
-  "branch-inventory": { title: "Branch inventory", subtitle: "Product, tester and supply requests to the central warehouse" },
-  suppliers: { title: "Suppliers", subtitle: "Tax directory, products and procurement" },
-  "inventory-movements": { title: "Inventory movements", subtitle: "Entries, write-offs and stock adjustments" },
-  deals: { title: "Deals", subtitle: "Packages, authorization and profitability" },
-  catalog: { title: "Digital catalog", subtitle: "Visual family book for customers" },
+  customers: {
+    title: "Customers",
+    subtitle: "Customer directory and ownership",
+  },
+  appointments: {
+    title: "Appointments",
+    subtitle: "Courtesy services and upcoming sessions",
+  },
+  memberships: {
+    title: "Memberships",
+    subtitle: "Cards, sessions, attendance and commercial analysis",
+  },
+  inventory: {
+    title: "Catalog & inventory",
+    subtitle: "Products, branch stock and suggested replenishment",
+  },
+  warehouse: {
+    title: "Central warehouse",
+    subtitle: "Central stock, purchases, requests and shipments",
+  },
+  "branch-inventory": {
+    title: "Branch requests",
+    subtitle: "Internal product, tester and supply requests",
+  },
+  suppliers: {
+    title: "Suppliers",
+    subtitle: "Tax directory, products and procurement",
+  },
+  "inventory-movements": {
+    title: "Inventory movements",
+    subtitle: "Entries, write-offs and stock adjustments",
+  },
+  deals: {
+    title: "Deals",
+    subtitle: "Packages, authorization and profitability",
+  },
+  catalog: {
+    title: "Digital catalog",
+    subtitle: "Visual family book for customers",
+  },
   settings: { title: "Settings", subtitle: "Point-of-sale capture rules" },
-  "x-report": { title: "X-Report", subtitle: "Partial report without closing the day" },
-  reports: { title: "Reports", subtitle: "Executive sales, merchandise, employee and customer reports" },
-  "cash-manager": { title: "Cash manager", subtitle: "Terminal cash movements" },
+  "x-report": {
+    title: "X-Report",
+    subtitle: "Partial report without closing the day",
+  },
+  reports: {
+    title: "Reports",
+    subtitle: "Executive sales, merchandise, employee and customer reports",
+  },
+  "cash-manager": {
+    title: "Cash manager",
+    subtitle: "Terminal cash movements",
+  },
   "clock-in": { title: "Clock In", subtitle: "Seller attendance and presence" },
-  "close-day": { title: "Close day", subtitle: "Operational summary and closing" },
-  employees: { title: "Employees", subtitle: "People, roles and access control" },
-  competition: { title: "Competition", subtitle: "Retail targets and team performance" },
+  "close-day": {
+    title: "Close day",
+    subtitle: "Operational summary and closing",
+  },
+  employees: {
+    title: "Employees",
+    subtitle: "People, roles and access control",
+  },
+  competition: {
+    title: "Competition",
+    subtitle: "Retail targets and team performance",
+  },
   websites: { title: "Websites", subtitle: "Quick operational links" },
-  "data-update": { title: "Data update", subtitle: "POS offline synchronization" },
-  "my-account": { title: "My Account", subtitle: "Profile, locations and billing" },
+  "data-update": {
+    title: "Data update",
+    subtitle: "POS offline synchronization",
+  },
+  "my-account": {
+    title: "My Account",
+    subtitle: "Profile, locations and billing",
+  },
 };
 
 const automaticDataUpdateIntervalMs = 60_000;
@@ -524,8 +611,7 @@ const recoverLayawayFromTicket = (
               createdAt: ticket.createdAt,
               createdAtIso: ticket.createdAtIso,
               amount: ticket.amountPaid,
-              methodId:
-                ticket.payments[0]?.methodId ?? ticket.paymentMethod,
+              methodId: ticket.payments[0]?.methodId ?? ticket.paymentMethod,
               payments: ticket.payments,
               balanceAfter: ticket.balanceDue,
               ...(primarySeller
@@ -537,8 +623,7 @@ const recoverLayawayFromTicket = (
             },
           ]
         : [],
-    collectionType:
-      ticket.paymentStatus === "PENDING" ? "PENDING" : "LAYAWAY",
+    collectionType: ticket.paymentStatus === "PENDING" ? "PENDING" : "LAYAWAY",
     status: "ACTIVE",
   };
 };
@@ -603,7 +688,7 @@ const createInitialOperationalNotifications = (): OperationalNotification[] => {
             ? `Transferencia · ${movement.folio}`
             : `Baja de producto · ${movement.folio}`,
       detail: `${movement.productName} · ${movement.quantity} pz · ${movement.reason}`,
-      moduleLabel: "Inventory · Movimientos",
+      moduleLabel: "Inventario · Movimientos",
       branch:
         movement.direction === "TRANSFER" && movement.destinationBranch
           ? `${movement.sourceBranch} → ${movement.destinationBranch}`
@@ -615,9 +700,11 @@ const createInitialOperationalNotifications = (): OperationalNotification[] => {
       recipientUserIds: recipients,
       readByUserIds: [],
     }));
-  return [...ticketNotifications, ...expenseNotifications, ...movementNotifications].sort(
-    (left, right) => right.createdAtIso.localeCompare(left.createdAtIso),
-  );
+  return [
+    ...ticketNotifications,
+    ...expenseNotifications,
+    ...movementNotifications,
+  ].sort((left, right) => right.createdAtIso.localeCompare(left.createdAtIso));
 };
 
 const createUniqueFolio = (tickets: Ticket[]) => {
@@ -653,71 +740,275 @@ const isCartFloorCoveredOrAuthorized = (items: CartItem[]) => {
 };
 
 const initialWarehouseCategories: WarehouseMovementCategory[] = [
-  { id: "warehouse-products", name: "Envíos de producto", active: true, createdAtIso: "2026-08-01T14:00:00.000Z" },
-  { id: "warehouse-testers", name: "Envíos de tester", active: true, createdAtIso: "2026-08-01T14:01:00.000Z" },
-  { id: "warehouse-supplies", name: "Envíos de insumos", active: true, createdAtIso: "2026-08-01T14:02:00.000Z" },
-  { id: "warehouse-furniture", name: "Envíos de mobiliario", active: true, createdAtIso: "2026-08-01T14:03:00.000Z" },
+  {
+    id: "warehouse-products",
+    name: "Envíos de producto",
+    active: true,
+    createdAtIso: "2026-08-01T14:00:00.000Z",
+  },
+  {
+    id: "warehouse-testers",
+    name: "Envíos de tester",
+    active: true,
+    createdAtIso: "2026-08-01T14:01:00.000Z",
+  },
+  {
+    id: "warehouse-supplies",
+    name: "Envíos de insumos",
+    active: true,
+    createdAtIso: "2026-08-01T14:02:00.000Z",
+  },
+  {
+    id: "warehouse-furniture",
+    name: "Envíos de mobiliario",
+    active: true,
+    createdAtIso: "2026-08-01T14:03:00.000Z",
+  },
 ];
 
 const initialWarehouseSuppliers: WarehouseSupplier[] = [
-  { id: "supplier-keysar-labs", folio: "PROV-0001", businessName: "Keysar Labs International", contactName: "Laura Ortega", rfc: "KLI240101K91", taxRegime: "601 · General de Ley", businessLine: "Cosmética y dermocosmética", phone: "55 9001 2210", email: "pedidos@keysarlabs.example", address: "Naucalpan, Estado de México", active: true, createdAtIso: "2026-08-01T12:00:00.000Z" },
-  { id: "supplier-solaris", folio: "PROV-0002", businessName: "Solaris Dermal México", contactName: "Arturo Medina", rfc: "SDM2304158P2", taxRegime: "601 · General de Ley", businessLine: "Protección solar profesional", phone: "55 8110 4472", email: "ventas@solarisdermal.example", address: "Benito Juárez, Ciudad de México", active: true, createdAtIso: "2026-08-02T12:00:00.000Z" },
-  { id: "supplier-medical", folio: "PROV-0003", businessName: "Medical Supply Center", contactName: "Fernanda Vélez", rfc: "MSC220905QH7", taxRegime: "626 · Simplificado de confianza", businessLine: "Insumos médicos y de cabina", phone: "55 7340 1198", email: "compras@medicalsupply.example", address: "Tlalnepantla, Estado de México", active: true, createdAtIso: "2026-08-03T12:00:00.000Z" },
+  {
+    id: "supplier-keysar-labs",
+    folio: "PROV-0001",
+    businessName: "Keysar Labs International",
+    contactName: "Laura Ortega",
+    rfc: "KLI240101K91",
+    taxRegime: "601 · General de Ley",
+    businessLine: "Cosmética y dermocosmética",
+    phone: "55 9001 2210",
+    email: "pedidos@keysarlabs.example",
+    address: "Naucalpan, Estado de México",
+    active: true,
+    createdAtIso: "2026-08-01T12:00:00.000Z",
+  },
+  {
+    id: "supplier-solaris",
+    folio: "PROV-0002",
+    businessName: "Solaris Dermal México",
+    contactName: "Arturo Medina",
+    rfc: "SDM2304158P2",
+    taxRegime: "601 · General de Ley",
+    businessLine: "Protección solar profesional",
+    phone: "55 8110 4472",
+    email: "ventas@solarisdermal.example",
+    address: "Benito Juárez, Ciudad de México",
+    active: true,
+    createdAtIso: "2026-08-02T12:00:00.000Z",
+  },
+  {
+    id: "supplier-medical",
+    folio: "PROV-0003",
+    businessName: "Medical Supply Center",
+    contactName: "Fernanda Vélez",
+    rfc: "MSC220905QH7",
+    taxRegime: "626 · Simplificado de confianza",
+    businessLine: "Insumos médicos y de cabina",
+    phone: "55 7340 1198",
+    email: "compras@medicalsupply.example",
+    address: "Tlalnepantla, Estado de México",
+    active: true,
+    createdAtIso: "2026-08-03T12:00:00.000Z",
+  },
+];
+
+const initialWarehouseBusinessCustomers: WarehouseBusinessCustomer[] = [
+  {
+    id: "business-customer-aurora",
+    folio: "CLI-COM-0001",
+    businessName: "Distribuidora Aurora Beauty",
+    contactName: "Mariana Soto",
+    rfc: "DAB250114K62",
+    phone: "55 4108 2260",
+    email: "compras@aurorabeauty.example",
+    active: true,
+    createdAtIso: "2026-08-01T12:10:00.000Z",
+  },
+  {
+    id: "business-customer-nova",
+    folio: "CLI-COM-0002",
+    businessName: "Nova Studio Profesional",
+    contactName: "Andrea Robles",
+    rfc: "NSP2408093R4",
+    phone: "55 6820 1048",
+    email: "pedidos@novastudio.example",
+    active: true,
+    createdAtIso: "2026-08-02T12:10:00.000Z",
+  },
 ];
 
 const initialWarehouseSupplies: WarehouseSupplyItem[] = [
-  { id: "supply-cotton", name: "Algodón facial profesional", sku: "INS-ALG-001", unit: "bolsa", image: "./products/hydra-cloud-cream.png", costUsd: 3.1, costMxn: 54, partnerCost: 66, retailPrice: 98, family: "Insumos", category: "Cabina facial", stockMin: 60, stockMax: 180, presentation: "Caja con 12 bolsas", unitsPerPackage: 12, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
-  { id: "supply-gloves", name: "Guantes de nitrilo", sku: "INS-GUA-002", unit: "caja", image: "./products/mineral-spf-50.png", costUsd: 7.4, costMxn: 129, partnerCost: 158, retailPrice: 220, family: "Insumos", category: "Protección", stockMin: 40, stockMax: 120, presentation: "Caja con 100 piezas", unitsPerPackage: 100, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
-  { id: "supply-headbands", name: "Bandas faciales desechables", sku: "INS-BAN-003", unit: "paquete", image: "./products/renewal-serum.png", costUsd: 4.6, costMxn: 80, partnerCost: 98, retailPrice: 145, family: "Insumos", category: "Cabina facial", stockMin: 80, stockMax: 220, presentation: "Caja con 20 paquetes", unitsPerPackage: 20, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
-  { id: "supply-sheets", name: "Sábanas desechables", sku: "INS-SAB-004", unit: "rollo", image: "./products/vitamin-c-glow.png", costUsd: 9.2, costMxn: 160, partnerCost: 195, retailPrice: 280, family: "Insumos", category: "Cabina corporal", stockMin: 30, stockMax: 90, presentation: "Caja con 6 rollos", unitsPerPackage: 6, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: false },
-  { id: "supply-spatulas", name: "Espátulas cosméticas", sku: "INS-ESP-005", unit: "paquete", image: "./products/renewal-serum.png", costUsd: 2.8, costMxn: 49, partnerCost: 60, retailPrice: 90, family: "Insumos", category: "Aplicación", stockMin: 50, stockMax: 140, presentation: "Caja con 25 paquetes", unitsPerPackage: 25, supplierId: "supplier-medical", supplierName: "Medical Supply Center", active: true, branchVisible: true },
+  {
+    id: "supply-cotton",
+    name: "Algodón facial profesional",
+    sku: "INS-ALG-001",
+    unit: "bolsa",
+    image: "./products/hydra-cloud-cream.png",
+    costUsd: 3.1,
+    costMxn: 54,
+    partnerCost: 66,
+    retailPrice: 98,
+    family: "Insumos",
+    category: "Cabina facial",
+    stockMin: 60,
+    stockMax: 180,
+    presentation: "Caja con 12 bolsas",
+    unitsPerPackage: 12,
+    supplierId: "supplier-medical",
+    supplierName: "Medical Supply Center",
+    active: true,
+    branchVisible: true,
+  },
+  {
+    id: "supply-gloves",
+    name: "Guantes de nitrilo",
+    sku: "INS-GUA-002",
+    unit: "caja",
+    image: "./products/mineral-spf-50.png",
+    costUsd: 7.4,
+    costMxn: 129,
+    partnerCost: 158,
+    retailPrice: 220,
+    family: "Insumos",
+    category: "Protección",
+    stockMin: 40,
+    stockMax: 120,
+    presentation: "Caja con 100 piezas",
+    unitsPerPackage: 100,
+    supplierId: "supplier-medical",
+    supplierName: "Medical Supply Center",
+    active: true,
+    branchVisible: true,
+  },
+  {
+    id: "supply-headbands",
+    name: "Bandas faciales desechables",
+    sku: "INS-BAN-003",
+    unit: "paquete",
+    image: "./products/renewal-serum.png",
+    costUsd: 4.6,
+    costMxn: 80,
+    partnerCost: 98,
+    retailPrice: 145,
+    family: "Insumos",
+    category: "Cabina facial",
+    stockMin: 80,
+    stockMax: 220,
+    presentation: "Caja con 20 paquetes",
+    unitsPerPackage: 20,
+    supplierId: "supplier-medical",
+    supplierName: "Medical Supply Center",
+    active: true,
+    branchVisible: true,
+  },
+  {
+    id: "supply-sheets",
+    name: "Sábanas desechables",
+    sku: "INS-SAB-004",
+    unit: "rollo",
+    image: "./products/vitamin-c-glow.png",
+    costUsd: 9.2,
+    costMxn: 160,
+    partnerCost: 195,
+    retailPrice: 280,
+    family: "Insumos",
+    category: "Cabina corporal",
+    stockMin: 30,
+    stockMax: 90,
+    presentation: "Caja con 6 rollos",
+    unitsPerPackage: 6,
+    supplierId: "supplier-medical",
+    supplierName: "Medical Supply Center",
+    active: true,
+    branchVisible: false,
+  },
+  {
+    id: "supply-spatulas",
+    name: "Espátulas cosméticas",
+    sku: "INS-ESP-005",
+    unit: "paquete",
+    image: "./products/renewal-serum.png",
+    costUsd: 2.8,
+    costMxn: 49,
+    partnerCost: 60,
+    retailPrice: 90,
+    family: "Insumos",
+    category: "Aplicación",
+    stockMin: 50,
+    stockMax: 140,
+    presentation: "Caja con 25 paquetes",
+    unitsPerPackage: 25,
+    supplierId: "supplier-medical",
+    supplierName: "Medical Supply Center",
+    active: true,
+    branchVisible: true,
+  },
 ];
 
 const initialWarehousePriceLists: WarehousePriceList[] = [
   {
     id: "warehouse-price-socio",
-    name: "Socio por sucursal",
+    name: "Mayoreo general por sucursal",
     active: true,
     branchNames: ["Polanco", "Satélite", "Roma Norte"],
-    clientIds: [],
+    businessCustomerIds: [],
     items: [
-      ...initialProducts.filter((product) => product.kind === "PRODUCT").map((product) => ({
-        productId: product.id,
-        priceMxn: product.partnerCost ?? Math.round(product.costMxn * 1.22),
-        priceUsd: Math.round(product.costUsd * 1.22 * 100) / 100,
+      ...initialProducts
+        .filter((product) => product.kind === "PRODUCT")
+        .map((product) => ({
+          productId: product.id,
+          priceMxn: product.partnerCost ?? Math.round(product.costMxn * 1.22),
+          priceUsd: Math.round(product.costUsd * 1.22 * 100) / 100,
+        })),
+      ...initialWarehouseSupplies.map((supply) => ({
+        productId: supply.id,
+        priceMxn: supply.partnerCost,
+        priceUsd: Math.round(supply.costUsd * 1.22 * 100) / 100,
       })),
-      ...initialWarehouseSupplies.map((supply) => ({ productId: supply.id, priceMxn: supply.partnerCost, priceUsd: Math.round(supply.costUsd * 1.22 * 100) / 100 })),
     ],
     createdAtIso: "2026-08-01T14:10:00.000Z",
   },
   {
     id: "warehouse-price-premium",
-    name: "Cliente premium",
+    name: "Cliente comercial premium",
     active: true,
     branchNames: ["Polanco", "Satélite", "Roma Norte"],
-    clientIds: ["client-1", "client-2"],
+    businessCustomerIds: ["business-customer-aurora", "business-customer-nova"],
     items: [
-      ...initialProducts.filter((product) => product.kind === "PRODUCT").map((product) => ({
-        productId: product.id,
-        priceMxn: Math.round((product.partnerCost ?? product.costMxn * 1.22) * 0.94),
-        priceUsd: Math.round(product.costUsd * 1.15 * 100) / 100,
+      ...initialProducts
+        .filter((product) => product.kind === "PRODUCT")
+        .map((product) => ({
+          productId: product.id,
+          priceMxn: Math.round(
+            (product.partnerCost ?? product.costMxn * 1.22) * 0.94,
+          ),
+          priceUsd: Math.round(product.costUsd * 1.15 * 100) / 100,
+        })),
+      ...initialWarehouseSupplies.map((supply) => ({
+        productId: supply.id,
+        priceMxn: Math.round(supply.partnerCost * 0.96),
+        priceUsd: Math.round(supply.costUsd * 1.16 * 100) / 100,
       })),
-      ...initialWarehouseSupplies.map((supply) => ({ productId: supply.id, priceMxn: Math.round(supply.partnerCost * 0.96), priceUsd: Math.round(supply.costUsd * 1.16 * 100) / 100 })),
     ],
     createdAtIso: "2026-08-01T14:11:00.000Z",
   },
 ];
 
-const initialWarehouseStock: WarehouseStock = Object.fromEntries(
-  [
-    ...initialProducts
-      .filter((product) => product.kind === "PRODUCT")
-      .map((product, index) => [product.id, [82, 64, 47, 91][index] ?? 25] as const),
-    ...initialWarehouseSupplies.map((supply, index) => [supply.id, [120, 84, 160, 42, 95][index] ?? 30] as const),
-  ],
-);
+const initialWarehouseStock: WarehouseStock = Object.fromEntries([
+  ...initialProducts
+    .filter((product) => product.kind === "PRODUCT")
+    .map(
+      (product, index) => [product.id, [82, 64, 47, 91][index] ?? 25] as const,
+    ),
+  ...initialWarehouseSupplies.map(
+    (supply, index) =>
+      [supply.id, [120, 84, 160, 42, 95][index] ?? 30] as const,
+  ),
+]);
 
-const warehouseLineFromProduct = (product: Product, quantity: number): WarehouseMovementLine => ({
+const warehouseLineFromProduct = (
+  product: Product,
+  quantity: number,
+): WarehouseMovementLine => ({
   productId: product.id,
   productName: product.name,
   sku: product.sku,
@@ -725,7 +1016,9 @@ const warehouseLineFromProduct = (product: Product, quantity: number): Warehouse
   quantity,
   unitCostUsd: product.costUsd,
   unitCostMxn: product.costMxn,
-  partnerCost: product.partnerCost ?? Math.max(product.costMxn, Math.round(product.costMxn * 1.22)),
+  partnerCost:
+    product.partnerCost ??
+    Math.max(product.costMxn, Math.round(product.costMxn * 1.22)),
   partnerCostUsd: Math.round(product.costUsd * 1.22 * 100) / 100,
   retailPrice: product.maxPrice,
   family: product.family,
@@ -736,7 +1029,10 @@ const warehouseLineFromProduct = (product: Product, quantity: number): Warehouse
   unitsPerPackage: product.unitsPerPackage ?? 1,
 });
 
-const warehouseLineFromSupply = (supply: WarehouseSupplyItem, quantity: number): WarehouseMovementLine => ({
+const warehouseLineFromSupply = (
+  supply: WarehouseSupplyItem,
+  quantity: number,
+): WarehouseMovementLine => ({
   productId: supply.id,
   productName: supply.name,
   sku: supply.sku,
@@ -756,56 +1052,137 @@ const warehouseLineFromSupply = (supply: WarehouseSupplyItem, quantity: number):
 });
 
 const initialWarehouseMovements: WarehouseMovement[] = (() => {
-  const physical = initialProducts.filter((product) => product.kind === "PRODUCT");
+  const physical = initialProducts.filter(
+    (product) => product.kind === "PRODUCT",
+  );
   if (physical.length < 4) return [];
   return [
     {
-      id: "warehouse-entry-demo", folio: "ALM-ENT-0001", kind: "ENTRY",
-      categoryId: "warehouse-products", categoryLabel: "Ingreso de mercancía",
-      destinationBranch: null, status: "RECEIVED",
-      lines: [warehouseLineFromProduct(physical[0]!, 40), warehouseLineFromProduct(physical[1]!, 30)],
-      comment: "Recepción de proveedor validada en bodega matriz.", createdAtIso: "2026-08-24T13:10:00.000Z", createdByName: "Master Keysar",
-      creationApprovedAtIso: "2026-08-24T13:12:00.000Z", creationApprovedByName: "Master Keysar",
-      sentAtIso: null, sentByName: null, receivedAtIso: "2026-08-24T13:12:00.000Z", receivedByName: "Bodega matriz",
-      cancelledAtIso: null, cancelledByName: null,
+      id: "warehouse-entry-demo",
+      folio: "ALM-ENT-0001",
+      kind: "ENTRY",
+      categoryId: "warehouse-products",
+      categoryLabel: "Entrada manual de mercancía",
+      destinationBranch: null,
+      status: "RECEIVED",
+      lines: [
+        warehouseLineFromProduct(physical[0]!, 40),
+        warehouseLineFromProduct(physical[1]!, 30),
+      ],
+      comment: "Recepción de proveedor validada en bodega matriz.",
+      createdAtIso: "2026-08-24T13:10:00.000Z",
+      createdByName: "Master Keysar",
+      creationApprovedAtIso: "2026-08-24T13:12:00.000Z",
+      creationApprovedByName: "Master Keysar",
+      sentAtIso: null,
+      sentByName: null,
+      receivedAtIso: "2026-08-24T13:12:00.000Z",
+      receivedByName: "Bodega matriz",
+      cancelledAtIso: null,
+      cancelledByName: null,
     },
     {
-      id: "warehouse-shipment-demo", folio: "ALM-ENV-0002", kind: "SHIPMENT",
+      id: "warehouse-shipment-demo",
+      folio: "ALM-ENV-0002",
+      kind: "SHIPMENT",
       requestType: "TESTER",
-      categoryId: "warehouse-testers", categoryLabel: "Envíos de tester",
-      destinationBranch: "Satélite", status: "SENT", lines: [warehouseLineFromProduct(physical[2]!, 6)],
-      comment: "Guía mock KSR-8842 · pendiente de carga en sucursal.", createdAtIso: "2026-08-24T14:20:00.000Z", createdByName: "Master Keysar",
-      creationApprovedAtIso: "2026-08-24T14:25:00.000Z", creationApprovedByName: "Master Keysar",
-      sentAtIso: "2026-08-24T14:30:00.000Z", sentByName: "Master Keysar", receivedAtIso: null, receivedByName: null,
-      cancelledAtIso: null, cancelledByName: null,
+      categoryId: "warehouse-testers",
+      categoryLabel: "Envíos de tester",
+      destinationBranch: "Satélite",
+      status: "SENT",
+      lines: [warehouseLineFromProduct(physical[2]!, 6)],
+      comment: "Guía mock KSR-8842 · pendiente de carga en sucursal.",
+      createdAtIso: "2026-08-24T14:20:00.000Z",
+      createdByName: "Master Keysar",
+      creationApprovedAtIso: "2026-08-24T14:25:00.000Z",
+      creationApprovedByName: "Master Keysar",
+      sentAtIso: "2026-08-24T14:30:00.000Z",
+      sentByName: "Master Keysar",
+      receivedAtIso: null,
+      receivedByName: null,
+      cancelledAtIso: null,
+      cancelledByName: null,
     },
     {
-      id: "warehouse-request-demo", folio: "ALM-PRO-0003", kind: "BRANCH_REQUEST",
+      id: "warehouse-request-demo",
+      folio: "ALM-PRO-0003",
+      kind: "BRANCH_REQUEST",
       requestType: "PRODUCT",
-      priceListId: "warehouse-price-socio", priceListName: "Socio por sucursal", customerId: null, customerName: null,
-      categoryId: "warehouse-products", categoryLabel: "Envíos de producto",
-      destinationBranch: "Roma Norte", status: "REQUESTED", lines: [warehouseLineFromProduct(physical[3]!, 12)],
-      comment: "Solicitud para completar stock máximo de sucursal.", createdAtIso: "2026-08-24T15:05:00.000Z", createdByName: "Roma Norte",
-      creationApprovedAtIso: null, creationApprovedByName: null, sentAtIso: null, sentByName: null,
-      receivedAtIso: null, receivedByName: null, cancelledAtIso: null, cancelledByName: null,
+      priceListId: null,
+      priceListName: null,
+      businessCustomerId: null,
+      businessCustomerName: null,
+      categoryId: "warehouse-products",
+      categoryLabel: "Envíos de producto",
+      destinationBranch: "Roma Norte",
+      status: "REQUESTED",
+      lines: [warehouseLineFromProduct(physical[3]!, 12)],
+      comment: "Solicitud para completar stock máximo de sucursal.",
+      createdAtIso: "2026-08-24T15:05:00.000Z",
+      createdByName: "Roma Norte",
+      creationApprovedAtIso: null,
+      creationApprovedByName: null,
+      sentAtIso: null,
+      sentByName: null,
+      receivedAtIso: null,
+      receivedByName: null,
+      cancelledAtIso: null,
+      cancelledByName: null,
     },
     {
-      id: "warehouse-tester-request-demo", folio: "ALM-TST-0004", kind: "BRANCH_REQUEST", requestType: "TESTER",
-      priceListId: "warehouse-price-premium", priceListName: "Cliente premium", customerId: "client-1", customerName: "Valeria Ruiz",
-      categoryId: "warehouse-testers", categoryLabel: "Envíos de tester",
-      destinationBranch: "Satélite", status: "CREATION_APPROVED", lines: [warehouseLineFromProduct(physical[0]!, 4)],
-      comment: "Testers para cabina y demostración comercial.", createdAtIso: "2026-08-24T16:05:00.000Z", createdByName: "Satélite",
-      creationApprovedAtIso: "2026-08-24T16:12:00.000Z", creationApprovedByName: "Master Keysar", sentAtIso: null, sentByName: null,
-      receivedAtIso: null, receivedByName: null, cancelledAtIso: null, cancelledByName: null,
+      id: "warehouse-tester-request-demo",
+      folio: "ALM-TST-0004",
+      kind: "BRANCH_REQUEST",
+      requestType: "TESTER",
+      priceListId: null,
+      priceListName: null,
+      businessCustomerId: null,
+      businessCustomerName: null,
+      categoryId: "warehouse-testers",
+      categoryLabel: "Envíos de tester",
+      destinationBranch: "Satélite",
+      status: "CREATION_APPROVED",
+      lines: [warehouseLineFromProduct(physical[0]!, 4)],
+      comment: "Testers para cabina y demostración en sucursal.",
+      createdAtIso: "2026-08-24T16:05:00.000Z",
+      createdByName: "Satélite",
+      creationApprovedAtIso: "2026-08-24T16:12:00.000Z",
+      creationApprovedByName: "Master Keysar",
+      sentAtIso: null,
+      sentByName: null,
+      receivedAtIso: null,
+      receivedByName: null,
+      cancelledAtIso: null,
+      cancelledByName: null,
     },
     {
-      id: "warehouse-supply-request-demo", folio: "ALM-INS-0005", kind: "BRANCH_REQUEST", requestType: "SUPPLY",
-      priceListId: "warehouse-price-socio", priceListName: "Socio por sucursal", customerId: null, customerName: null,
-      categoryId: "warehouse-supplies", categoryLabel: "Envíos de insumos",
-      destinationBranch: "Polanco", status: "RECEIVED", lines: [warehouseLineFromSupply(initialWarehouseSupplies[0]!, 12), warehouseLineFromSupply(initialWarehouseSupplies[1]!, 3)],
-      comment: "Insumos recibidos para operación de cabinas.", createdAtIso: "2026-08-24T16:40:00.000Z", createdByName: "Polanco",
-      creationApprovedAtIso: "2026-08-24T16:45:00.000Z", creationApprovedByName: "Master Keysar", sentAtIso: "2026-08-24T16:50:00.000Z", sentByName: "Master Keysar",
-      receivedAtIso: "2026-08-24T17:15:00.000Z", receivedByName: "Sofía Méndez", cancelledAtIso: null, cancelledByName: null,
+      id: "warehouse-supply-request-demo",
+      folio: "ALM-INS-0005",
+      kind: "BRANCH_REQUEST",
+      requestType: "SUPPLY",
+      priceListId: null,
+      priceListName: null,
+      businessCustomerId: null,
+      businessCustomerName: null,
+      categoryId: "warehouse-supplies",
+      categoryLabel: "Envíos de insumos",
+      destinationBranch: "Polanco",
+      status: "RECEIVED",
+      lines: [
+        warehouseLineFromSupply(initialWarehouseSupplies[0]!, 12),
+        warehouseLineFromSupply(initialWarehouseSupplies[1]!, 3),
+      ],
+      comment: "Insumos recibidos para operación de cabinas.",
+      createdAtIso: "2026-08-24T16:40:00.000Z",
+      createdByName: "Polanco",
+      creationApprovedAtIso: "2026-08-24T16:45:00.000Z",
+      creationApprovedByName: "Master Keysar",
+      sentAtIso: "2026-08-24T16:50:00.000Z",
+      sentByName: "Master Keysar",
+      receivedAtIso: "2026-08-24T17:15:00.000Z",
+      receivedByName: "Sofía Méndez",
+      cancelledAtIso: null,
+      cancelledByName: null,
     },
   ];
 })();
@@ -867,11 +1244,33 @@ const initialClientMemberships: ClientMembership[] = [
     profile: "VIP",
     status: "ACTIVE",
     attendance: [
-      { id: "attendance-valeria-signature-1", appointmentId: null, attendedAtIso: "2026-08-24T11:30:00-06:00", branch: "Polanco", sellerName: "Ana Torres", signatureStatus: "SIGNED" },
-      { id: "attendance-valeria-signature-2", appointmentId: null, attendedAtIso: "2026-08-30T16:00:00-06:00", branch: "Polanco", sellerName: "Ana Torres", signatureStatus: "PENDING" },
+      {
+        id: "attendance-valeria-signature-1",
+        appointmentId: null,
+        attendedAtIso: "2026-08-24T11:30:00-06:00",
+        branch: "Polanco",
+        sellerName: "Ana Torres",
+        signatureStatus: "SIGNED",
+      },
+      {
+        id: "attendance-valeria-signature-2",
+        appointmentId: null,
+        attendedAtIso: "2026-08-30T16:00:00-06:00",
+        branch: "Polanco",
+        sellerName: "Ana Torres",
+        signatureStatus: "PENDING",
+      },
     ],
     sellerChanges: [
-      { id: "seller-change-valeria-1", changedAtIso: "2026-08-23T10:15:00-06:00", fromSellerId: "seller-sofia", toSellerId: "seller-ana", fromSellerName: "Sofía Méndez", toSellerName: "Ana Torres", reason: "Cambio solicitado por la clienta" },
+      {
+        id: "seller-change-valeria-1",
+        changedAtIso: "2026-08-23T10:15:00-06:00",
+        fromSellerId: "seller-sofia",
+        toSellerId: "seller-ana",
+        fromSellerName: "Sofía Méndez",
+        toSellerName: "Ana Torres",
+        reason: "Cambio solicitado por la clienta",
+      },
     ],
     statusChanges: [],
   },
@@ -895,7 +1294,14 @@ const initialClientMemberships: ClientMembership[] = [
     usedSessions: 6,
     profile: "LOYAL",
     status: "ACTIVE",
-    attendance: Array.from({ length: 6 }, (_, index) => ({ id: `attendance-mariana-${index + 1}`, appointmentId: null, attendedAtIso: `2026-0${7 + Math.floor(index / 4)}-${String(6 + index * 4).padStart(2, "0")}T17:00:00-06:00`, branch: "Satélite", sellerName: "Sofía Méndez", signatureStatus: "NOT_REQUIRED" })),
+    attendance: Array.from({ length: 6 }, (_, index) => ({
+      id: `attendance-mariana-${index + 1}`,
+      appointmentId: null,
+      attendedAtIso: `2026-0${7 + Math.floor(index / 4)}-${String(6 + index * 4).padStart(2, "0")}T17:00:00-06:00`,
+      branch: "Satélite",
+      sellerName: "Sofía Méndez",
+      signatureStatus: "NOT_REQUIRED",
+    })),
     sellerChanges: [],
     statusChanges: [],
   },
@@ -919,7 +1325,16 @@ const initialClientMemberships: ClientMembership[] = [
     usedSessions: 1,
     profile: "POTENTIAL",
     status: "ACTIVE",
-    attendance: [{ id: "attendance-renata-1", appointmentId: null, attendedAtIso: "2026-08-12T18:00:00-06:00", branch: "Polanco", sellerName: "Daniela Ruiz", signatureStatus: "NOT_REQUIRED" }],
+    attendance: [
+      {
+        id: "attendance-renata-1",
+        appointmentId: null,
+        attendedAtIso: "2026-08-12T18:00:00-06:00",
+        branch: "Polanco",
+        sellerName: "Daniela Ruiz",
+        signatureStatus: "NOT_REQUIRED",
+      },
+    ],
     sellerChanges: [],
     statusChanges: [],
   },
@@ -943,9 +1358,24 @@ const initialClientMemberships: ClientMembership[] = [
     usedSessions: 12,
     profile: "LOYAL",
     status: "EXHAUSTED",
-    attendance: Array.from({ length: 12 }, (_, index) => ({ id: `attendance-mariana-old-${index + 1}`, appointmentId: null, attendedAtIso: `2026-${String(3 + Math.floor(index / 3)).padStart(2, "0")}-${String(12 + (index % 3) * 7).padStart(2, "0")}T12:00:00-06:00`, branch: "Roma Norte", sellerName: "Daniela Ruiz", signatureStatus: "SIGNED" })),
+    attendance: Array.from({ length: 12 }, (_, index) => ({
+      id: `attendance-mariana-old-${index + 1}`,
+      appointmentId: null,
+      attendedAtIso: `2026-${String(3 + Math.floor(index / 3)).padStart(2, "0")}-${String(12 + (index % 3) * 7).padStart(2, "0")}T12:00:00-06:00`,
+      branch: "Roma Norte",
+      sellerName: "Daniela Ruiz",
+      signatureStatus: "SIGNED",
+    })),
     sellerChanges: [],
-    statusChanges: [{ id: "status-mariana-old-1", changedAtIso: "2026-06-30T12:00:00-06:00", fromStatus: "ACTIVE", toStatus: "EXHAUSTED", reason: "Se consumió la última sesión" }],
+    statusChanges: [
+      {
+        id: "status-mariana-old-1",
+        changedAtIso: "2026-06-30T12:00:00-06:00",
+        fromStatus: "ACTIVE",
+        toStatus: "EXHAUSTED",
+        reason: "Se consumió la última sesión",
+      },
+    ],
   },
 ];
 
@@ -977,12 +1407,14 @@ const getInitialCatalogProducts = () => {
   const isLocalPreview = ["127.0.0.1", "localhost"].includes(
     window.location.hostname,
   );
-  const catalog = isLocalPreview && requestedDemoSize === 50
-    ? buildCatalogVisualDemo(initialProducts, 50)
-    : initialProducts;
+  const catalog =
+    isLocalPreview && requestedDemoSize === 50
+      ? buildCatalogVisualDemo(initialProducts, 50)
+      : initialProducts;
   const isBranchScalePreview =
     isLocalPreview &&
-    Number(new URLSearchParams(window.location.search).get("branchDemo")) === 30;
+    Number(new URLSearchParams(window.location.search).get("branchDemo")) ===
+      30;
   return isBranchScalePreview
     ? catalog.map((product) => ({
         ...product,
@@ -1042,10 +1474,14 @@ function App() {
   const [inventoryCountAudits, setInventoryCountAudits] = useState<
     InventoryCountAudit[]
   >([]);
-  const [closeDayAuthorizationOpen, setCloseDayAuthorizationOpen] = useState(false);
-  const [closeDayAuthorizationUser, setCloseDayAuthorizationUser] = useState("");
-  const [closeDayAuthorizationCode, setCloseDayAuthorizationCode] = useState("");
-  const [closeDayAuthorizationError, setCloseDayAuthorizationError] = useState("");
+  const [closeDayAuthorizationOpen, setCloseDayAuthorizationOpen] =
+    useState(false);
+  const [closeDayAuthorizationUser, setCloseDayAuthorizationUser] =
+    useState("");
+  const [closeDayAuthorizationCode, setCloseDayAuthorizationCode] =
+    useState("");
+  const [closeDayAuthorizationError, setCloseDayAuthorizationError] =
+    useState("");
   const [sessionExitOpen, setSessionExitOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [interfaceLanguage] = useState<InterfaceLanguage>("ES");
@@ -1104,6 +1540,16 @@ function App() {
     getInitialCatalogProducts,
   );
   const [sellers, setSellers] = useState(initialSellers);
+  const [commercialAuthorizationToken, setCommercialAuthorizationToken] =
+    useState("482731");
+  const [
+    commercialAuthorizationTokenDraft,
+    setCommercialAuthorizationTokenDraft,
+  ] = useState("482731");
+  const [
+    commercialAuthorizationTokenVisible,
+    setCommercialAuthorizationTokenVisible,
+  ] = useState(false);
   const isMasterAccessCode = (code: string) =>
     code.trim() === administratorCode ||
     sellers.some(
@@ -1112,9 +1558,10 @@ function App() {
         Boolean(seller.masterAccessCode) &&
         seller.masterAccessCode === code.trim(),
     );
-  const [employeeRoles, setEmployeeRoles] = useState<EmployeeRole[]>(
-    initialEmployeeRoles,
-  );
+  const isCommercialAuthorizationCode = (code: string) =>
+    code.trim() === commercialAuthorizationToken;
+  const [employeeRoles, setEmployeeRoles] =
+    useState<EmployeeRole[]>(initialEmployeeRoles);
   const [employeeAccessAuthorized, setEmployeeAccessAuthorized] =
     useState(false);
   const [catalogFamilies, setCatalogFamilies] = useState(() =>
@@ -1150,13 +1597,29 @@ function App() {
   const [inventoryMovements, setInventoryMovements] = useState<
     InventoryMovement[]
   >(initialInventoryMovements);
-  const [warehouseCategories, setWarehouseCategories] = useState<WarehouseMovementCategory[]>(initialWarehouseCategories);
-  const [warehouseSupplies, setWarehouseSupplies] = useState<WarehouseSupplyItem[]>(initialWarehouseSupplies);
-  const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplier[]>(initialWarehouseSuppliers);
-  const [warehousePriceLists, setWarehousePriceLists] = useState<WarehousePriceList[]>(initialWarehousePriceLists);
-  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock>(initialWarehouseStock);
-  const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>(initialWarehouseMovements);
-  const [branchRequestEntryType, setBranchRequestEntryType] = useState<WarehouseRequestType>("PRODUCT");
+  const [warehouseCategories, setWarehouseCategories] = useState<
+    WarehouseMovementCategory[]
+  >(initialWarehouseCategories);
+  const [warehouseSupplies, setWarehouseSupplies] = useState<
+    WarehouseSupplyItem[]
+  >(initialWarehouseSupplies);
+  const [warehouseSuppliers, setWarehouseSuppliers] = useState<
+    WarehouseSupplier[]
+  >(initialWarehouseSuppliers);
+  const [warehouseBusinessCustomers] = useState<WarehouseBusinessCustomer[]>(
+    initialWarehouseBusinessCustomers,
+  );
+  const [warehousePriceLists, setWarehousePriceLists] = useState<
+    WarehousePriceList[]
+  >(initialWarehousePriceLists);
+  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock>(
+    initialWarehouseStock,
+  );
+  const [warehouseMovements, setWarehouseMovements] = useState<
+    WarehouseMovement[]
+  >(initialWarehouseMovements);
+  const [branchRequestEntryType, setBranchRequestEntryType] =
+    useState<WarehouseRequestType>("PRODUCT");
   const [expenseTypes, setExpenseTypes] =
     useState<ExpenseType[]>(initialExpenseTypes);
   const [cashExpenses, setCashExpenses] =
@@ -1174,19 +1637,22 @@ function App() {
     sessionInitialBranchInventory,
   );
   const [activeBranch, setActiveBranch] = useState(() => {
-    const storedBranch = window.localStorage.getItem(terminalLocationStorageKey);
+    const storedBranch = window.localStorage.getItem(
+      terminalLocationStorageKey,
+    );
     return storedBranch && sessionInitialBranchInventory[storedBranch]
       ? storedBranch
-      : Object.keys(sessionInitialBranchInventory)[0] ?? "Polanco";
+      : (Object.keys(sessionInitialBranchInventory)[0] ?? "Polanco");
   });
-  const [branchAddresses, setBranchAddresses] = useState<Record<string, string>>(
-    () =>
-      Object.fromEntries(
-        Object.keys(sessionInitialBranchInventory).map((branch) => [
-          branch,
-          initialBranchAddresses[branch] ?? "Dirección pendiente de configurar",
-        ]),
-      ),
+  const [branchAddresses, setBranchAddresses] = useState<
+    Record<string, string>
+  >(() =>
+    Object.fromEntries(
+      Object.keys(sessionInitialBranchInventory).map((branch) => [
+        branch,
+        initialBranchAddresses[branch] ?? "Dirección pendiente de configurar",
+      ]),
+    ),
   );
   const [locationSwitchOpen, setLocationSwitchOpen] = useState(false);
   const [locationSwitchTarget, setLocationSwitchTarget] = useState("");
@@ -1203,6 +1669,22 @@ function App() {
   const [tickets, setTickets] = useState<Ticket[]>(() =>
     mergeOfflineTicketQueue(initialTickets),
   );
+  const clientIdsWithPurchaseHistory = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          tickets.flatMap((ticket) =>
+            ticket.clientId &&
+            ticket.status === "COMPLETED" &&
+            ticket.ticketType !== "LAYAWAY_PAYMENT" &&
+            ticket.ticketType !== "REFUND"
+              ? [ticket.clientId]
+              : [],
+          ),
+        ),
+      ),
+    [tickets],
+  );
   const [layaways, setLayaways] = useState<LayawayRecord[]>(initialLayaways);
   const [appointments, setAppointments] =
     useState<Appointment[]>(initialAppointments);
@@ -1213,15 +1695,18 @@ function App() {
   const [clientMemberships, setClientMemberships] = useState<
     ClientMembership[]
   >(initialClientMemberships);
-  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(() => ({
-    ...initialReceiptSettings,
-    branchName: `Sucursal ${activeBranch}`,
-    address:
-      initialBranchAddresses[activeBranch] ?? initialReceiptSettings.address,
-  }));
+  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(
+    () => ({
+      ...initialReceiptSettings,
+      branchName: `Sucursal ${activeBranch}`,
+      address:
+        initialBranchAddresses[activeBranch] ?? initialReceiptSettings.address,
+    }),
+  );
   const [myAccountAuthorized, setMyAccountAuthorized] = useState(false);
-  const [billingProfile, setBillingProfile] =
-    useState<BillingProfile>(initialBillingProfile);
+  const [billingProfile, setBillingProfile] = useState<BillingProfile>(
+    initialBillingProfile,
+  );
   const [billingCards, setBillingCards] =
     useState<BillingCard[]>(initialBillingCards);
   const [billingLocations, setBillingLocations] = useState<BillingLocation[]>(
@@ -1233,6 +1718,7 @@ function App() {
   const [selectedReceiptTicket, setSelectedReceiptTicket] =
     useState<Ticket | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [receiptReadOnly, setReceiptReadOnly] = useState(false);
   const [receiptAutoPrint, setReceiptAutoPrint] = useState(false);
   const [receiptVoucherEligible, setReceiptVoucherEligible] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
@@ -1255,9 +1741,8 @@ function App() {
   const [attendanceRecords, setAttendanceRecords] = useState<
     AttendanceRecord[]
   >([]);
-  const [competitions, setCompetitions] = useState<SalesCompetition[]>(
-    initialCompetitions,
-  );
+  const [competitions, setCompetitions] =
+    useState<SalesCompetition[]>(initialCompetitions);
   const [deals, setDeals] = useState<RetailDeal[]>(initialDeals);
   const [dealPickerOpen, setDealPickerOpen] = useState(false);
   const [dealAccessAuthorized, setDealAccessAuthorized] = useState(false);
@@ -1267,18 +1752,19 @@ function App() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
     initialPaymentMethods,
   );
-  const [bankCatalog, setBankCatalog] = useState<BankCatalogEntry[]>(
-    initialBankCatalog,
-  );
+  const [bankCatalog, setBankCatalog] =
+    useState<BankCatalogEntry[]>(initialBankCatalog);
   const [paymentSettingsOpen, setPaymentSettingsOpen] = useState(false);
   const [paymentSettingsCode, setPaymentSettingsCode] = useState("");
   const [paymentSettingsAuthorized, setPaymentSettingsAuthorized] =
     useState(false);
   const [newPaymentMethodName, setNewPaymentMethodName] = useState("");
   const [newBankName, setNewBankName] = useState("");
-  const [activeSettingsSection, setActiveSettingsSection] = useState("notifications");
-  const [courtesySettings, setCourtesySettings] =
-    useState<CourtesySettings>(initialCourtesySettings);
+  const [activeSettingsSection, setActiveSettingsSection] =
+    useState("notifications");
+  const [courtesySettings, setCourtesySettings] = useState<CourtesySettings>(
+    initialCourtesySettings,
+  );
   const [voucherTemplates, setVoucherTemplates] = useState<VoucherTemplate[]>([
     {
       id: "voucher-next-10",
@@ -1294,7 +1780,8 @@ function App() {
       name: "Facial para acompañante",
       kind: "COMPANION_FACIAL",
       value: 100,
-      message: "Invita a una persona especial a disfrutar un facial de cortesía.",
+      message:
+        "Invita a una persona especial a disfrutar un facial de cortesía.",
       active: true,
       visibleToSellers: true,
     },
@@ -1310,9 +1797,8 @@ function App() {
   ]);
   const [voucherIssues, setVoucherIssues] =
     useState<VoucherIssue[]>(loadVoucherIssues);
-  const [clientSources, setClientSources] = useState<ClientSourceOption[]>(
-    initialClientSources,
-  );
+  const [clientSources, setClientSources] =
+    useState<ClientSourceOption[]>(initialClientSources);
   const [clientSourceName, setClientSourceName] = useState("");
   const [editingClientSourceId, setEditingClientSourceId] = useState("");
   const [requiredFields, setRequiredFields] = useState<RequiredClientFields>(
@@ -1354,10 +1840,7 @@ function App() {
     const preference = notificationPreferences.find(
       (item) => item.type === notification.type,
     );
-    if (
-      !preference?.enabled ||
-      preference.recipientUserIds.length === 0
-    )
+    if (!preference?.enabled || preference.recipientUserIds.length === 0)
       return;
     setOperationalNotifications((current) => [
       {
@@ -1377,7 +1860,8 @@ function App() {
     setOperationalNotifications((current) =>
       current.map((notification) =>
         notification.id === notificationId &&
-        (userId === masterUser.id || notification.recipientUserIds.includes(userId)) &&
+        (userId === masterUser.id ||
+          notification.recipientUserIds.includes(userId)) &&
         !notification.readByUserIds.includes(userId)
           ? {
               ...notification,
@@ -1429,7 +1913,8 @@ function App() {
       current.map((notification) =>
         operationalBusinessDate(notification.createdAtIso) ===
           operationalBusinessDate(new Date().toISOString()) &&
-        (userId === masterUser.id || notification.recipientUserIds.includes(userId)) &&
+        (userId === masterUser.id ||
+          notification.recipientUserIds.includes(userId)) &&
         !notification.readByUserIds.includes(userId)
           ? {
               ...notification,
@@ -1465,10 +1950,12 @@ function App() {
 
   const allowedScreens = useMemo<ScreenId[]>(() => {
     if (!sessionUser) return [];
-    if (sessionUser.isMaster)
-      return Object.keys(screenMetadata) as ScreenId[];
+    if (sessionUser.isMaster) return Object.keys(screenMetadata) as ScreenId[];
     return Array.from(
-      new Set([...(sessionEmployeeRole?.moduleAccess ?? []), "my-account" as ScreenId]),
+      new Set([
+        ...(sessionEmployeeRole?.moduleAccess ?? []),
+        "my-account" as ScreenId,
+      ]),
     );
   }, [sessionEmployeeRole, sessionUser]);
 
@@ -1487,7 +1974,7 @@ function App() {
   );
   const canExitWithoutCloseDay = Boolean(
     sessionUser?.isMaster ||
-      sessionEmployeeRole?.configurationAccess.includes("SESSION_EXIT"),
+    sessionEmployeeRole?.configurationAccess.includes("SESSION_EXIT"),
   );
   const hasAssignedTicketCancellationPermission = Boolean(
     sessionEmployeeRole?.configurationAccess.includes("TICKET_CANCELLATION"),
@@ -1495,11 +1982,17 @@ function App() {
   const canCancelTickets = Boolean(
     sessionUser?.isMaster || hasAssignedTicketCancellationPermission,
   );
+  const canManageCommercialAuthorizationToken = Boolean(
+    sessionUser?.isMaster ||
+    sessionEmployeeRole?.configurationAccess.includes(
+      "COMMERCIAL_AUTHORIZATION_TOKEN",
+    ),
+  );
   const canViewReceiptPriceDeviation = Boolean(
     sessionUser?.isMaster ||
-      receiptHistoryAuthorized ||
-      costAccessAuthorized ||
-      sessionEmployeeRole?.configurationAccess.includes("REPORTS_COSTS"),
+    receiptHistoryAuthorized ||
+    costAccessAuthorized ||
+    sessionEmployeeRole?.configurationAccess.includes("REPORTS_COSTS"),
   );
 
   useEffect(() => {
@@ -1517,19 +2010,25 @@ function App() {
     toast.error(
       `${screenMetadata[activeScreen].title} requiere usuario master o permiso asignado al rol.`,
     );
-  }, [activeScreen, allowedScreens, defaultAllowedScreen, sessionStage, sessionUser]);
+  }, [
+    activeScreen,
+    allowedScreens,
+    defaultAllowedScreen,
+    sessionStage,
+    sessionUser,
+  ]);
 
   const canEditActiveModule = Boolean(
     sessionUser?.isMaster ||
-      activeScreen === "my-account" ||
-      sessionEmployeeRole?.moduleEditAccess.includes(activeScreen),
+    activeScreen === "my-account" ||
+    sessionEmployeeRole?.moduleEditAccess.includes(activeScreen),
   );
   const hasAssignedTicketEditPermission = Boolean(
     sessionEmployeeRole?.moduleEditAccess.includes(activeScreen),
   );
   const canPrintActiveModule = Boolean(
     sessionUser?.isMaster ||
-      sessionEmployeeRole?.modulePrintAccess.includes(activeScreen),
+    sessionEmployeeRole?.modulePrintAccess.includes(activeScreen),
   );
 
   const canManageWarehouse = Boolean(
@@ -1544,9 +2043,9 @@ function App() {
   const canCreateWarehouseRequest = allowedScreens.includes("branch-inventory");
   const canViewInventoryCountDifferences = Boolean(
     sessionUser?.isMaster ||
-      employeeRoles
-        .find((role) => role.id === sessionUser?.roleId && role.active)
-        ?.configurationAccess.includes("INVENTORY_AUDIT"),
+    employeeRoles
+      .find((role) => role.id === sessionUser?.roleId && role.active)
+      ?.configurationAccess.includes("INVENTORY_AUDIT"),
   );
 
   const countableProducts = useMemo(
@@ -1587,12 +2086,16 @@ function App() {
     );
     if (masterLogin && !isMasterAccessCode(credentials.password))
       return "Contraseña master incorrecta.";
-    if (!masterLogin && (!seller || seller.accessCode !== credentials.password.trim()))
+    if (
+      !masterLogin &&
+      (!seller || seller.accessCode !== credentials.password.trim())
+    )
       return "Usuario o contraseña incorrectos.";
     const selectedBranch = masterLogin
       ? credentials.requestedBranch
       : activeBranch;
-    if (!branchInventory[selectedBranch]) return "La sucursal seleccionada no está activa.";
+    if (!branchInventory[selectedBranch])
+      return "La sucursal seleccionada no está activa.";
     if (masterLogin && selectedBranch !== activeBranch)
       applyTerminalLocation(selectedBranch);
     const loginDate = new Date();
@@ -1618,7 +2121,8 @@ function App() {
     if (
       !nextUser.isMaster &&
       !attendanceRecords.some(
-        (record) => record.sellerId === nextUser.id && record.status === "ONLINE",
+        (record) =>
+          record.sellerId === nextUser.id && record.status === "ONLINE",
       )
     ) {
       const clockInAt = new Intl.DateTimeFormat("es-MX", {
@@ -1684,8 +2188,9 @@ function App() {
         ? (Object.keys(screenMetadata) as ScreenId[])
         : Array.from(
             new Set([
-              ...(employeeRoles.find((role) => role.id === nextUser.roleId && role.active)
-                ?.moduleAccess ?? []),
+              ...(employeeRoles.find(
+                (role) => role.id === nextUser.roleId && role.active,
+              )?.moduleAccess ?? []),
               "my-account" as ScreenId,
             ]),
           );
@@ -1698,7 +2203,9 @@ function App() {
       setActiveScreen(nextScreen);
       setSaleFocusMode(nextScreen === "sale");
       setSidebarCollapsed(nextScreen === "sale");
-      toast.success(`Sesión iniciada. La jornada de ${selectedBranch} continúa abierta.`);
+      toast.success(
+        `Sesión iniciada. La jornada de ${selectedBranch} continúa abierta.`,
+      );
     } else {
       setSessionStage("OPENING_COUNT");
       setDaySession(null);
@@ -1731,7 +2238,9 @@ function App() {
       ...current,
       [branch]: {
         ...(current[branch] ?? {}),
-        ...Object.fromEntries(lines.map((line) => [line.productId, line.actualStock])),
+        ...Object.fromEntries(
+          lines.map((line) => [line.productId, line.actualStock]),
+        ),
       },
     }));
     if (branch === "Polanco") {
@@ -1788,7 +2297,8 @@ function App() {
     });
     const nextAllowedScreens = sessionUser.isMaster
       ? (Object.keys(screenMetadata) as ScreenId[])
-      : employeeRoles.find((role) => role.id === sessionUser.roleId)?.moduleAccess ?? [];
+      : (employeeRoles.find((role) => role.id === sessionUser.roleId)
+          ?.moduleAccess ?? []);
     setActiveScreen(
       nextAllowedScreens.includes("dashboard")
         ? "dashboard"
@@ -1878,12 +2388,19 @@ function App() {
       return { id: masterUser.id, name: masterUser.name };
     const seller = sellers.find((candidate) => {
       if (!candidate.active) return false;
-      const role = employeeRoles.find((item) => item.id === candidate.roleId && item.active);
+      const role = employeeRoles.find(
+        (item) => item.id === candidate.roleId && item.active,
+      );
       const permitted = Boolean(
         candidate.masterAccessCode ||
         role?.configurationAccess.includes("WAREHOUSE_MOVEMENTS"),
       );
-      return permitted && [candidate.accessCode, candidate.masterAccessCode].includes(normalizedCode);
+      return (
+        permitted &&
+        [candidate.accessCode, candidate.masterAccessCode].includes(
+          normalizedCode,
+        )
+      );
     });
     return seller ? { id: seller.id, name: seller.name } : null;
   };
@@ -1904,7 +2421,7 @@ function App() {
       folio: `ALM-ENT-${Date.now().toString(36).toUpperCase()}`,
       kind: "ENTRY",
       categoryId: "warehouse-products",
-      categoryLabel: "Ingreso de mercancía",
+      categoryLabel: "Entrada manual de mercancía",
       destinationBranch: null,
       status: "RECEIVED",
       lines,
@@ -1922,16 +2439,25 @@ function App() {
     };
     setWarehouseStock((current) => ({
       ...current,
-      ...Object.fromEntries(lines.map((line) => [line.productId, (current[line.productId] ?? 0) + line.quantity])),
+      ...Object.fromEntries(
+        lines.map((line) => [
+          line.productId,
+          (current[line.productId] ?? 0) + line.quantity,
+        ]),
+      ),
     }));
     setCatalogProducts((current) =>
       current.map((product) => {
-        const line = lines.find((candidate) => candidate.productId === product.id);
+        const line = lines.find(
+          (candidate) => candidate.productId === product.id,
+        );
         return line ? { ...product, partnerCost: line.partnerCost } : product;
       }),
     );
     setWarehouseMovements((current) => [movement, ...current]);
-    toast.success(`${movement.folio} registrado. Existencias de bodega actualizadas.`);
+    toast.success(
+      `${movement.folio} registrado. Existencias de bodega actualizadas.`,
+    );
     return true;
   };
 
@@ -1942,40 +2468,35 @@ function App() {
     branch: string,
     lines: WarehouseMovementLine[],
     comment: string,
-    pricing: WarehousePricingSelection,
+    _pricing: WarehousePricingSelection,
   ) => {
-    const category = warehouseCategories.find((candidate) => candidate.id === categoryId && candidate.active);
-    const authorizedToCreate = kind === "BRANCH_REQUEST" ? canCreateWarehouseRequest : canManageWarehouse;
-    const priceList = pricing.priceListId
-      ? warehousePriceLists.find((candidate) => candidate.id === pricing.priceListId && candidate.active)
-      : null;
-    const customer = pricing.customerId ? clients.find((candidate) => candidate.id === pricing.customerId) : null;
-    const priceListMatchesOrder = !priceList || (
-      priceList.branchNames.includes(branch) &&
-      (priceList.clientIds.length === 0 || Boolean(customer && priceList.clientIds.includes(customer.id)))
+    const category = warehouseCategories.find(
+      (candidate) => candidate.id === categoryId && candidate.active,
     );
-    if (!authorizedToCreate || !category || !branchInventory[branch] || (kind === "BRANCH_REQUEST" && (!priceList || !priceListMatchesOrder))) {
-      toast.error("No tienes permiso o la configuración del movimiento no es válida.");
+    const authorizedToCreate =
+      kind === "BRANCH_REQUEST"
+        ? canCreateWarehouseRequest
+        : canManageWarehouse;
+    if (!authorizedToCreate || !category || !branchInventory[branch]) {
+      toast.error(
+        "No tienes permiso o la configuración del movimiento no es válida.",
+      );
       return false;
     }
-    const pricedLines = lines.map((line) => {
-      const listItem = priceList?.items.find((item) => item.productId === line.productId);
-      return listItem ? { ...line, partnerCost: listItem.priceMxn, partnerCostUsd: listItem.priceUsd } : line;
-    });
     const movement: WarehouseMovement = {
       id: `warehouse-${crypto.randomUUID()}`,
       folio: `ALM-${kind === "SHIPMENT" ? "ENV" : requestType === "TESTER" ? "TST" : requestType === "SUPPLY" ? "INS" : "PRO"}-${Date.now().toString(36).toUpperCase()}`,
       kind,
       requestType,
-      priceListId: priceList?.id ?? null,
-      priceListName: priceList?.name ?? null,
-      customerId: customer?.id ?? null,
-      customerName: customer ? `${customer.firstName} ${customer.lastName}`.trim() : null,
+      priceListId: null,
+      priceListName: null,
+      businessCustomerId: null,
+      businessCustomerName: null,
       categoryId: category.id,
       categoryLabel: category.name,
       destinationBranch: branch,
       status: kind === "BRANCH_REQUEST" ? "REQUESTED" : "DRAFT",
-      lines: pricedLines,
+      lines,
       comment: comment.trim(),
       createdAtIso: new Date().toISOString(),
       createdByName: sessionUser?.name ?? masterUser.name,
@@ -2009,12 +2530,6 @@ function App() {
       return null;
     }
     const prepared = orders.map((order, index) => {
-      const priceList = warehousePriceLists.find(
-        (candidate) =>
-          candidate.active &&
-          candidate.branchNames.includes(order.branch) &&
-          candidate.clientIds.length === 0,
-      );
       const orderLines = order.lines.flatMap((draftLine) => {
         const product = catalogProducts.find(
           (candidate) =>
@@ -2023,21 +2538,9 @@ function App() {
             candidate.active,
         );
         if (!product || draftLine.quantity < 1) return [];
-        const baseLine = warehouseLineFromProduct(product, draftLine.quantity);
-        const price = priceList?.items.find(
-          (item) => item.productId === product.id,
-        );
-        return [
-          price
-            ? {
-                ...baseLine,
-                partnerCost: price.priceMxn,
-                partnerCostUsd: price.priceUsd,
-              }
-            : baseLine,
-        ];
+        return [warehouseLineFromProduct(product, draftLine.quantity)];
       });
-      if (!branchInventory[order.branch] || !priceList || orderLines.length === 0)
+      if (!branchInventory[order.branch] || orderLines.length === 0)
         return null;
       const nonce = crypto.randomUUID().slice(0, 5).toUpperCase();
       const folio = `ALM-PRO-${Date.now().toString(36).toUpperCase()}-${index + 1}-${nonce}`;
@@ -2046,16 +2549,17 @@ function App() {
         folio,
         kind: "BRANCH_REQUEST",
         requestType: "PRODUCT",
-        priceListId: priceList.id,
-        priceListName: priceList.name,
-        customerId: null,
-        customerName: null,
+        priceListId: null,
+        priceListName: null,
+        businessCustomerId: null,
+        businessCustomerName: null,
         categoryId: category.id,
         categoryLabel: category.name,
         destinationBranch: order.branch,
         status: "REQUESTED",
         lines: orderLines,
-        comment: "Pedido generado desde Inventory para completar stock máximo.",
+        comment:
+          "Solicitud generada desde Catálogo e inventario para completar el stock máximo.",
         createdAtIso: new Date().toISOString(),
         createdByName: sessionUser?.name ?? masterUser.name,
         creationApprovedAtIso: null,
@@ -2071,7 +2575,7 @@ function App() {
     });
     if (prepared.some((item) => item === null)) {
       toast.error(
-        "Revisa las sucursales, productos y listas de precios antes de generar el pedido.",
+        "Revisa las sucursales y productos antes de generar el pedido.",
       );
       return null;
     }
@@ -2083,7 +2587,7 @@ function App() {
       ...current,
     ]);
     toast.success(
-      `${validPrepared.length} ${validPrepared.length === 1 ? "folio enviado" : "folios enviados"} a Pedidos de sucursales.`,
+      `${validPrepared.length} ${validPrepared.length === 1 ? "folio enviado" : "folios enviados"} a Solicitudes de sucursales.`,
     );
     return validPrepared.map((item) => item.result);
   };
@@ -2094,39 +2598,42 @@ function App() {
     branch: string,
     lines: WarehouseMovementLine[],
     comment: string,
-    pricing: WarehousePricingSelection,
+    _pricing: WarehousePricingSelection,
   ) => {
     if (!canManageWarehouse) return false;
-    const movement = warehouseMovements.find((candidate) => candidate.id === id);
-    const category = warehouseCategories.find((candidate) => candidate.id === categoryId && candidate.active);
-    const priceList = pricing.priceListId
-      ? warehousePriceLists.find((candidate) => candidate.id === pricing.priceListId && candidate.active)
-      : null;
-    const customer = pricing.customerId ? clients.find((candidate) => candidate.id === pricing.customerId) : null;
-    const priceListMatchesOrder = !priceList || (
-      priceList.branchNames.includes(branch) &&
-      (priceList.clientIds.length === 0 || Boolean(customer && priceList.clientIds.includes(customer.id)))
+    const movement = warehouseMovements.find(
+      (candidate) => candidate.id === id,
     );
-    if (!movement || !category || (movement.kind === "BRANCH_REQUEST" && (!priceList || !priceListMatchesOrder)) || !["DRAFT", "REQUESTED"].includes(movement.status)) {
+    const category = warehouseCategories.find(
+      (candidate) => candidate.id === categoryId && candidate.active,
+    );
+    if (
+      !movement ||
+      !category ||
+      !["DRAFT", "REQUESTED"].includes(movement.status)
+    ) {
       toast.error("Este movimiento ya no admite edición.");
       return false;
     }
-    const pricedLines = lines.map((line) => {
-      const listItem = priceList?.items.find((item) => item.productId === line.productId);
-      return listItem ? { ...line, partnerCost: listItem.priceMxn, partnerCostUsd: listItem.priceUsd } : line;
-    });
-    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
-      ...candidate,
-      categoryId: category.id,
-      categoryLabel: category.name,
-      destinationBranch: movement.kind === "PURCHASE_ORDER" ? null : branch,
-      priceListId: movement.kind === "PURCHASE_ORDER" ? candidate.priceListId ?? null : priceList?.id ?? null,
-      priceListName: movement.kind === "PURCHASE_ORDER" ? candidate.priceListName ?? null : priceList?.name ?? null,
-      customerId: movement.kind === "PURCHASE_ORDER" ? candidate.customerId ?? null : customer?.id ?? null,
-      customerName: movement.kind === "PURCHASE_ORDER" ? candidate.customerName ?? null : customer ? `${customer.firstName} ${customer.lastName}`.trim() : null,
-      lines: pricedLines,
-      comment: comment.trim(),
-    } : candidate));
+    setWarehouseMovements((current) =>
+      current.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              categoryId: category.id,
+              categoryLabel: category.name,
+              destinationBranch:
+                movement.kind === "PURCHASE_ORDER" ? null : branch,
+              priceListId: candidate.priceListId ?? null,
+              priceListName: candidate.priceListName ?? null,
+              businessCustomerId: candidate.businessCustomerId ?? null,
+              businessCustomerName: candidate.businessCustomerName ?? null,
+              lines,
+              comment: comment.trim(),
+            }
+          : candidate,
+      ),
+    );
     toast.success(`${movement.folio} actualizado antes de su aprobación.`);
     return true;
   };
@@ -2136,9 +2643,18 @@ function App() {
     lines: WarehouseMovementLine[],
     comment: string,
   ) => {
-    const supplier = warehouseSuppliers.find((candidate) => candidate.id === supplierId && candidate.active);
-    if (!canManageWarehouse || !supplier || lines.length === 0 || lines.some((line) => line.supplierId !== supplier.id)) {
-      toast.error("Selecciona un proveedor activo y productos vinculados a él.");
+    const supplier = warehouseSuppliers.find(
+      (candidate) => candidate.id === supplierId && candidate.active,
+    );
+    if (
+      !canManageWarehouse ||
+      !supplier ||
+      lines.length === 0 ||
+      lines.some((line) => line.supplierId !== supplier.id)
+    ) {
+      toast.error(
+        "Selecciona un proveedor activo y productos vinculados a él.",
+      );
       return false;
     }
     const movement: WarehouseMovement = {
@@ -2165,50 +2681,89 @@ function App() {
       cancelledByName: null,
     };
     setWarehouseMovements((current) => [movement, ...current]);
-    toast.success(`${movement.folio} generado según stock máximo; requiere doble aprobación.`);
+    toast.success(
+      `${movement.folio} generado según stock máximo; requiere doble aprobación.`,
+    );
     return true;
   };
 
   const approveWarehouseCreation = (id: string, code: string) => {
     const actor = warehouseAuthorizationActor(code);
-    const movement = warehouseMovements.find((candidate) => candidate.id === id);
-    if (!actor || !movement || !["DRAFT", "REQUESTED"].includes(movement.status)) {
+    const movement = warehouseMovements.find(
+      (candidate) => candidate.id === id,
+    );
+    if (
+      !actor ||
+      !movement ||
+      !["DRAFT", "REQUESTED"].includes(movement.status)
+    ) {
       toast.error("No fue posible autorizar la creación del movimiento.");
       return false;
     }
-    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
-      ...candidate,
-      status: "CREATION_APPROVED",
-      creationApprovedAtIso: new Date().toISOString(),
-      creationApprovedByName: actor.name,
-    } : candidate));
+    setWarehouseMovements((current) =>
+      current.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              status: "CREATION_APPROVED",
+              creationApprovedAtIso: new Date().toISOString(),
+              creationApprovedByName: actor.name,
+            }
+          : candidate,
+      ),
+    );
     toast.success(`Primera validación aprobada por ${actor.name}.`);
     return true;
   };
 
   const approveWarehouseSend = (id: string, code: string) => {
     const actor = warehouseAuthorizationActor(code);
-    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    const movement = warehouseMovements.find(
+      (candidate) => candidate.id === id,
+    );
     if (!actor || !movement || movement.status !== "CREATION_APPROVED") {
       toast.error("Segunda autorización inválida.");
       return false;
     }
-    const missing = movement.kind === "PURCHASE_ORDER" ? undefined : movement.lines.find((line) => (warehouseStock[line.productId] ?? 0) < line.quantity);
+    const missing =
+      movement.kind === "PURCHASE_ORDER"
+        ? undefined
+        : movement.lines.find(
+            (line) => (warehouseStock[line.productId] ?? 0) < line.quantity,
+          );
     if (missing) {
-      toast.error(`Bodega no cuenta con existencias suficientes de ${missing.productName}.`);
+      toast.error(
+        `Bodega no cuenta con existencias suficientes de ${missing.productName}.`,
+      );
       return false;
     }
-    if (movement.kind !== "PURCHASE_ORDER") setWarehouseStock((current) => ({
-      ...current,
-      ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[line.productId] ?? 0) - line.quantity])),
-    }));
-    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
-      ...candidate,
-      status: "SENT",
-      sentAtIso: new Date().toISOString(),
-      sentByName: actor.name,
-    } : candidate));
-    toast.success(movement.kind === "PURCHASE_ORDER" ? `${movement.folio} autorizado y enviado al proveedor.` : `${movement.folio} enviado. Stock descontado de bodega; PDF disponible.`);
+    if (movement.kind !== "PURCHASE_ORDER")
+      setWarehouseStock((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          movement.lines.map((line) => [
+            line.productId,
+            (current[line.productId] ?? 0) - line.quantity,
+          ]),
+        ),
+      }));
+    setWarehouseMovements((current) =>
+      current.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              status: "SENT",
+              sentAtIso: new Date().toISOString(),
+              sentByName: actor.name,
+            }
+          : candidate,
+      ),
+    );
+    toast.success(
+      movement.kind === "PURCHASE_ORDER"
+        ? `${movement.folio} autorizado y enviado al proveedor.`
+        : `${movement.folio} enviado. Stock descontado de bodega; PDF disponible.`,
+    );
     return true;
   };
 
@@ -2218,9 +2773,16 @@ function App() {
       toast.error("Código sin autorización para cargar mercancía.");
       return false;
     }
-    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    const movement = warehouseMovements.find(
+      (candidate) => candidate.id === id,
+    );
     const destination = movement?.destinationBranch;
-    if (!movement || movement.status !== "SENT" || (movement.kind !== "PURCHASE_ORDER" && (!destination || !branchInventory[destination]))) {
+    if (
+      !movement ||
+      movement.status !== "SENT" ||
+      (movement.kind !== "PURCHASE_ORDER" &&
+        (!destination || !branchInventory[destination]))
+    ) {
       toast.error("El movimiento no está listo para cargarse en sucursal.");
       return false;
     }
@@ -2228,27 +2790,47 @@ function App() {
     if (movement.kind === "PURCHASE_ORDER") {
       setWarehouseStock((current) => ({
         ...current,
-        ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[line.productId] ?? 0) + line.quantity])),
+        ...Object.fromEntries(
+          movement.lines.map((line) => [
+            line.productId,
+            (current[line.productId] ?? 0) + line.quantity,
+          ]),
+        ),
       }));
-      setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
-        ...candidate,
-        status: "RECEIVED",
-        receivedAtIso: receivedAt.toISOString(),
-        receivedByName: actor.name,
-      } : candidate));
-      toast.success(`${movement.folio} recibido; existencias de bodega actualizadas.`);
+      setWarehouseMovements((current) =>
+        current.map((candidate) =>
+          candidate.id === id
+            ? {
+                ...candidate,
+                status: "RECEIVED",
+                receivedAtIso: receivedAt.toISOString(),
+                receivedByName: actor.name,
+              }
+            : candidate,
+        ),
+      );
+      toast.success(
+        `${movement.folio} recibido; existencias de bodega actualizadas.`,
+      );
       return true;
     }
     if (!destination) return false;
-    const affectsRetailStock = movement.requestType !== "TESTER" && movement.requestType !== "SUPPLY";
+    const affectsRetailStock =
+      movement.requestType !== "TESTER" && movement.requestType !== "SUPPLY";
     const destinationStock = branchInventory[destination] ?? {};
-    if (affectsRetailStock) setBranchInventory((current) => ({
-      ...current,
-      [destination]: {
-        ...current[destination],
-        ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[destination]?.[line.productId] ?? 0) + line.quantity])),
-      },
-    }));
+    if (affectsRetailStock)
+      setBranchInventory((current) => ({
+        ...current,
+        [destination]: {
+          ...current[destination],
+          ...Object.fromEntries(
+            movement.lines.map((line) => [
+              line.productId,
+              (current[destination]?.[line.productId] ?? 0) + line.quantity,
+            ]),
+          ),
+        },
+      }));
     if (affectsRetailStock && destination === "Polanco") {
       const receivedByProduct = new Map<string, number>();
       movement.lines.forEach((line) =>
@@ -2269,96 +2851,137 @@ function App() {
         }),
       );
     }
-    const inventoryRecords: InventoryMovement[] = affectsRetailStock ? movement.lines.map((line, index) => ({
-      id: `warehouse-inventory-${crypto.randomUUID()}`,
-      folio: `${movement.folio}-${index + 1}`,
-      createdAt: formatAttendanceTime(receivedAt),
-      createdAtIso: receivedAt.toISOString(),
-      productId: line.productId,
-      productName: line.productName,
-      direction: "TRANSFER",
-      reason: movement.categoryLabel,
-      quantity: line.quantity,
-      previousStock: warehouseStock[line.productId] ?? 0,
-      newStock: warehouseStock[line.productId] ?? 0,
-      sourceBranch: "Bodega matriz",
-      destinationBranch: destination,
-      destinationPreviousStock: destinationStock[line.productId] ?? 0,
-      destinationNewStock: (destinationStock[line.productId] ?? 0) + line.quantity,
-      comment: `Mercancía cargada desde ${movement.folio}`,
-      category: "TRANSFER",
-      unitCostUsd: line.unitCostUsd,
-      unitCostMxn: line.unitCostMxn,
-      totalCostUsd: line.unitCostUsd * line.quantity,
-      totalCostMxn: line.unitCostMxn * line.quantity,
-    })) : [];
-    if (inventoryRecords.length > 0) setInventoryMovements((current) => [...inventoryRecords, ...current]);
-    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
-      ...candidate,
-      status: "RECEIVED",
-      receivedAtIso: receivedAt.toISOString(),
-      receivedByName: actor.name,
-    } : candidate));
-    toast.success(affectsRetailStock
-      ? `${movement.folio} cargado al inventario de ${destination}.`
-      : `${movement.folio} recibido en ${destination}; se registró como consumo operativo sin sumar inventario vendible.`);
+    const inventoryRecords: InventoryMovement[] = affectsRetailStock
+      ? movement.lines.map((line, index) => ({
+          id: `warehouse-inventory-${crypto.randomUUID()}`,
+          folio: `${movement.folio}-${index + 1}`,
+          createdAt: formatAttendanceTime(receivedAt),
+          createdAtIso: receivedAt.toISOString(),
+          productId: line.productId,
+          productName: line.productName,
+          direction: "TRANSFER",
+          reason: movement.categoryLabel,
+          quantity: line.quantity,
+          previousStock: warehouseStock[line.productId] ?? 0,
+          newStock: warehouseStock[line.productId] ?? 0,
+          sourceBranch: "Bodega matriz",
+          destinationBranch: destination,
+          destinationPreviousStock: destinationStock[line.productId] ?? 0,
+          destinationNewStock:
+            (destinationStock[line.productId] ?? 0) + line.quantity,
+          comment: `Mercancía cargada desde ${movement.folio}`,
+          category: "TRANSFER",
+          unitCostUsd: line.unitCostUsd,
+          unitCostMxn: line.unitCostMxn,
+          totalCostUsd: line.unitCostUsd * line.quantity,
+          totalCostMxn: line.unitCostMxn * line.quantity,
+        }))
+      : [];
+    if (inventoryRecords.length > 0)
+      setInventoryMovements((current) => [...inventoryRecords, ...current]);
+    setWarehouseMovements((current) =>
+      current.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              status: "RECEIVED",
+              receivedAtIso: receivedAt.toISOString(),
+              receivedByName: actor.name,
+            }
+          : candidate,
+      ),
+    );
+    toast.success(
+      affectsRetailStock
+        ? `${movement.folio} cargado al inventario de ${destination}.`
+        : `${movement.folio} recibido en ${destination}; se registró como consumo operativo sin sumar inventario vendible.`,
+    );
     return true;
   };
 
   const reverseWarehouseMovement = (movement: WarehouseMovement) => {
     if (movement.kind === "PURCHASE_ORDER") {
-      if (movement.status === "RECEIVED") setWarehouseStock((current) => ({
-        ...current,
-        ...Object.fromEntries(movement.lines.map((line) => [line.productId, Math.max(0, (current[line.productId] ?? 0) - line.quantity)])),
-      }));
+      if (movement.status === "RECEIVED")
+        setWarehouseStock((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            movement.lines.map((line) => [
+              line.productId,
+              Math.max(0, (current[line.productId] ?? 0) - line.quantity),
+            ]),
+          ),
+        }));
       return;
     }
     if (movement.kind === "ENTRY" && movement.status === "RECEIVED") {
       setWarehouseStock((current) => ({
         ...current,
-        ...Object.fromEntries(movement.lines.map((line) => [line.productId, Math.max(0, (current[line.productId] ?? 0) - line.quantity)])),
+        ...Object.fromEntries(
+          movement.lines.map((line) => [
+            line.productId,
+            Math.max(0, (current[line.productId] ?? 0) - line.quantity),
+          ]),
+        ),
       }));
       return;
     }
     if (movement.status === "SENT" || movement.status === "RECEIVED") {
       setWarehouseStock((current) => ({
         ...current,
-        ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[line.productId] ?? 0) + line.quantity])),
+        ...Object.fromEntries(
+          movement.lines.map((line) => [
+            line.productId,
+            (current[line.productId] ?? 0) + line.quantity,
+          ]),
+        ),
       }));
     }
-    const affectsRetailStock = movement.requestType !== "TESTER" && movement.requestType !== "SUPPLY";
-    if (movement.status === "RECEIVED" && movement.destinationBranch && affectsRetailStock) {
+    const affectsRetailStock =
+      movement.requestType !== "TESTER" && movement.requestType !== "SUPPLY";
+    if (
+      movement.status === "RECEIVED" &&
+      movement.destinationBranch &&
+      affectsRetailStock
+    ) {
       const branch = movement.destinationBranch;
       const reversedAt = new Date();
       const currentBranchStock = branchInventory[branch] ?? {};
-      const reversalRecords: InventoryMovement[] = movement.lines.map((line, index) => ({
-        id: `warehouse-reversal-${crypto.randomUUID()}`,
-        folio: `${movement.folio}-REV-${index + 1}`,
-        createdAt: formatAttendanceTime(reversedAt),
-        createdAtIso: reversedAt.toISOString(),
-        productId: line.productId,
-        productName: line.productName,
-        direction: "TRANSFER",
-        reason: `Cancelación · ${movement.categoryLabel}`,
-        quantity: line.quantity,
-        previousStock: currentBranchStock[line.productId] ?? 0,
-        newStock: (currentBranchStock[line.productId] ?? 0) - line.quantity,
-        sourceBranch: branch,
-        destinationBranch: "Bodega matriz",
-        destinationPreviousStock: warehouseStock[line.productId] ?? 0,
-        destinationNewStock: (warehouseStock[line.productId] ?? 0) + line.quantity,
-        comment: `Reversa automática del movimiento ${movement.folio}`,
-        category: "TRANSFER",
-        unitCostUsd: line.unitCostUsd,
-        unitCostMxn: line.unitCostMxn,
-        totalCostUsd: line.unitCostUsd * line.quantity,
-        totalCostMxn: line.unitCostMxn * line.quantity,
-      }));
+      const reversalRecords: InventoryMovement[] = movement.lines.map(
+        (line, index) => ({
+          id: `warehouse-reversal-${crypto.randomUUID()}`,
+          folio: `${movement.folio}-REV-${index + 1}`,
+          createdAt: formatAttendanceTime(reversedAt),
+          createdAtIso: reversedAt.toISOString(),
+          productId: line.productId,
+          productName: line.productName,
+          direction: "TRANSFER",
+          reason: `Cancelación · ${movement.categoryLabel}`,
+          quantity: line.quantity,
+          previousStock: currentBranchStock[line.productId] ?? 0,
+          newStock: (currentBranchStock[line.productId] ?? 0) - line.quantity,
+          sourceBranch: branch,
+          destinationBranch: "Bodega matriz",
+          destinationPreviousStock: warehouseStock[line.productId] ?? 0,
+          destinationNewStock:
+            (warehouseStock[line.productId] ?? 0) + line.quantity,
+          comment: `Reversa automática del movimiento ${movement.folio}`,
+          category: "TRANSFER",
+          unitCostUsd: line.unitCostUsd,
+          unitCostMxn: line.unitCostMxn,
+          totalCostUsd: line.unitCostUsd * line.quantity,
+          totalCostMxn: line.unitCostMxn * line.quantity,
+        }),
+      );
       setBranchInventory((current) => ({
         ...current,
         [branch]: {
           ...current[branch],
-          ...Object.fromEntries(movement.lines.map((line) => [line.productId, (current[branch]?.[line.productId] ?? 0) - line.quantity])),
+          ...Object.fromEntries(
+            movement.lines.map((line) => [
+              line.productId,
+              (current[branch]?.[line.productId] ?? 0) - line.quantity,
+            ]),
+          ),
         },
       }));
       setInventoryMovements((current) => [...reversalRecords, ...current]);
@@ -2367,171 +2990,503 @@ function App() {
 
   const cancelWarehouseMovement = (id: string, code: string) => {
     const actor = warehouseAuthorizationActor(code);
-    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    const movement = warehouseMovements.find(
+      (candidate) => candidate.id === id,
+    );
     if (!actor || !movement || movement.status === "CANCELLED") {
       toast.error("No fue posible cancelar el movimiento.");
       return false;
     }
-    if (movement.status === "SENT" && ["BRANCH_REQUEST", "SHIPMENT"].includes(movement.kind)) {
+    if (
+      movement.status === "SENT" &&
+      ["BRANCH_REQUEST", "SHIPMENT"].includes(movement.kind)
+    ) {
       reverseWarehouseMovement(movement);
       const returnedAtIso = new Date().toISOString();
-      setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
-        ...candidate,
-        status: "REQUESTED",
-        creationApprovedAtIso: null,
-        creationApprovedByName: null,
-        sentAtIso: null,
-        sentByName: null,
-        receivedAtIso: null,
-        receivedByName: null,
-        returnedToOrdersAtIso: returnedAtIso,
-        returnedToOrdersByName: actor.name,
-        cancelledAtIso: null,
-        cancelledByName: null,
-        comment: `${candidate.comment}${candidate.comment ? " · " : ""}Envío devuelto a pedidos por ${actor.name}.`,
-      } : candidate));
-      toast.success(`${movement.folio} regresó a Pedidos de sucursales; el stock reservado volvió a bodega.`);
+      setWarehouseMovements((current) =>
+        current.map((candidate) =>
+          candidate.id === id
+            ? {
+                ...candidate,
+                status: "REQUESTED",
+                creationApprovedAtIso: null,
+                creationApprovedByName: null,
+                sentAtIso: null,
+                sentByName: null,
+                receivedAtIso: null,
+                receivedByName: null,
+                returnedToOrdersAtIso: returnedAtIso,
+                returnedToOrdersByName: actor.name,
+                cancelledAtIso: null,
+                cancelledByName: null,
+                comment: `${candidate.comment}${candidate.comment ? " · " : ""}Envío devuelto a pedidos por ${actor.name}.`,
+              }
+            : candidate,
+        ),
+      );
+      toast.success(
+        `${movement.folio} regresó a Solicitudes de sucursales; el stock reservado volvió al almacén matriz.`,
+      );
       return true;
     }
     reverseWarehouseMovement(movement);
-    setWarehouseMovements((current) => current.map((candidate) => candidate.id === id ? {
-      ...candidate,
-      status: "CANCELLED",
-      cancelledAtIso: new Date().toISOString(),
-      cancelledByName: actor.name,
-    } : candidate));
+    setWarehouseMovements((current) =>
+      current.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              status: "CANCELLED",
+              cancelledAtIso: new Date().toISOString(),
+              cancelledByName: actor.name,
+            }
+          : candidate,
+      ),
+    );
     toast.success(`${movement.folio} cancelado; inventarios revertidos.`);
     return true;
   };
 
   const deleteWarehouseMovement = (id: string, code: string) => {
     const actor = warehouseAuthorizationActor(code);
-    const movement = warehouseMovements.find((candidate) => candidate.id === id);
+    const movement = warehouseMovements.find(
+      (candidate) => candidate.id === id,
+    );
     if (!actor || !movement) {
       toast.error("Código sin permiso para borrar el movimiento.");
       return false;
     }
-    if (!["DRAFT", "REQUESTED", "CANCELLED"].includes(movement.status)) reverseWarehouseMovement(movement);
-    setWarehouseMovements((current) => current.filter((candidate) => candidate.id !== id));
-    toast.success(`${movement.folio} eliminado por ${actor.name}; cualquier impacto fue revertido.`);
+    if (!["DRAFT", "REQUESTED", "CANCELLED"].includes(movement.status))
+      reverseWarehouseMovement(movement);
+    setWarehouseMovements((current) =>
+      current.filter((candidate) => candidate.id !== id),
+    );
+    toast.success(
+      `${movement.folio} eliminado por ${actor.name}; cualquier impacto fue revertido.`,
+    );
     return true;
   };
 
   const saveWarehouseCategory = (id: string | null, name: string) => {
     if (!canManageWarehouse) return false;
     const normalized = name.trim();
-    if (!normalized || warehouseCategories.some((category) => category.id !== id && category.name.toLocaleLowerCase("es-MX") === normalized.toLocaleLowerCase("es-MX"))) {
+    if (
+      !normalized ||
+      warehouseCategories.some(
+        (category) =>
+          category.id !== id &&
+          category.name.toLocaleLowerCase("es-MX") ===
+            normalized.toLocaleLowerCase("es-MX"),
+      )
+    ) {
       toast.error("El concepto ya existe o no es válido.");
       return false;
     }
-    if (id) setWarehouseCategories((current) => current.map((category) => category.id === id ? { ...category, name: normalized } : category));
-    else setWarehouseCategories((current) => [...current, { id: `warehouse-category-${crypto.randomUUID()}`, name: normalized, active: true, createdAtIso: new Date().toISOString() }]);
-    toast.success(id ? "Concepto de almacén actualizado." : "Concepto de almacén agregado.");
+    if (id)
+      setWarehouseCategories((current) =>
+        current.map((category) =>
+          category.id === id ? { ...category, name: normalized } : category,
+        ),
+      );
+    else
+      setWarehouseCategories((current) => [
+        ...current,
+        {
+          id: `warehouse-category-${crypto.randomUUID()}`,
+          name: normalized,
+          active: true,
+          createdAtIso: new Date().toISOString(),
+        },
+      ]);
+    toast.success(
+      id ? "Concepto de almacén actualizado." : "Concepto de almacén agregado.",
+    );
     return true;
   };
 
   const toggleWarehouseCategory = (id: string) => {
     if (!canManageWarehouse) return;
-    setWarehouseCategories((current) => current.map((category) => category.id === id ? { ...category, active: !category.active } : category));
+    setWarehouseCategories((current) =>
+      current.map((category) =>
+        category.id === id
+          ? { ...category, active: !category.active }
+          : category,
+      ),
+    );
   };
 
   const deleteWarehouseCategory = (id: string) => {
     if (!canManageWarehouse) return;
-    const used = warehouseMovements.some((movement) => movement.categoryId === id);
-    setWarehouseCategories((current) => used ? current.map((category) => category.id === id ? { ...category, active: false } : category) : current.filter((category) => category.id !== id));
-    toast.success(used ? "Concepto inactivado; los históricos conservaron su nombre." : "Concepto eliminado.");
+    const used = warehouseMovements.some(
+      (movement) => movement.categoryId === id,
+    );
+    setWarehouseCategories((current) =>
+      used
+        ? current.map((category) =>
+            category.id === id ? { ...category, active: false } : category,
+          )
+        : current.filter((category) => category.id !== id),
+    );
+    toast.success(
+      used
+        ? "Concepto inactivado; los históricos conservaron su nombre."
+        : "Concepto eliminado.",
+    );
   };
 
   const toggleWarehouseSupplyVisibility = (id: string) => {
     if (!canManageWarehouse) return;
-    setWarehouseSupplies((current) => current.map((supply) => supply.id === id
-      ? { ...supply, branchVisible: !supply.branchVisible }
-      : supply));
-    toast.success("Visibilidad del insumo actualizada para nuevas solicitudes de sucursal.");
+    setWarehouseSupplies((current) =>
+      current.map((supply) =>
+        supply.id === id
+          ? { ...supply, branchVisible: !supply.branchVisible }
+          : supply,
+      ),
+    );
+    toast.success(
+      "Visibilidad del insumo actualizada para nuevas solicitudes de sucursal.",
+    );
   };
 
   const saveWarehouseSupplier = (supplier: WarehouseSupplier) => {
     const folio = supplier.folio.trim().toLocaleUpperCase("es-MX");
     const rfc = supplier.rfc.trim().toLocaleUpperCase("es-MX");
-    const duplicate = warehouseSuppliers.some((candidate) => candidate.id !== supplier.id && (candidate.folio === folio || candidate.rfc === rfc));
-    if (!canManageWarehouse || !supplier.businessName.trim() || !folio || !rfc || duplicate) {
-      toast.error(duplicate ? "El folio o RFC ya pertenece a otro proveedor." : "Completa razón social, folio y RFC del proveedor.");
+    const duplicate = warehouseSuppliers.some(
+      (candidate) =>
+        candidate.id !== supplier.id &&
+        (candidate.folio === folio || candidate.rfc === rfc),
+    );
+    if (
+      !canManageWarehouse ||
+      !supplier.businessName.trim() ||
+      !folio ||
+      !rfc ||
+      duplicate
+    ) {
+      toast.error(
+        duplicate
+          ? "El folio o RFC ya pertenece a otro proveedor."
+          : "Completa razón social, folio y RFC del proveedor.",
+      );
       return false;
     }
-    const exists = warehouseSuppliers.some((candidate) => candidate.id === supplier.id);
-    const normalized = { ...supplier, folio, rfc, businessName: supplier.businessName.trim() };
-    setWarehouseSuppliers((current) => exists ? current.map((candidate) => candidate.id === supplier.id ? normalized : candidate) : [normalized, ...current]);
-    setWarehouseSupplies((current) => current.map((item) => item.supplierId === supplier.id ? { ...item, supplierName: normalized.businessName } : item));
-    setCatalogProducts((current) => current.map((product) => product.supplierId === supplier.id ? { ...product, supplierName: normalized.businessName } : product));
-    toast.success(exists ? "Proveedor y referencias actuales actualizados." : `${normalized.folio} registrado.`);
+    const exists = warehouseSuppliers.some(
+      (candidate) => candidate.id === supplier.id,
+    );
+    const normalized = {
+      ...supplier,
+      folio,
+      rfc,
+      businessName: supplier.businessName.trim(),
+    };
+    setWarehouseSuppliers((current) =>
+      exists
+        ? current.map((candidate) =>
+            candidate.id === supplier.id ? normalized : candidate,
+          )
+        : [normalized, ...current],
+    );
+    setWarehouseSupplies((current) =>
+      current.map((item) =>
+        item.supplierId === supplier.id
+          ? { ...item, supplierName: normalized.businessName }
+          : item,
+      ),
+    );
+    setCatalogProducts((current) =>
+      current.map((product) =>
+        product.supplierId === supplier.id
+          ? { ...product, supplierName: normalized.businessName }
+          : product,
+      ),
+    );
+    toast.success(
+      exists
+        ? "Proveedor y referencias actuales actualizados."
+        : `${normalized.folio} registrado.`,
+    );
     return true;
   };
 
   const toggleWarehouseSupplier = (id: string) => {
     if (!canManageWarehouse) return;
-    setWarehouseSuppliers((current) => current.map((supplier) => supplier.id === id ? { ...supplier, active: !supplier.active } : supplier));
-  };
-
-  const deleteWarehouseSupplier = (id: string) => {
-    if (!canManageWarehouse) return;
-    const used = warehouseSupplies.some((item) => item.supplierId === id) || catalogProducts.some((product) => product.supplierId === id) || warehouseMovements.some((movement) => movement.supplierId === id || movement.lines.some((line) => line.supplierId === id));
-    setWarehouseSuppliers((current) => used ? current.map((supplier) => supplier.id === id ? { ...supplier, active: false } : supplier) : current.filter((supplier) => supplier.id !== id));
-    toast.success(used ? "Proveedor inactivado; pedidos y productos conservaron su histórico." : "Proveedor eliminado.");
+    const supplier = warehouseSuppliers.find(
+      (candidate) => candidate.id === id,
+    );
+    if (!supplier) return;
+    setWarehouseSuppliers((current) =>
+      current.map((candidate) =>
+        candidate.id === id
+          ? { ...candidate, active: !candidate.active }
+          : candidate,
+      ),
+    );
+    toast.success(
+      supplier.active
+        ? "Proveedor dado de baja. Sus órdenes, costos y movimientos anteriores se conservan sin cambios."
+        : "Proveedor reactivado para operaciones nuevas.",
+    );
   };
 
   const saveWarehouseSupply = (item: WarehouseSupplyItem) => {
-    const duplicate = warehouseSupplies.some((candidate) => candidate.id !== item.id && candidate.sku === item.sku) || catalogProducts.some((product) => product.sku === item.sku);
-    const supplier = item.supplierId ? warehouseSuppliers.find((candidate) => candidate.id === item.supplierId) : null;
-    if (!canManageWarehouse || !item.name.trim() || !item.sku.trim() || item.stockMax < item.stockMin || duplicate) {
-      toast.error(duplicate ? "El SKU ya está registrado." : "Revisa nombre, SKU y límites de stock.");
+    const duplicate =
+      warehouseSupplies.some(
+        (candidate) => candidate.id !== item.id && candidate.sku === item.sku,
+      ) || catalogProducts.some((product) => product.sku === item.sku);
+    const supplier = item.supplierId
+      ? warehouseSuppliers.find((candidate) => candidate.id === item.supplierId)
+      : null;
+    if (
+      !canManageWarehouse ||
+      !item.name.trim() ||
+      !item.sku.trim() ||
+      item.stockMax < item.stockMin ||
+      duplicate
+    ) {
+      toast.error(
+        duplicate
+          ? "El SKU ya está registrado."
+          : "Revisa nombre, SKU y límites de stock.",
+      );
       return false;
     }
-    const exists = warehouseSupplies.some((candidate) => candidate.id === item.id);
-    const normalized = { ...item, name: item.name.trim(), sku: item.sku.trim().toLocaleUpperCase("es-MX"), supplierName: supplier?.businessName ?? null };
-    setWarehouseSupplies((current) => exists ? current.map((candidate) => candidate.id === item.id ? normalized : candidate) : [normalized, ...current]);
+    const exists = warehouseSupplies.some(
+      (candidate) => candidate.id === item.id,
+    );
+    const normalized = {
+      ...item,
+      name: item.name.trim(),
+      sku: item.sku.trim().toLocaleUpperCase("es-MX"),
+      supplierName: supplier?.businessName ?? null,
+    };
+    setWarehouseSupplies((current) =>
+      exists
+        ? current.map((candidate) =>
+            candidate.id === item.id ? normalized : candidate,
+          )
+        : [normalized, ...current],
+    );
     if (!exists) {
       setWarehouseStock((current) => ({ ...current, [item.id]: 0 }));
-      setWarehousePriceLists((current) => current.map((list) => ({ ...list, items: [...list.items, { productId: item.id, priceMxn: item.partnerCost, priceUsd: Math.round(item.costUsd * 1.22 * 100) / 100 }] })));
+      setWarehousePriceLists((current) =>
+        current.map((list) => ({
+          ...list,
+          items: [
+            ...list.items,
+            {
+              productId: item.id,
+              priceMxn: item.partnerCost,
+              priceUsd: Math.round(item.costUsd * 1.22 * 100) / 100,
+            },
+          ],
+        })),
+      );
     }
-    toast.success(exists ? "Producto de bodega actualizado en módulos actuales." : "Producto agregado a bodega con existencia inicial en cero.");
+    toast.success(
+      exists
+        ? "Producto de bodega actualizado en módulos actuales."
+        : "Producto agregado a bodega con existencia inicial en cero.",
+    );
     return true;
+  };
+
+  const saveWarehouseSupplies = (items: WarehouseSupplyItem[]) => {
+    if (!canManageWarehouse) {
+      return {
+        saved: 0,
+        errors: ["No tienes permiso para dar de alta productos de proveedor."],
+      };
+    }
+    const existingSkus = new Set([
+      ...warehouseSupplies.map((item) =>
+        item.sku.trim().toLocaleUpperCase("es-MX"),
+      ),
+      ...catalogProducts.map((product) =>
+        product.sku.trim().toLocaleUpperCase("es-MX"),
+      ),
+    ]);
+    const batchSkus = new Set<string>();
+    const errors: string[] = [];
+    const normalizedItems = items.map((item, index) => {
+      const row = index + 2;
+      const sku = item.sku.trim().toLocaleUpperCase("es-MX");
+      if (
+        !item.name.trim() ||
+        !sku ||
+        !item.family.trim() ||
+        !item.category.trim() ||
+        !item.unit.trim() ||
+        !item.presentation.trim()
+      ) {
+        errors.push(
+          `Fila ${row}: completa nombre, SKU, familia, categoría, unidad y presentación.`,
+        );
+      }
+      if (existingSkus.has(sku) || batchSkus.has(sku)) {
+        errors.push(
+          `Fila ${row}: el SKU ${sku || "vacío"} ya está registrado o repetido en el archivo.`,
+        );
+      }
+      if (
+        [
+          item.costMxn,
+          item.costUsd,
+          item.partnerCost,
+          item.retailPrice,
+          item.stockMin,
+          item.stockMax,
+        ].some((value) => !Number.isFinite(value) || value < 0)
+      ) {
+        errors.push(
+          `Fila ${row}: costos, precios y límites de stock deben ser números iguales o mayores a cero.`,
+        );
+      }
+      if (!Number.isInteger(item.unitsPerPackage) || item.unitsPerPackage < 1) {
+        errors.push(
+          `Fila ${row}: piezas por caja debe ser un entero mayor a cero.`,
+        );
+      }
+      if (item.stockMax < item.stockMin) {
+        errors.push(
+          `Fila ${row}: el stock máximo no puede ser menor al mínimo.`,
+        );
+      }
+      batchSkus.add(sku);
+      const supplier = item.supplierId
+        ? warehouseSuppliers.find(
+            (candidate) => candidate.id === item.supplierId,
+          )
+        : null;
+      return {
+        ...item,
+        name: item.name.trim(),
+        sku,
+        family: item.family.trim(),
+        category: item.category.trim(),
+        unit: item.unit.trim(),
+        presentation: item.presentation.trim(),
+        supplierName: supplier?.businessName ?? null,
+      };
+    });
+    if (errors.length > 0) return { saved: 0, errors };
+
+    setWarehouseSupplies((current) => [...normalizedItems, ...current]);
+    setWarehouseStock((current) => ({
+      ...current,
+      ...Object.fromEntries(normalizedItems.map((item) => [item.id, 0])),
+    }));
+    setWarehousePriceLists((current) =>
+      current.map((list) => ({
+        ...list,
+        items: [
+          ...list.items,
+          ...normalizedItems.map((item) => ({
+            productId: item.id,
+            priceMxn: item.partnerCost,
+            priceUsd: Math.round(item.costUsd * 1.22 * 100) / 100,
+          })),
+        ],
+      })),
+    );
+    toast.success(
+      `${normalizedItems.length} productos dados de alta para el proveedor.`,
+    );
+    return { saved: normalizedItems.length, errors: [] };
   };
 
   const deleteWarehouseSupply = (id: string) => {
     if (!canManageWarehouse) return;
-    const used = warehouseMovements.some((movement) => movement.lines.some((line) => line.productId === id));
-    setWarehouseSupplies((current) => used ? current.map((item) => item.id === id ? { ...item, active: false, branchVisible: false } : item) : current.filter((item) => item.id !== id));
-    if (!used) setWarehousePriceLists((current) => current.map((list) => ({ ...list, items: list.items.filter((price) => price.productId !== id) })));
-    toast.success(used ? "Artículo inactivado; el historial permanece intacto." : "Artículo eliminado de bodega.");
+    const used = warehouseMovements.some((movement) =>
+      movement.lines.some((line) => line.productId === id),
+    );
+    setWarehouseSupplies((current) =>
+      used
+        ? current.map((item) =>
+            item.id === id
+              ? { ...item, active: false, branchVisible: false }
+              : item,
+          )
+        : current.filter((item) => item.id !== id),
+    );
+    if (!used)
+      setWarehousePriceLists((current) =>
+        current.map((list) => ({
+          ...list,
+          items: list.items.filter((price) => price.productId !== id),
+        })),
+      );
+    toast.success(
+      used
+        ? "Artículo inactivado; el historial permanece intacto."
+        : "Artículo eliminado de bodega.",
+    );
   };
 
   const saveWarehousePriceList = (list: WarehousePriceList) => {
-    const normalizedBranches = [...new Set(list.branchNames)].filter((branch) => operationalBranches.includes(branch));
-    const normalizedClients = [...new Set(list.clientIds)].filter((id) => clients.some((client) => client.id === id));
-    if (!canManageWarehouse || !list.name.trim() || normalizedBranches.length === 0 || list.items.length === 0 || list.items.some((item) => item.priceMxn < 0 || item.priceUsd < 0)) {
+    const normalizedBranches = [...new Set(list.branchNames)].filter((branch) =>
+      operationalBranches.includes(branch),
+    );
+    const normalizedBusinessCustomers = [
+      ...new Set(list.businessCustomerIds),
+    ].filter((id) =>
+      warehouseBusinessCustomers.some(
+        (customer) => customer.id === id && customer.active,
+      ),
+    );
+    if (
+      !canManageWarehouse ||
+      !list.name.trim() ||
+      normalizedBranches.length === 0 ||
+      list.items.length === 0 ||
+      list.items.some((item) => item.priceMxn < 0 || item.priceUsd < 0)
+    ) {
       toast.error("Revisa nombre, sucursales y precios de la lista.");
       return false;
     }
-    const normalizedList = { ...list, name: list.name.trim(), branchNames: normalizedBranches, clientIds: normalizedClients };
-    setWarehousePriceLists((current) => current.some((candidate) => candidate.id === list.id)
-      ? current.map((candidate) => candidate.id === list.id ? normalizedList : candidate)
-      : [normalizedList, ...current]);
-    toast.success("Lista de precios guardada para nuevas solicitudes.");
+    const normalizedList = {
+      ...list,
+      name: list.name.trim(),
+      branchNames: normalizedBranches,
+      businessCustomerIds: normalizedBusinessCustomers,
+    };
+    setWarehousePriceLists((current) =>
+      current.some((candidate) => candidate.id === list.id)
+        ? current.map((candidate) =>
+            candidate.id === list.id ? normalizedList : candidate,
+          )
+        : [normalizedList, ...current],
+    );
+    toast.success(
+      "Lista guardada para operaciones nuevas. Los movimientos anteriores conservaron sus precios originales.",
+    );
     return true;
   };
 
   const toggleWarehousePriceList = (id: string) => {
     if (!canManageWarehouse) return;
-    setWarehousePriceLists((current) => current.map((list) => list.id === id ? { ...list, active: !list.active } : list));
+    setWarehousePriceLists((current) =>
+      current.map((list) =>
+        list.id === id ? { ...list, active: !list.active } : list,
+      ),
+    );
   };
 
   const deleteWarehousePriceList = (id: string) => {
     if (!canManageWarehouse) return;
-    const used = warehouseMovements.some((movement) => movement.priceListId === id);
-    setWarehousePriceLists((current) => used
-      ? current.map((list) => list.id === id ? { ...list, active: false } : list)
-      : current.filter((list) => list.id !== id));
-    toast.success(used ? "Lista inactivada; los pedidos históricos conservaron sus precios." : "Lista de precios eliminada.");
+    const used = warehouseMovements.some(
+      (movement) => movement.priceListId === id,
+    );
+    setWarehousePriceLists((current) =>
+      used
+        ? current.map((list) =>
+            list.id === id ? { ...list, active: false } : list,
+          )
+        : current.filter((list) => list.id !== id),
+    );
+    toast.success(
+      used
+        ? "Lista inactivada; los pedidos históricos conservaron sus precios."
+        : "Lista de precios eliminada.",
+    );
   };
 
   const applyTerminalLocation = (branch: string) => {
@@ -2540,8 +3495,7 @@ function App() {
     setReceiptSettings((current) => ({
       ...current,
       branchName: `Sucursal ${branch}`,
-      address:
-        branchAddresses[branch] ?? "Dirección pendiente de configurar",
+      address: branchAddresses[branch] ?? "Dirección pendiente de configurar",
     }));
     window.localStorage.setItem(terminalLocationStorageKey, branch);
     return true;
@@ -2558,7 +3512,9 @@ function App() {
 
   const confirmLocationSwitch = () => {
     if (!isMasterAccessCode(locationSwitchCode)) {
-      toast.error("Código incorrecto. Sólo el usuario master puede cambiar la ubicación.");
+      toast.error(
+        "Código incorrecto. Sólo el usuario master puede cambiar la ubicación.",
+      );
       return;
     }
     if (!locationSwitchTarget || !branchInventory[locationSwitchTarget]) {
@@ -2566,7 +3522,9 @@ function App() {
       return;
     }
     if (locationSwitchTarget === activeBranch) {
-      toast.info(`${activeBranch} ya es la ubicación fija de esta computadora.`);
+      toast.info(
+        `${activeBranch} ya es la ubicación fija de esta computadora.`,
+      );
       setLocationSwitchOpen(false);
       setLocationSwitchCode("");
       return;
@@ -2587,7 +3545,10 @@ function App() {
   }, [activeBranch, branchInventory]);
 
   useEffect(() => {
-    const clockInterval = window.setInterval(() => setSyncClock(Date.now()), 1_000);
+    const clockInterval = window.setInterval(
+      () => setSyncClock(Date.now()),
+      1_000,
+    );
     return () => window.clearInterval(clockInterval);
   }, []);
 
@@ -2599,7 +3560,12 @@ function App() {
     )
       return;
     setSessionDataSync((current) => ({ ...current, updating: true }));
-  }, [isOnline, sessionDataSync.nextUpdateAt, sessionDataSync.updating, syncClock]);
+  }, [
+    isOnline,
+    sessionDataSync.nextUpdateAt,
+    sessionDataSync.updating,
+    syncClock,
+  ]);
 
   useEffect(() => {
     if (!sessionDataSync.updating) return;
@@ -2798,7 +3764,9 @@ function App() {
       setCompetitionSettingsOpen(false);
       setDealAccessAuthorized(false);
       setEmployeeAccessAuthorized(false);
-      toast.info("Los módulos master se bloquearon por 3 minutos de inactividad.");
+      toast.info(
+        "Los módulos master se bloquearon por 3 minutos de inactividad.",
+      );
     };
     const restartTimer = () => {
       window.clearTimeout(inactivityTimer);
@@ -2847,8 +3815,7 @@ function App() {
         seller.roleId === role.id
           ? {
               ...seller,
-              canViewCosts:
-                role.configurationAccess.includes("REPORTS_COSTS"),
+              canViewCosts: role.configurationAccess.includes("REPORTS_COSTS"),
             }
           : seller,
       ),
@@ -2917,7 +3884,8 @@ function App() {
       alias,
       accessCode,
       initials: initials || "VE",
-      canViewCosts: role?.configurationAccess.includes("REPORTS_COSTS") ?? false,
+      canViewCosts:
+        role?.configurationAccess.includes("REPORTS_COSTS") ?? false,
     };
     const sellerWasDeactivated = Boolean(
       previousSeller?.active && !normalizedSeller.active,
@@ -3060,8 +4028,7 @@ function App() {
           ? {
               ...seller,
               roleId,
-              canViewCosts:
-                role.configurationAccess.includes("REPORTS_COSTS"),
+              canViewCosts: role.configurationAccess.includes("REPORTS_COSTS"),
             }
           : seller,
       ),
@@ -3084,19 +4051,19 @@ function App() {
         return false;
       }
       if (code === administratorCode) {
-        toast.error("Usa un código delegado diferente al código principal de Master Keysar.");
+        toast.error(
+          "Usa un código delegado diferente al código principal de Master Keysar.",
+        );
         return false;
       }
       if (sellers.some((seller) => seller.accessCode === code)) {
-        toast.error("El código coincide con una clave personal de asistencia. Elige otro.");
+        toast.error(
+          "El código coincide con una clave personal de asistencia. Elige otro.",
+        );
         return false;
       }
     }
-    if (
-      sellers.some(
-        (seller) => selected.has(seller.id) && !seller.active,
-      )
-    ) {
+    if (sellers.some((seller) => selected.has(seller.id) && !seller.active)) {
       toast.error("No se puede asignar acceso master a un empleado de baja.");
       return false;
     }
@@ -3113,7 +4080,9 @@ function App() {
   const saveDeal = (deal: RetailDeal) => {
     setDeals((current) =>
       current.some((candidate) => candidate.id === deal.id)
-        ? current.map((candidate) => (candidate.id === deal.id ? deal : candidate))
+        ? current.map((candidate) =>
+            candidate.id === deal.id ? deal : candidate,
+          )
         : [deal, ...current],
     );
   };
@@ -3123,7 +4092,9 @@ function App() {
     const deal = deals.find((candidate) => candidate.id === dealId);
     if (!deal) return false;
     const costTotal = deal.lines.reduce((sum, line) => {
-      const product = catalogProducts.find((candidate) => candidate.id === line.productId);
+      const product = catalogProducts.find(
+        (candidate) => candidate.id === line.productId,
+      );
       return sum + (product?.costMxn ?? 0) * line.quantity;
     }, 0);
     if (deal.price < costTotal || deal.lines.length < 2) return false;
@@ -3148,7 +4119,9 @@ function App() {
         deal.id === dealId ? { ...deal, status: "INACTIVE" } : deal,
       ),
     );
-    toast.info("Paquete inactivado. Los tickets históricos conservaron su registro.");
+    toast.info(
+      "Paquete inactivado. Los tickets históricos conservaron su registro.",
+    );
   };
 
   const authorizeCompetitionSettings = (code: string) => {
@@ -3197,8 +4170,7 @@ function App() {
 
   const clockInSeller = (accessCode: string, branch: string): boolean => {
     const seller = sellers.find(
-      (candidate) =>
-        candidate.active && candidate.accessCode === accessCode,
+      (candidate) => candidate.active && candidate.accessCode === accessCode,
     );
     if (!seller) {
       toast.error("Código de vendedor incorrecto o inactivo.");
@@ -3206,8 +4178,7 @@ function App() {
     }
     if (
       attendanceRecords.some(
-        (record) =>
-          record.sellerId === seller.id && record.status === "ONLINE",
+        (record) => record.sellerId === seller.id && record.status === "ONLINE",
       )
     ) {
       toast.info(`${seller.name} ya se encuentra ONLINE.`);
@@ -3245,8 +4216,7 @@ function App() {
 
   const clockOutSeller = (recordId: string): boolean => {
     const record = attendanceRecords.find(
-      (candidate) =>
-        candidate.id === recordId && candidate.status === "ONLINE",
+      (candidate) => candidate.id === recordId && candidate.status === "ONLINE",
     );
     if (!record) {
       toast.error("La entrada activa ya no está disponible.");
@@ -3342,7 +4312,8 @@ function App() {
         (expense) =>
           expense.status === "ACTIVE" &&
           expense.branch === activeBranch &&
-          expense.expenseDate === operationalBusinessDate(clockOutDate.toISOString()),
+          expense.expenseDate ===
+            operationalBusinessDate(clockOutDate.toISOString()),
       )
       .reduce((sum, expense) => sum + expense.amount, 0);
     pushOperationalNotification({
@@ -3393,7 +4364,9 @@ function App() {
 
   const exitSessionWithoutCloseDay = () => {
     if (!sessionUser || !canExitWithoutCloseDay) {
-      toast.error("Tu perfil no tiene permiso para salir sin realizar Close day.");
+      toast.error(
+        "Tu perfil no tiene permiso para salir sin realizar Close day.",
+      );
       return;
     }
     const departingUserName = sessionUser.name;
@@ -3452,17 +4425,22 @@ function App() {
         (candidate.accessCode === code || candidate.masterAccessCode === code),
     );
     if (!seller) {
-      setCloseDayAuthorizationError("Usuario o clave incorrectos. El corte no fue registrado.");
+      setCloseDayAuthorizationError(
+        "Usuario o clave incorrectos. El corte no fue registrado.",
+      );
       return;
     }
     completeCloseDay({ id: seller.id, name: seller.name });
   };
 
   const updateClientRecord = async (updatedClient: Client) => {
-    const previousClient = clients.find((client) => client.id === updatedClient.id);
+    const previousClient = clients.find(
+      (client) => client.id === updatedClient.id,
+    );
     if (!previousClient) return;
     const previousName = `${previousClient.firstName} ${previousClient.lastName}`;
-    const updatedName = `${updatedClient.firstName.trim()} ${updatedClient.lastName.trim()}`.trim();
+    const updatedName =
+      `${updatedClient.firstName.trim()} ${updatedClient.lastName.trim()}`.trim();
     let synchronizedClient: Client = {
       ...updatedClient,
       firstName: updatedClient.firstName.trim(),
@@ -3493,22 +4471,29 @@ function App() {
     }
     setClients((current) =>
       current.map((client) =>
-        client.id === updatedClient.id
-          ? synchronizedClient
-          : client,
+        client.id === updatedClient.id ? synchronizedClient : client,
       ),
     );
     setTickets((current) =>
       current.map((ticket) =>
-        ticket.clientPhone === previousClient.phone || ticket.clientName === previousName
-          ? { ...ticket, clientName: updatedName, clientPhone: updatedClient.phone }
+        ticket.clientPhone === previousClient.phone ||
+        ticket.clientName === previousName
+          ? {
+              ...ticket,
+              clientName: updatedName,
+              clientPhone: updatedClient.phone,
+            }
           : ticket,
       ),
     );
     setAppointments((current) =>
       current.map((appointment) =>
         appointment.clientId === updatedClient.id
-          ? { ...appointment, clientName: updatedName, clientPhone: updatedClient.phone }
+          ? {
+              ...appointment,
+              clientName: updatedName,
+              clientPhone: updatedClient.phone,
+            }
           : appointment,
       ),
     );
@@ -3532,14 +4517,22 @@ function App() {
     setLayaways((current) =>
       current.map((layaway) =>
         layaway.clientId === updatedClient.id
-          ? { ...layaway, clientName: updatedName, clientPhone: updatedClient.phone }
+          ? {
+              ...layaway,
+              clientName: updatedName,
+              clientPhone: updatedClient.phone,
+            }
           : layaway,
       ),
     );
     setOwedProducts((current) =>
       current.map((record) =>
         record.clientId === updatedClient.id
-          ? { ...record, clientName: updatedName, clientPhone: updatedClient.phone }
+          ? {
+              ...record,
+              clientName: updatedName,
+              clientPhone: updatedClient.phone,
+            }
           : record,
       ),
     );
@@ -3568,7 +4561,10 @@ function App() {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== "string") return;
-      setReceiptSettings((current) => ({ ...current, logoUrl: reader.result as string }));
+      setReceiptSettings((current) => ({
+        ...current,
+        logoUrl: reader.result as string,
+      }));
       toast.success("Logo cargado y ajustado al formato de impresión.");
     };
     reader.onerror = () => toast.error("No fue posible leer la imagen.");
@@ -3602,7 +4598,9 @@ function App() {
     [tickets],
   );
   useEffect(() => {
-    const currentMonth = operationalBusinessDate(new Date().toISOString()).slice(0, 7);
+    const currentMonth = operationalBusinessDate(
+      new Date().toISOString(),
+    ).slice(0, 7);
     const monthlyCounts = tickets
       .filter(
         (ticket) =>
@@ -3730,7 +4728,9 @@ function App() {
     );
     return [
       "Todas",
-      ...Array.from(new Set(scoped.map((product) => getSaleProductBrand(product)))),
+      ...Array.from(
+        new Set(scoped.map((product) => getSaleProductBrand(product))),
+      ),
     ];
   }, [saleProducts, selectedCategory, selectedFamily]);
   const filteredProducts = useMemo(() => {
@@ -3743,8 +4743,10 @@ function App() {
       return (
         matchesSearch &&
         (selectedFamily === "Todos" || product.family === selectedFamily) &&
-        (selectedCategory === "Todas" || product.category === selectedCategory) &&
-        (selectedBrand === "Todas" || getSaleProductBrand(product) === selectedBrand)
+        (selectedCategory === "Todas" ||
+          product.category === selectedCategory) &&
+        (selectedBrand === "Todas" ||
+          getSaleProductBrand(product) === selectedBrand)
       );
     });
   }, [saleProducts, search, selectedBrand, selectedCategory, selectedFamily]);
@@ -3779,10 +4781,7 @@ function App() {
     discountDraftMode === "PERCENT"
       ? maxPromotionalDiscountPercent
       : maxPromotionalDiscount;
-  const normalizedDiscountDraftValue = Math.max(
-    0,
-    discountDraftValue || 0,
-  );
+  const normalizedDiscountDraftValue = Math.max(0, discountDraftValue || 0);
   const discountDraftAmount = Math.min(
     maxPromotionalDiscount,
     discountDraftMode === "PERCENT"
@@ -3792,7 +4791,7 @@ function App() {
   const discountDraftTotal = Math.max(0, cartSubtotal - discountDraftAmount);
   const ticketTotal = Math.max(0, cartSubtotal - ticketDiscountAmount);
   const activeExpansionLayaway = expandingLayawayId
-    ? layaways.find((layaway) => layaway.id === expandingLayawayId) ?? null
+    ? (layaways.find((layaway) => layaway.id === expandingLayawayId) ?? null)
     : null;
   const expansionIncrement = activeExpansionLayaway
     ? Math.max(0, roundCurrency(ticketTotal - activeExpansionLayaway.total))
@@ -4049,10 +5048,13 @@ function App() {
 
   const reserveAgendaSlotIds = (slotIds: string[]) => {
     if (slotIds.length === 0) return true;
-    const requestedSeats = slotIds.reduce<Map<string, number>>((summary, id) => {
-      summary.set(id, (summary.get(id) ?? 0) + 1);
-      return summary;
-    }, new Map());
+    const requestedSeats = slotIds.reduce<Map<string, number>>(
+      (summary, id) => {
+        summary.set(id, (summary.get(id) ?? 0) + 1);
+        return summary;
+      },
+      new Map(),
+    );
     const hasConflict = Array.from(requestedSeats).some(([slotId, seats]) => {
       const slot = agendaSlots.find((candidate) => candidate.id === slotId);
       return (
@@ -4132,8 +5134,7 @@ function App() {
       if (item.product.kind === "MEMBERSHIP")
         finalMembershipQuantities.set(
           item.product.id,
-          (finalMembershipQuantities.get(item.product.id) ?? 0) +
-            item.quantity,
+          (finalMembershipQuantities.get(item.product.id) ?? 0) + item.quantity,
         );
     });
     if (
@@ -4175,9 +5176,8 @@ function App() {
     if (isOnline && requestedAgendaSlotIds.length > 0) {
       try {
         if (!agendaClientId) {
-          agendaClientId = (
-            await agendaGateway.upsertClient(result.client)
-          ).externalClientId;
+          agendaClientId = (await agendaGateway.upsertClient(result.client))
+            .externalClientId;
         }
         const reservableAppointments = result.appointments.filter(
           (appointment) => appointment.agendaSlotId,
@@ -4195,7 +5195,8 @@ function App() {
           idempotencyKey: `expansion-${expansionTicketId}-agenda`,
           clientId: result.client.id,
           externalClientId: agendaClientId,
-          clientName: `${result.client.firstName} ${result.client.lastName}`.trim(),
+          clientName:
+            `${result.client.firstName} ${result.client.lastName}`.trim(),
           ticketId: expansionTicketId,
           membershipId: membershipAppointment?.membershipId ?? null,
           services: reservableAppointments.map(
@@ -4207,6 +5208,12 @@ function App() {
               slotId,
             seats,
           })),
+          appointmentLinks: reservableAppointments.map((appointment) => ({
+            service: appointment.service,
+            externalSlotId:
+              appointment.externalSlotId ?? appointment.agendaSlotId ?? "",
+            membershipId: appointment.membershipId ?? null,
+          })),
           source: membershipAppointment ? "MEMBERSHIP" : "NEXT_SESSION",
         });
         if (agendaReservation.status === "CONFLICT") {
@@ -4217,7 +5224,9 @@ function App() {
           return false;
         }
       } catch {
-        toast.error("No fue posible registrar la cita de la ampliación en Agenda.");
+        toast.error(
+          "No fue posible registrar la cita de la ampliación en Agenda.",
+        );
         return false;
       }
     }
@@ -4235,10 +5244,7 @@ function App() {
       const allocated: PaymentEntry[] = [];
       const remainder: PaymentEntry[] = [];
       payments.forEach((payment) => {
-        const applied = Math.min(
-          remainingTarget,
-          Math.max(0, payment.amount),
-        );
+        const applied = Math.min(remainingTarget, Math.max(0, payment.amount));
         const leftover = roundCurrency(payment.amount - applied);
         if (applied > 0)
           allocated.push({ ...payment, amount: roundCurrency(applied) });
@@ -4306,8 +5312,7 @@ function App() {
       finalLines.set(item.product.id, {
         name: item.product.name,
         quantity: (current?.quantity ?? 0) + item.quantity,
-        total:
-          (current?.total ?? 0) + item.unitPrice * item.quantity,
+        total: (current?.total ?? 0) + item.unitPrice * item.quantity,
       });
     });
     const changedProductIds = Array.from(
@@ -4317,7 +5322,9 @@ function App() {
       const original = originalLines.get(productId);
       const final = finalLines.get(productId);
       const quantity = (final?.quantity ?? 0) - (original?.quantity ?? 0);
-      const amount = roundCurrency((final?.total ?? 0) - (original?.total ?? 0));
+      const amount = roundCurrency(
+        (final?.total ?? 0) - (original?.total ?? 0),
+      );
       if (quantity === 0 && Math.abs(amount) < 0.01) return [];
       return [
         {
@@ -4351,20 +5358,18 @@ function App() {
       productName: item.product.name,
       kind: item.product.kind,
       quantity: item.quantity,
-      deliveredQuantity:
-        item.product.kind === "PRODUCT" ? item.quantity : 0,
+      deliveredQuantity: item.product.kind === "PRODUCT" ? item.quantity : 0,
     }));
-    const committedByProduct = expansionSource.items.reduce<Map<string, number>>(
-      (summary, item) => {
-        if (item.kind === "PRODUCT")
-          summary.set(
-            item.productId,
-            (summary.get(item.productId) ?? 0) + item.deliveredQuantity,
-          );
-        return summary;
-      },
-      new Map(),
-    );
+    const committedByProduct = expansionSource.items.reduce<
+      Map<string, number>
+    >((summary, item) => {
+      if (item.kind === "PRODUCT")
+        summary.set(
+          item.productId,
+          (summary.get(item.productId) ?? 0) + item.deliveredQuantity,
+        );
+      return summary;
+    }, new Map());
     const desiredByProduct = cart.reduce<Map<string, number>>(
       (summary, item) => {
         if (item.product.kind === "PRODUCT")
@@ -4513,8 +5518,7 @@ function App() {
           }
         : null;
 
-    const paymentRecorder =
-      humanSellerSales[0] ??
+    const paymentRecorder = humanSellerSales[0] ??
       result.sellerSales[0] ?? {
         sellerId: masterUser.id,
         sellerName: masterUser.name,
@@ -4540,13 +5544,13 @@ function App() {
                         createdAtIso,
                         amount: expansionSource.balanceDue,
                         methodId:
-                          settlementPayments[0]?.methodId ?? result.paymentMethod,
+                          settlementPayments[0]?.methodId ??
+                          result.paymentMethod,
                         payments: settlementPayments,
                         balanceAfter: 0,
                         ...(originalTicket.sellerSales[0]
                           ? {
-                              sellerId:
-                                originalTicket.sellerSales[0].sellerId,
+                              sellerId: originalTicket.sellerSales[0].sellerId,
                               sellerName:
                                 originalTicket.sellerSales[0].sellerName,
                             }
@@ -4574,17 +5578,16 @@ function App() {
               expansionStatus: "EXPANDED" as const,
               expandedByTicketId: expansionTicketId,
               expandedAtIso: createdAtIso,
-              syncStatus: isOnline ? "SYNCED" as const : "PENDING_SYNC" as const,
+              syncStatus: isOnline
+                ? ("SYNCED" as const)
+                : ("PENDING_SYNC" as const),
               syncedAtIso: isOnline ? createdAtIso : null,
             }
           : ticket,
       ),
     ]);
     if (inventoryMovements.length > 0) {
-      setInventoryMovements((current) => [
-        ...inventoryMovements,
-        ...current,
-      ]);
+      setInventoryMovements((current) => [...inventoryMovements, ...current]);
       setBranchInventory((current) => ({
         ...current,
         [branch]: nextBranchStock,
@@ -4602,7 +5605,9 @@ function App() {
       (appointment, index) => {
         const hasAgendaSlot = Boolean(appointment.agendaSlotId);
         const externalAppointmentId = hasAgendaSlot
-          ? agendaReservation?.externalAppointmentIds[externalAppointmentIndex++]
+          ? agendaReservation?.externalAppointmentIds[
+              externalAppointmentIndex++
+            ]
           : undefined;
         return {
           ...appointment,
@@ -4615,7 +5620,10 @@ function App() {
           recordedAt: createdAtLabel,
           recordedAtIso: createdAtIso,
           status:
-            appointment.kind === "NO_APPOINTMENT" ? "PENDING" : "SCHEDULED",
+            appointment.kind === "NO_APPOINTMENT" ||
+            (appointment.kind === "COURTESY" && !appointment.agendaSlotId)
+              ? "PENDING"
+              : "SCHEDULED",
           ...(hasAgendaSlot
             ? {
                 ...(agendaClientId ? { agendaClientId } : {}),
@@ -4664,10 +5672,7 @@ function App() {
     const expansionSource = expandingLayawayId
       ? layaways.find((layaway) => layaway.id === expandingLayawayId)
       : null;
-    if (
-      expansionSource &&
-      result.client.id !== expansionSource.clientId
-    ) {
+    if (expansionSource && result.client.id !== expansionSource.clientId) {
       toast.error(
         "La ampliación debe conservar la misma clienta del apartado original.",
       );
@@ -4687,6 +5692,45 @@ function App() {
     const ticketBranch = activeBranch;
     const createdAt = new Date();
     const ticketId = createUniqueFolio(tickets);
+    const clientName = `${result.client.firstName} ${result.client.lastName}`;
+    let membershipSequence = clientMemberships.length;
+    const purchasedMemberships = cart.flatMap((item) =>
+      item.product.kind === "MEMBERSHIP"
+        ? Array.from({ length: item.quantity }, () => {
+            membershipSequence += 1;
+            const seller = primaryHumanSellerSale;
+            return {
+              id: `membership-card-${crypto.randomUUID()}`,
+              folio: `MEM-${ticketBranch
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^A-Za-z0-9]/g, "")
+                .slice(0, 3)
+                .toUpperCase()}-${String(membershipSequence).padStart(4, "0")}`,
+              clientId: result.client.id,
+              clientName,
+              clientPhone: result.client.phone,
+              productId: item.product.id,
+              membershipName: item.product.name,
+              purchaseTicketId: ticketId,
+              purchaseDateIso: createdAt.toISOString(),
+              purchaseAmount: item.unitPrice,
+              branch: ticketBranch,
+              sellerId: seller?.sellerId ?? masterUser.id,
+              sellerName: seller?.sellerName ?? masterUser.name,
+              originalSellerId: seller?.sellerId ?? masterUser.id,
+              originalSellerName: seller?.sellerName ?? masterUser.name,
+              totalSessions: item.product.membershipSessions ?? 1,
+              usedSessions: 0,
+              profile: "POTENTIAL" as const,
+              status: "ACTIVE" as const,
+              attendance: [],
+              sellerChanges: [],
+              statusChanges: [],
+            } satisfies ClientMembership;
+          })
+        : [],
+    );
     const hasMembershipPurchase = cart.some(
       (item) => item.product.kind === "MEMBERSHIP",
     );
@@ -4705,39 +5749,69 @@ function App() {
         agendaClientSyncedAtIso = clientLink.syncedAtIso;
         if (requestedAgendaSlotIds.length > 0) {
           const requestedSeats = Array.from(
-            requestedAgendaSlotIds.reduce<Map<string, number>>((summary, id) => {
-              summary.set(id, (summary.get(id) ?? 0) + 1);
-              return summary;
-            }, new Map()),
+            requestedAgendaSlotIds.reduce<Map<string, number>>(
+              (summary, id) => {
+                summary.set(id, (summary.get(id) ?? 0) + 1);
+                return summary;
+              },
+              new Map(),
+            ),
           );
           const reservableAppointments = result.appointments.filter(
             (appointment) => appointment.agendaSlotId,
           );
           const membershipAppointment = reservableAppointments.find(
-            (appointment) => appointment.membershipId,
+            (appointment) =>
+              appointment.membershipId || appointment.membershipProductId,
           );
-          const source = reservableAppointments.some(
-            (appointment) => appointment.kind === "COURTESY",
-          )
-            ? "COURTESY" as const
-            : membershipAppointment
-              ? "MEMBERSHIP" as const
-            : "NEXT_SESSION" as const;
+          const purchasedAppointmentMembership =
+            membershipAppointment?.membershipProductId
+              ? purchasedMemberships.find(
+                  (membership) =>
+                    membership.productId ===
+                    membershipAppointment.membershipProductId,
+                )
+              : undefined;
+          const source = membershipAppointment
+            ? ("MEMBERSHIP" as const)
+            : reservableAppointments.some(
+                  (appointment) => appointment.kind === "COURTESY",
+                )
+              ? ("COURTESY" as const)
+              : ("NEXT_SESSION" as const);
           agendaReservation = await agendaGateway.reserve({
             idempotencyKey: `ticket-${ticketId}-agenda`,
             clientId: result.client.id,
             externalClientId: agendaClientId,
-            clientName: `${result.client.firstName} ${result.client.lastName}`.trim(),
+            clientName:
+              `${result.client.firstName} ${result.client.lastName}`.trim(),
             ticketId,
-            membershipId: membershipAppointment?.membershipId ?? null,
+            membershipId:
+              membershipAppointment?.membershipId ??
+              purchasedAppointmentMembership?.id ??
+              null,
             services: reservableAppointments.map(
               (appointment) => appointment.service,
             ),
             slots: requestedSeats.map(([slotId, seats]) => ({
               externalSlotId:
-                agendaSlots.find((slot) => slot.id === slotId)?.externalSlotId ??
-                slotId,
+                agendaSlots.find((slot) => slot.id === slotId)
+                  ?.externalSlotId ?? slotId,
               seats,
+            })),
+            appointmentLinks: reservableAppointments.map((appointment) => ({
+              service: appointment.service,
+              externalSlotId:
+                appointment.externalSlotId ?? appointment.agendaSlotId ?? "",
+              membershipId:
+                appointment.membershipId ??
+                (appointment.membershipProductId
+                  ? (purchasedMemberships.find(
+                      (membership) =>
+                        membership.productId ===
+                        appointment.membershipProductId,
+                    )?.id ?? null)
+                  : null),
             })),
             source,
           });
@@ -4762,7 +5836,9 @@ function App() {
           ...result.client,
           ...(agendaClientId ? { agendaClientId } : {}),
           agendaSyncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
-          ...(agendaClientSyncedAtIso ? { agendaSyncedAtIso: agendaClientSyncedAtIso } : {}),
+          ...(agendaClientSyncedAtIso
+            ? { agendaSyncedAtIso: agendaClientSyncedAtIso }
+            : {}),
         }
       : result.client;
     const initialPaymentFolio =
@@ -4802,7 +5878,9 @@ function App() {
         (item) => item.dealInstanceId === instanceId,
       );
       const firstItem = dealItems[0];
-      const deal = deals.find((candidate) => candidate.id === firstItem?.dealId);
+      const deal = deals.find(
+        (candidate) => candidate.id === firstItem?.dealId,
+      );
       return firstItem && deal
         ? [
             {
@@ -4884,50 +5962,15 @@ function App() {
       createdOffline: !isOnline,
       syncedAtIso: isOnline ? createdAt.toISOString() : null,
     };
-    const clientName = `${synchronizedClient.firstName} ${synchronizedClient.lastName}`;
-    let membershipSequence = clientMemberships.length;
-    const purchasedMemberships = cart.flatMap((item) =>
-      item.product.kind === "MEMBERSHIP"
-        ? Array.from({ length: item.quantity }, () => {
-            membershipSequence += 1;
-            const seller = primaryHumanSellerSale;
-            return {
-              id: `membership-card-${crypto.randomUUID()}`,
-              folio: `MEM-${ticketBranch
-                .normalize("NFD")
-                .replace(/[\u0300-\u036f]/g, "")
-                .replace(/[^A-Za-z0-9]/g, "")
-                .slice(0, 3)
-                .toUpperCase()}-${String(membershipSequence).padStart(4, "0")}`,
-              clientId: synchronizedClient.id,
-              clientName,
-              clientPhone: synchronizedClient.phone,
-              productId: item.product.id,
-              membershipName: item.product.name,
-              purchaseTicketId: ticketId,
-              purchaseDateIso: ticket.createdAtIso,
-              purchaseAmount: item.unitPrice,
-              branch: ticketBranch,
-              sellerId: seller?.sellerId ?? masterUser.id,
-              sellerName: seller?.sellerName ?? masterUser.name,
-              originalSellerId: seller?.sellerId ?? masterUser.id,
-              originalSellerName: seller?.sellerName ?? masterUser.name,
-              totalSessions: item.product.membershipSessions ?? 1,
-              usedSessions: 0,
-              profile: "POTENTIAL" as const,
-              status: "ACTIVE" as const,
-              attendance: [],
-              sellerChanges: [],
-              statusChanges: [],
-            } satisfies ClientMembership;
-          })
-        : [],
-    );
     let agendaLinkedMemberships = purchasedMemberships.map((membership) => ({
       ...membership,
       ...(agendaClientId ? { agendaClientId } : {}),
-      agendaSyncStatus: isOnline ? "SYNCED" as const : "PENDING_SYNC" as const,
-      ...(agendaClientSyncedAtIso ? { agendaSyncedAtIso: agendaClientSyncedAtIso } : {}),
+      agendaSyncStatus: isOnline
+        ? ("SYNCED" as const)
+        : ("PENDING_SYNC" as const),
+      ...(agendaClientSyncedAtIso
+        ? { agendaSyncedAtIso: agendaClientSyncedAtIso }
+        : {}),
     }));
     if (isOnline && agendaClientId && purchasedMemberships.length > 0) {
       try {
@@ -4990,33 +6033,50 @@ function App() {
     const createdAppointments: Appointment[] = result.appointments.map(
       (appointment, index) => {
         const isAgendaReservation = Boolean(appointment.agendaSlotId);
+        const purchasedAppointmentMembership = appointment.membershipProductId
+          ? agendaLinkedMemberships.find(
+              (membership) =>
+                membership.productId === appointment.membershipProductId,
+            )
+          : undefined;
         const externalAppointmentId = isAgendaReservation
-          ? agendaReservation?.externalAppointmentIds[externalAppointmentIndex++]
+          ? agendaReservation?.externalAppointmentIds[
+              externalAppointmentIndex++
+            ]
           : undefined;
         return {
-        ...appointment,
-        id: `appointment-${Date.now()}-${index}`,
-        clientId: synchronizedClient.id,
-        clientName,
-        clientPhone: synchronizedClient.phone,
-        ticketId,
-        sellerIds: humanSellerSales.map((sale) => sale.sellerId),
-        recordedAt: ticket.createdAt,
-        recordedAtIso: ticket.createdAtIso,
-        status: appointment.kind === "NO_APPOINTMENT" ? "PENDING" : "SCHEDULED",
-        ...(isAgendaReservation
-          ? {
-              ...(agendaClientId ? { agendaClientId } : {}),
-              ...(agendaReservation
-                ? { agendaReservationId: agendaReservation.reservationId }
-                : {}),
-              ...(externalAppointmentId ? { externalAppointmentId } : {}),
-              agendaSyncStatus: isOnline ? "RESERVED" as const : "PENDING_SYNC" as const,
-              ...(agendaClientSyncedAtIso
-                ? { agendaSyncedAtIso: agendaClientSyncedAtIso }
-                : {}),
-            }
-          : {}),
+          ...appointment,
+          ...(purchasedAppointmentMembership
+            ? { membershipId: purchasedAppointmentMembership.id }
+            : {}),
+          id: `appointment-${Date.now()}-${index}`,
+          clientId: synchronizedClient.id,
+          clientName,
+          clientPhone: synchronizedClient.phone,
+          ticketId,
+          sellerIds: humanSellerSales.map((sale) => sale.sellerId),
+          recordedAt: ticket.createdAt,
+          recordedAtIso: ticket.createdAtIso,
+          status:
+            appointment.kind === "NO_APPOINTMENT" ||
+            (appointment.kind === "COURTESY" && !appointment.agendaSlotId)
+              ? "PENDING"
+              : "SCHEDULED",
+          ...(isAgendaReservation
+            ? {
+                ...(agendaClientId ? { agendaClientId } : {}),
+                ...(agendaReservation
+                  ? { agendaReservationId: agendaReservation.reservationId }
+                  : {}),
+                ...(externalAppointmentId ? { externalAppointmentId } : {}),
+                agendaSyncStatus: isOnline
+                  ? ("RESERVED" as const)
+                  : ("PENDING_SYNC" as const),
+                ...(agendaClientSyncedAtIso
+                  ? { agendaSyncedAtIso: agendaClientSyncedAtIso }
+                  : {}),
+              }
+            : {}),
         };
       },
     );
@@ -5116,7 +6176,7 @@ function App() {
       detail: `${ticket.clientName} · ${formatCurrency(ticket.total)} · ${ticket.sellerSummary}`,
       moduleLabel: "Ventas",
       branch: ticketBranch,
-        actorId: primaryHumanSellerSale?.sellerId ?? masterUser.id,
+      actorId: primaryHumanSellerSale?.sellerId ?? masterUser.id,
       actorName: ticket.sellerSummary,
       reference: ticket.id,
       createdAtIso: ticket.createdAtIso,
@@ -5243,7 +6303,9 @@ function App() {
     if (existingMethod) {
       setPaymentMethods((current) =>
         current.map((method) =>
-          method.id === existingMethod.id ? { ...method, active: true } : method,
+          method.id === existingMethod.id
+            ? { ...method, active: true }
+            : method,
         ),
       );
       setNewPaymentMethodName("");
@@ -5388,9 +6450,7 @@ function App() {
   const toggleClientSource = (sourceId: string) => {
     setClientSources((current) =>
       current.map((source) =>
-        source.id === sourceId
-          ? { ...source, active: !source.active }
-          : source,
+        source.id === sourceId ? { ...source, active: !source.active } : source,
       ),
     );
     if (editingClientSourceId === sourceId) {
@@ -5515,7 +6575,8 @@ function App() {
         (location) =>
           location.name.toLocaleLowerCase("es-MX") ===
           normalizedName.toLocaleLowerCase("es-MX"),
-      ) || branchInventory[normalizedName]
+      ) ||
+      branchInventory[normalizedName]
     ) {
       toast.error("Ya existe una sucursal con ese nombre.");
       return false;
@@ -5579,9 +6640,7 @@ function App() {
     setCatalogProducts((current) =>
       current.map((product) => ({
         ...product,
-        branches: product.branches.filter(
-          (branch) => branch !== location.name,
-        ),
+        branches: product.branches.filter((branch) => branch !== location.name),
       })),
     );
     setDeals((current) =>
@@ -5675,7 +6734,7 @@ function App() {
               : "producto"
         }`,
         detail: `${product.name} · ${product.sku} · ${formatCurrency(product.maxPrice)}.`,
-        moduleLabel: "Inventory · Catálogo",
+        moduleLabel: "Catálogo e inventario",
         branch:
           product.branches.length === operationalBranches.length
             ? "Todas las sucursales"
@@ -5741,9 +6800,7 @@ function App() {
     setCatalogFamilies((current) =>
       current.map((family) => (family === currentName ? name : family)),
     );
-    setSelectedFamily((current) =>
-      current === currentName ? name : current,
-    );
+    setSelectedFamily((current) => (current === currentName ? name : current));
     setCatalogFamilyStatus((current) => {
       const next = { ...current, [name]: current[currentName] !== false };
       delete next[currentName];
@@ -5769,7 +6826,9 @@ function App() {
         ? { ...current, product: { ...current.product, family: name } }
         : current,
     );
-    toast.success(`Familia actualizada a ${name} en todas las vistas actuales.`);
+    toast.success(
+      `Familia actualizada a ${name} en todas las vistas actuales.`,
+    );
   };
 
   const renameCatalogCategory = (currentName: string, nextName: string) => {
@@ -5821,7 +6880,9 @@ function App() {
         ? { ...current, product: { ...current.product, category: name } }
         : current,
     );
-    toast.success(`Categoría actualizada a ${name} en todas las vistas actuales.`);
+    toast.success(
+      `Categoría actualizada a ${name} en todas las vistas actuales.`,
+    );
   };
 
   const renameCatalogProduct = (productId: string, nextName: string) => {
@@ -5922,9 +6983,7 @@ function App() {
         );
       const matches = (product: Product) =>
         type === "FAMILY" ? product.family === name : product.category === name;
-      setCart((current) =>
-        current.filter((item) => !matches(item.product)),
-      );
+      setCart((current) => current.filter((item) => !matches(item.product)));
       if (selectedProduct && matches(selectedProduct)) {
         setProductDialogOpen(false);
         setSelectedProduct(null);
@@ -5941,6 +7000,10 @@ function App() {
   const registerInventoryMovements = (
     adjustments: InventoryMovementDraft[],
     approvalBatchId: string | null = null,
+    responsible: { id: string; name: string } = {
+      id: sessionUser?.id ?? masterUser.id,
+      name: sessionUser?.name ?? masterUser.name,
+    },
   ) => {
     if (adjustments.length === 0) return;
     const productsById = new Map(
@@ -6025,10 +7088,7 @@ function App() {
         const remainingDebt = debt
           ? Math.max(0, debt.quantity - debt.deliveredQuantity)
           : 0;
-        const settledQuantity = Math.min(
-          adjustment.quantity,
-          remainingDebt,
-        );
+        const settledQuantity = Math.min(adjustment.quantity, remainingDebt);
         if (debt && settledQuantity > 0) {
           const deliveredQuantity = debt.deliveredQuantity + settledQuantity;
           nextOwedProducts[debtIndex] = {
@@ -6090,6 +7150,8 @@ function App() {
             settledQuantity,
             approvalBatchId,
             reversalOfMovementId: null,
+            responsibleId: responsible.id,
+            responsibleName: responsible.name,
           },
         ];
       },
@@ -6122,13 +7184,13 @@ function App() {
               ? `Transferencia aprobada · ${movement.folio}`
               : `Baja aprobada · ${movement.folio}`,
         detail: `${movement.productName} · ${movement.quantity} pz · ${movement.reason}.`,
-        moduleLabel: "Inventory · Movimientos",
+        moduleLabel: "Inventario · Movimientos",
         branch:
           movement.direction === "TRANSFER" && movement.destinationBranch
             ? `${movement.sourceBranch} → ${movement.destinationBranch}`
             : movement.sourceBranch,
-        actorId: masterUser.id,
-        actorName: masterUser.name,
+        actorId: responsible.id,
+        actorName: responsible.name,
         reference: movement.folio,
         createdAtIso: movement.createdAtIso,
       });
@@ -6151,12 +7213,13 @@ function App() {
                 line.branch === delivery.branch,
             );
             if (existing) existing.quantity += delivery.quantity;
-            else deductions.push({
-              productId: delivery.productId,
-              productName: delivery.productName,
-              quantity: delivery.quantity,
-              branch: delivery.branch,
-            });
+            else
+              deductions.push({
+                productId: delivery.productId,
+                productName: delivery.productName,
+                quantity: delivery.quantity,
+                branch: delivery.branch,
+              });
           });
           return { ...ticket, inventoryDeductions: deductions };
         }),
@@ -6209,6 +7272,10 @@ function App() {
       adjustments,
       status: "PENDING",
       resolvedAt: null,
+      requestedById: sessionUser?.id ?? masterUser.id,
+      requestedByName: sessionUser?.name ?? masterUser.name,
+      resolvedById: null,
+      resolvedByName: null,
     };
     setInventoryAdjustmentBatches((current) => [batch, ...current]);
     toast.info(
@@ -6221,7 +7288,11 @@ function App() {
       (candidate) => candidate.id === batchId,
     );
     if (!batch || batch.status !== "PENDING") return;
-    registerInventoryMovements(batch.adjustments, batch.id);
+    const responsible = {
+      id: sessionUser?.id ?? masterUser.id,
+      name: sessionUser?.name ?? masterUser.name,
+    };
+    registerInventoryMovements(batch.adjustments, batch.id, responsible);
     setInventoryAdjustmentBatches((current) =>
       current.map((candidate) =>
         candidate.id === batchId
@@ -6235,6 +7306,8 @@ function App() {
                 hour: "2-digit",
                 minute: "2-digit",
               }).format(new Date()),
+              resolvedById: responsible.id,
+              resolvedByName: responsible.name,
             }
           : candidate,
       ),
@@ -6255,9 +7328,7 @@ function App() {
     }
     setInventoryAdjustmentBatches((current) =>
       current.map((candidate) =>
-        candidate.id === batchId
-          ? { ...candidate, adjustments }
-          : candidate,
+        candidate.id === batchId ? { ...candidate, adjustments } : candidate,
       ),
     );
     toast.info(`${batch.folio} actualizado antes de su aprobación.`);
@@ -6267,10 +7338,7 @@ function App() {
     const batch = inventoryAdjustmentBatches.find(
       (candidate) => candidate.id === batchId,
     );
-    if (
-      !batch ||
-      (batch.status !== "PENDING" && batch.status !== "APPROVED")
-    )
+    if (!batch || (batch.status !== "PENDING" && batch.status !== "APPROVED"))
       return;
     const resolvedAt = new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
@@ -6279,6 +7347,10 @@ function App() {
       hour: "2-digit",
       minute: "2-digit",
     }).format(new Date());
+    const responsible = {
+      id: sessionUser?.id ?? masterUser.id,
+      name: sessionUser?.name ?? masterUser.name,
+    };
     if (batch.status === "PENDING") {
       setInventoryAdjustmentBatches((current) =>
         current.map((candidate) =>
@@ -6287,6 +7359,8 @@ function App() {
                 ...candidate,
                 status: "CANCELLED",
                 resolvedAt,
+                resolvedById: responsible.id,
+                resolvedByName: responsible.name,
               }
             : candidate,
         ),
@@ -6297,8 +7371,7 @@ function App() {
 
     const appliedMovements = inventoryMovements.filter(
       (movement) =>
-        movement.approvalBatchId === batchId &&
-        !movement.reversalOfMovementId,
+        movement.approvalBatchId === batchId && !movement.reversalOfMovementId,
     );
     if (appliedMovements.length === 0) {
       toast.error("No se encontraron movimientos aplicados para revertir.");
@@ -6349,6 +7422,8 @@ function App() {
             approvalBatchId: batchId,
             reversalOfMovementId: movement.id,
             settledQuantity: 0,
+            responsibleId: responsible.id,
+            responsibleName: responsible.name,
           };
         }
         const sourceStock = nextInventory[movement.sourceBranch] ?? {};
@@ -6379,11 +7454,14 @@ function App() {
           approvalBatchId: batchId,
           reversalOfMovementId: movement.id,
           settledQuantity: 0,
+          responsibleId: responsible.id,
+          responsibleName: responsible.name,
         };
       },
     );
     const settlementUndos = appliedMovements.flatMap((movement) => {
-      if (!movement.settledOwedProductId || !movement.settledQuantity) return [];
+      if (!movement.settledOwedProductId || !movement.settledQuantity)
+        return [];
       const debt = owedProducts.find(
         (record) => record.id === movement.settledOwedProductId,
       );
@@ -6408,10 +7486,7 @@ function App() {
             (undo) => undo.debtId === record.id,
           );
           if (undos.length === 0) return record;
-          const quantity = undos.reduce(
-            (sum, undo) => sum + undo.quantity,
-            0,
-          );
+          const quantity = undos.reduce((sum, undo) => sum + undo.quantity, 0);
           return {
             ...record,
             deliveredQuantity: Math.max(0, record.deliveredQuantity - quantity),
@@ -6492,6 +7567,8 @@ function App() {
               ...candidate,
               status: "REVERSED",
               resolvedAt,
+              resolvedById: responsible.id,
+              resolvedByName: responsible.name,
             }
           : candidate,
       ),
@@ -6505,10 +7582,7 @@ function App() {
     const record = owedProducts.find((item) => item.id === owedProductId);
     if (!record || record.status !== "PENDING") return;
     const available = branchInventory[record.branch]?.[record.productId] ?? 0;
-    const remaining = Math.max(
-      0,
-      record.quantity - record.deliveredQuantity,
-    );
+    const remaining = Math.max(0, record.quantity - record.deliveredQuantity);
     const pendingCommitted = owedProducts
       .filter(
         (item) =>
@@ -6605,12 +7679,13 @@ function App() {
             line.branch === record.branch,
         );
         if (existing) existing.quantity += deliveredNow;
-        else deductions.push({
-          productId: record.productId,
-          productName: record.productName,
-          quantity: deliveredNow,
-          branch: record.branch,
-        });
+        else
+          deductions.push({
+            productId: record.productId,
+            productName: record.productName,
+            quantity: deliveredNow,
+            branch: record.branch,
+          });
         return { ...ticket, inventoryDeductions: deductions };
       }),
     );
@@ -6789,8 +7864,7 @@ function App() {
           )
           .reduce(
             (sum, record) =>
-              sum +
-              Math.max(0, record.quantity - record.deliveredQuantity),
+              sum + Math.max(0, record.quantity - record.deliveredQuantity),
             0,
           );
         let assignable = Math.max(
@@ -6863,7 +7937,9 @@ function App() {
               settledClientName: layaway.clientName,
               settledClientPhone: layaway.clientPhone,
               settledSellerNames: layaway.sellerIds.flatMap((id) => {
-                const debtSeller = sellers.find((candidate) => candidate.id === id);
+                const debtSeller = sellers.find(
+                  (candidate) => candidate.id === id,
+                );
                 return debtSeller ? [debtSeller.name] : [];
               }),
               settledQuantity: deliveredFromDebt,
@@ -6945,7 +8021,9 @@ function App() {
           branch: layaway.branch,
           sellerIds: layaway.sellerIds,
           sellerNames: layaway.sellerIds.flatMap((sellerId) => {
-            const debtSeller = sellers.find((candidate) => candidate.id === sellerId);
+            const debtSeller = sellers.find(
+              (candidate) => candidate.id === sellerId,
+            );
             return debtSeller ? [debtSeller.name] : [];
           }),
           inventoryCommitted: true,
@@ -6967,8 +8045,7 @@ function App() {
       }
       return {
         ...item,
-        deliveredQuantity:
-          item.deliveredQuantity + deliveredAtLiquidation,
+        deliveredQuantity: item.deliveredQuantity + deliveredAtLiquidation,
       };
     });
     const paymentEntries = appliedPayments.map((payment) => ({
@@ -6978,6 +8055,11 @@ function App() {
       createdAtIso: createdAt.toISOString(),
       relatedTicketId: layaway.originalTicketId,
     }));
+    const collectionBranch = activeBranch;
+    const attributedBranch =
+      receiptSettings.attributeCrossBranchPaymentsToCollectingBranch
+        ? collectionBranch
+        : layaway.branch;
     const paymentRecord = {
       id: crypto.randomUUID(),
       folio: paymentFolio,
@@ -6999,6 +8081,9 @@ function App() {
       sellerName: attributedSellerName,
       recordedBySellerId: recordingSeller.id,
       recordedBySellerName: recordingSeller.name,
+      originBranch: layaway.branch,
+      collectionBranch,
+      attributedBranch,
     };
     setLayaways((current) => {
       const records = current.some((item) => item.id === layaway.id)
@@ -7053,9 +8138,12 @@ function App() {
       recordedAtIso: recordedAt.toISOString(),
       clientName: layaway.clientName,
       clientPhone: layaway.clientPhone,
-      branchName: layaway.branch,
+      branchName: attributedBranch,
       branchAddress:
-        branchAddresses[layaway.branch] ?? "Dirección pendiente de configurar",
+        branchAddresses[attributedBranch] ??
+        "Dirección pendiente de configurar",
+      originBranchName: layaway.branch,
+      collectionBranchName: collectionBranch,
       sellerSummary: attributedSellerName,
       items: 1,
       discountAmount: 0,
@@ -7088,7 +8176,8 @@ function App() {
           sellerName: attributedSellerName,
           amount: 0,
           participantKind: registeredSeller ? "SELLER" : "COMPANY",
-          participantCode: registeredSeller?.id ?? receiptSettings.companySalesNumber,
+          participantCode:
+            registeredSeller?.id ?? receiptSettings.companySalesNumber,
         },
       ],
       status: "COMPLETED",
@@ -7101,21 +8190,22 @@ function App() {
     };
     setTickets((current) => [
       paymentTicket,
-      ...current.map((ticket): Ticket =>
-        ticket.id === layaway.originalTicketId
-          ? {
-              ...ticket,
-              amountPaid: ticket.amountPaid + amount,
-              balanceDue,
-              paymentStatus: isLiquidation
-                ? ("PAID" as const)
-                : layaway.collectionType === "PENDING"
-                  ? ("PENDING" as const)
-                  : ("LAYAWAY" as const),
-              syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
-              syncedAtIso: isOnline ? recordedAt.toISOString() : null,
-            }
-          : ticket,
+      ...current.map(
+        (ticket): Ticket =>
+          ticket.id === layaway.originalTicketId
+            ? {
+                ...ticket,
+                amountPaid: ticket.amountPaid + amount,
+                balanceDue,
+                paymentStatus: isLiquidation
+                  ? ("PAID" as const)
+                  : layaway.collectionType === "PENDING"
+                    ? ("PENDING" as const)
+                    : ("LAYAWAY" as const),
+                syncStatus: isOnline ? "SYNCED" : "PENDING_SYNC",
+                syncedAtIso: isOnline ? recordedAt.toISOString() : null,
+              }
+            : ticket,
       ),
     ]);
     setSelectedReceiptTicket(paymentTicket);
@@ -7151,9 +8241,13 @@ function App() {
   };
 
   const removeInventoryMovementReason = (reasonId: string) => {
-    const reason = inventoryMovementReasons.find((item) => item.id === reasonId);
+    const reason = inventoryMovementReasons.find(
+      (item) => item.id === reasonId,
+    );
     if (!reason) return;
-    const activeReasons = inventoryMovementReasons.filter((item) => item.active);
+    const activeReasons = inventoryMovementReasons.filter(
+      (item) => item.active,
+    );
     if (reason.active && activeReasons.length <= 1) {
       toast.error("Debe permanecer al menos un motivo de movimiento activo.");
       return;
@@ -7202,19 +8296,12 @@ function App() {
       );
       return;
     }
-    setExpenseTypes((current) =>
-      current.filter((item) => item.id !== typeId),
-    );
+    setExpenseTypes((current) => current.filter((item) => item.id !== typeId));
     toast.success(`${type.name} se eliminó de nuevos registros.`);
   };
 
   const previewTicket = (ticket: Ticket, autoPrint = false) => {
-    const printableTicket =
-      ticket.ticketType === "LAYAWAY_PAYMENT" && ticket.relatedTicketId
-        ? tickets.find(
-            (candidate) => candidate.id === ticket.relatedTicketId,
-          ) ?? ticket
-        : ticket;
+    const printableTicket = ticket;
     if (
       (printableTicket.paymentStatus === "LAYAWAY" ||
         printableTicket.paymentStatus === "PENDING") &&
@@ -7288,9 +8375,7 @@ function App() {
                 ]
               : [],
           collectionType:
-            printableTicket.paymentStatus === "PENDING"
-              ? "PENDING"
-              : "LAYAWAY",
+            printableTicket.paymentStatus === "PENDING" ? "PENDING" : "LAYAWAY",
           status: "ACTIVE",
         };
         return [recoveredLayaway, ...current];
@@ -7299,7 +8384,17 @@ function App() {
     setSelectedReceiptTicket(printableTicket);
     setReceiptAutoPrint(autoPrint);
     setReceiptVoucherEligible(false);
+    setReceiptReadOnly(false);
     setReceiptPreviewOpen(true);
+  };
+
+  const previewTicketById = (ticketId: string) => {
+    const ticket = tickets.find((candidate) => candidate.id === ticketId);
+    if (!ticket) {
+      toast.error(`No se encontró el ticket o movimiento ${ticketId}.`);
+      return;
+    }
+    previewTicket(ticket);
   };
 
   useEffect(() => {
@@ -7337,7 +8432,9 @@ function App() {
     if (!canEditActiveModule) return;
     setClientMemberships((current) =>
       current.map((membership) =>
-        membership.id === membershipId ? { ...membership, profile } : membership,
+        membership.id === membershipId
+          ? { ...membership, profile }
+          : membership,
       ),
     );
     toast.success("Perfilamiento de la clienta actualizado.");
@@ -7384,7 +8481,8 @@ function App() {
     }
 
     const changedAtIso = new Date().toISOString();
-    const previousListPrice = currentProduct?.maxPrice ?? membership.purchaseAmount;
+    const previousListPrice =
+      currentProduct?.maxPrice ?? membership.purchaseAmount;
     const priceDifference = roundCurrency(
       targetProduct.maxPrice - previousListPrice,
     );
@@ -7468,7 +8566,9 @@ function App() {
       source.clientId !== target.clientId ||
       target.status === "CANCELLED"
     ) {
-      toast.error("La reasignación ya no está disponible para estas membresías.");
+      toast.error(
+        "La reasignación ya no está disponible para estas membresías.",
+      );
       return false;
     }
     const nextUsedSessions = target.usedSessions + source.usedSessions;
@@ -7696,15 +8796,17 @@ function App() {
         id: `appointment-external-${update.externalAppointmentId}`,
         kind: "NEXT_SESSION",
         service: update.service ?? membership.membershipName,
-        date: update.date ?? slot?.date ?? operationalBusinessDate(update.updatedAtIso),
+        date:
+          update.date ??
+          slot?.date ??
+          operationalBusinessDate(update.updatedAtIso),
         branch: update.branch ?? slot?.branch ?? membership.branch,
         time: update.startTime ?? slot?.startTime ?? "Horario externo",
         ...(slot
           ? {
               agendaSlotId: slot.id,
               externalSlotId: slot.externalSlotId,
-              agendaResourceName:
-                update.resourceName ?? slot.resourceName,
+              agendaResourceName: update.resourceName ?? slot.resourceName,
               agendaReservationMode: "SINGLE" as const,
             }
           : update.externalSlotId
@@ -7712,8 +8814,7 @@ function App() {
             : {}),
         clientId: client.id,
         clientName:
-          update.clientName ??
-          `${client.firstName} ${client.lastName}`.trim(),
+          update.clientName ?? `${client.firstName} ${client.lastName}`.trim(),
         clientPhone: update.clientPhone ?? client.phone,
         ticketId: membership.purchaseTicketId,
         sellerIds: [],
@@ -7880,9 +8981,7 @@ function App() {
   ) => {
     const reservationActor = authorizeAppointmentCode(authorizationCode);
     if (!reservationActor) {
-      toast.error(
-        "Código personal inválido. La cita no fue reservada.",
-      );
+      toast.error("Código personal inválido. La cita no fue reservada.");
       return false;
     }
     const membership = clientMemberships.find(
@@ -8016,11 +9115,11 @@ function App() {
     previewTicket(ticket);
   };
 
-  const issueVoucher = (ticket: Ticket, voucherId: string): VoucherIssue | null => {
-    if (
-      !receiptVoucherEligible ||
-      selectedReceiptTicket?.id !== ticket.id
-    ) {
+  const issueVoucher = (
+    ticket: Ticket,
+    voucherId: string,
+  ): VoucherIssue | null => {
+    if (!receiptVoucherEligible || selectedReceiptTicket?.id !== ticket.id) {
       toast.error(
         "Los vouchers sólo pueden emitirse al finalizar un ticket nuevo, no desde una reimpresión.",
       );
@@ -8190,7 +9289,8 @@ function App() {
               name,
               quantity: line.quantity,
               total: line.quantity * line.unitPrice,
-              ...(historicalLine?.productId === line.productId && historicalLine.dealId
+              ...(historicalLine?.productId === line.productId &&
+              historicalLine.dealId
                 ? {
                     dealId: historicalLine.dealId,
                     dealName: historicalLine.dealName ?? "Paquete",
@@ -8377,8 +9477,7 @@ function App() {
       return Boolean(product && line.unitPrice < product.minPrice);
     });
     if (
-      (hasLineBelowMinimum ||
-        nextDeviation < Math.min(0, ticket.deviation)) &&
+      (hasLineBelowMinimum || nextDeviation < Math.min(0, ticket.deviation)) &&
       !hasAssignedTicketEditPermission &&
       !isMasterAccessCode(changes.authorizationCode)
     ) {
@@ -8487,8 +9586,7 @@ function App() {
         allocated > 0
           ? [
               {
-                id:
-                  paymentTicket.payments[0]?.id ?? crypto.randomUUID(),
+                id: paymentTicket.payments[0]?.id ?? crypto.randomUUID(),
                 methodId: paymentMethod,
                 amount: allocated,
               },
@@ -8740,8 +9838,7 @@ function App() {
           destinationPreviousStock: null,
           destinationNewStock: null,
           comment: `${productChange.reason} · producto retirado del ticket de ${changes.clientName}`,
-          category:
-            productChange.disposition === "DEMO" ? "DEMO" : "WRITE_OFF",
+          category: productChange.disposition === "DEMO" ? "DEMO" : "WRITE_OFF",
           unitCostUsd: product.costUsd,
           unitCostMxn: product.costMxn,
           totalCostUsd: product.costUsd * line.quantity,
@@ -8939,8 +10036,7 @@ function App() {
                     clientPhone: changes.clientPhone,
                     sellerIds: changes.sellerIds,
                     sellerNames: selectedSellers.map((seller) => seller.name),
-                    productId:
-                      editedProduct?.productId ?? record.productId,
+                    productId: editedProduct?.productId ?? record.productId,
                     productName:
                       editedProduct?.productName ?? record.productName,
                   };
@@ -8963,8 +10059,7 @@ function App() {
                   sellerIds: changes.sellerIds,
                   sellerNames: selectedSellers.map((seller) => seller.name),
                   productId: editedProduct?.productId ?? record.productId,
-                  productName:
-                    editedProduct?.productName ?? record.productName,
+                  productName: editedProduct?.productName ?? record.productName,
                 };
               })()
             : record,
@@ -9023,9 +10118,7 @@ function App() {
                   status: nextBalanceDue < 0.01 ? "PAID" : "ACTIVE",
                   payments: hasPayment
                     ? layaway.payments.map((payment) =>
-                        payment.folio === ticketId
-                          ? nextPayment
-                          : payment,
+                        payment.folio === ticketId ? nextPayment : payment,
                       )
                     : [...layaway.payments, nextPayment],
                 };
@@ -9075,7 +10168,9 @@ function App() {
                 id:
                   currentLayaway?.payments.find(
                     (payment) => payment.folio === originalPaymentFolio,
-                  )?.id ?? payments[0]?.id ?? crypto.randomUUID(),
+                  )?.id ??
+                  payments[0]?.id ??
+                  crypto.randomUUID(),
                 folio: originalPaymentFolio,
                 createdAt: ticket.createdAt,
                 createdAtIso: ticket.createdAtIso,
@@ -9103,7 +10198,9 @@ function App() {
               id:
                 currentLayaway?.payments.find(
                   (payment) => payment.folio === nextPaymentTicket.id,
-                )?.id ?? nextPaymentTicket.payments[0]?.id ?? crypto.randomUUID(),
+                )?.id ??
+                nextPaymentTicket.payments[0]?.id ??
+                crypto.randomUUID(),
               folio: nextPaymentTicket.id,
               createdAt: nextPaymentTicket.createdAt,
               createdAtIso: nextPaymentTicket.createdAtIso,
@@ -9173,7 +10270,10 @@ function App() {
         ) {
           const amountPaid = Math.max(
             0,
-            Math.min(item.total, item.amountPaid + (updatedTicket.amountPaid - ticket.amountPaid)),
+            Math.min(
+              item.total,
+              item.amountPaid + (updatedTicket.amountPaid - ticket.amountPaid),
+            ),
           );
           const balanceDue = Math.max(0, item.total - amountPaid);
           return {
@@ -9214,13 +10314,13 @@ function App() {
     const ticket = cancellingTicket;
     const assignedUserCodeIsValid = Boolean(
       hasAssignedTicketCancellationPermission &&
-        sessionUser &&
-        sellers.some(
-          (seller) =>
-            seller.id === sessionUser.id &&
-            seller.active &&
-            seller.accessCode === request.authorizationCode.trim(),
-        ),
+      sessionUser &&
+      sellers.some(
+        (seller) =>
+          seller.id === sessionUser.id &&
+          seller.active &&
+          seller.accessCode === request.authorizationCode.trim(),
+      ),
     );
     if (
       !assignedUserCodeIsValid &&
@@ -9283,13 +10383,15 @@ function App() {
       request.effectiveDateMode === "CUSTOM_DATE" &&
       (!customEffectiveAt || Number.isNaN(customEffectiveAt.getTime()))
     ) {
-      toast.error("Selecciona una fecha válida para el movimiento personalizado.");
+      toast.error(
+        "Selecciona una fecha válida para el movimiento personalizado.",
+      );
       return;
     }
     const refundEffectiveAt =
       request.effectiveDateMode === "ORIGINAL_SALE_DATE"
         ? new Date(ticket.createdAtIso)
-        : customEffectiveAt ?? cancelledAt;
+        : (customEffectiveAt ?? cancelledAt);
     const refundEffectiveAtLabel = new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
       month: "short",
@@ -9320,6 +10422,7 @@ function App() {
       createdAtIso: refundEffectiveAt.toISOString(),
       ticketType: "REFUND",
       relatedTicketId: ticket.id,
+      refundTransactionId,
       items: -ticket.items,
       discountAmount: 0,
       subtotal: -ticket.subtotal,
@@ -9428,8 +10531,8 @@ function App() {
         record.status === "PENDING" &&
         record.inventoryCommitted,
     );
-    const debtReversalMovements =
-      pendingTicketDebts.flatMap<InventoryMovement>((record, index) => {
+    const debtReversalMovements = pendingTicketDebts.flatMap<InventoryMovement>(
+      (record, index) => {
         const quantity = Math.max(
           0,
           record.quantity - record.deliveredQuantity,
@@ -9473,7 +10576,8 @@ function App() {
             settledQuantity: 0,
           },
         ];
-      });
+      },
+    );
     const nonReturnDisposition = new Map(
       request.nonReturnedProducts.map((line) => [
         line.productId,
@@ -9604,8 +10708,8 @@ function App() {
               ...(appointment.agendaReservationId
                 ? {
                     agendaSyncStatus: isOnline
-                      ? "CANCELLED" as const
-                      : "PENDING_SYNC" as const,
+                      ? ("CANCELLED" as const)
+                      : ("PENDING_SYNC" as const),
                   }
                 : {}),
               ...(isOnline && appointment.agendaReservationId
@@ -9657,7 +10761,10 @@ function App() {
         return current.map((layaway) => {
           if (layaway.originalTicketId !== ticket.relatedTicketId)
             return layaway;
-          const amountPaid = Math.max(0, layaway.amountPaid - ticket.amountPaid);
+          const amountPaid = Math.max(
+            0,
+            layaway.amountPaid - ticket.amountPaid,
+          );
           return {
             ...layaway,
             amountPaid,
@@ -9669,7 +10776,9 @@ function App() {
           };
         });
       }
-      return current.filter((layaway) => layaway.originalTicketId !== ticket.id);
+      return current.filter(
+        (layaway) => layaway.originalTicketId !== ticket.id,
+      );
     });
     setTicketCancellationOpen(false);
     setCancellingTicket(null);
@@ -9700,8 +10809,8 @@ function App() {
                 ?.clientName ?? "Clienta"}
             </strong>
             <small>
-              Puedes añadir o sustituir productos. Al finalizar se liquidará
-              el saldo original y sólo el incremento se asignará a los nuevos
+              Puedes añadir o sustituir productos. Al finalizar se liquidará el
+              saldo original y sólo el incremento se asignará a los nuevos
               vendedores. El inventario se afectará por la diferencia neta.
             </small>
           </span>
@@ -9738,14 +10847,32 @@ function App() {
         <div className="sale-catalog-groups">
           <section className="sale-catalog-group">
             <div className="sale-catalog-group-title">
-              <span><Boxes size={15} /></span>
-              <div><strong>Familias</strong><small>{formatSaleCount(Math.max(0, families.length - 1), "colección", "colecciones")}</small></div>
+              <span>
+                <Boxes size={15} />
+              </span>
+              <div>
+                <strong>Familias</strong>
+                <small>
+                  {formatSaleCount(
+                    Math.max(0, families.length - 1),
+                    "colección",
+                    "colecciones",
+                  )}
+                </small>
+              </div>
             </div>
-            <div className="sale-catalog-options" role="list" aria-label="Familias de productos">
+            <div
+              className="sale-catalog-options"
+              role="list"
+              aria-label="Familias de productos"
+            >
               {families.map((family) => {
-                const optionCount = family === "Todos"
-                  ? saleProducts.length
-                  : saleProducts.filter((product) => product.family === family).length;
+                const optionCount =
+                  family === "Todos"
+                    ? saleProducts.length
+                    : saleProducts.filter(
+                        (product) => product.family === family,
+                      ).length;
                 return (
                   <button
                     key={family}
@@ -9757,7 +10884,14 @@ function App() {
                       setSelectedBrand("Todas");
                     }}
                   >
-                    <span><strong>{family === "Todos" ? "Todo el catálogo" : family}</strong><small>{formatSaleCount(optionCount, "opción", "opciones")}</small></span>
+                    <span>
+                      <strong>
+                        {family === "Todos" ? "Todo el catálogo" : family}
+                      </strong>
+                      <small>
+                        {formatSaleCount(optionCount, "opción", "opciones")}
+                      </small>
+                    </span>
                     <ChevronRight size={14} />
                   </button>
                 );
@@ -9767,14 +10901,30 @@ function App() {
 
           <section className="sale-catalog-group">
             <div className="sale-catalog-group-title">
-              <span><Filter size={15} /></span>
-              <div><strong>Categorías</strong><small>{formatSaleCount(Math.max(0, categories.length - 1), "disponible", "disponibles")}</small></div>
+              <span>
+                <Filter size={15} />
+              </span>
+              <div>
+                <strong>Categorías</strong>
+                <small>
+                  {formatSaleCount(
+                    Math.max(0, categories.length - 1),
+                    "disponible",
+                    "disponibles",
+                  )}
+                </small>
+              </div>
             </div>
-            <div className="sale-catalog-options" role="list" aria-label="Categorías de productos">
+            <div
+              className="sale-catalog-options"
+              role="list"
+              aria-label="Categorías de productos"
+            >
               {categories.map((category) => {
                 const optionCount = saleProducts.filter(
                   (product) =>
-                    (selectedFamily === "Todos" || product.family === selectedFamily) &&
+                    (selectedFamily === "Todos" ||
+                      product.family === selectedFamily) &&
                     (category === "Todas" || product.category === category),
                 ).length;
                 return (
@@ -9787,7 +10937,16 @@ function App() {
                       setSelectedBrand("Todas");
                     }}
                   >
-                    <span><strong>{category === "Todas" ? "Todas las categorías" : category}</strong><small>{formatSaleCount(optionCount, "opción", "opciones")}</small></span>
+                    <span>
+                      <strong>
+                        {category === "Todas"
+                          ? "Todas las categorías"
+                          : category}
+                      </strong>
+                      <small>
+                        {formatSaleCount(optionCount, "opción", "opciones")}
+                      </small>
+                    </span>
                     <ChevronRight size={14} />
                   </button>
                 );
@@ -9797,16 +10956,34 @@ function App() {
 
           <section className="sale-catalog-group">
             <div className="sale-catalog-group-title">
-              <span><Sparkles size={15} /></span>
-              <div><strong>Marcas</strong><small>{formatSaleCount(Math.max(0, brands.length - 1), "disponible", "disponibles")}</small></div>
+              <span>
+                <Sparkles size={15} />
+              </span>
+              <div>
+                <strong>Marcas</strong>
+                <small>
+                  {formatSaleCount(
+                    Math.max(0, brands.length - 1),
+                    "disponible",
+                    "disponibles",
+                  )}
+                </small>
+              </div>
             </div>
-            <div className="sale-catalog-options" role="list" aria-label="Marcas de productos">
+            <div
+              className="sale-catalog-options"
+              role="list"
+              aria-label="Marcas de productos"
+            >
               {brands.map((brand) => {
                 const optionCount = saleProducts.filter(
                   (product) =>
-                    (selectedFamily === "Todos" || product.family === selectedFamily) &&
-                    (selectedCategory === "Todas" || product.category === selectedCategory) &&
-                    (brand === "Todas" || getSaleProductBrand(product) === brand),
+                    (selectedFamily === "Todos" ||
+                      product.family === selectedFamily) &&
+                    (selectedCategory === "Todas" ||
+                      product.category === selectedCategory) &&
+                    (brand === "Todas" ||
+                      getSaleProductBrand(product) === brand),
                 ).length;
                 return (
                   <button
@@ -9815,7 +10992,14 @@ function App() {
                     className={selectedBrand === brand ? "is-active" : ""}
                     onClick={() => setSelectedBrand(brand)}
                   >
-                    <span><strong>{brand === "Todas" ? "Todas las marcas" : brand}</strong><small>{formatSaleCount(optionCount, "opción", "opciones")}</small></span>
+                    <span>
+                      <strong>
+                        {brand === "Todas" ? "Todas las marcas" : brand}
+                      </strong>
+                      <small>
+                        {formatSaleCount(optionCount, "opción", "opciones")}
+                      </small>
+                    </span>
                     <ChevronRight size={14} />
                   </button>
                 );
@@ -9846,7 +11030,8 @@ function App() {
             )}
           </div>
           <div className="catalog-count">
-            <Sparkles size={17} /> {formatSaleCount(filteredProducts.length, "opción", "opciones")}
+            <Sparkles size={17} />{" "}
+            {formatSaleCount(filteredProducts.length, "opción", "opciones")}
           </div>
         </div>
 
@@ -9894,9 +11079,9 @@ function App() {
                         ? `${product.membershipSessions ?? 0} sesiones`
                         : product.stock === null
                           ? "Agenda abierta"
-                        : product.stock < 0
-                          ? `${product.stock} piezas · pendiente entregar`
-                          : `${product.stock} piezas`}
+                          : product.stock < 0
+                            ? `${product.stock} piezas · pendiente entregar`
+                            : `${product.stock} piezas`}
                     </span>
                     <span className="add-product-hint">
                       Elegir <ChevronRight size={15} />
@@ -9965,20 +11150,38 @@ function App() {
                   0,
                 );
                 return (
-                  <article key={item.dealInstanceId} className="cart-deal-group">
+                  <article
+                    key={item.dealInstanceId}
+                    className="cart-deal-group"
+                  >
                     <div className="cart-deal-heading">
-                      <span><PackageCheck size={16} /></span>
+                      <span>
+                        <PackageCheck size={16} />
+                      </span>
                       <div>
                         <small>{deal?.sku ?? "DEAL"}</small>
                         <strong>{item.dealName}</strong>
-                        <em>{item.dealQuantity ?? 1} paquete{(item.dealQuantity ?? 1) === 1 ? "" : "s"}</em>
+                        <em>
+                          {item.dealQuantity ?? 1} paquete
+                          {(item.dealQuantity ?? 1) === 1 ? "" : "s"}
+                        </em>
                       </div>
-                      <button type="button" onClick={() => removeDealFromCart(item.dealInstanceId ?? "")} aria-label={`Quitar paquete ${item.dealName}`}><Trash2 size={14} /></button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeDealFromCart(item.dealInstanceId ?? "")
+                        }
+                        aria-label={`Quitar paquete ${item.dealName}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                     <div className="cart-deal-products">
                       {dealItems.map((dealItem) => (
                         <div key={dealItem.id}>
-                          <span>{dealItem.quantity} × {dealItem.product.name}</span>
+                          <span>
+                            {dealItem.quantity} × {dealItem.product.name}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -10009,6 +11212,15 @@ function App() {
                       <p className="cart-comment">“{item.comment}”</p>
                     )}
                     <div className="cart-item-footer">
+                      <button
+                        type="button"
+                        className="cart-item-quick-remove"
+                        onClick={() => removeCartItem(item.id)}
+                        aria-label={`Quitar ${item.product.name} del ticket`}
+                        title="Quitar producto del ticket"
+                      >
+                        <Minus size={14} aria-hidden="true" />
+                      </button>
                       <div className="mini-quantity">
                         <button
                           type="button"
@@ -10181,14 +11393,19 @@ function App() {
               <span>DESCUENTO A APLICAR</span>
               <strong>-{formatCurrency(discountDraftAmount)}</strong>
               <div>
-                <span>Subtotal <b>{formatCurrency(cartSubtotal)}</b></span>
-                <span>Total actualizado <b>{formatCurrency(discountDraftTotal)}</b></span>
+                <span>
+                  Subtotal <b>{formatCurrency(cartSubtotal)}</b>
+                </span>
+                <span>
+                  Total actualizado <b>{formatCurrency(discountDraftTotal)}</b>
+                </span>
               </div>
             </section>
 
             <p className="discount-entry-limit">
-              Tope disponible: <strong>{formatCurrency(maxPromotionalDiscount)}</strong>{" "}
-              para respetar el precio mínimo del ticket.
+              Tope disponible:{" "}
+              <strong>{formatCurrency(maxPromotionalDiscount)}</strong> para
+              respetar el precio mínimo del ticket.
             </p>
 
             <DialogFooter className="discount-entry-footer">
@@ -10274,10 +11491,7 @@ function App() {
       (ticket) => ticket.ticketType === "REFUND",
     );
     const filteredRefundTotal = Math.abs(
-      filteredRefundTickets.reduce(
-        (sum, ticket) => sum + ticket.total,
-        0,
-      ),
+      filteredRefundTickets.reduce((sum, ticket) => sum + ticket.total, 0),
     );
     const completedReceiptTicketIds = new Set(
       filteredSaleTickets.map((ticket) => ticket.id),
@@ -10341,9 +11555,8 @@ function App() {
     const paidTickets = filteredSaleTickets.filter(
       (ticket) => ticket.paymentStatus === "PAID",
     ).length;
-    const averageTicket = filteredSaleTickets.length > 0
-      ? total / filteredSaleTickets.length
-      : 0;
+    const averageTicket =
+      filteredSaleTickets.length > 0 ? total / filteredSaleTickets.length : 0;
     const currentMonthKey = businessToday.slice(0, 7);
     const [currentYear = new Date().getFullYear(), currentMonthNumber = 1] =
       currentMonthKey.split("-").map(Number);
@@ -10358,22 +11571,27 @@ function App() {
         ticket.ticketType !== "REFUND" &&
         ticket.ticketType !== "LAYAWAY_PAYMENT" &&
         (effectiveReceiptBranch === "ALL" ||
-          (ticket.branchName ?? receiptSettings.branchName) === effectiveReceiptBranch),
+          (ticket.branchName ?? receiptSettings.branchName) ===
+            effectiveReceiptBranch),
     );
     const currentMonthTicketCount = reportScopeTickets.filter(
       (ticket) =>
-        operationalBusinessDate(ticket.createdAtIso).slice(0, 7) === currentMonthKey,
+        operationalBusinessDate(ticket.createdAtIso).slice(0, 7) ===
+        currentMonthKey,
     ).length;
     const previousMonthTicketCount = reportScopeTickets.filter(
       (ticket) =>
-        operationalBusinessDate(ticket.createdAtIso).slice(0, 7) === previousMonthKey,
+        operationalBusinessDate(ticket.createdAtIso).slice(0, 7) ===
+        previousMonthKey,
     ).length;
-    const ticketCountComparison = previousMonthTicketCount > 0
-      ? ((currentMonthTicketCount - previousMonthTicketCount) /
-          previousMonthTicketCount) * 100
-      : currentMonthTicketCount > 0
-        ? 100
-        : 0;
+    const ticketCountComparison =
+      previousMonthTicketCount > 0
+        ? ((currentMonthTicketCount - previousMonthTicketCount) /
+            previousMonthTicketCount) *
+          100
+        : currentMonthTicketCount > 0
+          ? 100
+          : 0;
     const authorizeReceiptHistory = () => {
       if (!isMasterAccessCode(receiptHistoryCode)) {
         toast.error("Código master incorrecto.");
@@ -10383,7 +11601,9 @@ function App() {
       setReceiptHistoryCode("");
       setReceiptDate("");
       setReceiptBranch("ALL");
-      toast.success("Historial completo y acciones administrativas habilitados.");
+      toast.success(
+        "Historial completo y acciones administrativas habilitados.",
+      );
     };
     return (
       <div className="view-stack">
@@ -10397,21 +11617,21 @@ function App() {
                     ? "SESIÓN MASTER"
                     : canCancelTickets
                       ? "ADMINISTRATIVO AUTORIZADO"
-                    : "ACCESO OPERATIVO"}
+                      : "ACCESO OPERATIVO"}
                 </small>
                 <strong>
                   {receiptHistoryAuthorized
                     ? "Historial completo habilitado"
                     : canCancelTickets
                       ? `Cancelación habilitada · ${businessToday}`
-                    : `Sólo tickets del día ${businessToday}`}
+                      : `Sólo tickets del día ${businessToday}`}
                 </strong>
                 <p>
                   {receiptHistoryAuthorized
                     ? "Puedes consultar fechas anteriores, editar y cancelar tickets."
                     : canCancelTickets
                       ? "Puedes cancelar tickets del día vigente. El historial de fechas anteriores continúa protegido."
-                    : "Sin autorización master únicamente puedes visualizar e imprimir."}
+                      : "Sin autorización master únicamente puedes visualizar e imprimir."}
                 </p>
               </span>
             </div>
@@ -10435,7 +11655,9 @@ function App() {
                 <Input
                   type="password"
                   value={receiptHistoryCode}
-                  onChange={(event) => setReceiptHistoryCode(event.target.value)}
+                  onChange={(event) =>
+                    setReceiptHistoryCode(event.target.value)
+                  }
                   onKeyDown={(event) => {
                     if (event.key === "Enter") authorizeReceiptHistory();
                   }}
@@ -10511,14 +11733,39 @@ function App() {
             <div className="receipt-membership-dashboard-content">
               <div>
                 <strong>{receiptMemberships.length}</strong>
-                <span>{receiptMemberships.length === 1 ? "membresía comprada" : "membresías compradas"}</span>
+                <span>
+                  {receiptMemberships.length === 1
+                    ? "membresía comprada"
+                    : "membresías compradas"}
+                </span>
               </div>
               <div>
-                <strong>{new Set(receiptMemberships.map((membership) => membership.purchaseTicketId)).size}</strong>
-                <span>{new Set(receiptMemberships.map((membership) => membership.purchaseTicketId)).size === 1 ? "ticket con membresía" : "tickets con membresía"}</span>
+                <strong>
+                  {
+                    new Set(
+                      receiptMemberships.map(
+                        (membership) => membership.purchaseTicketId,
+                      ),
+                    ).size
+                  }
+                </strong>
+                <span>
+                  {new Set(
+                    receiptMemberships.map(
+                      (membership) => membership.purchaseTicketId,
+                    ),
+                  ).size === 1
+                    ? "ticket con membresía"
+                    : "tickets con membresía"}
+                </span>
               </div>
               <div>
-                <strong>{receiptMemberships.reduce((sum, membership) => sum + membership.totalSessions, 0)}</strong>
+                <strong>
+                  {receiptMemberships.reduce(
+                    (sum, membership) => sum + membership.totalSessions,
+                    0,
+                  )}
+                </strong>
                 <span>sesiones adquiridas</span>
               </div>
               {receiptMemberships.length > 0 ? (
@@ -10528,7 +11775,9 @@ function App() {
                   variant="dashboard"
                 />
               ) : (
-                <span className="receipt-membership-empty">Sin membresías en este alcance.</span>
+                <span className="receipt-membership-empty">
+                  Sin membresías en este alcance.
+                </span>
               )}
             </div>
           </CardContent>
@@ -10637,10 +11886,13 @@ function App() {
                 </div>
                 <div className="receipt-filter-field receipt-branch-filter">
                   <Filter size={17} />
-                  <Select value={receiptBranch} onValueChange={(branch) => {
-                    setReceiptBranch(branch);
-                    setReceiptPage(1);
-                  }}>
+                  <Select
+                    value={receiptBranch}
+                    onValueChange={(branch) => {
+                      setReceiptBranch(branch);
+                      setReceiptPage(1);
+                    }}
+                  >
                     <SelectTrigger aria-label="Filtrar Receipts por sucursal">
                       <SelectValue placeholder="Todas las sucursales" />
                     </SelectTrigger>
@@ -10660,7 +11912,9 @@ function App() {
                 <CalendarDays size={17} />
                 <span>
                   <small>DÍA VIGENTE</small>
-                  <strong>{businessToday} · {activeBranch}</strong>
+                  <strong>
+                    {businessToday} · {activeBranch}
+                  </strong>
                 </span>
               </div>
             )}
@@ -10737,25 +11991,47 @@ function App() {
                   {paginatedReceiptTickets.map((ticket) => (
                     <TableRow key={ticket.id}>
                       <TableCell>
-                        <strong>{ticket.id}</strong>
-                          {ticket.status === "REFUNDED" && (
-                          <Badge variant="outline" className="cancelled-ticket-badge">
+                        <button
+                          type="button"
+                          className="receipt-ticket-link"
+                          onClick={() => previewTicket(ticket)}
+                          aria-label={`Consultar ${
+                            ticket.ticketType === "LAYAWAY_PAYMENT"
+                              ? "pago de apartado"
+                              : ticket.ticketType === "REFUND"
+                                ? "refund"
+                                : "ticket"
+                          } ${ticket.id}`}
+                        >
+                          {ticket.id}
+                        </button>
+                        {ticket.status === "REFUNDED" && (
+                          <Badge
+                            variant="outline"
+                            className="cancelled-ticket-badge"
+                          >
                             CANCELADO
                           </Badge>
                         )}
-                          {ticket.ticketType === "REFUND" && (
-                            <Badge variant="outline" className="cancelled-ticket-badge">
-                              REFUND
-                            </Badge>
-                          )}
-                          {ticket.expansionStatus === "EXPANDED" && (
-                            <Badge variant="outline">VENTA AMPLIADA</Badge>
-                          )}
-                          {ticket.ticketType === "EXPANSION" && (
-                            <Badge variant="outline">
-                              INCREMENTO {formatCurrency(ticket.expansionIncrement ?? ticket.total)}
-                            </Badge>
-                          )}
+                        {ticket.ticketType === "REFUND" && (
+                          <Badge
+                            variant="outline"
+                            className="cancelled-ticket-badge"
+                          >
+                            REFUND
+                          </Badge>
+                        )}
+                        {ticket.expansionStatus === "EXPANDED" && (
+                          <Badge variant="outline">VENTA AMPLIADA</Badge>
+                        )}
+                        {ticket.ticketType === "EXPANSION" && (
+                          <Badge variant="outline">
+                            INCREMENTO{" "}
+                            {formatCurrency(
+                              ticket.expansionIncrement ?? ticket.total,
+                            )}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>{ticket.createdAt}</TableCell>
                       <TableCell>
@@ -10770,9 +12046,12 @@ function App() {
                         />
                       </TableCell>
                       <TableCell>
-                        {(receiptMembershipsByTicket.get(ticket.id)?.length ?? 0) > 0 ? (
+                        {(receiptMembershipsByTicket.get(ticket.id)?.length ??
+                          0) > 0 ? (
                           <ReceiptMembershipPreview
-                            memberships={receiptMembershipsByTicket.get(ticket.id) ?? []}
+                            memberships={
+                              receiptMembershipsByTicket.get(ticket.id) ?? []
+                            }
                             label={`${receiptMembershipsByTicket.get(ticket.id)?.length ?? 0} ${receiptMembershipsByTicket.get(ticket.id)?.length === 1 ? "comprada" : "compradas"}`}
                           />
                         ) : (
@@ -10831,7 +12110,7 @@ function App() {
                               ? ticket.payments
                                   .map(
                                     (payment) =>
-                                      `${paymentLabel(payment.methodId)}${payment.cardType === "CREDIT" ? payment.installmentMonths && payment.installmentMonths > 1 ? ` · ${payment.installmentMonths} MSI` : " · una exhibición" : payment.cardType === "DEBIT" ? " · débito" : ""} ${formatCurrency(payment.amount)}`,
+                                      `${paymentLabel(payment.methodId)}${payment.cardType === "CREDIT" ? (payment.installmentMonths && payment.installmentMonths > 1 ? ` · ${payment.installmentMonths} MSI` : " · una exhibición") : payment.cardType === "DEBIT" ? " · débito" : ""} ${formatCurrency(payment.amount)}`,
                                   )
                                   .join(" + ")
                               : "Sin abono"}
@@ -10859,16 +12138,16 @@ function App() {
                           </button>
                           {canEditActiveModule &&
                             ticket.ticketType !== "REFUND" && (
-                            <button
-                              type="button"
-                              onClick={() => editTicket(ticket)}
-                              aria-label={`Editar ticket ${ticket.id}`}
-                              title="Editar"
-                              disabled={ticket.status === "REFUNDED"}
-                            >
-                              <Pencil size={15} />
-                            </button>
-                          )}
+                              <button
+                                type="button"
+                                onClick={() => editTicket(ticket)}
+                                aria-label={`Editar ticket ${ticket.id}`}
+                                title="Editar"
+                                disabled={ticket.status === "REFUNDED"}
+                              >
+                                <Pencil size={15} />
+                              </button>
+                            )}
                           <button
                             type="button"
                             onClick={() => previewTicket(ticket)}
@@ -10879,17 +12158,17 @@ function App() {
                           </button>
                           {canCancelTickets &&
                             ticket.ticketType !== "REFUND" && (
-                            <button
-                              type="button"
-                              className="is-destructive"
-                              onClick={() => openTicketCancellation(ticket)}
-                              aria-label={`Cancelar ticket ${ticket.id}`}
-                              title="Cancelar ticket"
-                              disabled={ticket.status === "REFUNDED"}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          )}
+                              <button
+                                type="button"
+                                className="is-destructive"
+                                onClick={() => openTicketCancellation(ticket)}
+                                aria-label={`Cancelar ticket ${ticket.id}`}
+                                title="Cancelar ticket"
+                                disabled={ticket.status === "REFUNDED"}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -10938,25 +12217,32 @@ function App() {
   );
 
   const renderSettings = () => (
-    <div className={`settings-grid is-sectioned settings-section-${activeSettingsSection}`}>
+    <div
+      className={`settings-grid is-sectioned settings-section-${activeSettingsSection}`}
+    >
       <Card className="settings-card settings-directory-card">
         <CardContent>
           <span className="section-kicker">CENTRO DE CONFIGURACIÓN</span>
           <h2>Ajustes del sistema</h2>
-          <p>Selecciona una categoría. Al abrir otra, la anterior se contrae automáticamente.</p>
+          <p>
+            Selecciona una categoría. Al abrir otra, la anterior se contrae
+            automáticamente.
+          </p>
           <div className="settings-directory-list">
-            {([
-              ["notifications", "Notificaciones", RefreshCw],
-              ["inventory", "Inventario y catálogos", Boxes],
-              ["cash", "Tipos de gastos", CircleDollarSign],
-              ["competition", "Competiciones", TrendingUp],
-              ["clients", "Clientes y procedencias", Users],
-              ["courtesy", "Cortesías de bienvenida", Sparkles],
-              ["pricing", "Precios y autorización", BadgePercent],
-              ["receipt", "Diseño de ticket", Printer],
-              ["payments", "Métodos de pago", CreditCard],
-              ["vouchers", "Vouchers promocionales", Sparkles],
-            ] as const).map(([id, label, Icon]) => (
+            {(
+              [
+                ["notifications", "Notificaciones", RefreshCw],
+                ["inventory", "Inventario y catálogos", Boxes],
+                ["cash", "Tipos de gastos", CircleDollarSign],
+                ["competition", "Competiciones", TrendingUp],
+                ["clients", "Clientes y procedencias", Users],
+                ["courtesy", "Cortesías de bienvenida", Sparkles],
+                ["pricing", "Precios y autorización", BadgePercent],
+                ["receipt", "Diseño de ticket", Printer],
+                ["payments", "Métodos de pago", CreditCard],
+                ["vouchers", "Vouchers promocionales", Sparkles],
+              ] as const
+            ).map(([id, label, Icon]) => (
               <button
                 key={id}
                 type="button"
@@ -11171,14 +12457,96 @@ function App() {
           <h2>Control administrativo</h2>
           <p>
             El precio de lista puede incrementarse sin límite. Bajar del piso
-            interno requiere autorización y el SPARE sólo aparece en el
-            X-Report protegido.
+            interno y asignar faciales por compra requieren el token comercial;
+            el SPARE sólo aparece en el X-Report protegido.
           </p>
-          <div className="admin-code-preview">
-            <span>CÓDIGO MOCK</span>
-            <strong>••••</strong>
-            <small>Demostración: 2468</small>
-          </div>
+          {canManageCommercialAuthorizationToken ? (
+            <div className="commercial-token-settings">
+              <span>
+                <ShieldCheck size={18} />
+                <span>
+                  <strong>Token genérico comercial</strong>
+                  <small>
+                    Sólo Master o perfiles con permiso pueden consultarlo,
+                    compartirlo o renovarlo.
+                  </small>
+                </span>
+              </span>
+              <div>
+                <Input
+                  type={
+                    commercialAuthorizationTokenVisible ? "text" : "password"
+                  }
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={commercialAuthorizationTokenDraft}
+                  onChange={(event) =>
+                    setCommercialAuthorizationTokenDraft(
+                      event.target.value.replace(/\D/g, "").slice(0, 6),
+                    )
+                  }
+                  aria-label="Token genérico de autorizaciones comerciales"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() =>
+                    setCommercialAuthorizationTokenVisible(
+                      (current) => !current,
+                    )
+                  }
+                  aria-label={
+                    commercialAuthorizationTokenVisible
+                      ? "Ocultar token comercial"
+                      : "Mostrar token comercial"
+                  }
+                >
+                  <Eye size={16} />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const values = new Uint32Array(1);
+                    crypto.getRandomValues(values);
+                    const token = String(100000 + ((values[0] ?? 0) % 900000));
+                    setCommercialAuthorizationTokenDraft(token);
+                    setCommercialAuthorizationTokenVisible(true);
+                  }}
+                >
+                  <RefreshCw size={15} /> Generar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={
+                    !/^\d{4,6}$/.test(commercialAuthorizationTokenDraft) ||
+                    commercialAuthorizationTokenDraft ===
+                      commercialAuthorizationToken
+                  }
+                  onClick={() => {
+                    setCommercialAuthorizationToken(
+                      commercialAuthorizationTokenDraft,
+                    );
+                    setCommercialAuthorizationTokenVisible(false);
+                    toast.success("Token comercial actualizado.");
+                  }}
+                >
+                  <CheckCircle2 size={15} /> Guardar token
+                </Button>
+              </div>
+              <small>
+                De 4 a 6 dígitos. El valor anterior deja de autorizar de
+                inmediato.
+              </small>
+            </div>
+          ) : (
+            <div className="admin-code-preview">
+              <span>TOKEN COMERCIAL PROTEGIDO</span>
+              <strong>••••••</strong>
+              <small>Solicítalo a Master o a un perfil autorizado.</small>
+            </div>
+          )}
           <div className="rule-list">
             <span>
               <CheckCircle2 size={16} /> Precio sobre lista sin límite
@@ -11222,7 +12590,10 @@ function App() {
           <div className="receipt-settings-fields">
             <div className="field-stack receipt-logo-upload-field">
               <span>Adjuntar logo</span>
-              <label className="receipt-logo-upload" htmlFor="receipt-logo-file">
+              <label
+                className="receipt-logo-upload"
+                htmlFor="receipt-logo-file"
+              >
                 <Download size={16} /> Seleccionar imagen
               </label>
               <input
@@ -11261,7 +12632,9 @@ function App() {
                 }
                 aria-label="Tamaño del logo en tickets"
               />
-              <small>Se limita automáticamente al ancho del ticket térmico.</small>
+              <small>
+                Se limita automáticamente al ancho del ticket térmico.
+              </small>
             </div>
             <div className="field-stack">
               <span>Nombre de la empresa</span>
@@ -11293,11 +12666,11 @@ function App() {
             </div>
             <div className="field-stack">
               <span>Sucursal fija de esta computadora</span>
-              <Input
-                value={`Sucursal ${activeBranch}`}
-                readOnly
-              />
-              <small>Para cambiarla usa las flechas del indicador inferior e ingresa el código master.</small>
+              <Input value={`Sucursal ${activeBranch}`} readOnly />
+              <small>
+                Para cambiarla usa las flechas del indicador inferior e ingresa
+                el código master.
+              </small>
             </div>
             <div className="field-stack">
               <span>Dirección de {activeBranch}</span>
@@ -11342,13 +12715,49 @@ function App() {
             </div>
           </div>
           <div className="receipt-visibility-settings">
+            <button
+              type="button"
+              className="setting-row"
+              role="switch"
+              aria-checked={
+                receiptSettings.attributeCrossBranchPaymentsToCollectingBranch
+              }
+              onClick={() =>
+                setReceiptSettings((current) => ({
+                  ...current,
+                  attributeCrossBranchPaymentsToCollectingBranch:
+                    !current.attributeCrossBranchPaymentsToCollectingBranch,
+                }))
+              }
+            >
+              <span>
+                <strong>Abonos cobrados en otra sucursal</strong>
+                <small>
+                  {receiptSettings.attributeCrossBranchPaymentsToCollectingBranch
+                    ? "El ingreso pertenece a la sucursal que recibe el pago"
+                    : "El ingreso pertenece a la sucursal donde nació el ticket"}
+                </small>
+              </span>
+              <span
+                className={`mock-switch ${
+                  receiptSettings.attributeCrossBranchPaymentsToCollectingBranch
+                    ? "is-on"
+                    : ""
+                }`}
+              >
+                <i />
+              </span>
+            </button>
             {(
               [
                 ["showClientName", "Mostrar nombre del cliente"],
                 ["showClientPhone", "Mostrar teléfono del cliente"],
                 ["showSellerName", "Mostrar nombre del vendedor"],
                 ["showVatBreakdown", "Mostrar desglose de IVA"],
-                ["showSpareCoverageMessage", "Mostrar mensaje de SPARE en Ventas"],
+                [
+                  "showSpareCoverageMessage",
+                  "Mostrar mensaje de SPARE en Ventas",
+                ],
               ] as const
             ).map(([field, label]) => (
               <button
@@ -11375,9 +12784,9 @@ function App() {
                         ? receiptSettings[field]
                           ? "Muestra la confirmación cuando el ticket cubre la reducción"
                           : "Oculta únicamente la leyenda; conserva la validación"
-                      : receiptSettings[field]
-                        ? "Visible en el ticket"
-                        : "Oculto en el ticket"}
+                        : receiptSettings[field]
+                          ? "Visible en el ticket"
+                          : "Oculto en el ticket"}
                   </small>
                 </span>
                 <span
@@ -11409,20 +12818,22 @@ function App() {
             </Button>
           </div>
           <div className="configured-payment-methods">
-            {paymentMethods.filter((method) => method.active).map((method) => (
-              <div className="configured-payment-method" key={method.id}>
-                <CheckCircle2 size={14} />
-                <span>{method.label}</span>
-                <button
-                  type="button"
-                  onClick={() => removePaymentMethod(method.id)}
-                  aria-label={`Borrar método ${method.label}`}
-                  title={`Borrar ${method.label}`}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
+            {paymentMethods
+              .filter((method) => method.active)
+              .map((method) => (
+                <div className="configured-payment-method" key={method.id}>
+                  <CheckCircle2 size={14} />
+                  <span>{method.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => removePaymentMethod(method.id)}
+                    aria-label={`Borrar método ${method.label}`}
+                    title={`Borrar ${method.label}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
           </div>
           <div className="bank-catalog-overview">
             <div>
@@ -11430,7 +12841,8 @@ function App() {
               <span>
                 <strong>Catálogo general de bancos</strong>
                 <small>
-                  {bankCatalog.filter((bank) => bank.active).length} activos · Crédito y débito · Visa y Mastercard
+                  {bankCatalog.filter((bank) => bank.active).length} activos ·
+                  Crédito y débito · Visa y Mastercard
                 </small>
               </span>
             </div>
@@ -11487,7 +12899,8 @@ function App() {
                   <div>
                     <strong>Bancos disponibles en nuevos cobros</strong>
                     <small>
-                      Los cambios aplican en todo el POS. Los tickets anteriores conservan el banco capturado.
+                      Los cambios aplican en todo el POS. Los tickets anteriores
+                      conservan el banco capturado.
                     </small>
                   </div>
                   <span>{bankCatalog.length} registrados</span>
@@ -11513,22 +12926,40 @@ function App() {
                 <div className="bank-catalog-list">
                   {bankCatalog
                     .slice()
-                    .sort((left, right) => left.name.localeCompare(right.name, "es-MX"))
+                    .sort((left, right) =>
+                      left.name.localeCompare(right.name, "es-MX"),
+                    )
                     .map((bank) => (
-                      <div className={bank.active ? "" : "is-inactive"} key={bank.id}>
+                      <div
+                        className={bank.active ? "" : "is-inactive"}
+                        key={bank.id}
+                      >
                         <span>
                           <strong>{bank.name}</strong>
                           <small>
-                            {bank.source === "ABM" ? "Catálogo ABM" : "Añadido manualmente"} · Crédito · Débito · Visa · Mastercard
+                            {bank.source === "ABM"
+                              ? "Catálogo ABM"
+                              : "Añadido manualmente"}{" "}
+                            · Crédito · Débito · Visa · Mastercard
                           </small>
                         </span>
                         <button
                           type="button"
-                          onClick={() => setBankCatalogActive(bank.id, !bank.active)}
+                          onClick={() =>
+                            setBankCatalogActive(bank.id, !bank.active)
+                          }
                           aria-label={`${bank.active ? "Inactivar" : "Reactivar"} ${bank.name}`}
-                          title={bank.active ? "Inactivar para nuevos cobros" : "Reactivar banco"}
+                          title={
+                            bank.active
+                              ? "Inactivar para nuevos cobros"
+                              : "Reactivar banco"
+                          }
                         >
-                          {bank.active ? <X size={13} /> : <RotateCcw size={13} />}
+                          {bank.active ? (
+                            <X size={13} />
+                          ) : (
+                            <RotateCcw size={13} />
+                          )}
                         </button>
                       </div>
                     ))}
@@ -11585,7 +13016,9 @@ function App() {
                         : "Opción desactivada"}
                     </small>
                   </span>
-                  <span className={`mock-switch ${reason.active ? "is-on" : ""}`}>
+                  <span
+                    className={`mock-switch ${reason.active ? "is-on" : ""}`}
+                  >
                     <i />
                   </span>
                 </button>
@@ -11652,9 +13085,9 @@ function App() {
             <span className="section-kicker">X-REPORT MULTISUCURSAL</span>
             <h2>Dashboard diario protegido</h2>
             <p>
-              Consulta ventas, ingresos, vendedores, productos y movimientos
-              de todas las sucursales. El SPARE entre precio máximo y mínimo continúa
-              restringido a permisos administrativos.
+              Consulta ventas, ingresos, vendedores, productos y movimientos de
+              todas las sucursales. El SPARE entre precio máximo y mínimo
+              continúa restringido a permisos administrativos.
             </p>
             <div className="admin-report-code-row">
               <Input
@@ -11829,12 +13262,10 @@ function App() {
       .reduce((sum, movement) => sum + movement.quantity, 0);
     const branchDashboard = reportBranches.map((branch) => {
       const branchSaleTickets = reportTickets.filter(
-        (ticket) =>
-          (ticket.branchName ?? activeBranch) === branch,
+        (ticket) => (ticket.branchName ?? activeBranch) === branch,
       );
       const branchPaymentTickets = dailyActiveTickets.filter(
-        (ticket) =>
-          (ticket.branchName ?? activeBranch) === branch,
+        (ticket) => (ticket.branchName ?? activeBranch) === branch,
       );
       const branchWriteOffs = dailyWriteOffs.filter(
         (movement) => movement.sourceBranch === branch,
@@ -11847,10 +13278,7 @@ function App() {
       return {
         branch,
         tickets: branchSaleTickets.length,
-        sales: branchSaleTickets.reduce(
-          (sum, ticket) => sum + ticket.total,
-          0,
-        ),
+        sales: branchSaleTickets.reduce((sum, ticket) => sum + ticket.total, 0),
         netSales: branchSaleTickets.reduce(
           (sum, ticket) => sum + getTicketTaxSummary(ticket).net,
           0,
@@ -12085,7 +13513,9 @@ function App() {
                   </div>
                 ))}
                 {dailySellerTotals.length === 0 && (
-                  <p className="x-report-empty">Sin vendedores con venta hoy.</p>
+                  <p className="x-report-empty">
+                    Sin vendedores con venta hoy.
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -12180,7 +13610,9 @@ function App() {
                     className="report-logo"
                     src={receiptSettings.logoUrl}
                     alt={receiptSettings.companyName}
-                    style={{ width: `${Math.min(receiptSettings.logoWidth, 72)}px` }}
+                    style={{
+                      width: `${Math.min(receiptSettings.logoWidth, 72)}px`,
+                    }}
                   />
                 )}
                 <span>TERMINAL 01</span>
@@ -12256,10 +13688,10 @@ function App() {
                           : "—"}
                       </TableCell>
                       <TableCell>
-                        <span
-                          className="deviation-pill is-positive"
-                        >
-                          {formatCurrency(getTicketSpare(ticket, catalogProducts))}
+                        <span className="deviation-pill is-positive">
+                          {formatCurrency(
+                            getTicketSpare(ticket, catalogProducts),
+                          )}
                         </span>
                       </TableCell>
                     </TableRow>
@@ -12334,12 +13766,13 @@ function App() {
       .toLocaleUpperCase("es-MX");
     const closeDayReceiptDate = closeDayDate.split("-").reverse().join("/");
     const closingInventoryAudit = daySession?.closingAuditId
-      ? inventoryCountAudits.find(
+      ? (inventoryCountAudits.find(
           (audit) => audit.id === daySession.closingAuditId,
-        ) ?? null
+        ) ?? null)
       : null;
     const closingInventoryErrors =
-      closingInventoryAudit?.lines.filter((line) => line.difference !== 0) ?? [];
+      closingInventoryAudit?.lines.filter((line) => line.difference !== 0) ??
+      [];
     const canViewInventoryDifferences = Boolean(
       sessionUser?.isMaster ||
       employeeRoles
@@ -12480,10 +13913,12 @@ function App() {
             <h2>Terminal lista para cierre</h2>
             <div className="closing-checks">
               <span>
-                <CheckCircle2 size={18} /> {completedCloseDayTickets.length} tickets vigentes conciliados
+                <CheckCircle2 size={18} /> {completedCloseDayTickets.length}{" "}
+                tickets vigentes conciliados
               </span>
               <span>
-                <CheckCircle2 size={18} /> {refundTickets.length} cancelaciones / refunds conciliados
+                <CheckCircle2 size={18} /> {refundTickets.length} cancelaciones
+                / refunds conciliados
               </span>
               <span>
                 <CheckCircle2 size={18} /> Caja contada
@@ -12499,8 +13934,20 @@ function App() {
                 <CheckCircle2 size={18} /> {dailyExpenses.length} gastos de caja
                 conciliados
               </span>
-              <span className={canViewInventoryDifferences && closingInventoryErrors.length > 0 ? "is-audit-error" : ""}>
-                {canViewInventoryDifferences && closingInventoryErrors.length > 0 ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+              <span
+                className={
+                  canViewInventoryDifferences &&
+                  closingInventoryErrors.length > 0
+                    ? "is-audit-error"
+                    : ""
+                }
+              >
+                {canViewInventoryDifferences &&
+                closingInventoryErrors.length > 0 ? (
+                  <AlertTriangle size={18} />
+                ) : (
+                  <CheckCircle2 size={18} />
+                )}
                 {canViewInventoryDifferences
                   ? `Auditoría final · ${closingInventoryErrors.length} diferencias`
                   : "Auditoría final completada · detalle protegido"}
@@ -12610,7 +14057,10 @@ function App() {
               />
             )}
             <strong>{receiptSettings.companyName}</strong>
-            <span>{receiptSettings.branchName.toLocaleUpperCase("es-MX")} · TERMINAL 01</span>
+            <span>
+              {receiptSettings.branchName.toLocaleUpperCase("es-MX")} · TERMINAL
+              01
+            </span>
             <span>{receiptSettings.address}</span>
             <span>CIERRE DE DÍA · {closeDayReceiptDate}</span>
             <span>OPERADOR DEL CORTE: PENDIENTE DE AUTORIZACIÓN</span>
@@ -12747,7 +14197,9 @@ function App() {
                         <small>Motivo: {refund.refundReason}</small>
                       ) : null}
                     </span>
-                    <strong>-{formatCurrency(Math.abs(refund.amountPaid))}</strong>
+                    <strong>
+                      -{formatCurrency(Math.abs(refund.amountPaid))}
+                    </strong>
                   </div>
                 );
               })}
@@ -12758,12 +14210,18 @@ function App() {
             <section>
               <h3>GASTOS POR VENDEDOR</h3>
               {expensesBySeller.flatMap((seller) => [
-                <div className="receipt-detail-line receipt-expense-seller" key={`${seller.name}-total`}>
+                <div
+                  className="receipt-detail-line receipt-expense-seller"
+                  key={`${seller.name}-total`}
+                >
                   <span>{seller.name}</span>
                   <strong>-{formatCurrency(seller.total)}</strong>
                 </div>,
                 ...seller.expenses.map((expense) => (
-                  <div className="receipt-detail-line receipt-expense-detail" key={expense.id}>
+                  <div
+                    className="receipt-detail-line receipt-expense-detail"
+                    key={expense.id}
+                  >
                     <span>
                       {expense.folio} · {expense.typeName} · {expense.concept}
                       {expense.comment ? ` · ${expense.comment}` : ""}
@@ -12826,7 +14284,9 @@ function App() {
             )}
             <div className="receipt-grand-total">
               <span>TICKETS VIGENTES / CANCELADOS</span>
-              <strong>{completedCloseDayTickets.length} / {refundTickets.length}</strong>
+              <strong>
+                {completedCloseDayTickets.length} / {refundTickets.length}
+              </strong>
             </div>
           </section>
           {canViewInventoryDifferences && closingInventoryErrors.length > 0 && (
@@ -12834,8 +14294,14 @@ function App() {
               <h3>AUDITORÍA DE INVENTARIO</h3>
               {closingInventoryErrors.map((line) => (
                 <div className="receipt-detail-line" key={line.productId}>
-                  <span>{line.productName} · Sistema {line.expectedStock} / Real {line.actualStock}</span>
-                  <strong>{line.difference > 0 ? "+" : ""}{line.difference} PZ</strong>
+                  <span>
+                    {line.productName} · Sistema {line.expectedStock} / Real{" "}
+                    {line.actualStock}
+                  </span>
+                  <strong>
+                    {line.difference > 0 ? "+" : ""}
+                    {line.difference} PZ
+                  </strong>
                 </div>
               ))}
             </section>
@@ -12921,7 +14387,7 @@ function App() {
       supplies={warehouseSupplies}
       suppliers={warehouseSuppliers}
       priceLists={warehousePriceLists}
-      clients={clients}
+      businessCustomers={warehouseBusinessCustomers}
       canManage={canManageWarehouse}
       canViewCosts={canViewProductCosts}
       canRequest={canCreateWarehouseRequest}
@@ -12966,12 +14432,11 @@ function App() {
               (audit) => audit.id === daySession.openingAuditId,
             )
           : null;
-        const closingAudit =
-          daySession?.closingAuditId
-            ? inventoryCountAudits.find(
-                (audit) => audit.id === daySession.closingAuditId,
-              ) ?? null
-            : null;
+        const closingAudit = daySession?.closingAuditId
+          ? (inventoryCountAudits.find(
+              (audit) => audit.id === daySession.closingAuditId,
+            ) ?? null)
+          : null;
         return daySession && openingAudit ? (
           <MasterDashboard
             session={daySession}
@@ -12992,7 +14457,7 @@ function App() {
             showCosts={canViewDashboardCosts}
             showMembershipReport={Boolean(
               sessionUser?.isMaster ||
-                dashboardRole?.moduleAccess.includes("memberships"),
+              dashboardRole?.moduleAccess.includes("memberships"),
             )}
           />
         ) : (
@@ -13028,7 +14493,7 @@ function App() {
             clients={clients}
             memberships={clientMemberships}
             sellers={sellers}
-            tickets={activeTickets}
+            tickets={tickets}
             voucherIssues={voucherIssues}
             appointments={appointments}
             owedProducts={owedProducts}
@@ -13037,13 +14502,19 @@ function App() {
             bankCatalog={bankCatalog}
             branches={operationalBranches}
             receiptSettings={receiptSettings}
-            sessionSellerId={sessionUser?.isMaster ? null : sessionUser?.id ?? null}
+            sessionSellerId={
+              sessionUser?.isMaster ? null : (sessionUser?.id ?? null)
+            }
             sessionIsMaster={sessionUser?.isMaster ?? false}
             isMasterCode={isMasterAccessCode}
             onUpdateClient={updateClientRecord}
             onDeleteClient={deleteClientRecord}
             onBulkImportClients={importClientRecords}
             onPreviewTicket={previewTicket}
+            canEditTickets={Boolean(
+              sessionUser?.isMaster || hasAssignedTicketEditPermission,
+            )}
+            onEditTicket={editTicket}
             onRegisterLayawayPayment={registerLayawayPayment}
             onExpandLayaway={startLayawayExpansion}
           />
@@ -13053,9 +14524,12 @@ function App() {
           <AppointmentsView
             appointments={appointments}
             sellers={sellers}
-            branches={sessionUser?.isMaster ? operationalBranches : [activeBranch]}
+            branches={
+              sessionUser?.isMaster ? operationalBranches : [activeBranch]
+            }
             activeBranch={activeBranch}
             canViewAllBranches={Boolean(sessionUser?.isMaster)}
+            onViewTicket={previewTicketById}
           />
         );
       case "memberships":
@@ -13134,8 +14608,8 @@ function App() {
             canViewCosts={canViewProductCosts}
             onSaveSupplier={saveWarehouseSupplier}
             onToggleSupplier={toggleWarehouseSupplier}
-            onDeleteSupplier={deleteWarehouseSupplier}
             onSaveItem={saveWarehouseSupply}
+            onSaveItems={saveWarehouseSupplies}
             onDeleteItem={deleteWarehouseSupply}
           />
         );
@@ -13275,7 +14749,9 @@ function App() {
                   createdAtIso: new Date().toISOString(),
                 });
               }
-              toast.success("El gasto quedó anulado y dejó de afectar el corte.");
+              toast.success(
+                "El gasto quedó anulado y dejó de afectar el corte.",
+              );
             }}
           />
         );
@@ -13283,7 +14759,9 @@ function App() {
         return (
           <ClockInView
             sellers={sellers}
-            branches={sessionUser?.isMaster ? operationalBranches : [activeBranch]}
+            branches={
+              sessionUser?.isMaster ? operationalBranches : [activeBranch]
+            }
             activeBranch={activeBranch}
             canViewAllBranches={Boolean(sessionUser?.isMaster)}
             records={attendanceRecords}
@@ -13313,7 +14791,9 @@ function App() {
             tickets={activeTickets}
             sellers={sellers}
             products={catalogProducts}
-            branches={sessionUser?.isMaster ? operationalBranches : [activeBranch]}
+            branches={
+              sessionUser?.isMaster ? operationalBranches : [activeBranch]
+            }
             canOpenSettings={canAccessSettings}
             onOpenSettings={() => {
               navigateToScreen("settings");
@@ -13333,16 +14813,22 @@ function App() {
             now={syncClock}
             onRequestSync={requestSessionDataSync}
             isOnline={isOnline}
-            pendingTicketCount={tickets.filter(
-              (ticket) => ticket.syncStatus === "PENDING_SYNC",
-            ).length}
+            pendingTicketCount={
+              tickets.filter((ticket) => ticket.syncStatus === "PENDING_SYNC")
+                .length
+            }
           />
         );
       case "my-account":
         return (
           <MyAccountView
             isMasterSession={Boolean(sessionUser?.isMaster)}
-            currentSeller={sessionUser ? sellers.find((seller) => seller.id === sessionUser.id) ?? null : null}
+            currentSeller={
+              sessionUser
+                ? (sellers.find((seller) => seller.id === sessionUser.id) ??
+                  null)
+                : null
+            }
             authorized={myAccountAuthorized}
             profile={billingProfile}
             cards={billingCards}
@@ -13447,7 +14933,8 @@ function App() {
       ? "dashboard"
       : allowedScreens.includes("sale")
         ? "sale"
-        : (allowedScreens.find((screen) => screen !== "close-day") ?? "my-account");
+        : (allowedScreens.find((screen) => screen !== "close-day") ??
+          "my-account");
     return (
       <div className="close-day-focus-shell">
         <main className="close-day-focus-window">
@@ -13461,9 +14948,13 @@ function App() {
           </Button>
           <header className="close-day-focus-header">
             <div>
-              <span className="section-kicker">CIERRE OPERATIVO · {activeBranch.toLocaleUpperCase("es-MX")}</span>
+              <span className="section-kicker">
+                CIERRE OPERATIVO · {activeBranch.toLocaleUpperCase("es-MX")}
+              </span>
               <h1>Close Day</h1>
-              <p>Revisa el resumen, imprime el corte y autoriza el cierre final.</p>
+              <p>
+                Revisa el resumen, imprime el corte y autoriza el cierre final.
+              </p>
             </div>
           </header>
           {renderCloseDay()}
@@ -13481,10 +14972,13 @@ function App() {
         >
           <DialogContent className="close-day-authorization-dialog sm:max-w-[500px]">
             <DialogHeader className="dialog-header">
-              <div className="terminal-location-dialog-icon"><ShieldCheck size={22} /></div>
+              <div className="terminal-location-dialog-icon">
+                <ShieldCheck size={22} />
+              </div>
               <DialogTitle>Autorizar cierre de día</DialogTitle>
               <DialogDescription>
-                Vuelve a ingresar el alias y su clave. El sistema registrará quién realizó el corte y la hora exacta.
+                Vuelve a ingresar el alias y su clave. El sistema registrará
+                quién realizó el corte y la hora exacta.
               </DialogDescription>
             </DialogHeader>
             <div className="close-day-authorization-fields">
@@ -13525,16 +15019,26 @@ function App() {
             )}
             <div className="terminal-location-lock-note">
               <Clock3 size={15} />
-              <span>La autorización quedará ligada al corte de {activeBranch} con fecha y hora de Ciudad de México.</span>
+              <span>
+                La autorización quedará ligada al corte de {activeBranch} con
+                fecha y hora de Ciudad de México.
+              </span>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCloseDayAuthorizationOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCloseDayAuthorizationOpen(false)}
+              >
                 Cancelar
               </Button>
               <Button
                 type="button"
                 onClick={authorizeCloseDay}
-                disabled={!closeDayAuthorizationUser.trim() || !closeDayAuthorizationCode.trim()}
+                disabled={
+                  !closeDayAuthorizationUser.trim() ||
+                  !closeDayAuthorizationCode.trim()
+                }
               >
                 <LockKeyhole size={16} /> Autorizar y cerrar día
               </Button>
@@ -13562,7 +15066,9 @@ function App() {
     second: "2-digit",
   }).format(new Date(sessionDataSync.lastUpdatedAt));
   return (
-    <div className={`pos-app ${activeScreen === "sale" && saleFocusMode ? "is-sale-focus" : ""}`}>
+    <div
+      className={`pos-app ${activeScreen === "sale" && saleFocusMode ? "is-sale-focus" : ""}`}
+    >
       {!(activeScreen === "sale" && saleFocusMode) && (
         <PosSidebar
           activeScreen={activeScreen}
@@ -13584,7 +15090,8 @@ function App() {
         <header className="page-header">
           <div>
             <span className="eyebrow">
-              {receiptSettings.companyName.toLocaleUpperCase("es-MX")} · {activeBranch.toLocaleUpperCase("es-MX")}
+              {receiptSettings.companyName.toLocaleUpperCase("es-MX")} ·{" "}
+              {activeBranch.toLocaleUpperCase("es-MX")}
             </span>
             <h1>{metadata.title}</h1>
             <p>{metadata.subtitle}</p>
@@ -13593,7 +15100,11 @@ function App() {
                 variant="outline"
                 className={`module-edit-status ${canEditActiveModule ? "is-editable" : "is-read-only"}`}
               >
-                {canEditActiveModule ? <Pencil size={12} /> : <LockKeyhole size={12} />}
+                {canEditActiveModule ? (
+                  <Pencil size={12} />
+                ) : (
+                  <LockKeyhole size={12} />
+                )}
                 {canEditActiveModule ? "Edición permitida" : "Solo consulta"}
               </Badge>
             )}
@@ -13621,19 +15132,19 @@ function App() {
                     {!isOnline
                       ? "Modo offline"
                       : sessionDataSync.updating
-                      ? interfaceLanguage === "EN"
-                        ? "Updating data…"
-                        : "Actualizando datos…"
-                      : `${interfaceLanguage === "EN" ? "Updated" : "Actualizado"} · ${lastUpdateTime}`}
+                        ? interfaceLanguage === "EN"
+                          ? "Updating data…"
+                          : "Actualizando datos…"
+                        : `${interfaceLanguage === "EN" ? "Updated" : "Actualizado"} · ${lastUpdateTime}`}
                   </strong>
                   <small>
                     {!isOnline
                       ? `${tickets.filter((ticket) => ticket.syncStatus === "PENDING_SYNC").length} tickets pendientes de sincronizar`
                       : sessionDataSync.updating
-                      ? interfaceLanguage === "EN"
-                        ? "Automatic synchronization in progress"
-                        : "Sincronización automática en curso"
-                      : `${interfaceLanguage === "EN" ? "Next update in" : "Siguiente actualización en"} ${nextUpdateCountdown}`}
+                        ? interfaceLanguage === "EN"
+                          ? "Automatic synchronization in progress"
+                          : "Sincronización automática en curso"
+                        : `${interfaceLanguage === "EN" ? "Next update in" : "Siguiente actualización en"} ${nextUpdateCountdown}`}
                   </small>
                 </div>
               </div>
@@ -13643,30 +15154,35 @@ function App() {
                 <div>
                   <strong>Terminal 01</strong>
                   <small>
-                    {interfaceLanguage === "EN" ? "Operator" : "Operador"}: {sessionUser.name}
+                    {interfaceLanguage === "EN" ? "Operator" : "Operador"}:{" "}
+                    {sessionUser.name}
                   </small>
                 </div>
               </div>
             </div>
-            {allowedScreens.includes("my-account") && <button
-              type="button"
-              className={`header-account-button ${activeScreen === "my-account" ? "is-active" : ""}`}
-              onClick={() => navigateToScreen("my-account")}
-              aria-current={activeScreen === "my-account" ? "page" : undefined}
-            >
-              <span className="header-account-icon">
-                <CreditCard size={18} />
-              </span>
-              <span>
-                <strong>My Account</strong>
-                <small>
-                  {sessionUser.isMaster
-                    ? "Perfil, ubicaciones y facturación"
-                    : "Alias y contraseña personal"}
-                </small>
-              </span>
-              <ChevronRight size={16} />
-            </button>}
+            {allowedScreens.includes("my-account") && (
+              <button
+                type="button"
+                className={`header-account-button ${activeScreen === "my-account" ? "is-active" : ""}`}
+                onClick={() => navigateToScreen("my-account")}
+                aria-current={
+                  activeScreen === "my-account" ? "page" : undefined
+                }
+              >
+                <span className="header-account-icon">
+                  <CreditCard size={18} />
+                </span>
+                <span>
+                  <strong>My Account</strong>
+                  <small>
+                    {sessionUser.isMaster
+                      ? "Perfil, ubicaciones y facturación"
+                      : "Alias y contraseña personal"}
+                  </small>
+                </span>
+                <ChevronRight size={16} />
+              </button>
+            )}
           </div>
         </header>
         <div className="page-content">{renderScreen()}</div>
@@ -13680,20 +15196,25 @@ function App() {
             <DialogTitle>Salir sin cerrar el día</DialogTitle>
             <DialogDescription>
               Se cerrará únicamente la sesión de {sessionUser.name}. La jornada,
-              los conteos, tickets, ventas y cortes permanecerán abiertos y sin cambios.
+              los conteos, tickets, ventas y cortes permanecerán abiertos y sin
+              cambios.
             </DialogDescription>
           </DialogHeader>
           {cart.length > 0 && (
             <div className="terminal-location-lock-note session-exit-warning">
               <ShoppingCart size={16} />
               <span>
-                El ticket en curso contiene {cartCount} {cartCount === 1 ? "pieza" : "piezas"}
-                y se descartará al salir.
+                El ticket en curso contiene {cartCount}{" "}
+                {cartCount === 1 ? "pieza" : "piezas"}y se descartará al salir.
               </span>
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setSessionExitOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSessionExitOpen(false)}
+            >
               Cancelar
             </Button>
             <Button type="button" onClick={exitSessionWithoutCloseDay}>
@@ -13773,8 +15294,8 @@ function App() {
           <div className="terminal-location-lock-note">
             <LockKeyhole size={15} />
             <span>
-              La selección quedará guardada localmente y se conservará al
-              volver a abrir el POS en esta computadora.
+              La selección quedará guardada localmente y se conservará al volver
+              a abrir el POS en esta computadora.
             </span>
           </div>
           <DialogFooter>
@@ -13802,7 +15323,7 @@ function App() {
         otherItemsMinimumTotal={dialogOtherItemsMinimumTotal}
         open={productDialogOpen}
         showSpareCoverageMessage={receiptSettings.showSpareCoverageMessage}
-        isMasterCode={isMasterAccessCode}
+        isMasterCode={isCommercialAuthorizationCode}
         onOpenChange={handleProductDialogOpenChange}
         onSubmit={submitCartItem}
         onRemove={removeCartItem}
@@ -13819,10 +15340,13 @@ function App() {
         paymentMethods={paymentMethods}
         bankCatalog={bankCatalog}
         branches={operationalBranches}
+        activeBranch={activeBranch}
         agendaSlots={agendaSlots}
+        appointments={appointments}
         sourceOptions={clientSources}
         requiredFields={requiredFields}
         courtesySettings={courtesySettings}
+        clientIdsWithPurchaseHistory={clientIdsWithPurchaseHistory}
         companyName={receiptSettings.companyName}
         companySalesNumber={receiptSettings.companySalesNumber}
         lockedClientId={
@@ -13830,8 +15354,32 @@ function App() {
             ?.clientId ?? ""
         }
         isMasterCode={isMasterAccessCode}
+        isCommercialAuthorizationCode={isCommercialAuthorizationCode}
+        canEditSavedClient={Boolean(
+          sessionUser?.isMaster ||
+          sessionEmployeeRole?.moduleEditAccess.includes("customers"),
+        )}
         authorizeAppointmentCode={authorizeAppointmentCode}
         onOpenChange={setCheckoutOpen}
+        onSaveClient={(client) =>
+          setClients((current) =>
+            current.some((item) => item.id === client.id)
+              ? current.map((item) => (item.id === client.id ? client : item))
+              : [client, ...current],
+          )
+        }
+        onViewTicket={(ticketId) => {
+          const ticket = tickets.find((candidate) => candidate.id === ticketId);
+          if (!ticket) {
+            toast.error(`No se encontró el ticket ${ticketId}.`);
+            return;
+          }
+          setSelectedReceiptTicket(ticket);
+          setReceiptAutoPrint(false);
+          setReceiptVoucherEligible(false);
+          setReceiptReadOnly(true);
+          setReceiptPreviewOpen(true);
+        }}
         onComplete={completeTicket}
       />
       <DealPickerDialog
@@ -13847,13 +15395,13 @@ function App() {
         ticket={selectedReceiptTicket}
         layaway={
           selectedReceiptTicket
-            ? layaways.find(
+            ? (layaways.find(
                 (layaway) =>
                   layaway.originalTicketId ===
                   (selectedReceiptTicket.ticketType === "LAYAWAY_PAYMENT"
                     ? selectedReceiptTicket.relatedTicketId
                     : selectedReceiptTicket.id),
-              ) ?? null
+              ) ?? null)
             : null
         }
         settings={receiptSettings}
@@ -13862,20 +15410,24 @@ function App() {
         bankCatalog={bankCatalog}
         clients={clients}
         sellers={sellers}
+        appointments={appointments}
         voucherTemplates={voucherTemplates.filter(
           (voucher) => voucher.active && voucher.visibleToSellers,
         )}
         allowPrint={Boolean(sessionUser)}
+        readOnly={receiptReadOnly}
         autoPrint={receiptAutoPrint}
         allowVoucherIssue={receiptVoucherEligible}
         onIssueVoucher={issueVoucher}
         onRegisterLayawayPayment={registerLayawayPayment}
         onExpandLayaway={startLayawayExpansion}
+        onViewRelatedTicket={previewTicketById}
         onOpenChange={(open) => {
           setReceiptPreviewOpen(open);
           if (!open) {
             setReceiptAutoPrint(false);
             setReceiptVoucherEligible(false);
+            setReceiptReadOnly(false);
           }
         }}
       />
@@ -13983,7 +15535,9 @@ function ReceiptMembershipPreview({
   const orderedMemberships = [...memberships].sort((left, right) =>
     right.purchaseDateIso.localeCompare(left.purchaseDateIso),
   );
-  const uniqueClients = new Set(memberships.map((membership) => membership.clientId)).size;
+  const uniqueClients = new Set(
+    memberships.map((membership) => membership.clientId),
+  ).size;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -14005,7 +15559,9 @@ function ReceiptMembershipPreview({
             <small>
               {variant === "dashboard"
                 ? `${uniqueClients} ${uniqueClients === 1 ? "clienta" : "clientas"}`
-                : memberships.map((membership) => membership.membershipName).join(" · ")}
+                : memberships
+                    .map((membership) => membership.membershipName)
+                    .join(" · ")}
             </small>
           </span>
         </button>
@@ -14021,7 +15577,10 @@ function ReceiptMembershipPreview({
           <CreditCard size={16} />
           <span>
             <strong>Membresías adquiridas</strong>
-            <small>{memberships.length} {memberships.length === 1 ? "compra" : "compras"}</small>
+            <small>
+              {memberships.length}{" "}
+              {memberships.length === 1 ? "compra" : "compras"}
+            </small>
           </span>
         </div>
         <div className="receipt-membership-popover-list">
@@ -14029,7 +15588,9 @@ function ReceiptMembershipPreview({
             <article key={membership.id}>
               <span>
                 <strong>{membership.membershipName}</strong>
-                <small>{membership.clientName} · {membership.branch}</small>
+                <small>
+                  {membership.clientName} · {membership.branch}
+                </small>
                 <small>Ticket {membership.purchaseTicketId}</small>
               </span>
               <span>

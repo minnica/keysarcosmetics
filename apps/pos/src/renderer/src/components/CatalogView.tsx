@@ -110,6 +110,12 @@ const getStockTrafficTone = (
   return "is-healthy";
 };
 
+const getStockTrafficLabel = (tone: StockTrafficTone) => {
+  if (tone === "is-low") return "Bajo mínimo";
+  if (tone === "is-over") return "Sobre máximo";
+  return "En rango";
+};
+
 const createDraft = (): Product => ({
   id: `product-${Date.now()}`,
   name: "",
@@ -157,8 +163,7 @@ export function CatalogView({
   onOpenBranchRequest,
 }: CatalogViewProps) {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<CatalogStatusFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<CatalogStatusFilter>("ALL");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Product>(createDraft);
@@ -169,6 +174,9 @@ export function CatalogView({
   const [costAccessCode, setCostAccessCode] = useState("");
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
   const [orderMenuOpen, setOrderMenuOpen] = useState(false);
+  const [stockDetailsProductId, setStockDetailsProductId] = useState<
+    string | null
+  >(null);
   const [sortConfig, setSortConfig] = useState<{
     key: InventorySortKey;
     direction: TableSortDirection;
@@ -186,6 +194,29 @@ export function CatalogView({
   );
   const allBranchesSelected =
     branches.length > 0 && selectedBranches.length === branches.length;
+  const stockDetailsProduct = useMemo(
+    () =>
+      products.find((product) => product.id === stockDetailsProductId) ?? null,
+    [products, stockDetailsProductId],
+  );
+  const stockDetails = useMemo(() => {
+    if (!stockDetailsProduct) return [];
+    return selectedBranches
+      .filter((branch) => stockDetailsProduct.branches.includes(branch))
+      .map((branch) => {
+        const stock = branchInventory[branch]?.[stockDetailsProduct.id] ?? 0;
+        const tone = getStockTrafficTone(
+          stock,
+          stockDetailsProduct.stockMin,
+          stockDetailsProduct.stockMax,
+        );
+        return { branch, stock, tone };
+      });
+  }, [branchInventory, selectedBranches, stockDetailsProduct]);
+  const stockDetailsTotal = stockDetails.reduce(
+    (sum, item) => sum + item.stock,
+    0,
+  );
 
   useEffect(() => {
     setSelectedBranches((current) => {
@@ -312,17 +343,22 @@ export function CatalogView({
               ? {
                   "Costo unitario USD": product.costUsd,
                   "Costo unitario MXN": product.costMxn,
-                  "Costo socio MXN": product.partnerCost ?? product.costMxn,
+                  "Precio distribuidor MXN":
+                    product.partnerCost ?? product.costMxn,
                 }
               : {}),
           })),
       ),
-    [
-      branchInventory,
-      costAccessAuthorized,
-      filteredProducts,
-      selectedBranches,
-    ],
+    [branchInventory, costAccessAuthorized, filteredProducts, selectedBranches],
+  );
+  const inventoryExportPieceTotal = useMemo(
+    () =>
+      inventoryExportRows.reduce(
+        (sum, row) =>
+          sum + (typeof row.Existencia === "number" ? row.Existencia : 0),
+        0,
+      ),
+    [inventoryExportRows],
   );
 
   const toggleInventoryBranch = (branch: string) => {
@@ -355,6 +391,17 @@ export function CatalogView({
     try {
       const XLSX = await import("xlsx");
       const worksheet = XLSX.utils.json_to_sheet(inventoryExportRows);
+      const inventoryTableRef = worksheet["!ref"];
+      XLSX.utils.sheet_add_aoa(
+        worksheet,
+        [["TOTAL GENERAL DE PIEZAS", inventoryExportPieceTotal]],
+        {
+          origin: {
+            r: inventoryExportRows.length + 2,
+            c: 6,
+          },
+        },
+      );
       worksheet["!cols"] = [
         { wch: 20 },
         { wch: 30 },
@@ -370,8 +417,8 @@ export function CatalogView({
         { wch: 12 },
         ...(costAccessAuthorized ? [{ wch: 18 }, { wch: 18 }] : []),
       ];
-      if (worksheet["!ref"])
-        worksheet["!autofilter"] = { ref: worksheet["!ref"] };
+      if (inventoryTableRef)
+        worksheet["!autofilter"] = { ref: inventoryTableRef };
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
       XLSX.writeFile(
@@ -398,7 +445,11 @@ export function CatalogView({
         import("jspdf-autotable"),
       ]);
       const headers = Object.keys(inventoryExportRows[0] ?? {});
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
       doc.setTextColor(32, 27, 23);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
@@ -419,8 +470,20 @@ export function CatalogView({
         startY: 76,
         head: [headers],
         body: inventoryExportRows.map((row) =>
-          headers.map((header) => String(row[header as keyof typeof row] ?? "")),
+          headers.map((header) =>
+            String(row[header as keyof typeof row] ?? ""),
+          ),
         ),
+        foot: [
+          headers.map((header) =>
+            header === "Sucursal"
+              ? "TOTAL GENERAL DE PIEZAS"
+              : header === "Existencia"
+                ? String(inventoryExportPieceTotal)
+                : "",
+          ),
+        ],
+        showFoot: "lastPage",
         theme: "grid",
         styles: {
           font: "helvetica",
@@ -433,6 +496,11 @@ export function CatalogView({
         headStyles: {
           fillColor: [83, 67, 55],
           textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        footStyles: {
+          fillColor: [239, 229, 219],
+          textColor: [83, 67, 55],
           fontStyle: "bold",
         },
         alternateRowStyles: { fillColor: [248, 244, 240] },
@@ -742,19 +810,59 @@ export function CatalogView({
             </Button>
             {orderMenuOpen && (
               <div className="catalog-order-menu">
-                <button type="button" onClick={() => { setOrderMenuOpen(false); setOrderDialogOpen(true); }}>
-                  <PackagePlus size={16} /><span><strong>Resurtido por stock</strong><small>Completar existencia máxima por sucursal.</small></span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrderMenuOpen(false);
+                    setOrderDialogOpen(true);
+                  }}
+                >
+                  <PackagePlus size={16} />
+                  <span>
+                    <strong>Resurtido por stock</strong>
+                    <small>Completar existencia máxima por sucursal.</small>
+                  </span>
                 </button>
                 {canOpenBranchRequest && (
                   <>
-                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("PRODUCT"); }}>
-                      <Boxes size={16} /><span><strong>Solicitar productos</strong><small>Pedido de mercancía vendible a bodega.</small></span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderMenuOpen(false);
+                        onOpenBranchRequest("PRODUCT");
+                      }}
+                    >
+                      <Boxes size={16} />
+                      <span>
+                        <strong>Solicitar productos</strong>
+                        <small>Pedido de mercancía vendible a bodega.</small>
+                      </span>
                     </button>
-                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("TESTER"); }}>
-                      <FlaskConical size={16} /><span><strong>Solicitar testers</strong><small>Sólo productos autorizados como demo.</small></span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderMenuOpen(false);
+                        onOpenBranchRequest("TESTER");
+                      }}
+                    >
+                      <FlaskConical size={16} />
+                      <span>
+                        <strong>Solicitar testers</strong>
+                        <small>Sólo productos autorizados como demo.</small>
+                      </span>
                     </button>
-                    <button type="button" onClick={() => { setOrderMenuOpen(false); onOpenBranchRequest("SUPPLY"); }}>
-                      <ShoppingBasket size={16} /><span><strong>Solicitar insumos</strong><small>Consumibles visibles para sucursales.</small></span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderMenuOpen(false);
+                        onOpenBranchRequest("SUPPLY");
+                      }}
+                    >
+                      <ShoppingBasket size={16} />
+                      <span>
+                        <strong>Solicitar insumos</strong>
+                        <small>Consumibles visibles para sucursales.</small>
+                      </span>
                     </button>
                   </>
                 )}
@@ -824,9 +932,7 @@ export function CatalogView({
             <button
               key={branch}
               type="button"
-              className={
-                selectedBranches.includes(branch) ? "is-active" : ""
-              }
+              className={selectedBranches.includes(branch) ? "is-active" : ""}
               onClick={() => toggleInventoryBranch(branch)}
               aria-pressed={selectedBranches.includes(branch)}
             >
@@ -841,19 +947,27 @@ export function CatalogView({
           </span>
           <Button
             type="button"
+            size="icon"
             variant="outline"
+            className="icon-action-button"
             onClick={exportInventoryExcel}
             disabled={inventoryExportRows.length === 0}
+            aria-label="Descargar inventario en Excel"
+            title="Excel"
           >
-            <FileSpreadsheet size={16} /> Excel
+            <FileSpreadsheet size={16} />
           </Button>
           <Button
             type="button"
+            size="icon"
             variant="outline"
+            className="icon-action-button"
             onClick={exportInventoryPdf}
             disabled={inventoryExportRows.length === 0}
+            aria-label="Descargar inventario en PDF"
+            title="PDF"
           >
-            <FileText size={16} /> PDF
+            <FileText size={16} />
           </Button>
         </div>
       </section>
@@ -927,130 +1041,155 @@ export function CatalogView({
                   : product.stockMax * Math.max(1, selectedStock.length),
               );
               return (
-              <TableRow
-                key={product.id}
-                className={product.active ? "" : "catalog-row-inactive"}
-              >
-                <TableCell>
-                  <div className="catalog-list-product">
-                    <img src={product.image} alt={product.name} />
-                    <span>
-                      <strong>{product.name}</strong>
-                      <small>{product.sku}</small>
-                      {product.kind === "PRODUCT" && (
-                        <small className={`catalog-tester-flag ${product.testerOrderEnabled ? "is-enabled" : ""}`}>
-                          {product.testerOrderEnabled ? "TESTER AUTORIZADO" : "SIN TESTER"}
+                <TableRow
+                  key={product.id}
+                  className={product.active ? "" : "catalog-row-inactive"}
+                >
+                  <TableCell>
+                    <div className="catalog-list-product">
+                      <img src={product.image} alt={product.name} />
+                      <span>
+                        <strong>{product.name}</strong>
+                        <small>{product.sku}</small>
+                        {product.kind === "PRODUCT" && (
+                          <small
+                            className={`catalog-tester-flag ${product.testerOrderEnabled ? "is-enabled" : ""}`}
+                          >
+                            {product.testerOrderEnabled
+                              ? "TESTER AUTORIZADO"
+                              : "SIN TESTER"}
+                          </small>
+                        )}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="catalog-list-taxonomy">
+                      <strong>{product.family}</strong>
+                      <span>{product.category}</span>
+                      <small>{product.group}</small>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="catalog-list-prices">
+                      <span>Lista {formatCurrency(product.maxPrice)}</span>
+                      {product.includesVat && (
+                        <small className="catalog-vat-summary">
+                          Sin IVA{" "}
+                          {formatCurrency(
+                            calculateIncludedVat(product.maxPrice, true).net,
+                          )}{" "}
+                          · IVA{" "}
+                          {formatCurrency(
+                            calculateIncludedVat(product.maxPrice, true).vat,
+                          )}
                         </small>
                       )}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="catalog-list-taxonomy">
-                    <strong>{product.family}</strong>
-                    <span>{product.category}</span>
-                    <small>{product.group}</small>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="catalog-list-prices">
-                    <span>Lista {formatCurrency(product.maxPrice)}</span>
-                    {product.includesVat && (
-                      <small className="catalog-vat-summary">
-                        Sin IVA {formatCurrency(calculateIncludedVat(product.maxPrice, true).net)} · IVA {formatCurrency(calculateIncludedVat(product.maxPrice, true).vat)}
-                      </small>
-                    )}
-                    <strong className="catalog-minimum-price">
-                      Mínimo {formatCurrency(product.minPrice)}
-                    </strong>
-                    {costAccessAuthorized && product.kind === "PRODUCT" && (
-                      <small className="catalog-protected-cost">
-                        Costo {formatCurrency(product.costMxn)} MXN · $
-                        {product.costUsd.toFixed(2)} USD · Socio {formatCurrency(product.partnerCost ?? product.costMxn)}
-                      </small>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {product.stock === null ? (
-                    <Badge variant="outline">
-                      {product.kind === "MEMBERSHIP"
-                        ? `${product.membershipSessions ?? 0} SESIONES`
-                        : "SERVICIO"}
-                    </Badge>
-                  ) : (
-                    <div className="catalog-list-stock catalog-branch-stock">
-                      <strong
-                        className={selectedStockTone}
-                      >
-                        {selectedStockTotal}{" "}
-                        <em>total</em>
+                      <strong className="catalog-minimum-price">
+                        Mínimo {formatCurrency(product.minPrice)}
                       </strong>
-                      <span>
-                        {selectedStock.map((item) => (
-                          <small
-                            key={item.branch}
-                            className={item.tone}
-                          >
-                            {item.branch} <b>{item.stock}</b>
-                          </small>
-                        ))}
-                      </span>
-                      <small>
-                        mín {product.stockMin} · máx {product.stockMax}
-                      </small>
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="catalog-branches">
-                    <Store size={14} /> {visibleSelectedBranches.join(" · ")}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={product.active ? "default" : "outline"}>
-                    {product.active ? "ACTIVO" : "INACTIVO"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="catalog-admin-actions">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="icon-action-button"
-                      onClick={() => openEdit(product)}
-                      aria-label={`Editar ${product.name}`}
-                      title="Editar"
-                    >
-                      <Pencil size={16} />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="icon-action-button"
-                      aria-label={`${product.active ? "Desactivar" : "Activar"} ${product.name}`}
-                      title={product.active ? "Desactivar" : "Activar"}
-                      onClick={() => {
-                        const nextActive = !product.active;
-                        const message = nextActive
-                          ? `¿Activar ${product.name}? Volverá a mostrarse en las pantallas operativas.`
-                          : `¿Desactivar ${product.name}? Se retirará de las pantallas operativas y del carrito, pero los tickets anteriores se conservarán.`;
-                        if (window.confirm(message)) {
-                          onStatusChange(product.id, nextActive);
-                        }
-                      }}
-                    >
-                      {product.active ? (
-                        <PowerOff size={14} />
-                      ) : (
-                        <Power size={14} />
+                      {costAccessAuthorized && product.kind === "PRODUCT" && (
+                        <small className="catalog-protected-cost">
+                          Costo {formatCurrency(product.costMxn)} MXN · $
+                          {product.costUsd.toFixed(2)} USD · Socio{" "}
+                          {formatCurrency(
+                            product.partnerCost ?? product.costMxn,
+                          )}
+                        </small>
                       )}
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {product.stock === null ? (
+                      <Badge variant="outline">
+                        {product.kind === "MEMBERSHIP"
+                          ? `${product.membershipSessions ?? 0} SESIONES`
+                          : "SERVICIO"}
+                      </Badge>
+                    ) : (
+                      <div className="catalog-list-stock catalog-branch-stock">
+                        <strong className={selectedStockTone}>
+                          {selectedStockTotal} <em>total</em>
+                        </strong>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="catalog-stock-details-trigger"
+                          onClick={() => setStockDetailsProductId(product.id)}
+                          aria-label={`Ver existencias de ${product.name} en ${selectedStock.length} sucursales`}
+                          title="Desplegar existencias por sucursal"
+                        >
+                          <Boxes size={14} />
+                          {selectedStock.length}{" "}
+                          {selectedStock.length === 1
+                            ? "sucursal"
+                            : "sucursales"}
+                        </Button>
+                        <small>
+                          mín {product.stockMin} · máx {product.stockMax}
+                        </small>
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="catalog-branches catalog-branches-summary">
+                      <Store size={14} />
+                      <span>
+                        <strong>
+                          {visibleSelectedBranches.length}{" "}
+                          {visibleSelectedBranches.length === 1
+                            ? "sucursal"
+                            : "sucursales"}
+                        </strong>
+                        <small>Disponibles para venta</small>
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={product.active ? "default" : "outline"}>
+                      {product.active ? "ACTIVO" : "INACTIVO"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="catalog-admin-actions">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="icon-action-button"
+                        onClick={() => openEdit(product)}
+                        aria-label={`Editar ${product.name}`}
+                        title="Editar"
+                      >
+                        <Pencil size={16} />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="icon-action-button"
+                        aria-label={`${product.active ? "Desactivar" : "Activar"} ${product.name}`}
+                        title={product.active ? "Desactivar" : "Activar"}
+                        onClick={() => {
+                          const nextActive = !product.active;
+                          const message = nextActive
+                            ? `¿Activar ${product.name}? Volverá a mostrarse en las pantallas operativas.`
+                            : `¿Desactivar ${product.name}? Se retirará de las pantallas operativas y del carrito, pero los tickets anteriores se conservarán.`;
+                          if (window.confirm(message)) {
+                            onStatusChange(product.id, nextActive);
+                          }
+                        }}
+                      >
+                        {product.active ? (
+                          <PowerOff size={14} />
+                        ) : (
+                          <Power size={14} />
+                        )}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
               );
             })}
             {filteredProducts.length === 0 && (
@@ -1064,6 +1203,66 @@ export function CatalogView({
         </Table>
       </div>
 
+      <Dialog
+        open={Boolean(stockDetailsProduct)}
+        onOpenChange={(open) => !open && setStockDetailsProductId(null)}
+      >
+        <DialogContent className="catalog-stock-dialog sm:max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>Existencias por sucursal</DialogTitle>
+            <DialogDescription>
+              {stockDetailsProduct?.name ?? "Producto"} · detalle de las
+              sucursales seleccionadas.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="catalog-stock-dialog-summary">
+            <span>
+              <small>PIEZAS TOTALES</small>
+              <strong>{stockDetailsTotal}</strong>
+            </span>
+            <span>
+              <small>SUCURSALES</small>
+              <strong>{stockDetails.length}</strong>
+            </span>
+            <span>
+              <small>RANGO POR SUCURSAL</small>
+              <strong>
+                {stockDetailsProduct?.stockMin ?? 0}–
+                {stockDetailsProduct?.stockMax ?? 0}
+              </strong>
+            </span>
+          </div>
+          <div className="catalog-stock-dialog-list">
+            {stockDetails.map((item) => (
+              <article key={item.branch} className={item.tone}>
+                <span>
+                  <Store size={15} />
+                  <strong>{item.branch}</strong>
+                  <small>{getStockTrafficLabel(item.tone)}</small>
+                </span>
+                <span>
+                  <strong>{item.stock}</strong>
+                  <small>{item.stock === 1 ? "pieza" : "piezas"}</small>
+                </span>
+              </article>
+            ))}
+            {stockDetails.length === 0 && (
+              <p className="empty-inline">
+                El producto no está visible en las sucursales seleccionadas.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={() => setStockDetailsProductId(null)}
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="catalog-dialog sm:max-w-[920px]">
           <DialogHeader>
@@ -1073,8 +1272,8 @@ export function CatalogView({
                 : "Alta de producto, servicio o membresía"}
             </DialogTitle>
             <DialogDescription>
-              Los cambios afectan inmediatamente Ventas e Inventario, pero no los
-              tickets históricos.
+              Los cambios afectan inmediatamente Ventas e Inventario, pero no
+              los tickets históricos.
             </DialogDescription>
           </DialogHeader>
 
@@ -1149,7 +1348,9 @@ export function CatalogView({
                       benefits: event.target.value.split("\n"),
                     }))
                   }
-                  placeholder={"Un beneficio por línea\nHidratación prolongada\nLuminosidad visible"}
+                  placeholder={
+                    "Un beneficio por línea\nHidratación prolongada\nLuminosidad visible"
+                  }
                 />
                 <small>Escribe un beneficio por línea.</small>
               </div>
@@ -1161,7 +1362,8 @@ export function CatalogView({
                 onClick={() =>
                   setDraft((current) => ({
                     ...current,
-                    showInDigitalCatalog: current.showInDigitalCatalog === false,
+                    showInDigitalCatalog:
+                      current.showInDigitalCatalog === false,
                   }))
                 }
               >
@@ -1244,7 +1446,10 @@ export function CatalogView({
                         membershipSessions:
                           event.target.value === ""
                             ? undefined
-                            : Math.max(1, Math.trunc(Number(event.target.value))),
+                            : Math.max(
+                                1,
+                                Math.trunc(Number(event.target.value)),
+                              ),
                       }))
                     }
                     placeholder="Ej. 8"
@@ -1273,9 +1478,9 @@ export function CatalogView({
                     {Array.from(new Set([draft.family, ...families]))
                       .filter(Boolean)
                       .map((family) => (
-                      <SelectItem key={family} value={family}>
-                        {family}
-                      </SelectItem>
+                        <SelectItem key={family} value={family}>
+                          {family}
+                        </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
@@ -1298,9 +1503,9 @@ export function CatalogView({
                     {Array.from(new Set([draft.category, ...categories]))
                       .filter(Boolean)
                       .map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
@@ -1374,7 +1579,9 @@ export function CatalogView({
                       : "Activa el switch para desglosar el impuesto incluido en el precio capturado."}
                   </small>
                 </span>
-                <span className={`mock-switch ${draft.includesVat ? "is-on" : ""}`}>
+                <span
+                  className={`mock-switch ${draft.includesVat ? "is-on" : ""}`}
+                >
                   <i />
                 </span>
               </button>
@@ -1385,10 +1592,12 @@ export function CatalogView({
                     className={`catalog-vat-toggle catalog-tester-toggle ${draft.testerOrderEnabled ? "is-active" : ""}`}
                     role="switch"
                     aria-checked={Boolean(draft.testerOrderEnabled)}
-                    onClick={() => setDraft((current) => ({
-                      ...current,
-                      testerOrderEnabled: !current.testerOrderEnabled,
-                    }))}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        testerOrderEnabled: !current.testerOrderEnabled,
+                      }))
+                    }
                   >
                     <span>
                       <strong>Autorizar pedido como tester</strong>
@@ -1398,7 +1607,11 @@ export function CatalogView({
                           : "El producto permanecerá oculto en las solicitudes de testers de las sucursales."}
                       </small>
                     </span>
-                    <span className={`mock-switch ${draft.testerOrderEnabled ? "is-on" : ""}`}><i /></span>
+                    <span
+                      className={`mock-switch ${draft.testerOrderEnabled ? "is-on" : ""}`}
+                    >
+                      <i />
+                    </span>
                   </button>
                   <div className="catalog-cost-access-panel">
                     {costAccessAuthorized ? (
@@ -1449,7 +1662,7 @@ export function CatalogView({
                           </div>
                           <div className="field-stack">
                             <Label htmlFor="catalog-partner-cost">
-                              Costo socio MXN
+                              Precio distribuidor MXN
                             </Label>
                             <Input
                               id="catalog-partner-cost"

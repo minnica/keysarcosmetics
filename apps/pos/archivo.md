@@ -934,6 +934,7 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 ## 35. Salida de sesión sin Close day
 
 - El bloque `Sistema` del menú lateral muestra el botón `Salir · Sin Close day` inmediatamente debajo de `Clock In`, únicamente al usuario master o a un usuario cuyo rol activo incluya el permiso explícito `SESSION_EXIT`. Los controles de este bloque usan una presentación compacta para dejar más espacio disponible a la navegación operativa, sin cambiar permisos ni comportamiento.
+- El encabezado `Sistema` funciona como control desplegable: un clic muestra Data Update, Settings, Clock In y Salir; otro clic los oculta. La flecha indica el estado y abrir este bloque contrae los grupos operativos abiertos para mejorar la visibilidad. En el modo lateral reducido, los iconos autorizados permanecen accesibles.
 - Este permiso se asigna desde Employees mediante código master. Tener acceso a `Close day`, Settings o edición de otro módulo no concede esta salida automáticamente.
 - Al pulsar el botón se presenta una confirmación que explica que sólo se cerrará la sesión del usuario.
 - Confirmar la salida no cierra la jornada, no crea un corte, no modifica el conteo inicial o final, no cambia ventas, tickets, gastos ni métodos de pago y no registra Clock Out.
@@ -1523,3 +1524,319 @@ La implementación puede adaptar nombres y normalización, pero debe representar
 - [ ] Un `PENDING` por venta bajo mínimo nunca aparece como apartado ni permite **Agrandar venta**.
 - [ ] Operadores sin permiso administrativo no reciben ni pueden inspeccionar la columna de mínimo/SPARE.
 - [ ] Master y perfiles autorizados distinguen monto bajo mínimo, SPARE positivo y venta exactamente al mínimo.
+
+## 59. Cambio de forma de pago, cobros entre sucursales, historial dinámico y primera cita
+
+### 59.1 Cambio de método durante el cobro
+
+- Cambiar la forma de pago conserva el monto capturado y no debe bloquear permanentemente la finalización del ticket.
+- Elegir nuevamente el mismo método no borra banco, autorización, tipo de tarjeta, red ni meses previamente capturados.
+- Al cambiar entre métodos no efectivos se conservan banco y cuatro dígitos cuando siguen siendo compatibles. Los campos exclusivos de tarjeta sólo se conservan entre métodos de tarjeta.
+- Al cambiar a efectivo se eliminan las referencias bancarias que ya no aplican y el ticket puede finalizar sin banco ni autorización.
+- El botón de finalizar se habilita en cuanto el método seleccionado cumple sus campos obligatorios. Nunca se omiten las validaciones de banco, cuatro dígitos, crédito/débito, Visa/Mastercard o meses cuando correspondan.
+- Cambiar el método nunca deja el botón visualmente bloqueado si el resto del flujo ya estaba listo. Si al nuevo método todavía le faltan referencias obligatorias, el botón permanece disponible y al pulsarlo indica qué información falta; efectivo finaliza de inmediato sin referencias bancarias.
+- La misma regla aplica al checkout inicial, abonos de apartados y pagos de saldos pendientes.
+
+### 59.2 Liquidación en una sucursal distinta
+
+- Un apartado o saldo pendiente puede pagarse desde cualquier sucursal autorizada, aunque el ticket haya nacido en otra.
+- Configuración incluye el switch **Abonos cobrados en otra sucursal** con dos políticas excluyentes: atribuir el ingreso a la sucursal de origen del ticket o a la sucursal que recibe el cobro.
+- La política se evalúa al registrar cada abono. Cambiarla después no reclasifica movimientos históricos.
+- Cada pago conserva para auditoría sucursal de origen, sucursal de cobro y sucursal a la que se atribuyó el ingreso.
+- El folio de pago, corte diario, dashboards, reportes y gráficas usan la sucursal atribuida según la política vigente al momento del cobro.
+- El inventario y las entregas pendientes permanecen ligados a la sucursal de origen del ticket. Cambiar la atribución financiera nunca mueve existencias entre sucursales.
+
+### 59.3 Historial dinámico en Customers
+
+- En la tabla de Customers, hacer clic en el nombre de la clienta abre o contrae su expediente e historial de compras.
+- Dentro del historial, hacer clic en el folio de una compra abre la información de ese ticket: productos, pagos, fechas, vendedor, sucursal, saldo y movimientos relacionados.
+- El folio de un apartado abre el ticket original y mantiene visibles sus abonos, saldo, estado y acciones disponibles.
+- El icono de ojo y el enlace del folio deben abrir la misma fuente de información; no se crean copias separadas del ticket.
+
+### 59.4 Primera cita obligatoria de una membresía nueva
+
+- Si el carrito incluye una membresía cuyo producto la clienta nunca había comprado, el paso Citas oculta **Sí, buscar espacio** y **No por ahora**.
+- En su lugar aparece **Primera cita obligatoria de membresía** y no se permite avanzar al cobro hasta elegir membresía, fecha, sucursal y un espacio disponible o liberado por cancelación.
+- La regla aplica tanto a la primera membresía de una clienta nueva como a un tipo de membresía nuevo para una clienta existente.
+- Si compra varios tipos nuevos en el mismo ticket, el vendedor elige cuál respaldará la primera cita obligatoria.
+- La reserva exige el código personal de quien la genera y conserva autor, rol y origen `POS_CHECKOUT`.
+- El sistema crea primero el identificador estable del nuevo tarjetón y liga ese mismo identificador a la reserva del POS y de la agenda externa.
+- La cita queda visible como reservada en el tarjetón nuevo, pero no consume una sesión hasta que Agenda confirme asistencia.
+- Una membresía que la clienta ya tuvo anteriormente sigue el flujo normal de próxima cita; esta regla no obliga una nueva primera cita por recompra del mismo producto.
+
+### 59.5 Criterios de aceptación
+
+- [ ] Cambiar de un método válido a efectivo conserva el importe y permite finalizar.
+- [ ] Cambiar entre métodos bancarios conserva referencias compatibles y sólo solicita los datos que falten.
+- [ ] Un abono cobrado en otra sucursal aparece en la sucursal definida por el switch y el inventario permanece en la sucursal original.
+- [ ] Cada abono histórico permite identificar origen, cobro y atribución.
+- [ ] El nombre de la clienta abre su historial y el folio abre el ticket o apartado correspondiente.
+- [ ] Una membresía nunca antes comprada obliga a reservar la primera cita y no presenta la opción **No por ahora**.
+- [ ] La primera cita queda ligada al tarjetón recién creado y no descuenta sesión antes de la asistencia.
+
+## 60. Guardado explícito de una clienta nueva desde Checkout
+
+- El paso **Cliente** muestra el botón **Guardar cliente** cuando se selecciona **Nuevo cliente**.
+- Guardar la ficha depende únicamente de los campos obligatorios de la clienta, procedencia, vendedor fijo y empresa cuando aplique. La cita de bienvenida no bloquea este guardado; conserva su validación obligatoria al intentar continuar el ticket.
+- Al guardar, la clienta queda disponible inmediatamente en Customers aunque el vendedor cierre o cancele el ticket.
+- Después del guardado, el formulario se contrae y deja visible únicamente la identificación compacta con el nombre de la clienta. Los datos ya no pueden editarse salvo por Master o por un perfil con permiso de edición de Customers.
+- Si la configuración exige cita de bienvenida, después de contraer la ficha permanecen visibles únicamente el nombre guardado y el formulario de la cita. El usuario completa paquete, fecha, sucursal y horario y continúa el flujo normal; los campos personales no vuelven a ocupar espacio.
+- El registro conserva folio de cliente, fecha de alta, procedencia, cartera de empresa cuando corresponda y vendedor fijo.
+- Si un usuario autorizado vuelve a abrir la ficha y corrige datos, el botón cambia a **Actualizar cliente**, modifica el mismo registro y vuelve a contraerlo; nunca genera otro folio ni duplica a la clienta.
+- Al continuar y finalizar la venta se reutiliza el identificador ya guardado. El ticket, membresías, citas, vendedor e historial se vinculan a esa misma ficha.
+- **Continuar a vendedores** mantiene su validación completa, incluidas las reglas de cortesía y agenda. Guardar la ficha no permite omitir los demás requisitos del checkout.
+- El botón debe permanecer visible y usable al reducir la ventana; en pantallas angostas ocupa todo el ancho disponible.
+
+### 60.1 Criterios de aceptación
+
+- [ ] Con datos de ficha incompletos, pulsar **Guardar cliente** muestra exactamente qué campo falta; la cita de bienvenida no se incluye en ese aviso.
+- [ ] Con la ficha completa se puede guardar y contraer la clienta aunque la cita de bienvenida todavía esté pendiente; no se puede avanzar al cobro hasta completar esa cita.
+- [ ] Con datos completos, guardar crea una sola ficha visible en Customers aunque se cierre Checkout.
+- [ ] Actualizar después del guardado conserva folio, fecha de alta e identificador.
+- [ ] Después de guardar sólo queda visible el nombre; únicamente Master o un perfil autorizado puede reabrir la edición.
+- [ ] Después de guardar, la cita obligatoria permanece disponible debajo del nombre compacto y conserva cualquier selección realizada previamente.
+- [ ] Finalizar el ticket no duplica la clienta previamente guardada.
+- [ ] La venta y cualquier membresía o cita quedan ligadas a la ficha guardada.
+
+## 61. Eliminación rápida de productos en el carrito
+
+- Cada producto individual del carrito muestra un botón circular rojo con icono de menos.
+- Al pulsarlo se elimina el renglón completo del ticket con una sola acción; no debe confundirse con el botón que únicamente reduce la cantidad.
+- La eliminación reutiliza las validaciones existentes de precio mínimo y cobertura. Si retirar el producto deja el ticket debajo del mínimo combinado sin autorización, el sistema rechaza el movimiento y explica el motivo.
+- La acción muestra una confirmación informativa con el nombre del producto retirado.
+- El botón incluye nombre accesible y ayuda emergente para identificar claramente que elimina el producto completo.
+
+### 61.1 Criterios de aceptación
+
+- [ ] El icono rojo permanece visible incluso cuando la cantidad del producto es uno.
+- [ ] Un clic elimina todo el renglón y actualiza piezas, subtotal, descuento y total.
+- [ ] El control de cantidad continúa reduciendo sólo una pieza cuando la cantidad es mayor que uno.
+- [ ] Las protecciones de precio mínimo y venta ampliada continúan aplicándose.
+
+## 62. Cliente guardado, facial por compra y token comercial
+
+### 62.1 Diferencia entre bienvenida y clienta existente
+
+- La cortesía de bienvenida aplica exclusivamente durante el alta de una clienta nueva. Una clienta seleccionada desde el buscador nunca recibe automáticamente este beneficio, aunque no tenga citas previas.
+- Cuando una clienta existente cuenta con al menos una compra terminada, el paso **Citas** exige responder la pregunta corta **¿Asignar facial de regalo por esta compra?** con **Sí** o **No**.
+- Elegir **No** permite continuar sin crear una cortesía. Elegir **Sí** obliga a seleccionar uno de los faciales activos autorizados en Configuración y validar el token comercial vigente.
+- El facial por compra se registra como `COURTESY / PURCHASE`, a valor $0 y ligado a clienta, ticket, vendedor y sucursal activa. No se clasifica como bienvenida, queja ni sesión de membresía.
+- La asignación nace con estado pendiente y horario **Pendiente de agendar**. No ocupa cabina, no crea una reservación externa y no se considera cita confirmada hasta que se elija un espacio válido.
+- Al agendarlo posteriormente, debe usar la integración bidireccional con Agenda y conservar el movimiento original que otorgó el beneficio.
+
+### 62.2 Token genérico de autorización comercial
+
+- Los precios por debajo del mínimo y los faciales asignados por compra se autorizan con un mismo token comercial configurable de cuatro a seis dígitos; nunca puede superar seis dígitos.
+- Master y perfiles con el permiso **Token de autorizaciones comerciales** pueden consultar, compartir, generar y reemplazar el token desde Configuración.
+- Los demás perfiles sólo ven que el token está protegido. No pueden revelarlo, renovarlo ni copiarlo desde el sistema.
+- Al reemplazarlo, el valor anterior deja de autorizar operaciones nuevas de inmediato. El cambio no altera tickets ni cortesías históricas.
+- El token se valida en la operación y no se almacena en texto dentro del ticket o la cita. La bitácora conserva que existió una autorización comercial válida, junto con vendedor, sucursal, fecha y movimiento autorizado.
+- Los códigos personales de vendedores y las autorizaciones Master continúan siendo credenciales separadas para identificar a quien reserva o ejecuta acciones administrativas; el token comercial no sustituye su trazabilidad personal.
+
+### 62.3 Conteo, historial y dashboard
+
+- Los faciales por compra aparecen en el expediente e historial de la clienta con una etiqueta propia, sin confundirse con membresías o bienvenidas.
+- El módulo de Citas muestra el total de faciales asignados por compra y un tablero con desglose por vendedor y sucursal.
+- Los filtros permiten consultar semana actual, mes actual o todo el historial, además de sucursal y vendedor. Un usuario no Master conserva el alcance de sucursal permitido por su sesión.
+- Cada registro conserva clienta, ticket, facial autorizado, sucursal, vendedores participantes, fecha de asignación, estado y origen `POS_CHECKOUT`.
+- Los conteos, dashboards y exportaciones del backend deben leer el mismo movimiento auditable; nunca deben reconstruir la autorización a partir de texto libre.
+
+### 62.4 Criterios de aceptación
+
+- [ ] Guardar una clienta nueva contrae el formulario y deja visible su nombre.
+- [ ] Un usuario sin edición de Customers no puede reabrir ni modificar la ficha guardada.
+- [ ] Una clienta existente con historial nunca recibe automáticamente la cortesía de bienvenida.
+- [ ] La pregunta de facial por compra exige responder Sí o No antes de avanzar.
+- [ ] Elegir Sí exige un facial activo y un token comercial válido de máximo seis dígitos.
+- [ ] El facial queda pendiente de agenda, a $0, vinculado al ticket, vendedor y sucursal activa.
+- [ ] Cambiar el token invalida el anterior sin modificar el historial.
+- [ ] El historial del cliente y el tablero identifican los faciales por compra y pueden filtrarse por semana, mes, vendedor y sucursal.
+
+## 63. Sesiones tomadas, citas múltiples y membresías finalizadas
+
+### 63.1 Resumen compacto de servicios
+
+- En el paso **Citas**, cada tarjetón activo muestra en la misma línea cuántas sesiones fueron tomadas y cuántas permanecen disponibles, sin aumentar la altura normal de la tarjeta.
+- Si la clienta tiene faciales de cortesía asignados, se muestra un resumen compacto con faciales tomados y total asignado.
+- Una sesión de membresía se considera tomada únicamente cuando Agenda confirma `ATTENDED`. Una cita reservada, cancelada o no-show no aumenta el contador de tomadas.
+- Los faciales de cortesía cancelados permanecen en el historial, pero el estado debe distinguirlos de los efectivamente tomados.
+
+### 63.2 Varias citas de membresía en una sola venta
+
+- El vendedor puede pulsar **Agregar cita** más de una vez en un mismo tarjetón o combinar citas de distintas membresías activas.
+- Una membresía seleccionada muestra **Quitar (n)**. Un solo clic elimina todas las citas todavía no confirmadas de ese tarjetón, incluidos sus horarios temporales; si quedan sesiones disponibles, el botón `+` permite añadir otra cita sin perder la selección actual.
+- Nunca se pueden seleccionar más citas que sesiones disponibles tenga cada tarjetón.
+- Cada cita exige su propia fecha, sucursal, horario y cabina. El checkout no permite avanzar si algún renglón quedó incompleto o perdió disponibilidad.
+- Dos citas pueden usar el mismo horario únicamente cuando la capacidad restante de la cabina lo permite; las cabinas individuales admiten una y las dobles respetan sus lugares disponibles.
+- Cada cita genera un registro independiente con el identificador de su membresía, servicio, espacio, autor y origen `POS_CHECKOUT`.
+- La solicitud enviada a Agenda incluye una relación por cita entre servicio, espacio externo y membresía. El backend debe conservar esa relación y procesarla de forma idempotente.
+- Reservar varias citas no descuenta sesiones. Cada sesión se descuenta individualmente cuando Agenda confirma la asistencia correspondiente.
+- Si la venta obliga a reservar la primera cita de una membresía nueva, la clienta también puede añadir citas de otras membresías activas; todos los horarios deben quedar válidos antes del cobro.
+
+### 63.3 Membresías finalizadas y ticket de origen
+
+- Cuando la clienta tiene tarjetones agotados o cancelados, aparece el botón **Finalizadas** con el número de registros.
+- Las listas **Activas** y **Finalizadas** son excluyentes: un tarjetón agotado, cancelado o sin sesiones restantes desaparece inmediatamente del selector de citas y sólo puede consultarse dentro de **Finalizadas**.
+- El botón abre una ventana emergente con nombre de membresía, folio, sucursal, sesiones tomadas sobre sesiones totales, estado y ticket de compra.
+- Al pulsar el folio de ticket se abre el ticket original en modo exclusivamente visual.
+- El modo de consulta no permite editar, cancelar, cobrar saldos, agrandar la venta, emitir vouchers ni reimprimir; sólo muestra los datos históricos y permite cerrar la ventana.
+- Si el ticket histórico no existe o no está disponible para el alcance autorizado, el sistema informa el error y no abre un registro distinto.
+
+### 63.4 Criterios de aceptación
+
+- [ ] Cada membresía activa muestra `tomadas · disponibles` sin hacer más alta la tarjeta.
+- [ ] Las cortesías faciales muestran tomadas y asignadas en un resumen compacto.
+- [ ] Se pueden agregar varias citas hasta el límite de sesiones disponibles.
+- [ ] Una selección incorrecta se puede quitar con un solo clic y no deja horarios huérfanos.
+- [ ] Cada cita permite elegir fecha, sucursal y horario de forma independiente.
+- [ ] No se permite avanzar con una cita incompleta ni exceder la capacidad de cabina.
+- [ ] Agenda recibe la membresía correspondiente a cada horario.
+- [ ] El botón Finalizadas abre únicamente las membresías agotadas o canceladas.
+- [ ] Una membresía finalizada no vuelve a mostrarse entre las opciones disponibles para agendar.
+- [ ] El ticket de compra se abre en modo de sólo lectura y no expone acciones operativas.
+
+## 64. Avisos de datos faltantes al finalizar un ticket
+
+- Los botones para avanzar entre Cliente, Vendedores, Citas y Cobro permanecen disponibles para recibir el clic. Si el paso previo está incompleto, no avanzan y muestran un mensaje emergente con los nombres visibles de los datos faltantes.
+- La validación distingue cliente, procedencia, vendedor fijo, empresa, cortesía de bienvenida, vendedores participantes, división de venta, propietaria, respuesta de próxima cita, membresía, facial de regalo, token, fecha, sucursal, horario, cabina y código personal de reserva.
+- En Cobro, el aviso también identifica el método que requiere banco, cuatro dígitos de autorización, crédito o débito, Visa o Mastercard y plazo de meses o una exhibición.
+- Al pulsar **Cobrar y finalizar**, el sistema presenta en un solo aviso todos los pendientes del ticket y regresa visualmente al primer paso que necesita corrección. El ticket nunca se registra mientras falte alguno.
+- Los avisos no sustituyen las validaciones: únicamente explican el bloqueo y conservan todos los datos ya capturados.
+
+### 64.1 Criterios de aceptación
+
+- [ ] Intentar avanzar con información incompleta muestra un mensaje emergente y enumera cada dato faltante.
+- [ ] El aviso usa nombres comprensibles y no códigos internos.
+- [ ] Finalizar desde Cobro revisa los cuatro pasos y lleva al primero que requiere atención.
+- [ ] Completar los pendientes permite continuar sin volver a capturar los datos válidos.
+
+## 65. Primera cita de membresía y cortesía opcional para clienta nueva
+
+- Cuando una clienta nueva compra por primera vez una membresía o paquete de sesiones, el paso **Citas** exige registrar una primera cita ligada al producto de membresía seleccionado.
+- La reservación conserva `membershipProductId`, la marca de primera cita, fecha, sucursal, cabina, autor y origen `POS_CHECKOUT`. Reservarla no consume una sesión; el descuento ocurre únicamente cuando Agenda confirma la asistencia.
+- Esta primera cita de membresía sustituye a la cita automática de bienvenida. No se generan dos citas para el mismo beneficio.
+- Además, el sistema exige responder **¿Deseas regalar un facial de cortesía?** con **Sí, registrar cita** o **No, continuar**.
+- Elegir **No** permite continuar al cobro sin crear una cortesía. Elegir **Sí** despliega el paquete de cortesía, fecha, sucursal, distribución y espacio disponible.
+- Un paquete de cortesía puede generar una o dos citas, según su configuración. Cada cita es independiente de la membresía, tiene valor $0 y no descuenta sus sesiones.
+- La cita de membresía y las cortesías comparten la identificación personal de quien realizó la reserva y se sincronizan con Agenda como movimientos independientes y auditables.
+
+### 65.1 Criterios de aceptación
+
+- [ ] La primera cita queda ligada a la membresía o paquete de sesiones comprado.
+- [ ] Agendar la cita no descuenta la sesión antes de confirmar asistencia.
+- [ ] La pregunta de cortesía exige responder Sí o No antes de avanzar.
+- [ ] Elegir Sí muestra los controles para registrar una o dos citas de cortesía.
+- [ ] Elegir No continúa al cobro sin crear registros de cortesía.
+- [ ] La cortesía no sustituye, consume ni altera las sesiones de la membresía.
+
+## 66. Navegación entre tickets, apartados, refunds, pagos y cortesías
+
+- Los folios visibles en Receipts y en el historial de Citas son acciones de consulta. Un clic abre exactamente el movimiento seleccionado: venta, pago de apartado, pago de saldo pendiente, ampliación o refund.
+- Un folio `LAYAWAY_PAYMENT` muestra el abono seleccionado y una acción **Consultar ticket inicial**. El visor no sustituye automáticamente el folio de pago por la venta original.
+- Un refund muestra monto, fecha de cancelación, fecha efectiva, motivo y ticket original. El ticket cancelado conserva una acción para consultar el refund relacionado.
+- El ticket inicial de un apartado muestra la cronología completa de pagos con folio, fecha, método, monto y saldo posterior.
+- Si la compra y la liquidación pertenecen a meses distintos, el visor lo señala expresamente y conserva ambos periodos; ningún pago se reclasifica al mes de la venta original.
+- El visor del ticket muestra cuántas cortesías tiene la clienta, cuántas nacieron en ese ticket y el detalle de servicio, motivo, paquete, sucursal, fecha, estado y folio de origen.
+- Las relaciones se resuelven por identificadores estables (`relatedTicketId`, `originalTicketId`, `refundTransactionId` y `ticketId`) y no por coincidencias de texto.
+
+### 66.1 Criterios de aceptación
+
+- [ ] Hacer clic en un folio abre el movimiento exacto seleccionado.
+- [ ] Un pago de apartado ofrece el botón **Consultar ticket inicial**.
+- [ ] El ticket inicial permite recorrer todos sus pagos aunque pertenezcan a meses diferentes.
+- [ ] Ticket cancelado y refund permiten navegar entre ambos registros.
+- [ ] El historial muestra el total y detalle de cortesías otorgadas a la clienta.
+- [ ] Cerrar o cambiar de movimiento no altera pagos, saldos, cortesías ni fechas históricas.
+
+## 67. Listado desplegable de tickets por cliente
+
+- Al localizar una clienta y abrir su expediente, el sistema muestra todos sus tickets en orden descendente por fecha de compra.
+- Cada ticket ocupa una fila independiente con fecha, folio, tipo, estado, productos, vendedor, total, saldo y acciones.
+- La fila se puede desplegar y contraer para consultar productos y servicios, formas de pago y, cuando corresponda, el historial completo del apartado o pendiente de cobro.
+- Los apartados muestran fecha de apertura, pagos posteriores, folio de cada abono, fecha, monto pagado y saldo actual.
+- Desde cada fila se puede visualizar o imprimir el ticket. El botón **Editar ticket** sólo aparece para usuarios Master o personal cuyo rol tenga permiso de edición en el módulo Clientes.
+- Los tickets cancelados permanecen visibles como historial, pero no ofrecen edición.
+- Abrir o cerrar una fila no modifica el ticket, sus pagos ni el inventario.
+
+### 67.1 Criterios de aceptación
+
+- [ ] Los tickets aparecen como filas separadas y ordenadas del más reciente al más antiguo.
+- [ ] Cada fila muestra claramente la fecha de compra y su saldo.
+- [ ] El despliegue presenta el detalle de productos, cobros y apartados sin navegar fuera del cliente.
+- [ ] Visualizar e imprimir abren el ticket correspondiente a la fila seleccionada.
+- [ ] Editar reutiliza el flujo protegido de edición de ticket.
+- [ ] Un usuario sin permiso de edición no ve el botón Editar.
+- [ ] Los tickets cancelados se conservan en la lista histórica sin alterar la compra total vigente.
+
+## 68. Existencias compactas para catálogos con muchas sucursales
+
+- La tabla de productos no imprime una etiqueta por cada sucursal dentro del renglón. Muestra únicamente el total de piezas, el rango mínimo/máximo y un botón compacto con icono y número de sucursales.
+- El botón abre la ventana **Existencias por sucursal** con el nombre de cada ubicación, sus piezas disponibles y el estado `Bajo mínimo`, `En rango` o `Sobre máximo`.
+- La ventana presenta total de piezas, número de sucursales y rango esperado por sucursal. La lista tiene desplazamiento interno y conserva el tamaño del modal aunque existan más de 15 ubicaciones.
+- La columna **Visible en** muestra solamente el número de sucursales disponibles para venta, evitando que los nombres ensanchen la tabla.
+- El detalle usa las mismas sucursales seleccionadas por el filtro del inventario. Cambiar filtros actualiza total, conteo y filas sin copiar ni modificar existencias.
+- En desarrollo local, `?branchDemo=30` genera una prueba visual con 30 sucursales. Este modo no crea sucursales ni altera inventario en producción.
+
+### 68.1 Criterios de aceptación
+
+- [ ] Con 30 sucursales, cada producto conserva una sola fila compacta.
+- [ ] El botón indica cuántas sucursales forman el total mostrado.
+- [ ] La ventana permite revisar todas las sucursales mediante desplazamiento.
+- [ ] Cada sucursal muestra su número exacto de piezas y su nivel de inventario.
+- [ ] Cerrar la ventana no modifica existencias ni filtros.
+- [ ] Servicios y membresías conservan sus indicadores actuales y no muestran un detalle de piezas que no aplica.
+
+## 69. Total general de piezas en exportaciones de inventario
+
+- Las descargas Excel y PDF conservan sus columnas, filtros, orientación y detalle actual por producto y sucursal.
+- Al final de la tabla se agrega **TOTAL GENERAL DE PIEZAS**, calculado con la suma de la columna `Existencia` para las sucursales y productos incluidos por los filtros activos.
+- Servicios y membresías con existencia `No aplica` no se convierten en cero ni forman parte de la suma de piezas.
+- En Excel el resumen ocupa las columnas existentes `Sucursal` y `Existencia`, separado del detalle por una fila vacía. El autofiltro continúa limitado al encabezado y a los registros, sin incluir el resumen.
+- En PDF el total aparece como pie de la misma tabla en la última página. No agrega columnas, no cambia el orden del detalle y conserva el formato horizontal actual.
+
+### 69.1 Criterios de aceptación
+
+- [ ] Excel y PDF muestran el mismo total general para una selección idéntica.
+- [ ] El total cambia al modificar los filtros de producto, estado o sucursal.
+- [ ] El cálculo suma piezas de todas las filas numéricas exportadas y excluye `No aplica`.
+- [ ] El Excel conserva sus columnas y el autofiltro no absorbe la fila del total.
+- [ ] El PDF conserva orientación, encabezados, colores y detalle actual; el total aparece sólo al final.
+
+## 70. Clientes comerciales independientes de Customers
+
+- El campo de cliente en los pedidos de productos representa a un negocio que compra mercancía para reventa o consumo profesional; no representa a una clienta registrada al emitir un ticket del POS.
+- Bodega utiliza un padrón independiente de **clientes comerciales** con folio, razón social, contacto, RFC, teléfono y correo.
+- Las listas de precios MXN/USD se asignan únicamente a estos negocios compradores. Nunca consultan ni guardan identificadores de `Customers` o de clientes de tickets.
+- **Pedido general de sucursal** continúa disponible cuando el movimiento no pertenece a un negocio comprador específico y sólo puede utilizar listas generales de la sucursal.
+- La razón social comercial queda guardada como snapshot en el movimiento para conservar el historial aunque posteriormente cambie el padrón.
+- Historial, detalle, PDF, Excel y buscador identifican el dato como **Cliente comercial** para evitar confundirlo con la cartera del POS.
+
+### 70.1 Criterios de aceptación
+
+- [ ] El selector de pedidos muestra negocios del padrón comercial y no personas de Customers.
+- [ ] Elegir un negocio sólo muestra listas generales o listas asignadas a ese negocio y sucursal.
+- [ ] Una lista personalizada sólo puede guardar IDs del padrón comercial activo.
+- [ ] Crear o editar pedidos no altera clientes, tickets, membresías ni historial de compras del POS.
+- [ ] El pedido general de sucursal funciona sin seleccionar un negocio comprador.
+- [ ] Exportaciones y detalle muestran la razón social bajo la etiqueta Cliente comercial.
+
+## 71. Alta masiva y lista de precios por proveedor
+
+- Dentro del detalle de cada proveedor se puede descargar una plantilla Excel específica para alta masiva de sus productos.
+- La hoja **Productos** solicita SKU, nombre, familia, categoría, unidad de medida, presentación, piezas por caja, costo MXN, costo USD, precio socio, precio sugerido, stock mínimo, stock máximo, imagen, visibilidad en sucursal y estatus.
+- La hoja **Instrucciones** identifica proveedor y folio, explica los campos obligatorios y conserva sin cambios los encabezados esperados por el importador.
+- La importación valida todas las filas antes de guardar. Si falta un dato, un número es inválido, el máximo es menor al mínimo o existe un SKU duplicado, se rechaza el lote completo y se muestra el detalle por fila.
+- Un lote válido registra los productos con existencia inicial cero, los vincula al proveedor y los agrega a las listas de precios de bodega sin emitir mensajes individuales por cada fila.
+- La lista visible del proveedor cuenta con acciones compactas para imprimir, descargar PDF y descargar Excel. Las exportaciones respetan el permiso para visualizar costos.
+- Excel conserva valores numéricos para costos, precios y existencias; incluye autofiltro y encabezados aun cuando el proveedor todavía no tenga productos.
+- PDF e impresión incluyen datos del proveedor, productos, presentación, precios autorizados, límites de stock y estatus.
+
+### 71.1 Criterios de aceptación
+
+- [ ] La plantilla contiene todos los datos requeridos por el alta individual.
+- [ ] Un archivo con una fila inválida no genera altas parciales.
+- [ ] Los SKU se validan contra Catálogo, Inventario y el propio archivo.
+- [ ] Un archivo correcto crea todos los productos y actualiza las listas de precios.
+- [ ] Los botones Imprimir, PDF y Excel aparecen al visualizar el proveedor.
+- [ ] Un usuario sin permiso de costos no recibe esos importes en PDF, Excel o impresión.
+- [ ] La impresión muestra solamente la lista del proveedor seleccionado.

@@ -16,6 +16,11 @@ export interface AgendaReservationRequest {
   membershipId: string | null;
   services: string[];
   slots: Array<{ externalSlotId: string; seats: number }>;
+  appointmentLinks?: Array<{
+    service: string;
+    externalSlotId: string;
+    membershipId: string | null;
+  }>;
   source: "NEW_CLIENT" | "COURTESY" | "NEXT_SESSION" | "MEMBERSHIP";
 }
 

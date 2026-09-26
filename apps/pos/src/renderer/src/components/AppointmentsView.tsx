@@ -4,6 +4,7 @@ import {
   Building2,
   CalendarCheck2,
   CalendarHeart,
+  Gift,
   MapPin,
   UsersRound,
 } from "lucide-react";
@@ -32,9 +33,11 @@ interface AppointmentsViewProps {
   branches: string[];
   activeBranch: string;
   canViewAllBranches: boolean;
+  onViewTicket: (ticketId: string) => void;
 }
 
 type AppointmentFilter = "ALL" | AppointmentKind;
+type AppointmentPeriod = "WEEK" | "MONTH" | "ALL";
 
 const kindLabels: Record<AppointmentKind, string> = {
   COURTESY: "CORTESÍA",
@@ -56,8 +59,11 @@ export function AppointmentsView({
   branches,
   activeBranch,
   canViewAllBranches,
+  onViewTicket,
 }: AppointmentsViewProps) {
   const [filter, setFilter] = useState<AppointmentFilter>("ALL");
+  const [periodFilter, setPeriodFilter] = useState<AppointmentPeriod>("MONTH");
+  const [sellerFilter, setSellerFilter] = useState("ALL");
   const [branchFilter, setBranchFilter] = useState(
     canViewAllBranches ? "ALL" : activeBranch,
   );
@@ -69,14 +75,30 @@ export function AppointmentsView({
     if (branchFilter !== "ALL" && !branches.includes(branchFilter))
       setBranchFilter("ALL");
   }, [activeBranch, branchFilter, branches, canViewAllBranches]);
+  const periodStart = useMemo(() => {
+    if (periodFilter === "ALL") return null;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    if (periodFilter === "MONTH") {
+      start.setDate(1);
+    } else {
+      const mondayOffset = (start.getDay() + 6) % 7;
+      start.setDate(start.getDate() - mondayOffset);
+    }
+    return start.getTime();
+  }, [periodFilter]);
   const scopedAppointments = useMemo(
     () =>
       appointments.filter(
         (appointment) =>
           branches.includes(appointment.branch) &&
-          (branchFilter === "ALL" || appointment.branch === branchFilter),
+          (branchFilter === "ALL" || appointment.branch === branchFilter) &&
+          (sellerFilter === "ALL" ||
+            appointment.sellerIds.includes(sellerFilter)) &&
+          (periodStart === null ||
+            new Date(appointment.recordedAtIso).getTime() >= periodStart),
       ),
-    [appointments, branchFilter, branches],
+    [appointments, branchFilter, branches, periodStart, sellerFilter],
   );
   const sortedAppointments = useMemo(
     () =>
@@ -108,6 +130,31 @@ export function AppointmentsView({
   const uniqueClients = new Set(
     scopedAppointments.map((appointment) => appointment.clientId),
   ).size;
+  const purchaseCourtesies = scopedAppointments.filter(
+    (appointment) =>
+      appointment.kind === "COURTESY" &&
+      appointment.courtesyReason === "PURCHASE",
+  );
+  const purchaseCourtesyBySeller = sellers
+    .map((seller) => ({
+      label: seller.name,
+      total: purchaseCourtesies.filter((appointment) =>
+        appointment.sellerIds.includes(seller.id),
+      ).length,
+    }))
+    .filter((item) => item.total > 0)
+    .sort((first, second) => second.total - first.total);
+  const purchaseCourtesyByBranch = Array.from(
+    purchaseCourtesies
+      .reduce<Map<string, number>>((summary, appointment) => {
+        summary.set(
+          appointment.branch,
+          (summary.get(appointment.branch) ?? 0) + 1,
+        );
+        return summary;
+      }, new Map())
+      .entries(),
+  ).sort((first, second) => second[1] - first[1]);
   const branchTotals = Array.from(
     scheduledAppointments
       .reduce<Map<string, number>>((summary, appointment) => {
@@ -143,6 +190,26 @@ export function AppointmentsView({
             </SelectContent>
           </Select>
         ) : <strong>{activeBranch}</strong>}
+        <Select
+          value={periodFilter}
+          onValueChange={(value) => setPeriodFilter(value as AppointmentPeriod)}
+        >
+          <SelectTrigger aria-label="Filtrar citas por periodo"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="WEEK">Semana actual</SelectItem>
+            <SelectItem value="MONTH">Mes actual</SelectItem>
+            <SelectItem value="ALL">Todo el historial</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sellerFilter} onValueChange={setSellerFilter}>
+          <SelectTrigger aria-label="Filtrar citas por vendedor"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todos los vendedores</SelectItem>
+            {sellers.map((seller) => (
+              <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="appointment-metric-grid">
         <Card>
@@ -171,6 +238,13 @@ export function AppointmentsView({
             <UsersRound size={21} />
             <span>CLIENTAS REGISTRADAS</span>
             <strong>{uniqueClients}</strong>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <Gift size={21} />
+            <span>FACIALES POR COMPRA</span>
+            <strong>{purchaseCourtesies.length}</strong>
           </CardContent>
         </Card>
       </div>
@@ -228,6 +302,35 @@ export function AppointmentsView({
               ))}
               {sellerAlerts.length === 0 && (
                 <p>Todas las clientas cuentan con seguimiento agendado.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="appointments-dashboard-card purchase-courtesy-dashboard">
+          <CardContent>
+            <div className="dashboard-card-heading">
+              <div>
+                <span>AUTORIZACIONES COMERCIALES</span>
+                <h2>Faciales asignados por compra</h2>
+              </div>
+              <Gift size={20} />
+            </div>
+            <div className="purchase-courtesy-breakdown">
+              <div>
+                <strong>Por vendedor</strong>
+                {purchaseCourtesyBySeller.map((item) => (
+                  <span key={item.label}><small>{item.label}</small><b>{item.total}</b></span>
+                ))}
+              </div>
+              <div>
+                <strong>Por sucursal</strong>
+                {purchaseCourtesyByBranch.map(([branch, total]) => (
+                  <span key={branch}><small>{branch}</small><b>{total}</b></span>
+                ))}
+              </div>
+              {purchaseCourtesies.length === 0 && (
+                <p>Sin faciales por compra en el periodo seleccionado.</p>
               )}
             </div>
           </CardContent>
@@ -295,6 +398,9 @@ export function AppointmentsView({
                       >
                         {kindLabels[appointment.kind]}
                       </Badge>
+                      {appointment.courtesyReason === "PURCHASE" && (
+                        <small className="appointment-courtesy-reason">POR COMPRA</small>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="appointment-client-cell">
@@ -351,7 +457,14 @@ export function AppointmentsView({
                     </TableCell>
                     <TableCell>
                       <div className="appointment-date-cell">
-                        <strong>{appointment.ticketId}</strong>
+                        <button
+                          type="button"
+                          className="appointment-ticket-link"
+                          onClick={() => onViewTicket(appointment.ticketId)}
+                          aria-label={`Consultar ticket ${appointment.ticketId}`}
+                        >
+                          {appointment.ticketId}
+                        </button>
                         <small>{appointment.recordedAt}</small>
                       </div>
                     </TableCell>
@@ -387,7 +500,7 @@ export function AppointmentsView({
                 ))}
                 {visibleAppointments.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8}>
+                    <TableCell colSpan={9}>
                       No hay registros que coincidan con el filtro.
                     </TableCell>
                   </TableRow>

@@ -59,7 +59,12 @@ const navigationItems: NavigationItem[] = [
     icon: Crown,
     color: "#b18455",
   },
-  { id: "inventory", label: "Inventory", icon: Boxes, color: "#d97562" },
+  {
+    id: "inventory",
+    label: "Catálogo e inventario",
+    icon: Boxes,
+    color: "#d97562",
+  },
   { id: "x-report", label: "X-Report", icon: ClipboardList, color: "#242321" },
   { id: "reports", label: "Reports", icon: BarChart3, color: "#a17452" },
   {
@@ -120,7 +125,7 @@ const saleNavigationItems: NavigationItem[] = [
   },
   {
     id: "catalog",
-    label: "Catálogo",
+    label: "Catálogo digital",
     icon: BookOpenCheck,
     color: "#8b6f54",
   },
@@ -141,13 +146,13 @@ const inventoryNavigationItems: NavigationItem[] = [
   },
   {
     id: "warehouse",
-    label: "Pedido sucursales",
+    label: "Almacén matriz",
     icon: Warehouse,
     color: "#9a6a45",
   },
   {
     id: "branch-inventory",
-    label: "Almacén matriz",
+    label: "Solicitudes de sucursal",
     icon: Building2,
     color: "#8a785e",
   },
@@ -179,11 +184,11 @@ const navigationLabelsEnglish: Partial<Record<ScreenId, string>> = {
   customers: "Customers",
   appointments: "Appointments",
   memberships: "Memberships",
-  inventory: "Inventory",
-  warehouse: "Warehouse",
-  "branch-inventory": "Branch inventory",
+  inventory: "Catalog & inventory",
+  warehouse: "Central warehouse",
+  "branch-inventory": "Branch requests",
   suppliers: "Suppliers",
-  catalog: "Catalog",
+  catalog: "Digital catalog",
   "inventory-movements": "Movements",
   deals: "Deals",
   "x-report": "X-Report",
@@ -199,7 +204,9 @@ const navigationLabelsEnglish: Partial<Record<ScreenId, string>> = {
 };
 
 const navigationLabel = (item: NavigationItem, language: "ES" | "EN") =>
-  language === "EN" ? navigationLabelsEnglish[item.id] ?? item.label : item.label;
+  language === "EN"
+    ? (navigationLabelsEnglish[item.id] ?? item.label)
+    : item.label;
 
 interface PosSidebarProps {
   activeScreen: ScreenId;
@@ -238,19 +245,30 @@ export function PosSidebar({
   const inventoryIsActive = inventoryNavigationItems.some(
     (item) => item.id === activeScreen,
   );
+  const systemIsActive = utilityNavigationItems.some(
+    (item) => item.id === activeScreen,
+  );
   const [saleMenuOpen, setSaleMenuOpen] = useState(saleIsActive);
   const [inventoryMenuOpen, setInventoryMenuOpen] = useState(inventoryIsActive);
+  const [systemMenuOpen, setSystemMenuOpen] = useState(true);
   const visiblePrimaryNavigationItems = primaryNavigationItems.filter(
     (item) =>
       allowedScreens.includes(item.id) ||
-      (item.id === "sale" && saleNavigationItems.some((child) => allowedScreens.includes(child.id))) ||
-      (item.id === "inventory" && inventoryNavigationItems.some((child) => allowedScreens.includes(child.id))),
+      (item.id === "sale" &&
+        saleNavigationItems.some((child) =>
+          allowedScreens.includes(child.id),
+        )) ||
+      (item.id === "inventory" &&
+        inventoryNavigationItems.some((child) =>
+          allowedScreens.includes(child.id),
+        )),
   );
 
   useEffect(() => {
     if (saleIsActive) {
       setSaleMenuOpen(true);
       setInventoryMenuOpen(false);
+      setSystemMenuOpen(false);
     }
   }, [saleIsActive]);
 
@@ -258,8 +276,17 @@ export function PosSidebar({
     if (inventoryIsActive) {
       setInventoryMenuOpen(true);
       setSaleMenuOpen(false);
+      setSystemMenuOpen(false);
     }
   }, [inventoryIsActive]);
+
+  useEffect(() => {
+    if (systemIsActive) {
+      setSystemMenuOpen(true);
+      setSaleMenuOpen(false);
+      setInventoryMenuOpen(false);
+    }
+  }, [systemIsActive]);
 
   return (
     <aside className={`pos-sidebar ${collapsed ? "is-collapsed" : ""}`}>
@@ -287,15 +314,28 @@ export function PosSidebar({
           type="button"
           onClick={onTogglePin}
           aria-label={pinned ? "Liberar menú automático" : "Fijar menú abierto"}
-          title={pinned ? "Menú fijado · liberar" : "Fijar menú para que no se contraiga"}
+          title={
+            pinned
+              ? "Menú fijado · liberar"
+              : "Fijar menú para que no se contraiga"
+          }
           aria-pressed={pinned}
         >
           {pinned ? <PinOff size={15} /> : <Pin size={15} />}
         </button>
       </div>
 
-      <nav className="sidebar-nav" aria-label={language === "EN" ? "Main navigation" : "Navegación principal"}>
-        {!collapsed && <span className="sidebar-section-label">{language === "EN" ? "OPERATIONS" : "OPERACIÓN"}</span>}
+      <nav
+        className="sidebar-nav"
+        aria-label={
+          language === "EN" ? "Main navigation" : "Navegación principal"
+        }
+      >
+        {!collapsed && (
+          <span className="sidebar-section-label">
+            {language === "EN" ? "OPERATIONS" : "OPERACIÓN"}
+          </span>
+        )}
         {visiblePrimaryNavigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.id === activeScreen;
@@ -312,18 +352,27 @@ export function PosSidebar({
                     if (collapsed) {
                       setSaleMenuOpen(true);
                       setInventoryMenuOpen(false);
+                      setSystemMenuOpen(false);
                       onToggle();
                       return;
                     }
                     const next = !saleMenuOpen;
                     setSaleMenuOpen(next);
-                    if (next) setInventoryMenuOpen(false);
+                    if (next) {
+                      setInventoryMenuOpen(false);
+                      setSystemMenuOpen(false);
+                    }
                   }}
                   aria-expanded={!collapsed ? saleMenuOpen : undefined}
                   aria-current={isActive ? "page" : undefined}
-                  title={collapsed ? navigationLabel(item, language) : undefined}
+                  title={
+                    collapsed ? navigationLabel(item, language) : undefined
+                  }
                 >
-                  <span className="sidebar-icon" style={navigationIconStyle(item.color)}>
+                  <span
+                    className="sidebar-icon"
+                    style={navigationIconStyle(item.color)}
+                  >
                     <Icon size={24} strokeWidth={1.65} />
                   </span>
                   {!collapsed && <span>{navigationLabel(item, language)}</span>}
@@ -341,28 +390,35 @@ export function PosSidebar({
                   )}
                 </button>
                 {!collapsed && saleMenuOpen && (
-                  <div className="sidebar-submenu" aria-label={language === "EN" ? "Sale views" : "Opciones de Ventas"}>
-                    {saleNavigationItems.filter((child) => allowedScreens.includes(child.id)).map((child) => {
-                      const ChildIcon = child.icon;
-                      const childActive = child.id === activeScreen;
-                      return (
-                        <button
-                          key={child.id}
-                          type="button"
-                          className={childActive ? "is-active" : ""}
-                          onClick={() => onNavigate(child.id)}
-                          aria-current={childActive ? "page" : undefined}
-                        >
-                          <span
-                            className="sidebar-submenu-icon"
-                            style={navigationIconStyle(child.color)}
+                  <div
+                    className="sidebar-submenu"
+                    aria-label={
+                      language === "EN" ? "Sale views" : "Opciones de Ventas"
+                    }
+                  >
+                    {saleNavigationItems
+                      .filter((child) => allowedScreens.includes(child.id))
+                      .map((child) => {
+                        const ChildIcon = child.icon;
+                        const childActive = child.id === activeScreen;
+                        return (
+                          <button
+                            key={child.id}
+                            type="button"
+                            className={childActive ? "is-active" : ""}
+                            onClick={() => onNavigate(child.id)}
+                            aria-current={childActive ? "page" : undefined}
                           >
-                            <ChildIcon size={14} strokeWidth={1.75} />
-                          </span>
-                          <span>{navigationLabel(child, language)}</span>
-                        </button>
-                      );
-                    })}
+                            <span
+                              className="sidebar-submenu-icon"
+                              style={navigationIconStyle(child.color)}
+                            >
+                              <ChildIcon size={14} strokeWidth={1.75} />
+                            </span>
+                            <span>{navigationLabel(child, language)}</span>
+                          </button>
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -378,25 +434,35 @@ export function PosSidebar({
                   type="button"
                   className={`sidebar-item ${inventoryIsActive ? "is-active" : ""}`}
                   onClick={() => {
-                    const canOpenInventory = allowedScreens.includes("inventory");
+                    const canOpenInventory =
+                      allowedScreens.includes("inventory");
                     if (canOpenInventory) onNavigate("inventory");
                     if (!canOpenInventory && collapsed) {
                       setInventoryMenuOpen(true);
                       setSaleMenuOpen(false);
+                      setSystemMenuOpen(false);
                       onToggle();
                       return;
                     }
                     if (!collapsed) {
                       const next = !inventoryMenuOpen;
                       setInventoryMenuOpen(next);
-                      if (next) setSaleMenuOpen(false);
+                      if (next) {
+                        setSaleMenuOpen(false);
+                        setSystemMenuOpen(false);
+                      }
                     }
                   }}
                   aria-expanded={!collapsed ? inventoryMenuOpen : undefined}
                   aria-current={isActive ? "page" : undefined}
-                  title={collapsed ? navigationLabel(item, language) : undefined}
+                  title={
+                    collapsed ? navigationLabel(item, language) : undefined
+                  }
                 >
-                  <span className="sidebar-icon" style={navigationIconStyle(item.color)}>
+                  <span
+                    className="sidebar-icon"
+                    style={navigationIconStyle(item.color)}
+                  >
                     <Icon size={24} strokeWidth={1.65} />
                   </span>
                   {!collapsed && <span>{navigationLabel(item, language)}</span>}
@@ -413,29 +479,35 @@ export function PosSidebar({
                 {!collapsed && inventoryMenuOpen && (
                   <div
                     className="sidebar-submenu"
-                    aria-label={language === "EN" ? "Inventory views" : "Ventanas de Inventory"}
+                    aria-label={
+                      language === "EN"
+                        ? "Inventory views"
+                        : "Módulos de inventario"
+                    }
                   >
-                    {inventoryNavigationItems.filter((child) => allowedScreens.includes(child.id)).map((child) => {
-                      const ChildIcon = child.icon;
-                      const childActive = child.id === activeScreen;
-                      return (
-                        <button
-                          key={child.id}
-                          type="button"
-                          className={childActive ? "is-active" : ""}
-                          onClick={() => onNavigate(child.id)}
-                          aria-current={childActive ? "page" : undefined}
-                        >
-                          <span
-                            className="sidebar-submenu-icon"
-                            style={navigationIconStyle(child.color)}
+                    {inventoryNavigationItems
+                      .filter((child) => allowedScreens.includes(child.id))
+                      .map((child) => {
+                        const ChildIcon = child.icon;
+                        const childActive = child.id === activeScreen;
+                        return (
+                          <button
+                            key={child.id}
+                            type="button"
+                            className={childActive ? "is-active" : ""}
+                            onClick={() => onNavigate(child.id)}
+                            aria-current={childActive ? "page" : undefined}
                           >
-                            <ChildIcon size={14} strokeWidth={1.75} />
-                          </span>
-                          <span>{navigationLabel(child, language)}</span>
-                        </button>
-                      );
-                    })}
+                            <span
+                              className="sidebar-submenu-icon"
+                              style={navigationIconStyle(child.color)}
+                            >
+                              <ChildIcon size={14} strokeWidth={1.75} />
+                            </span>
+                            <span>{navigationLabel(child, language)}</span>
+                          </button>
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -450,7 +522,10 @@ export function PosSidebar({
               aria-current={isActive ? "page" : undefined}
               title={collapsed ? navigationLabel(item, language) : undefined}
             >
-              <span className="sidebar-icon" style={navigationIconStyle(item.color)}>
+              <span
+                className="sidebar-icon"
+                style={navigationIconStyle(item.color)}
+              >
                 <Icon size={24} strokeWidth={1.65} />
               </span>
               {!collapsed && <span>{navigationLabel(item, language)}</span>}
@@ -459,48 +534,102 @@ export function PosSidebar({
         })}
       </nav>
 
-      <nav className="sidebar-utility-nav" aria-label={language === "EN" ? "System and attendance" : "Sistema y asistencia"}>
-        {!collapsed && <span className="sidebar-section-label">{language === "EN" ? "SYSTEM" : "SISTEMA"}</span>}
-        {utilityNavigationItems.filter((item) => allowedScreens.includes(item.id)).map((item) => {
-          const Icon = item.icon;
-          const isActive = item.id === activeScreen;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`sidebar-item ${isActive ? "is-active" : ""}`}
-              onClick={() => onNavigate(item.id)}
-              aria-current={isActive ? "page" : undefined}
-              title={collapsed ? navigationLabel(item, language) : undefined}
-            >
-              <span className="sidebar-icon" style={navigationIconStyle(item.color)}>
-                <Icon size={18} strokeWidth={1.7} />
-              </span>
-              {!collapsed && <span>{navigationLabel(item, language)}</span>}
-            </button>
-          );
-        })}
-        {canExitWithoutCloseDay && (
+      <nav
+        className="sidebar-utility-nav"
+        aria-label={
+          language === "EN" ? "System and attendance" : "Sistema y asistencia"
+        }
+      >
+        {!collapsed && (
           <button
             type="button"
-            className="sidebar-item sidebar-session-exit-button"
-            onClick={onRequestSessionExit}
-            aria-label={language === "EN" ? "Sign out without Close day" : "Salir sin realizar Close day"}
-            title={language === "EN" ? "Sign out without Close day" : "Salir sin realizar Close day"}
+            className="sidebar-system-toggle"
+            onClick={() => {
+              const next = !systemMenuOpen;
+              setSystemMenuOpen(next);
+              if (next) {
+                setSaleMenuOpen(false);
+                setInventoryMenuOpen(false);
+              }
+            }}
+            aria-expanded={systemMenuOpen}
+            aria-controls="sidebar-system-options"
           >
-            <span
-              className="sidebar-icon"
-              style={navigationIconStyle("#c97863")}
-            >
-              <LogOut size={18} strokeWidth={1.7} />
+            <span>{language === "EN" ? "SYSTEM" : "SISTEMA"}</span>
+            <span className="sidebar-group-chevron" aria-hidden="true">
+              {systemMenuOpen ? (
+                <ChevronDown size={14} />
+              ) : (
+                <ChevronRight size={14} />
+              )}
             </span>
-            {!collapsed && (
-              <span className="sidebar-session-exit-copy">
-                <strong>{language === "EN" ? "Sign out" : "Salir"}</strong>
-                <small>{language === "EN" ? "Without Close day" : "Sin Close day"}</small>
-              </span>
-            )}
           </button>
+        )}
+        {(collapsed || systemMenuOpen) && (
+          <div id="sidebar-system-options" className="sidebar-system-options">
+            {utilityNavigationItems
+              .filter((item) => allowedScreens.includes(item.id))
+              .map((item) => {
+                const Icon = item.icon;
+                const isActive = item.id === activeScreen;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`sidebar-item ${isActive ? "is-active" : ""}`}
+                    onClick={() => onNavigate(item.id)}
+                    aria-current={isActive ? "page" : undefined}
+                    title={
+                      collapsed ? navigationLabel(item, language) : undefined
+                    }
+                  >
+                    <span
+                      className="sidebar-icon"
+                      style={navigationIconStyle(item.color)}
+                    >
+                      <Icon size={18} strokeWidth={1.7} />
+                    </span>
+                    {!collapsed && (
+                      <span>{navigationLabel(item, language)}</span>
+                    )}
+                  </button>
+                );
+              })}
+            {canExitWithoutCloseDay && (
+              <button
+                type="button"
+                className="sidebar-item sidebar-session-exit-button"
+                onClick={onRequestSessionExit}
+                aria-label={
+                  language === "EN"
+                    ? "Sign out without Close day"
+                    : "Salir sin realizar Close day"
+                }
+                title={
+                  language === "EN"
+                    ? "Sign out without Close day"
+                    : "Salir sin realizar Close day"
+                }
+              >
+                <span
+                  className="sidebar-icon"
+                  style={navigationIconStyle("#c97863")}
+                >
+                  <LogOut size={18} strokeWidth={1.7} />
+                </span>
+                {!collapsed && (
+                  <span className="sidebar-session-exit-copy">
+                    <strong>{language === "EN" ? "Sign out" : "Salir"}</strong>
+                    <small>
+                      {language === "EN"
+                        ? "Without Close day"
+                        : "Sin Close day"}
+                    </small>
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
         )}
       </nav>
 
@@ -508,8 +637,13 @@ export function PosSidebar({
         <Gauge size={17} />
         {!collapsed && (
           <div>
-            <strong>{language === "EN" ? "Location" : "Sucursal"} {activeBranch}</strong>
-            <span>{language === "EN" ? "Fixed location" : "Ubicación fija"} · Terminal 01</span>
+            <strong>
+              {language === "EN" ? "Location" : "Sucursal"} {activeBranch}
+            </strong>
+            <span>
+              {language === "EN" ? "Fixed location" : "Ubicación fija"} ·
+              Terminal 01
+            </span>
           </div>
         )}
         <button

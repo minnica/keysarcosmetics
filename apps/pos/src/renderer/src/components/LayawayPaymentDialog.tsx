@@ -26,6 +26,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  toast,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
 import { paymentReferenceIsValid } from "../bank-catalog";
@@ -133,14 +134,14 @@ export function LayawayPaymentDialog({
     (item) =>
       item.kind === "PRODUCT" && item.deliveredQuantity < item.quantity,
   );
-  const canRegister =
+  const canAttemptRegister =
     Boolean(sellerId) &&
     Boolean(paymentDate) &&
     payments.length > 0 &&
     totalPayment > 0 &&
     totalPayment <= layaway.balanceDue + 0.01 &&
-    ownershipConfirmed &&
-    referencesAreValid;
+    ownershipConfirmed;
+  const canRegister = canAttemptRegister && referencesAreValid;
 
   const startPayment = () => {
     setPayments(
@@ -166,7 +167,54 @@ export function LayawayPaymentDialog({
     ]);
   };
 
+  const changePaymentMethod = (paymentId: string, methodId: string) => {
+    setPayments((current) =>
+      current.map((payment) => {
+        if (payment.id !== paymentId || payment.methodId === methodId)
+          return payment;
+        const nextPayment: PaymentEntry = {
+          id: payment.id,
+          methodId,
+          amount: payment.amount,
+        };
+        if (!paymentNeedsAuthorization(methodId)) return nextPayment;
+        return {
+          ...nextPayment,
+          ...(payment.authorizationCode !== undefined
+            ? { authorizationCode: payment.authorizationCode }
+            : {}),
+          ...(payment.cardOrBank !== undefined
+            ? { cardOrBank: payment.cardOrBank }
+            : {}),
+          ...(payment.bankId !== undefined ? { bankId: payment.bankId } : {}),
+          ...(payment.bankName !== undefined
+            ? { bankName: payment.bankName }
+            : {}),
+          ...(paymentIsCard(methodId) && paymentIsCard(payment.methodId)
+            ? {
+                ...(payment.cardType !== undefined
+                  ? { cardType: payment.cardType }
+                  : {}),
+                ...(payment.cardNetwork !== undefined
+                  ? { cardNetwork: payment.cardNetwork }
+                  : {}),
+                ...(payment.installmentMonths !== undefined
+                  ? { installmentMonths: payment.installmentMonths }
+                  : {}),
+              }
+            : {}),
+        };
+      }),
+    );
+  };
+
   const register = () => {
+    if (canAttemptRegister && !referencesAreValid) {
+      toast.error(
+        "Completa los datos obligatorios del nuevo método de pago antes de registrar el abono.",
+      );
+      return;
+    }
     if (!canRegister) return;
     onRegister(
       payments.map((payment) => ({
@@ -273,27 +321,7 @@ export function LayawayPaymentDialog({
                     <Select
                       value={payment.methodId}
                       onValueChange={(methodId) =>
-                        setPayments((current) =>
-                          current.map((item) =>
-                            {
-                              if (item.id !== payment.id) return item;
-                              const {
-                                cardType: _cardType,
-                                cardNetwork: _cardNetwork,
-                                bankId: _bankId,
-                                bankName: _bankName,
-                                installmentMonths: _installmentMonths,
-                                ...paymentWithoutCardTerms
-                              } = item;
-                              return {
-                                ...paymentWithoutCardTerms,
-                                methodId,
-                                cardOrBank: "",
-                                authorizationCode: "",
-                              };
-                            }
-                          ),
-                        )
+                        changePaymentMethod(payment.id, methodId)
                       }
                     >
                       <SelectTrigger aria-label={`Método del abono ${index + 1}`}>
@@ -431,7 +459,11 @@ export function LayawayPaymentDialog({
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button type="button" disabled={!canRegister} onClick={register}>
+            <Button
+              type="button"
+              disabled={!canAttemptRegister}
+              onClick={register}
+            >
               {willLiquidate ? <CheckCircle2 size={16} /> : <WalletCards size={16} />}
               {willLiquidate ? "Liquidar y generar ticket" : "Registrar abono e imprimir"}
             </Button>

@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowLeftRight, Gift, PackageCheck, Printer, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  Gift,
+  History,
+  PackageCheck,
+  Printer,
+  ReceiptText,
+  X,
+} from "lucide-react";
 import {
   Button,
   Dialog,
@@ -20,6 +29,7 @@ import { getTicketTaxSummary } from "../tax";
 import { LayawayPaymentDialog } from "./LayawayPaymentDialog";
 import type {
   BankCatalogEntry,
+  Appointment,
   Client,
   LayawayRecord,
   PaymentEntry,
@@ -41,8 +51,10 @@ interface ReceiptTicketDialogProps {
   bankCatalog: BankCatalogEntry[];
   clients: Client[];
   sellers: Seller[];
+  appointments: Appointment[];
   voucherTemplates: VoucherTemplate[];
   allowPrint: boolean;
+  readOnly?: boolean;
   autoPrint: boolean;
   allowVoucherIssue: boolean;
   onIssueVoucher: (ticket: Ticket, voucherId: string) => VoucherIssue | null;
@@ -53,6 +65,7 @@ interface ReceiptTicketDialogProps {
     deliveredCartItemIds: string[],
   ) => void;
   onExpandLayaway: (layawayId: string) => void;
+  onViewRelatedTicket: (ticketId: string) => void;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -66,13 +79,16 @@ export function ReceiptTicketDialog({
   bankCatalog,
   clients,
   sellers,
+  appointments,
   voucherTemplates,
   allowPrint,
+  readOnly = false,
   autoPrint,
   allowVoucherIssue,
   onIssueVoucher,
   onRegisterLayawayPayment,
   onExpandLayaway,
+  onViewRelatedTicket,
   onOpenChange,
 }: ReceiptTicketDialogProps) {
   const [selectedVoucherId, setSelectedVoucherId] = useState("");
@@ -127,16 +143,96 @@ export function ReceiptTicketDialog({
     ) ??
     sellers.find((seller) => seller.active)?.id ??
     "";
+  const linkedClient = clients.find(
+    (client) =>
+      client.id === ticket.clientId ||
+      (ticket.clientPhone && client.phone === ticket.clientPhone) ||
+      `${client.firstName} ${client.lastName}`.trim() === ticket.clientName,
+  );
+  const clientCourtesies = appointments.filter(
+    (appointment) =>
+      appointment.kind === "COURTESY" &&
+      (appointment.clientId === (ticket.clientId ?? linkedClient?.id) ||
+        (appointment.clientPhone === ticket.clientPhone &&
+          appointment.clientName === ticket.clientName)),
+  );
+  const courtesyOriginTicketId =
+    ticket.ticketType === "LAYAWAY_PAYMENT" || ticket.ticketType === "REFUND"
+      ? ticket.relatedTicketId
+      : ticket.id;
+  const ticketCourtesyCount = clientCourtesies.filter(
+    (appointment) => appointment.ticketId === courtesyOriginTicketId,
+  ).length;
+  const initialTicketId =
+    ticket.ticketType === "LAYAWAY_PAYMENT" || ticket.ticketType === "REFUND"
+      ? ticket.relatedTicketId
+      : ticket.expandedFromTicketId;
+  const relatedMovementId =
+    ticket.status === "REFUNDED"
+      ? ticket.refundTransactionId
+      : ticket.expansionStatus === "EXPANDED"
+        ? ticket.expandedByTicketId
+        : undefined;
+  const relatedRecordId = initialTicketId ?? relatedMovementId;
+  const relatedRecordLabel = initialTicketId
+    ? "Consultar ticket inicial"
+    : ticket.status === "REFUNDED"
+      ? "Consultar refund"
+      : "Consultar ampliación";
+  const relationshipTitle =
+    ticket.ticketType === "LAYAWAY_PAYMENT"
+      ? "Pago de apartado o saldo pendiente"
+      : ticket.ticketType === "REFUND"
+        ? "Refund de ticket cancelado"
+        : ticket.expandedFromTicketId
+          ? "Ampliación de venta"
+          : ticket.status === "REFUNDED"
+            ? "Ticket cancelado"
+            : "Venta original ampliada";
+  const monthLabel = (dateIso: string) =>
+    new Intl.DateTimeFormat("es-MX", {
+      month: "long",
+      year: "numeric",
+    }).format(new Date(dateIso));
+  const layawayPaymentMonths = layaway
+    ? new Set([
+        layaway.createdAtIso.slice(0, 7),
+        ...layaway.payments.map((payment) => payment.createdAtIso.slice(0, 7)),
+      ])
+    : new Set<string>();
+  const hasPaymentsAcrossMonths = layawayPaymentMonths.size > 1;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="receipt-preview-dialog sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>Ticket final</DialogTitle>
+          <DialogTitle>{readOnly ? "Consulta de ticket" : "Ticket final"}</DialogTitle>
           <DialogDescription>
-            Vista previa para impresora térmica de punto de venta.
+            {readOnly
+              ? "Vista protegida del ticket original. No permite editar, cobrar ni reimprimir."
+              : "Vista previa para impresora térmica de punto de venta."}
           </DialogDescription>
         </DialogHeader>
+
+        {relatedRecordId ? (
+          <section className="receipt-related-record">
+            <ReceiptText size={18} aria-hidden="true" />
+            <span>
+              <small>RELACIÓN DE MOVIMIENTOS</small>
+              <strong>{relationshipTitle}</strong>
+              <p>
+                Folio actual {ticket.id} · relacionado con {relatedRecordId}
+              </p>
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onViewRelatedTicket(relatedRecordId)}
+            >
+              <History size={15} /> {relatedRecordLabel}
+            </Button>
+          </section>
+        ) : null}
 
         <div className="customer-ticket-shell">
           <div className="receipt-print-sequence">
@@ -176,6 +272,38 @@ export function ReceiptTicketDialog({
                 </small>
               ) : null}
             </div>
+
+            {(ticket.status === "REFUNDED" ||
+              ticket.ticketType === "REFUND") && (
+              <section className="customer-ticket-cancellation-summary">
+                <h3>
+                  <AlertTriangle size={14} /> CANCELACIÓN / REFUND
+                </h3>
+                <div>
+                  <span>
+                    <strong>
+                      {ticket.ticketType === "REFUND"
+                        ? ticket.id
+                        : ticket.refundTransactionId ?? "Refund registrado"}
+                    </strong>
+                    <small>
+                      {ticket.cancelledAt ?? ticket.createdAt}
+                      {ticket.refundEffectiveDate
+                        ? ` · aplicado al ${ticket.refundEffectiveDate}`
+                        : ""}
+                    </small>
+                    {ticket.refundReason ? (
+                      <small>{ticket.refundReason}</small>
+                    ) : null}
+                  </span>
+                  <strong>
+                    -{formatCurrency(
+                      Math.abs(ticket.refundAmount ?? ticket.total),
+                    )}
+                  </strong>
+                </div>
+              </section>
+            )}
 
             {(settings.showClientName ||
               settings.showClientPhone ||
@@ -375,6 +503,14 @@ export function ReceiptTicketDialog({
             {layaway && layaway.payments.length > 0 && (
               <section className="customer-ticket-payment-history">
                 <h3>HISTORIAL DE PAGOS</h3>
+                <p className="customer-ticket-payment-relation">
+                  Ticket inicial {layaway.originalTicketId} · compra de{" "}
+                  {monthLabel(layaway.createdAtIso)} · {layaway.payments.length}{" "}
+                  {layaway.payments.length === 1 ? "folio de pago" : "folios de pago"}
+                  {hasPaymentsAcrossMonths
+                    ? " · contiene movimientos de meses diferentes"
+                    : " · movimientos del mismo mes"}
+                </p>
                 {layaway.payments.map((payment) => {
                   const entries = payment.payments ?? [
                     {
@@ -426,6 +562,54 @@ export function ReceiptTicketDialog({
               </section>
             )}
 
+            <section className="customer-ticket-courtesy-history">
+              <h3>
+                <Gift size={14} /> CORTESÍAS OTORGADAS
+                <strong>{clientCourtesies.length}</strong>
+              </h3>
+              <p>
+                {ticketCourtesyCount} ligada
+                {ticketCourtesyCount === 1 ? "" : "s"} a este ticket ·{" "}
+                {clientCourtesies.length} en el historial de la clienta
+              </p>
+              {clientCourtesies.length > 0 ? (
+                clientCourtesies.map((appointment) => (
+                  <div key={appointment.id}>
+                    <span>
+                      <strong>{appointment.service}</strong>
+                      <small>
+                        {appointment.courtesyReason === "WELCOME"
+                          ? "Bienvenida"
+                          : appointment.courtesyReason === "PURCHASE"
+                            ? "Regalo por compra"
+                            : "Atención de queja"}
+                        {appointment.courtesyPackageName
+                          ? ` · ${appointment.courtesyPackageName}`
+                          : ""}
+                      </small>
+                      <small>
+                        {appointment.ticketId} · {appointment.branch} ·{" "}
+                        {appointment.recordedAt}
+                      </small>
+                    </span>
+                    <strong>
+                      {appointment.status === "ATTENDED"
+                        ? "TOMADA"
+                        : appointment.status === "CANCELLED"
+                          ? "CANCELADA"
+                          : appointment.status === "NO_SHOW"
+                            ? "NO LLEGÓ"
+                            : appointment.status === "SCHEDULED"
+                              ? "AGENDADA"
+                              : "PENDIENTE"}
+                    </strong>
+                  </div>
+                ))
+              ) : (
+                <small>Esta clienta no tiene cortesías registradas.</small>
+              )}
+            </section>
+
             <footer className="customer-ticket-footer">
               {settings.footerMessage && (
                 <strong>{settings.footerMessage}</strong>
@@ -446,7 +630,7 @@ export function ReceiptTicketDialog({
           </div>
         </div>
 
-        {layaway?.status === "ACTIVE" &&
+        {!readOnly && layaway?.status === "ACTIVE" &&
         layaway.collectionType !== "PENDING" ? (
           <section className="layaway-expansion-question">
             <ArrowLeftRight size={19} aria-hidden="true" />
@@ -467,7 +651,7 @@ export function ReceiptTicketDialog({
           </section>
         ) : null}
 
-        {allowVoucherIssue &&
+        {!readOnly && allowVoucherIssue &&
           ticket.ticketType !== "LAYAWAY_PAYMENT" &&
           ticket.ticketType !== "REFUND" &&
           voucherTemplates.length > 0 && (
@@ -513,7 +697,7 @@ export function ReceiptTicketDialog({
         )}
 
         <DialogFooter>
-          {layaway?.status === "ACTIVE" ? (
+          {!readOnly && layaway?.status === "ACTIVE" ? (
             <LayawayPaymentDialog
               layaway={layaway}
               paymentMethods={paymentMethods}
@@ -539,7 +723,7 @@ export function ReceiptTicketDialog({
           >
             <X size={16} /> Cerrar
           </Button>
-          {allowPrint ? (
+          {!readOnly && allowPrint ? (
             <Button type="button" onClick={printTicketSequence}>
               <Printer size={16} />
               {issuedVoucher || selectedVoucherId
@@ -548,11 +732,11 @@ export function ReceiptTicketDialog({
                   ? "Imprimir ticket"
                   : "Reimprimir ticket"}
             </Button>
-          ) : (
+          ) : !readOnly ? (
             <span className="receipt-print-restricted">
               Impresión no autorizada para este rol
             </span>
-          )}
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

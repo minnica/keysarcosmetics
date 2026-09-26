@@ -544,6 +544,7 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "REPORTS_COSTS",
       "BRANCHES",
       "TICKET_CANCELLATION",
+      "COMMERCIAL_AUTHORIZATION_TOKEN",
       "SESSION_EXIT",
       "USERS_ROLES",
     ],
@@ -588,6 +589,7 @@ export const initialEmployeeRoles: EmployeeRole[] = [
       "INVENTORY_MOVEMENTS",
       "CUSTOMER_FIELDS",
       "TICKET_CANCELLATION",
+      "COMMERCIAL_AUTHORIZATION_TOKEN",
     ],
   },
   {
@@ -667,6 +669,7 @@ export const initialReceiptSettings: ReceiptSettings = {
   showSellerName: true,
   showVatBreakdown: false,
   showSpareCoverageMessage: true,
+  attributeCrossBranchPaymentsToCollectingBranch: false,
 };
 
 export const initialInventoryMovementReasons: InventoryMovementReason[] = [

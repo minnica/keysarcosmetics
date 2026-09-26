@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Banknote,
@@ -10,10 +10,14 @@ import {
   Crown,
   DollarSign,
   Gift,
+  History,
+  Eye,
   Landmark,
   LockKeyhole,
   Percent,
+  Pencil,
   PlusCircle,
+  Save,
   MapPin,
   Search,
   ShieldCheck,
@@ -21,6 +25,7 @@ import {
   UserPlus,
   UsersRound,
   WalletCards,
+  XCircle,
 } from "lucide-react";
 import {
   Badge,
@@ -42,7 +47,7 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { formatCurrency } from "../mock-data";
-import { paymentReferenceIsValid } from "../bank-catalog";
+import { paymentBankName, paymentReferenceIsValid } from "../bank-catalog";
 import {
   availableAgendaSeats,
   isSellerSelectableAgendaSlot,
@@ -50,6 +55,7 @@ import {
 import type {
   AgendaReservationMode,
   AgendaSlot,
+  Appointment,
   AppointmentDraft,
   AppointmentReservationActor,
   CartItem,
@@ -106,18 +112,25 @@ interface CheckoutDialogProps {
   paymentMethods: PaymentMethodOption[];
   bankCatalog: BankCatalogEntry[];
   branches: string[];
+  activeBranch: string;
   agendaSlots: AgendaSlot[];
+  appointments: Appointment[];
   sourceOptions: ClientSourceOption[];
   requiredFields: RequiredClientFields;
   courtesySettings: CourtesySettings;
+  clientIdsWithPurchaseHistory: string[];
   companyName: string;
   companySalesNumber: string;
   lockedClientId?: string;
   isMasterCode: (code: string) => boolean;
+  isCommercialAuthorizationCode: (code: string) => boolean;
+  canEditSavedClient: boolean;
   authorizeAppointmentCode: (
     code: string,
   ) => AppointmentReservationActor | null;
   onOpenChange: (open: boolean) => void;
+  onSaveClient: (client: Client) => void;
+  onViewTicket: (ticketId: string) => void;
   onComplete: (result: CheckoutResult) => void;
 }
 
@@ -143,6 +156,10 @@ const clientFieldLabels: Record<ClientField, string> = {
   companyName: "Empresa asignada",
 };
 
+const membershipHasAvailableSessions = (membership: ClientMembership) =>
+  membership.status === "ACTIVE" &&
+  membership.usedSessions < membership.totalSessions;
+
 const nextSessionServices = [
   "Facial de seguimiento",
   "Masaje",
@@ -155,6 +172,14 @@ interface AgendaSelectionOption {
   slotIds: string[];
   mode: AgendaReservationMode;
   label: string;
+}
+
+interface MembershipAppointmentSelection {
+  id: string;
+  membershipId: string;
+  date: string;
+  branch: string;
+  slotId: string;
 }
 
 interface SaleParticipant {
@@ -246,18 +271,26 @@ export function CheckoutDialog({
   paymentMethods,
   bankCatalog,
   branches,
+  activeBranch,
   agendaSlots,
+  appointments,
   sourceOptions,
   requiredFields,
   courtesySettings,
+  clientIdsWithPurchaseHistory,
   companyName,
   companySalesNumber,
   lockedClientId,
   isMasterCode,
+  isCommercialAuthorizationCode,
+  canEditSavedClient,
   authorizeAppointmentCode,
   onOpenChange,
+  onSaveClient,
+  onViewTicket,
   onComplete,
 }: CheckoutDialogProps) {
+  const checkoutInitializedRef = useRef(false);
   const activeSellers = useMemo(
     () => sellers.filter((seller) => seller.active),
     [sellers],
@@ -299,6 +332,8 @@ export function CheckoutDialog({
   const [clientSearch, setClientSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [newClient, setNewClient] = useState<NewClientDraft>(emptyClient);
+  const [savedNewClient, setSavedNewClient] = useState<Client | null>(null);
+  const [savedClientCollapsed, setSavedClientCollapsed] = useState(false);
   const [splitMode, setSplitMode] = useState<SplitMode>("amount");
   const [selectedSellerIds, setSelectedSellerIds] = useState<string[]>([]);
   const [splitValues, setSplitValues] = useState<Record<string, number>>({});
@@ -324,16 +359,32 @@ export function CheckoutDialog({
   const [nextSessionService, setNextSessionService] = useState<string>(
     "Facial de seguimiento",
   );
-  const [nextSessionMembershipId, setNextSessionMembershipId] = useState("");
+  const [membershipAppointments, setMembershipAppointments] = useState<
+    MembershipAppointmentSelection[]
+  >([]);
+  const [finishedMembershipsOpen, setFinishedMembershipsOpen] = useState(false);
+  const [firstAppointmentMembershipProductId, setFirstAppointmentMembershipProductId] =
+    useState("");
   const [complaintCourtesy, setComplaintCourtesy] = useState(false);
   const [nextSessionDate, setNextSessionDate] = useState("");
   const [nextSessionBranch, setNextSessionBranch] = useState("");
   const [nextSessionTime, setNextSessionTime] = useState("");
   const [appointmentAuthorizationCode, setAppointmentAuthorizationCode] =
     useState("");
+  const [purchaseCourtesyAnswer, setPurchaseCourtesyAnswer] =
+    useState<AppointmentAnswer>("");
+  const [purchaseCourtesyProductId, setPurchaseCourtesyProductId] =
+    useState("");
+  const [purchaseCourtesyAuthorizationCode, setPurchaseCourtesyAuthorizationCode] =
+    useState("");
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      checkoutInitializedRef.current = false;
+      return;
+    }
+    if (checkoutInitializedRef.current) return;
+    checkoutInitializedRef.current = true;
     const lockedClient = clients.find((client) => client.id === lockedClientId);
     const lockedOwner = activeSellers.find(
       (seller) => seller.id === lockedClient?.ownerId,
@@ -363,6 +414,8 @@ export function CheckoutDialog({
     );
     setSelectedClientId(lockedClient?.id ?? "");
     setNewClient(emptyClient);
+    setSavedNewClient(null);
+    setSavedClientCollapsed(false);
     setSplitMode("amount");
     setSelectedSellerIds(initialSellerIds);
     setSplitValues(createEvenSplit(initialSellerIds, "amount", total));
@@ -380,12 +433,17 @@ export function CheckoutDialog({
     setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
     setNextSessionAnswer("");
     setNextSessionService("Facial de seguimiento");
-    setNextSessionMembershipId("");
+    setMembershipAppointments([]);
+    setFinishedMembershipsOpen(false);
+    setFirstAppointmentMembershipProductId("");
     setComplaintCourtesy(false);
     setNextSessionDate("");
     setNextSessionBranch("");
     setNextSessionTime("");
     setAppointmentAuthorizationCode("");
+    setPurchaseCourtesyAnswer("");
+    setPurchaseCourtesyProductId("");
+    setPurchaseCourtesyAuthorizationCode("");
     setPayments(
       firstPaymentMethod
         ? [
@@ -427,6 +485,22 @@ export function CheckoutDialog({
   const selectedClient = clients.find(
     (client) => client.id === selectedClientId,
   );
+  const selectedClientHasPurchaseHistory = Boolean(
+    selectedClientId && clientIdsWithPurchaseHistory.includes(selectedClientId),
+  );
+  const authorizedPurchaseFacials = useMemo(
+    () =>
+      courtesySettings.products.filter(
+        (product) => product.active && product.category === "FACIAL",
+      ),
+    [courtesySettings.products],
+  );
+  const selectedPurchaseCourtesyProduct = authorizedPurchaseFacials.find(
+    (product) => product.id === purchaseCourtesyProductId,
+  );
+  const purchaseCourtesyAuthorizationValid =
+    purchaseCourtesyAnswer === "YES" &&
+    isCommercialAuthorizationCode(purchaseCourtesyAuthorizationCode);
   const selectedClientMembershipHistory = useMemo(
     () =>
       clientMemberships.filter(
@@ -435,18 +509,56 @@ export function CheckoutDialog({
     [clientMemberships, selectedClientId],
   );
   const selectedClientMemberships = useMemo(
+    () => selectedClientMembershipHistory.filter(membershipHasAvailableSessions),
+    [selectedClientMembershipHistory],
+  );
+  const selectedClientFinishedMemberships = useMemo(
     () =>
-      clientMemberships.filter(
-        (membership) =>
-          membership.clientId === selectedClientId &&
-          membership.status === "ACTIVE" &&
-          membership.usedSessions < membership.totalSessions,
+      selectedClientMembershipHistory.filter(
+        (membership) => !membershipHasAvailableSessions(membership),
       ),
-    [clientMemberships, selectedClientId],
+    [selectedClientMembershipHistory],
   );
-  const selectedNextSessionMembership = selectedClientMemberships.find(
-    (membership) => membership.id === nextSessionMembershipId,
-  );
+  const selectedClientCourtesyFacials = useMemo(() => {
+    if (!selectedClientId) return [];
+    return appointments.filter(
+      (appointment) =>
+        appointment.clientId === selectedClientId &&
+        appointment.kind === "COURTESY" &&
+        appointment.service.toLocaleLowerCase("es-MX").includes("facial"),
+    );
+  }, [appointments, selectedClientId]);
+  const courtesyFacialsTaken = selectedClientCourtesyFacials.filter(
+    (appointment) => appointment.status === "ATTENDED",
+  ).length;
+  const newlyPurchasedMembershipProducts = useMemo(() => {
+    const previouslyOwnedProductIds = new Set(
+      selectedClientMembershipHistory.map((membership) => membership.productId),
+    );
+    const uniqueProducts = new Map<string, CartItem["product"]>();
+    cart.forEach((item) => {
+      if (
+        item.product.kind === "MEMBERSHIP" &&
+        !previouslyOwnedProductIds.has(item.product.id)
+      ) {
+        uniqueProducts.set(item.product.id, item.product);
+      }
+    });
+    return Array.from(uniqueProducts.values());
+  }, [cart, selectedClientMembershipHistory]);
+  const requiresFirstMembershipAppointment =
+    Boolean(clientMode === "new" || selectedClient) &&
+    newlyPurchasedMembershipProducts.length > 0;
+  const requiresMembershipCourtesyDecision =
+    clientMode === "new" && requiresFirstMembershipAppointment;
+  const requiresStandardWelcomeCourtesy =
+    clientMode === "new" &&
+    courtesySettings.required &&
+    !requiresFirstMembershipAppointment;
+  const firstAppointmentMembershipProduct =
+    newlyPurchasedMembershipProducts.find(
+      (product) => product.id === firstAppointmentMembershipProductId,
+    ) ?? newlyPurchasedMembershipProducts[0];
   const appointmentReservationActor = authorizeAppointmentCode(
     appointmentAuthorizationCode,
   );
@@ -542,31 +654,65 @@ export function CheckoutDialog({
     (slot) =>
       slot.branch === nextSessionBranch &&
       slot.date === nextSessionDate &&
-      isSellerSelectableAgendaSlot(slot),
+      isSellerSelectableAgendaSlot(slot) &&
+      availableAgendaSeats(slot) >
+        membershipAppointments.filter(
+          (appointment) => appointment.slotId === slot.id,
+        ).length,
   );
   const selectedNextSessionAgendaSlot = nextSessionAgendaSlots.find(
     (slot) => slot.id === nextSessionTime,
   );
+  const membershipAppointmentSlots = (
+    selection: MembershipAppointmentSelection,
+  ) =>
+    agendaSlots.filter((slot) => {
+      if (
+        slot.branch !== selection.branch ||
+        slot.date !== selection.date ||
+        !isSellerSelectableAgendaSlot(slot)
+      )
+        return false;
+      const seatsAlreadySelected = membershipAppointments.filter(
+        (appointment) =>
+          appointment.id !== selection.id && appointment.slotId === slot.id,
+      ).length +
+        (requiresFirstMembershipAppointment && nextSessionTime === slot.id
+          ? 1
+          : 0);
+      return availableAgendaSeats(slot) > seatsAlreadySelected;
+    });
+  const membershipAppointmentsAreValid =
+    membershipAppointments.length > 0 &&
+    membershipAppointments.every((selection) => {
+      const membership = selectedClientMemberships.find(
+        (candidate) => candidate.id === selection.membershipId,
+      );
+      const slot = membershipAppointmentSlots(selection).find(
+        (candidate) => candidate.id === selection.slotId,
+      );
+      return Boolean(membership && selection.date && selection.branch && slot);
+    });
 
   const missingNewClientFields = (
     Object.keys(requiredFields) as ClientField[]
   ).filter((field) => requiredFields[field] && !newClient[field].trim());
-  const courtesyAppointmentIsValid =
-    clientMode !== "new" || !courtesySettings.required ||
-    Boolean(
-      selectedCourtesyPackage &&
-        courtesyDate &&
-        courtesyBranch &&
-        selectedCourtesyAgendaOption,
-    );
+  const newClientDataIsValid =
+    missingNewClientFields.length === 0 &&
+    Boolean(newClient.source) &&
+    Boolean(clientOwnerId) &&
+    (!clientIsCompanyLocked || Boolean(newClient.companyName.trim()));
+  const courtesyAppointmentIsValid = Boolean(
+    selectedCourtesyPackage &&
+      courtesyDate &&
+      courtesyBranch &&
+      selectedCourtesyAgendaOption,
+  );
   const clientIsValid =
     clientMode === "search"
       ? Boolean(selectedClient)
-      : missingNewClientFields.length === 0 &&
-        Boolean(newClient.source) &&
-        Boolean(clientOwnerId) &&
-        courtesyAppointmentIsValid &&
-        (!clientIsCompanyLocked || Boolean(newClient.companyName.trim()));
+      : newClientDataIsValid &&
+        (!requiresStandardWelcomeCourtesy || courtesyAppointmentIsValid);
   const ownershipIsValid =
     clientIsCompanyLocked ||
     (Boolean(clientOwnerId) && selectedSellerIds.includes(clientOwnerId));
@@ -619,32 +765,258 @@ export function CheckoutDialog({
     ownershipIsValid &&
     (!clientIsCompanyLocked ||
       selectedSellerIds.includes(COMPANY_SALES_PARTICIPANT_ID));
-  const nextSessionIsValid =
-    clientMode === "new"
-      ? courtesyAppointmentIsValid
-      : nextSessionAnswer === "NO" ||
-        (nextSessionAnswer === "YES" &&
-          Boolean(
-            nextSessionService &&
-            (!clientHasMembershipHistory ||
-              complaintCourtesy ||
-              selectedNextSessionMembership) &&
+  const purchaseCourtesyIsValid =
+    (!selectedClientHasPurchaseHistory ||
+      purchaseCourtesyAnswer === "NO" ||
+      (purchaseCourtesyAnswer === "YES" &&
+        Boolean(selectedPurchaseCourtesyProduct) &&
+        purchaseCourtesyAuthorizationValid)) &&
+    (!requiresMembershipCourtesyDecision ||
+      purchaseCourtesyAnswer === "NO" ||
+      (purchaseCourtesyAnswer === "YES" && courtesyAppointmentIsValid));
+  const baseNextSessionIsValid =
+    requiresFirstMembershipAppointment
+      ? Boolean(
+          firstAppointmentMembershipProduct &&
             nextSessionDate &&
             nextSessionBranch &&
             selectedNextSessionAgendaSlot,
-          ));
+        ) &&
+        (membershipAppointments.length === 0 || membershipAppointmentsAreValid)
+      : clientMode === "new"
+      ? !requiresStandardWelcomeCourtesy || courtesyAppointmentIsValid
+      : nextSessionAnswer === "NO" ||
+        (nextSessionAnswer === "YES" &&
+          (clientHasMembershipHistory && !complaintCourtesy
+            ? membershipAppointmentsAreValid
+            : Boolean(
+                nextSessionService &&
+                  nextSessionDate &&
+                  nextSessionBranch &&
+                  selectedNextSessionAgendaSlot,
+              )));
+  const nextSessionIsValid = baseNextSessionIsValid && purchaseCourtesyIsValid;
   const reservationNeedsAuthorization =
-    (clientMode === "new" && courtesySettings.required) ||
+    requiresFirstMembershipAppointment ||
+    requiresStandardWelcomeCourtesy ||
     (clientMode === "search" && nextSessionAnswer === "YES");
   const reservationIsAuthorized =
     !reservationNeedsAuthorization || Boolean(appointmentReservationActor);
-  const canComplete =
+  const canAttemptComplete =
     clientIsValid &&
     sellerStepIsValid &&
     nextSessionIsValid &&
     reservationIsAuthorized &&
-    payments.length > 0 &&
-    paymentReferencesAreValid;
+    payments.length > 0;
+  const canComplete = canAttemptComplete && paymentReferencesAreValid;
+
+  const clientRecordMissingRequirements: string[] = [];
+  if (clientMode === "new") {
+    clientRecordMissingRequirements.push(
+      ...missingNewClientFields.map(
+        (field) => clientFieldLabels[field].toLocaleLowerCase("es-MX"),
+      ),
+    );
+    if (!newClient.source && !missingNewClientFields.includes("source"))
+      clientRecordMissingRequirements.push("procedencia");
+    if (!clientOwnerId)
+      clientRecordMissingRequirements.push("vendedor fijo");
+    if (clientIsCompanyLocked && !newClient.companyName.trim())
+      clientRecordMissingRequirements.push("empresa asignada");
+  }
+
+  const clientMissingRequirements: string[] = [];
+  if (clientMode === "search") {
+    if (!selectedClient) clientMissingRequirements.push("seleccionar la clienta");
+  } else {
+    clientMissingRequirements.push(...clientRecordMissingRequirements);
+    if (requiresStandardWelcomeCourtesy) {
+      if (!selectedCourtesyPackage)
+        clientMissingRequirements.push("paquete de cortesía de bienvenida");
+      if (!courtesyDate)
+        clientMissingRequirements.push("fecha de la cita de bienvenida");
+      if (!courtesyBranch)
+        clientMissingRequirements.push("sucursal de la cita de bienvenida");
+      if (!selectedCourtesyAgendaOption)
+        clientMissingRequirements.push("horario y cabina de la cita de bienvenida");
+    }
+  }
+
+  const sellerMissingRequirements: string[] = [];
+  if (selectedSellerIds.length === 0)
+    sellerMissingRequirements.push("seleccionar al menos un vendedor");
+  if (!splitIsValid)
+    sellerMissingRequirements.push("completar la división de la venta");
+  if (!ownershipIsValid)
+    sellerMissingRequirements.push("asignar al vendedor propietario de la clienta");
+  if (
+    clientIsCompanyLocked &&
+    !selectedSellerIds.includes(COMPANY_SALES_PARTICIPANT_ID)
+  )
+    sellerMissingRequirements.push("incluir la participación de la empresa");
+
+  const appointmentMissingRequirements: string[] = [];
+  if (selectedClientHasPurchaseHistory) {
+    if (!purchaseCourtesyAnswer)
+      appointmentMissingRequirements.push(
+        "responder si se asignará un facial de regalo",
+      );
+    if (purchaseCourtesyAnswer === "YES") {
+      if (!selectedPurchaseCourtesyProduct)
+        appointmentMissingRequirements.push("seleccionar el facial de regalo");
+      if (!purchaseCourtesyAuthorizationValid)
+        appointmentMissingRequirements.push(
+          "token de autorización del facial de regalo",
+        );
+    }
+  }
+  if (requiresFirstMembershipAppointment) {
+    if (!firstAppointmentMembershipProduct)
+      appointmentMissingRequirements.push("seleccionar la membresía nueva");
+    if (!nextSessionDate)
+      appointmentMissingRequirements.push("fecha de la primera cita de membresía");
+    if (!nextSessionBranch)
+      appointmentMissingRequirements.push("sucursal de la primera cita de membresía");
+    if (!selectedNextSessionAgendaSlot)
+      appointmentMissingRequirements.push(
+        "horario y cabina de la primera cita de membresía",
+      );
+    if (requiresMembershipCourtesyDecision) {
+      if (!purchaseCourtesyAnswer)
+        appointmentMissingRequirements.push(
+          "responder si regalará un facial de cortesía",
+        );
+      if (purchaseCourtesyAnswer === "YES") {
+        if (!selectedCourtesyPackage)
+          appointmentMissingRequirements.push(
+            "paquete de facial de cortesía",
+          );
+        if (!courtesyDate)
+          appointmentMissingRequirements.push(
+            "fecha de la cita de cortesía",
+          );
+        if (!courtesyBranch)
+          appointmentMissingRequirements.push(
+            "sucursal de la cita de cortesía",
+          );
+        if (!selectedCourtesyAgendaOption)
+          appointmentMissingRequirements.push(
+            "horario y cabina de la cita de cortesía",
+          );
+      }
+    }
+  } else if (clientMode === "search") {
+    if (!nextSessionAnswer)
+      appointmentMissingRequirements.push(
+        "responder si desea agendar la próxima sesión",
+      );
+    if (nextSessionAnswer === "YES") {
+      if (clientHasMembershipHistory && !complaintCourtesy) {
+        if (membershipAppointments.length === 0)
+          appointmentMissingRequirements.push(
+            "seleccionar una membresía activa o una cortesía",
+          );
+      } else {
+        if (!nextSessionService)
+          appointmentMissingRequirements.push("servicio de la próxima cita");
+        if (!nextSessionDate)
+          appointmentMissingRequirements.push("fecha de la próxima cita");
+        if (!nextSessionBranch)
+          appointmentMissingRequirements.push("sucursal de la próxima cita");
+        if (!selectedNextSessionAgendaSlot)
+          appointmentMissingRequirements.push(
+            "horario y cabina de la próxima cita",
+          );
+      }
+    }
+  }
+  membershipAppointments.forEach((selection, index) => {
+    const membership = selectedClientMemberships.find(
+      (candidate) => candidate.id === selection.membershipId,
+    );
+    const prefix = `cita ${index + 1}${membership ? ` de ${membership.membershipName}` : " de membresía"}`;
+    if (!membership)
+      appointmentMissingRequirements.push(`${prefix}: membresía activa`);
+    if (!selection.date)
+      appointmentMissingRequirements.push(`${prefix}: fecha`);
+    if (!selection.branch)
+      appointmentMissingRequirements.push(`${prefix}: sucursal`);
+    if (
+      !membershipAppointmentSlots(selection).some(
+        (slot) => slot.id === selection.slotId,
+      )
+    )
+      appointmentMissingRequirements.push(`${prefix}: horario y cabina`);
+  });
+  if (reservationNeedsAuthorization && !appointmentReservationActor)
+    appointmentMissingRequirements.push(
+      "código personal de quien realiza la reserva",
+    );
+
+  const paymentMissingRequirements: string[] = [];
+  if (payments.length === 0)
+    paymentMissingRequirements.push("agregar un método de pago");
+  appliedPayments.forEach((payment, index) => {
+    if (!paymentNeedsAuthorization(payment.methodId)) return;
+    const methodLabel =
+      paymentMethods.find((method) => method.id === payment.methodId)?.label ??
+      `pago ${index + 1}`;
+    if (!paymentBankName(payment))
+      paymentMissingRequirements.push(`banco de ${methodLabel}`);
+    if (!/^\d{4}$/.test(payment.authorizationCode ?? ""))
+      paymentMissingRequirements.push(
+        `cuatro dígitos de autorización de ${methodLabel}`,
+      );
+    if (paymentIsCard(payment.methodId)) {
+      if (!payment.cardType)
+        paymentMissingRequirements.push(`crédito o débito de ${methodLabel}`);
+      if (!payment.cardNetwork)
+        paymentMissingRequirements.push(`Visa o Mastercard de ${methodLabel}`);
+      if (
+        payment.cardType === "CREDIT" &&
+        !installmentOptions.includes(payment.installmentMonths ?? 0)
+      )
+        paymentMissingRequirements.push(
+          `meses o una exhibición de ${methodLabel}`,
+        );
+    }
+  });
+
+  const checkoutMissingRequirements = [
+    ...clientMissingRequirements,
+    ...sellerMissingRequirements,
+    ...appointmentMissingRequirements,
+    ...paymentMissingRequirements,
+  ];
+
+  const showMissingRequirements = (requirements: string[]) => {
+    const uniqueRequirements = Array.from(new Set(requirements));
+    if (uniqueRequirements.length === 0) return false;
+    toast.error(
+      `Completa todos los datos. Falta: ${uniqueRequirements.join(", ")}.`,
+    );
+    return true;
+  };
+
+  const requestCheckoutStep = (step: CheckoutStep) => {
+    if (step <= checkoutStep) {
+      setCheckoutStep(step);
+      return;
+    }
+    if (step >= 2 && showMissingRequirements(clientMissingRequirements)) {
+      setCheckoutStep(1);
+      return;
+    }
+    if (step >= 3 && showMissingRequirements(sellerMissingRequirements)) {
+      setCheckoutStep(2);
+      return;
+    }
+    if (step >= 4 && showMissingRequirements(appointmentMissingRequirements)) {
+      setCheckoutStep(3);
+      return;
+    }
+    setCheckoutStep(step);
+  };
 
   const selectClient = (client: Client) => {
     setSelectedClientId(client.id);
@@ -673,7 +1045,12 @@ export function CheckoutDialog({
         membership.usedSessions < membership.totalSessions,
     );
     setNextSessionAnswer("");
-    setNextSessionMembershipId("");
+    setPurchaseCourtesyAnswer("");
+    setPurchaseCourtesyProductId("");
+    setPurchaseCourtesyAuthorizationCode("");
+    setMembershipAppointments([]);
+    setFinishedMembershipsOpen(false);
+    setFirstAppointmentMembershipProductId("");
     setComplaintCourtesy(false);
     setNextSessionService(
       membershipHistory.length > 0 ? "" : "Facial de seguimiento",
@@ -688,12 +1065,79 @@ export function CheckoutDialog({
     setClientMode(mode);
     setSelectedClientId("");
     setNewClient(emptyClient);
+    setSavedNewClient(null);
+    setSavedClientCollapsed(false);
     setSelectedSellerIds(firstSellerId ? [firstSellerId] : []);
     setSplitValues(firstSellerId ? { [firstSellerId]: splitTarget } : {});
     setClientOwnerId(firstSellerId);
     setOwnershipAuthorized(false);
     setShowAdditionalSellers(false);
     setSellerSearch("");
+    setNextSessionAnswer("");
+    setMembershipAppointments([]);
+    setFinishedMembershipsOpen(false);
+    setFirstAppointmentMembershipProductId("");
+    setComplaintCourtesy(false);
+    setNextSessionService("Facial de seguimiento");
+    setNextSessionDate("");
+    setNextSessionBranch("");
+    setNextSessionTime("");
+    setAppointmentAuthorizationCode("");
+    setPurchaseCourtesyAnswer("");
+    setPurchaseCourtesyProductId("");
+    setPurchaseCourtesyAuthorizationCode("");
+  };
+
+  const addMembershipAppointment = (membershipId: string) => {
+    const membership = selectedClientMemberships.find(
+      (candidate) => candidate.id === membershipId,
+    );
+    if (!membership) return;
+    const remaining = membership.totalSessions - membership.usedSessions;
+    const selectedCount = membershipAppointments.filter(
+      (appointment) => appointment.membershipId === membershipId,
+    ).length;
+    if (selectedCount >= remaining) {
+      toast.error("No hay más sesiones disponibles en este tarjetón.");
+      return;
+    }
+    setNextSessionAnswer("YES");
+    setComplaintCourtesy(false);
+    setMembershipAppointments((current) => [
+      ...current,
+      {
+        id: `membership-appointment-${crypto.randomUUID()}`,
+        membershipId,
+        date: "",
+        branch: activeBranch,
+        slotId: "",
+      },
+    ]);
+  };
+
+  const updateMembershipAppointment = (
+    id: string,
+    changes: Partial<MembershipAppointmentSelection>,
+  ) => {
+    setMembershipAppointments((current) =>
+      current.map((appointment) =>
+        appointment.id === id ? { ...appointment, ...changes } : appointment,
+      ),
+    );
+  };
+
+  const removeMembershipAppointment = (id: string) => {
+    setMembershipAppointments((current) =>
+      current.filter((appointment) => appointment.id !== id),
+    );
+  };
+
+  const clearMembershipAppointmentSelection = (membershipId: string) => {
+    setMembershipAppointments((current) =>
+      current.filter(
+        (appointment) => appointment.membershipId !== membershipId,
+      ),
+    );
   };
 
   const selectClientSource = (source: string) => {
@@ -772,12 +1216,108 @@ export function CheckoutDialog({
     ]);
   };
 
+  const changePaymentMethod = (paymentId: string, methodId: string) => {
+    setPayments((current) =>
+      current.map((payment) => {
+        if (payment.id !== paymentId || payment.methodId === methodId)
+          return payment;
+        const nextPayment: PaymentEntry = {
+          id: payment.id,
+          methodId,
+          amount: payment.amount,
+        };
+        if (!paymentNeedsAuthorization(methodId)) return nextPayment;
+        return {
+          ...nextPayment,
+          ...(payment.authorizationCode !== undefined
+            ? { authorizationCode: payment.authorizationCode }
+            : {}),
+          ...(payment.cardOrBank !== undefined
+            ? { cardOrBank: payment.cardOrBank }
+            : {}),
+          ...(payment.bankId !== undefined ? { bankId: payment.bankId } : {}),
+          ...(payment.bankName !== undefined
+            ? { bankName: payment.bankName }
+            : {}),
+          ...(paymentIsCard(methodId) && paymentIsCard(payment.methodId)
+            ? {
+                ...(payment.cardType !== undefined
+                  ? { cardType: payment.cardType }
+                  : {}),
+                ...(payment.cardNetwork !== undefined
+                  ? { cardNetwork: payment.cardNetwork }
+                  : {}),
+                ...(payment.installmentMonths !== undefined
+                  ? { installmentMonths: payment.installmentMonths }
+                  : {}),
+              }
+            : {}),
+        };
+      }),
+    );
+  };
+
+  const buildNewClientRecord = (
+    ownerId: string | null,
+    saleSellerIds: string[],
+  ): Client => {
+    const now = new Date();
+    return {
+      id: savedNewClient?.id ?? `client-${Date.now()}`,
+      registrationFolio:
+        savedNewClient?.registrationFolio ??
+        `CLI-${now.getFullYear()}-${Date.now().toString().slice(-6)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
+      registeredAtIso: savedNewClient?.registeredAtIso ?? now.toISOString(),
+      ...newClient,
+      ownerId,
+      companyLocked: clientIsCompanyLocked,
+      companyName: clientIsCompanyLocked ? newClient.companyName.trim() : "",
+      source: newClient.source || "APPROACH",
+      sourceLabel: selectedSourceOption?.label ?? "Abordaje",
+      saleSellerIds,
+    };
+  };
+
+  const saveNewClient = () => {
+    if (showMissingRequirements(clientRecordMissingRequirements)) return;
+    if (!newClientDataIsValid) return;
+    const ownerId = clientIsCompanyLocked
+      ? null
+      : isShared
+        ? clientOwnerId
+        : (selectedSellerIds[0] ?? clientOwnerId ?? null);
+    const saleSellerIds = Array.from(
+      new Set([
+        ...(savedNewClient?.saleSellerIds ?? []),
+        ...selectedSellerIds.filter(
+          (sellerId) => sellerId !== COMPANY_SALES_PARTICIPANT_ID,
+        ),
+      ]),
+    );
+    const client = buildNewClientRecord(ownerId, saleSellerIds);
+    onSaveClient(client);
+    setSavedNewClient(client);
+    setSavedClientCollapsed(true);
+    toast.success(
+      savedNewClient
+        ? "Datos de la clienta actualizados."
+        : "Clienta guardada y disponible en Customers.",
+    );
+  };
+
   const handleSplitModeChange = (mode: SplitMode) => {
     setSplitMode(mode);
     setSplitValues(createEvenSplit(selectedSellerIds, mode, total));
   };
 
   const handleComplete = () => {
+    if (showMissingRequirements(checkoutMissingRequirements)) {
+      if (clientMissingRequirements.length > 0) setCheckoutStep(1);
+      else if (sellerMissingRequirements.length > 0) setCheckoutStep(2);
+      else if (appointmentMissingRequirements.length > 0) setCheckoutStep(3);
+      else setCheckoutStep(4);
+      return;
+    }
     if (!canComplete) return;
     const ownerId = clientIsCompanyLocked
       ? null
@@ -796,20 +1336,7 @@ export function CheckoutDialog({
     const client: Client =
       clientMode === "search" && selectedClient
         ? { ...selectedClient, ownerId, saleSellerIds }
-        : {
-            id: `client-${Date.now()}`,
-            registrationFolio: `CLI-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
-            registeredAtIso: new Date().toISOString(),
-            ...newClient,
-            ownerId,
-            companyLocked: clientIsCompanyLocked,
-            companyName: clientIsCompanyLocked
-              ? newClient.companyName.trim()
-              : "",
-            source: newClient.source || "APPROACH",
-            sourceLabel: selectedSourceOption?.label ?? "Abordaje",
-            saleSellerIds,
-          };
+        : buildNewClientRecord(ownerId, saleSellerIds);
     const selectedParticipants = selectedSellerIds.reduce<SaleParticipant[]>(
       (participants, sellerId) => {
         if (sellerId === COMPANY_SALES_PARTICIPANT_ID) {
@@ -834,8 +1361,46 @@ export function CheckoutDialog({
       },
       [],
     );
+    const purchaseCourtesySeller = selectedParticipants.find(
+      (participant) => participant.participantKind === "SELLER",
+    );
+    const scheduledMembershipAppointments: AppointmentDraft[] =
+      membershipAppointments.flatMap((selection) => {
+        const membership = selectedClientMemberships.find(
+          (candidate) => candidate.id === selection.membershipId,
+        );
+        const slot = agendaSlots.find(
+          (candidate) => candidate.id === selection.slotId,
+        );
+        if (!membership || !slot) return [];
+        return [
+          {
+            kind: "NEXT_SESSION" as const,
+            service: membership.membershipName,
+            membershipId: membership.id,
+            date: selection.date,
+            branch: selection.branch,
+            time: slot.startTime,
+            agendaSlotId: slot.id,
+            externalSlotId: slot.externalSlotId,
+            agendaResourceName: slot.resourceName,
+            agendaReservationMode: "SINGLE" as const,
+            ...(appointmentReservationActor
+              ? {
+                  bookingSource: "POS_CHECKOUT" as const,
+                  bookedById: appointmentReservationActor.id,
+                  bookedByName: appointmentReservationActor.name,
+                  bookedByRole: appointmentReservationActor.role,
+                }
+              : {}),
+          },
+        ];
+      });
     const appointments: AppointmentDraft[] = [
-      ...(clientMode === "new" && courtesySettings.required
+      ...(clientMode === "new" &&
+      (requiresStandardWelcomeCourtesy ||
+        (requiresMembershipCourtesyDecision &&
+          purchaseCourtesyAnswer === "YES"))
         ? courtesyServices.map((service, index) => {
             const slotId = selectedCourtesyAgendaOption?.slotIds[index];
             const slot = agendaSlots.find((candidate) => candidate.id === slotId);
@@ -872,28 +1437,48 @@ export function CheckoutDialog({
             };
           })
         : []),
-      ...(clientMode === "search" && nextSessionAnswer === "YES"
+      ...(clientMode === "search" &&
+      selectedClientHasPurchaseHistory &&
+      purchaseCourtesyAnswer === "YES" &&
+      selectedPurchaseCourtesyProduct &&
+      purchaseCourtesyAuthorizationValid
         ? [
             {
-              kind: complaintCourtesy
-                ? ("COURTESY" as const)
-                : ("NEXT_SESSION" as const),
-              service: nextSessionService,
-              ...(complaintCourtesy
-                ? { courtesyReason: "COMPLAINT" as const }
-                : selectedNextSessionMembership
-                  ? { membershipId: selectedNextSessionMembership.id }
-                  : {}),
+              kind: "COURTESY" as const,
+              service: selectedPurchaseCourtesyProduct.name,
+              courtesyReason: "PURCHASE" as const,
+              commercialAuthorizationUsed: true,
+              date: new Intl.DateTimeFormat("en-CA", {
+                timeZone: "America/Mexico_City",
+              }).format(new Date()),
+              branch: activeBranch || branches[0] || "Sin sucursal",
+              time: "Pendiente de agendar",
+              bookingSource: "POS_CHECKOUT" as const,
+              ...(purchaseCourtesySeller
+                ? {
+                    bookedById: purchaseCourtesySeller.id,
+                    bookedByName: purchaseCourtesySeller.name,
+                    bookedByRole: "SELLER" as const,
+                  }
+                : {}),
+            },
+          ]
+        : []),
+      ...(requiresFirstMembershipAppointment && firstAppointmentMembershipProduct
+        ? [
+            {
+              kind: "NEXT_SESSION" as const,
+              service: firstAppointmentMembershipProduct.name,
+              membershipProductId: firstAppointmentMembershipProduct.id,
+              firstMembershipAppointment: true,
               date: nextSessionDate,
               branch: nextSessionBranch,
               time: selectedNextSessionAgendaSlot?.startTime ?? "",
               ...(selectedNextSessionAgendaSlot
                 ? {
                     agendaSlotId: selectedNextSessionAgendaSlot.id,
-                    externalSlotId:
-                      selectedNextSessionAgendaSlot.externalSlotId,
-                    agendaResourceName:
-                      selectedNextSessionAgendaSlot.resourceName,
+                    externalSlotId: selectedNextSessionAgendaSlot.externalSlotId,
+                    agendaResourceName: selectedNextSessionAgendaSlot.resourceName,
                     agendaReservationMode: "SINGLE" as const,
                     ...(appointmentReservationActor
                       ? {
@@ -907,6 +1492,65 @@ export function CheckoutDialog({
                 : {}),
             },
           ]
+        : []),
+      ...scheduledMembershipAppointments,
+      ...(requiresFirstMembershipAppointment
+        ? []
+        : clientMode === "search" && nextSessionAnswer === "YES"
+        ? complaintCourtesy
+          ? [
+              {
+                kind: "COURTESY" as const,
+                service: nextSessionService,
+                courtesyReason: "COMPLAINT" as const,
+                date: nextSessionDate,
+                branch: nextSessionBranch,
+                time: selectedNextSessionAgendaSlot?.startTime ?? "",
+                ...(selectedNextSessionAgendaSlot
+                  ? {
+                      agendaSlotId: selectedNextSessionAgendaSlot.id,
+                      externalSlotId: selectedNextSessionAgendaSlot.externalSlotId,
+                      agendaResourceName: selectedNextSessionAgendaSlot.resourceName,
+                      agendaReservationMode: "SINGLE" as const,
+                      ...(appointmentReservationActor
+                        ? {
+                            bookingSource: "POS_CHECKOUT" as const,
+                            bookedById: appointmentReservationActor.id,
+                            bookedByName: appointmentReservationActor.name,
+                            bookedByRole: appointmentReservationActor.role,
+                          }
+                        : {}),
+                    }
+                  : {}),
+              },
+            ]
+          : clientHasMembershipHistory
+            ? []
+            : [
+                {
+                  kind: "NEXT_SESSION" as const,
+                  service: nextSessionService,
+                  date: nextSessionDate,
+                  branch: nextSessionBranch,
+                  time: selectedNextSessionAgendaSlot?.startTime ?? "",
+                  ...(selectedNextSessionAgendaSlot
+                    ? {
+                        agendaSlotId: selectedNextSessionAgendaSlot.id,
+                        externalSlotId: selectedNextSessionAgendaSlot.externalSlotId,
+                        agendaResourceName: selectedNextSessionAgendaSlot.resourceName,
+                        agendaReservationMode: "SINGLE" as const,
+                        ...(appointmentReservationActor
+                          ? {
+                              bookingSource: "POS_CHECKOUT" as const,
+                              bookedById: appointmentReservationActor.id,
+                              bookedByName: appointmentReservationActor.name,
+                              bookedByRole: appointmentReservationActor.role,
+                            }
+                          : {}),
+                      }
+                    : {}),
+                },
+              ]
         : clientMode === "search" && nextSessionAnswer === "NO"
           ? [
               {
@@ -924,7 +1568,7 @@ export function CheckoutDialog({
 
     onComplete({
       client,
-      createdClient: clientMode === "new",
+      createdClient: clientMode === "new" && !savedNewClient,
       splits: selectedSellerIds.map((sellerId) => ({
         sellerId,
         value: splitValues[sellerId] ?? 0,
@@ -963,7 +1607,148 @@ export function CheckoutDialog({
     });
   };
 
+  const courtesyAppointmentEditor = (
+    <div className="courtesy-appointment-panel new-client-grid-span">
+      <div className="courtesy-appointment-heading">
+        <span>
+          <Gift size={18} />
+        </span>
+        <div>
+          <strong>Cita de cortesía</strong>
+          <small>
+            Elige una o dos cortesías. Nunca se permiten más de dos servicios
+            de regalo.
+          </small>
+        </div>
+      </div>
+      <div className="appointment-fields-grid">
+        <div className="field-stack">
+          <Label htmlFor="courtesy-service">
+            Paquete de cortesía <em>*</em>
+          </Label>
+          <Select
+            value={courtesyPackage}
+            onValueChange={(value) => {
+              setCourtesyPackage(value as CourtesyPackage);
+              setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
+              setCourtesyTime("");
+            }}
+          >
+            <SelectTrigger id="courtesy-service">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availableCourtesyPackages.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="field-stack">
+          <Label htmlFor="courtesy-date">
+            Día de la cita <em>*</em>
+          </Label>
+          <DatePicker
+            id="courtesy-date"
+            value={courtesyDate}
+            onChange={(date) => {
+              setCourtesyDate(date);
+              setCourtesyTime("");
+            }}
+            placeholder="Selecciona fecha"
+          />
+        </div>
+        <div className="field-stack">
+          <Label htmlFor="courtesy-branch">
+            Sucursal <em>*</em>
+          </Label>
+          <Select
+            value={courtesyBranch}
+            onValueChange={(branch) => {
+              setCourtesyBranch(branch);
+              setCourtesyTime("");
+            }}
+          >
+            <SelectTrigger id="courtesy-branch">
+              <SelectValue placeholder="Selecciona sucursal" />
+            </SelectTrigger>
+            <SelectContent>
+              {branches.map((branch) => (
+                <SelectItem key={branch} value={branch}>
+                  {branch}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {courtesyServiceCount > 1 && (
+          <div className="field-stack appointment-reservation-mode-field">
+            <Label htmlFor="courtesy-reservation-mode">
+              Distribución de los dos servicios <em>*</em>
+            </Label>
+            <Select
+              value={courtesyReservationMode}
+              onValueChange={(mode) => {
+                setCourtesyReservationMode(mode as AgendaReservationMode);
+                setCourtesyTime("");
+              }}
+            >
+              <SelectTrigger id="courtesy-reservation-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SIMULTANEOUS_DOUBLE">
+                  Misma hora · cabina doble
+                </SelectItem>
+                <SelectItem value="CONSECUTIVE">
+                  Dos horarios consecutivos
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <div className="field-stack appointment-availability-field">
+          <Label htmlFor="courtesy-time">
+            Espacio disponible <em>*</em>
+          </Label>
+          <Select
+            value={courtesyTime}
+            onValueChange={setCourtesyTime}
+            disabled={!courtesyBranch || !courtesyDate}
+          >
+            <SelectTrigger id="courtesy-time">
+              <SelectValue placeholder="Horario y cabina" />
+            </SelectTrigger>
+            <SelectContent>
+              {courtesyAgendaOptions.map((option) => (
+                <SelectItem key={option.key} value={option.key}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {courtesyDate &&
+            courtesyBranch &&
+            courtesyAgendaOptions.length === 0 && (
+              <small className="agenda-no-availability">
+                No hay cabinas libres para esta configuración.
+              </small>
+            )}
+        </div>
+      </div>
+      {!courtesyAppointmentIsValid && (
+        <p>
+          Selecciona fecha, sucursal y un horario disponible para registrar la
+          cortesía.
+        </p>
+      )}
+    </div>
+  );
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="checkout-dialog sm:max-w-[980px]">
         <DialogHeader>
@@ -1007,8 +1792,7 @@ export function CheckoutDialog({
                   ? "is-complete"
                   : ""
             }
-            onClick={() => setCheckoutStep(2)}
-            disabled={!clientIsValid}
+            onClick={() => requestCheckoutStep(2)}
             aria-current={checkoutStep === 2 ? "step" : undefined}
           >
             <span>2</span>
@@ -1023,8 +1807,7 @@ export function CheckoutDialog({
                   ? "is-complete"
                   : ""
             }
-            onClick={() => setCheckoutStep(3)}
-            disabled={!clientIsValid || !sellerStepIsValid}
+            onClick={() => requestCheckoutStep(3)}
             aria-current={checkoutStep === 3 ? "step" : undefined}
           >
             <span>3</span>
@@ -1033,10 +1816,7 @@ export function CheckoutDialog({
           <button
             type="button"
             className={checkoutStep === 4 ? "is-active" : ""}
-            onClick={() => setCheckoutStep(4)}
-            disabled={
-              !clientIsValid || !sellerStepIsValid || !nextSessionIsValid
-            }
+            onClick={() => requestCheckoutStep(4)}
             aria-current={checkoutStep === 4 ? "step" : undefined}
           >
             <span>4</span>
@@ -1135,7 +1915,37 @@ export function CheckoutDialog({
                   )}
                 </div>
               ) : clientMode === "new" ? (
-                <div className="new-client-grid">
+                <>
+                {savedNewClient && savedClientCollapsed && (
+                  <div className="saved-client-summary" role="status">
+                    <span className="client-avatar">
+                      {savedNewClient.firstName.charAt(0)}
+                      {savedNewClient.lastName.charAt(0)}
+                    </span>
+                    <span>
+                      <small>CLIENTA GUARDADA</small>
+                      <strong>
+                        {savedNewClient.firstName} {savedNewClient.lastName}
+                      </strong>
+                    </span>
+                    {canEditSavedClient ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setSavedClientCollapsed(false)}
+                      >
+                        <Pencil size={15} /> Editar datos
+                      </Button>
+                    ) : (
+                      <span className="saved-client-locked">
+                        <LockKeyhole size={15} /> Datos protegidos
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div
+                  className={`new-client-grid ${savedNewClient && savedClientCollapsed ? "is-saved-client-collapsed" : ""}`}
+                >
                   <div className="field-stack">
                     <Label htmlFor="client-first-name">
                       Nombre {requiredFields.firstName && <em>*</em>}
@@ -1336,145 +2146,27 @@ export function CheckoutDialog({
                       en sus próximas ventas.
                     </small>
                   </div>
-                  {courtesySettings.required && <div className="courtesy-appointment-panel new-client-grid-span">
-                    <div className="courtesy-appointment-heading">
-                      <span>
-                        <Gift size={18} />
-                      </span>
-                      <div>
-                        <strong>Cita de bienvenida incluida</strong>
-                        <small>
-                          Elige una o dos cortesías. Nunca se permiten más de
-                          dos servicios de regalo.
-                        </small>
-                      </div>
-                    </div>
-                    <div className="appointment-fields-grid">
-                      <div className="field-stack">
-                        <Label htmlFor="courtesy-service">
-                          Paquete de cortesía <em>*</em>
-                        </Label>
-                        <Select
-                          value={courtesyPackage}
-                          onValueChange={(value) => {
-                            setCourtesyPackage(value as CourtesyPackage);
-                            setCourtesyReservationMode("SIMULTANEOUS_DOUBLE");
-                            setCourtesyTime("");
-                          }}
-                        >
-                          <SelectTrigger id="courtesy-service">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableCourtesyPackages.map((option) => (
-                                <SelectItem key={option.id} value={option.id}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="field-stack">
-                        <Label htmlFor="courtesy-date">
-                          Día de la cita <em>*</em>
-                        </Label>
-                        <DatePicker
-                          id="courtesy-date"
-                          value={courtesyDate}
-                          onChange={(date) => {
-                            setCourtesyDate(date);
-                            setCourtesyTime("");
-                          }}
-                          placeholder="Selecciona fecha"
-                        />
-                      </div>
-                      <div className="field-stack">
-                        <Label htmlFor="courtesy-branch">
-                          Sucursal <em>*</em>
-                        </Label>
-                        <Select
-                          value={courtesyBranch}
-                          onValueChange={(branch) => {
-                            setCourtesyBranch(branch);
-                            setCourtesyTime("");
-                          }}
-                        >
-                          <SelectTrigger id="courtesy-branch">
-                            <SelectValue placeholder="Selecciona sucursal" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {branches.map((branch) => (
-                              <SelectItem key={branch} value={branch}>
-                                {branch}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {courtesyServiceCount > 1 && (
-                        <div className="field-stack appointment-reservation-mode-field">
-                          <Label htmlFor="courtesy-reservation-mode">
-                            Distribución de los dos servicios <em>*</em>
-                          </Label>
-                          <Select
-                            value={courtesyReservationMode}
-                            onValueChange={(mode) => {
-                              setCourtesyReservationMode(
-                                mode as AgendaReservationMode,
-                              );
-                              setCourtesyTime("");
-                            }}
-                          >
-                            <SelectTrigger id="courtesy-reservation-mode">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="SIMULTANEOUS_DOUBLE">
-                                Misma hora · cabina doble
-                              </SelectItem>
-                              <SelectItem value="CONSECUTIVE">
-                                Dos horarios consecutivos
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                      <div className="field-stack appointment-availability-field">
-                        <Label htmlFor="courtesy-time">
-                          Espacio disponible <em>*</em>
-                        </Label>
-                        <Select
-                          value={courtesyTime}
-                          onValueChange={setCourtesyTime}
-                          disabled={!courtesyBranch || !courtesyDate}
-                        >
-                          <SelectTrigger id="courtesy-time">
-                            <SelectValue placeholder="Horario y cabina" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {courtesyAgendaOptions.map((option) => (
-                              <SelectItem key={option.key} value={option.key}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {courtesyDate &&
-                          courtesyBranch &&
-                          courtesyAgendaOptions.length === 0 && (
-                            <small className="agenda-no-availability">
-                              No hay cabinas libres para esta configuración.
-                            </small>
-                          )}
-                      </div>
-                    </div>
-                    {!courtesyAppointmentIsValid && (
-                      <p>
-                        Selecciona fecha, sucursal y un horario disponible para
-                        registrar la cortesía.
-                      </p>
-                    )}
-                  </div>}
+                  <div className="new-client-save-row new-client-grid-span">
+                    <span>
+                      <strong>
+                        {savedNewClient
+                          ? "La ficha ya está guardada"
+                          : "Guardar antes de continuar"}
+                      </strong>
+                      <small>
+                        La clienta quedará disponible en Customers aunque se
+                        cierre este ticket.
+                      </small>
+                    </span>
+                    <Button
+                      type="button"
+                      onClick={saveNewClient}
+                    >
+                      <Save size={16} />
+                      {savedNewClient ? "Actualizar cliente" : "Guardar cliente"}
+                    </Button>
+                  </div>
+                  {requiresStandardWelcomeCourtesy && courtesyAppointmentEditor}
                   {missingNewClientFields.length > 0 && (
                     <p className="form-hint new-client-grid-span">
                       Obligatorios pendientes:{" "}
@@ -1485,6 +2177,7 @@ export function CheckoutDialog({
                     </p>
                   )}
                 </div>
+                </>
               ) : null}
             </section>
           )}
@@ -1815,7 +2508,7 @@ export function CheckoutDialog({
                 <CalendarHeart size={22} />
               </div>
 
-              {clientMode === "new" && courtesySettings.required && (
+              {requiresStandardWelcomeCourtesy && (
                 <div className="courtesy-confirmation-card">
                   <Gift size={19} />
                   <span>
@@ -1837,7 +2530,150 @@ export function CheckoutDialog({
                 </div>
               )}
 
-              {clientMode === "search" ? (
+              {clientMode === "search" && selectedClientHasPurchaseHistory && (
+                <div className="purchase-courtesy-card">
+                  <div className="purchase-courtesy-question">
+                    <span>
+                      <Gift size={18} aria-hidden="true" />
+                      <span>
+                        <strong>¿Asignar facial de regalo por esta compra?</strong>
+                        <small>
+                          Esta clienta ya tiene historial; no es una cortesía de
+                          bienvenida.
+                        </small>
+                      </span>
+                    </span>
+                    <div className="appointment-answer-buttons">
+                      <button
+                        type="button"
+                        className={purchaseCourtesyAnswer === "YES" ? "is-active" : ""}
+                        onClick={() => setPurchaseCourtesyAnswer("YES")}
+                      >
+                        Sí
+                      </button>
+                      <button
+                        type="button"
+                        className={purchaseCourtesyAnswer === "NO" ? "is-active" : ""}
+                        onClick={() => {
+                          setPurchaseCourtesyAnswer("NO");
+                          setPurchaseCourtesyProductId("");
+                          setPurchaseCourtesyAuthorizationCode("");
+                        }}
+                      >
+                        No
+                      </button>
+                    </div>
+                  </div>
+                  {purchaseCourtesyAnswer === "YES" && (
+                    <div className="purchase-courtesy-fields">
+                      <div className="field-stack">
+                        <Label htmlFor="purchase-courtesy-product">
+                          Facial autorizado <em>*</em>
+                        </Label>
+                        <Select
+                          value={purchaseCourtesyProductId}
+                          onValueChange={setPurchaseCourtesyProductId}
+                        >
+                          <SelectTrigger id="purchase-courtesy-product">
+                            <SelectValue placeholder="Selecciona facial de regalo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {authorizedPurchaseFacials.map((product) => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="field-stack">
+                        <Label htmlFor="purchase-courtesy-token">
+                          Token de autorización <em>*</em>
+                        </Label>
+                        <Input
+                          id="purchase-courtesy-token"
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={6}
+                          value={purchaseCourtesyAuthorizationCode}
+                          onChange={(event) =>
+                            setPurchaseCourtesyAuthorizationCode(
+                              event.target.value.replace(/\D/g, "").slice(0, 6),
+                            )
+                          }
+                          placeholder="4 a 6 dígitos"
+                        />
+                        <small className={purchaseCourtesyAuthorizationValid ? "is-valid" : "is-pending"}>
+                          {purchaseCourtesyAuthorizationValid
+                            ? "Autorización comercial validada"
+                            : "Solicita el token vigente a Master o personal autorizado"}
+                        </small>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {requiresFirstMembershipAppointment && (
+                <div className="next-session-question first-membership-appointment-notice">
+                  <Crown size={20} aria-hidden="true" />
+                  <div>
+                    <strong>Primera cita obligatoria de membresía</strong>
+                    <small>
+                      La clienta está comprando una membresía que no tenía.
+                      Esta primera cita se ligará a la membresía seleccionada;
+                      elige fecha, sucursal y espacio para continuar al cobro.
+                    </small>
+                  </div>
+                </div>
+              )}
+
+              {requiresMembershipCourtesyDecision && (
+                <div className="purchase-courtesy-card membership-purchase-courtesy-card">
+                  <div className="purchase-courtesy-question">
+                    <span>
+                      <Gift size={18} aria-hidden="true" />
+                      <span>
+                        <strong>¿Deseas regalar un facial de cortesía?</strong>
+                        <small>
+                          Es adicional a la primera cita de membresía y no
+                          descuenta ninguna de sus sesiones.
+                        </small>
+                      </span>
+                    </span>
+                    <div className="appointment-answer-buttons">
+                      <button
+                        type="button"
+                        className={
+                          purchaseCourtesyAnswer === "YES" ? "is-active" : ""
+                        }
+                        onClick={() => setPurchaseCourtesyAnswer("YES")}
+                      >
+                        Sí, registrar cita
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          purchaseCourtesyAnswer === "NO" ? "is-active" : ""
+                        }
+                        onClick={() => {
+                          setPurchaseCourtesyAnswer("NO");
+                          setCourtesyDate("");
+                          setCourtesyBranch("");
+                          setCourtesyTime("");
+                        }}
+                      >
+                        No, continuar
+                      </button>
+                    </div>
+                  </div>
+                  {purchaseCourtesyAnswer === "YES" &&
+                    courtesyAppointmentEditor}
+                </div>
+              )}
+
+              {!requiresFirstMembershipAppointment && (clientMode === "search" ? (
                 <div className="next-session-question">
                   <div>
                     <strong>
@@ -1864,7 +2700,7 @@ export function CheckoutDialog({
                       }
                       onClick={() => {
                         setNextSessionAnswer("NO");
-                        setNextSessionMembershipId("");
+                        setMembershipAppointments([]);
                         setComplaintCourtesy(false);
                         setNextSessionService(
                           clientHasMembershipHistory
@@ -1891,67 +2727,133 @@ export function CheckoutDialog({
                     </small>
                   </span>
                 </div>
-              ) : null}
+              ) : null)}
 
-              {clientMode === "search" && clientHasMembershipHistory && (
+              {clientMode === "search" &&
+                selectedClientCourtesyFacials.length > 0 && (
+                  <div className="client-service-session-summary">
+                    <Gift size={17} aria-hidden="true" />
+                    <span>
+                      <strong>Faciales de cortesía</strong>
+                      <small>Servicios asignados a la clienta</small>
+                    </span>
+                    <b>
+                      {courtesyFacialsTaken} tomadas ·{" "}
+                      {selectedClientCourtesyFacials.length} asignadas
+                    </b>
+                  </div>
+                )}
+
+              {clientMode === "search" &&
+                clientHasMembershipHistory && (
                   <div className="membership-scheduling-card">
-                    <button
-                      type="button"
-                      className={`membership-scheduling-heading ${clientHasSchedulableMemberships ? "" : "is-exhausted"}`}
-                      onClick={() => {
-                        if (clientHasSchedulableMemberships)
-                          setNextSessionAnswer("YES");
-                      }}
-                    >
-                      <Crown size={18} aria-hidden="true" />
-                      <span>
-                        <strong>
-                          {clientHasSchedulableMemberships
-                            ? "La clienta cuenta con membresía"
-                            : "Membresía sin sesiones disponibles"}
-                        </strong>
-                        <small>
-                          {clientHasSchedulableMemberships
-                            ? "Elige el tarjetón que se vinculará con la cita. La sesión sólo se descontará cuando Agenda confirme la asistencia."
-                            : "La opción de reservar con membresía fue desactivada. Sólo puedes elegir una cortesía por atención de queja."}
-                        </small>
-                      </span>
-                    </button>
+                    <div className="membership-scheduling-header-row">
+                      <button
+                        type="button"
+                        className={`membership-scheduling-heading ${clientHasSchedulableMemberships ? "" : "is-exhausted"}`}
+                        onClick={() => {
+                          if (clientHasSchedulableMemberships)
+                            setNextSessionAnswer("YES");
+                        }}
+                      >
+                        <Crown size={18} aria-hidden="true" />
+                        <span>
+                          <strong>
+                            {clientHasSchedulableMemberships
+                              ? "La clienta cuenta con membresía"
+                              : "Membresía sin sesiones disponibles"}
+                          </strong>
+                          <small>
+                            {clientHasSchedulableMemberships
+                              ? "Puedes agregar una o varias citas y elegir un horario para cada una."
+                              : "La reserva con membresía está desactivada; sólo quedan las cortesías autorizadas."}
+                          </small>
+                        </span>
+                      </button>
+                      {selectedClientFinishedMemberships.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setFinishedMembershipsOpen(true)}
+                        >
+                          <History size={14} /> Finalizadas ({selectedClientFinishedMemberships.length})
+                        </Button>
+                      )}
+                    </div>
                     {clientHasSchedulableMemberships && (
                       <div className="membership-service-options">
                         {selectedClientMemberships.map((membership) => {
                           const remaining =
                             membership.totalSessions - membership.usedSessions;
-                          const isSelected =
-                            nextSessionMembershipId === membership.id &&
-                            !complaintCourtesy;
+                          const selectedCount = membershipAppointments.filter(
+                            (appointment) =>
+                              appointment.membershipId === membership.id,
+                          ).length;
                           return (
-                            <button
+                            <div
                               key={membership.id}
-                              type="button"
-                              className={isSelected ? "is-selected" : ""}
-                              onClick={() => {
-                                setNextSessionAnswer("YES");
-                                setComplaintCourtesy(false);
-                                setNextSessionMembershipId(membership.id);
-                                setNextSessionService(membership.membershipName);
-                                setNextSessionTime("");
-                              }}
-                              aria-pressed={isSelected}
+                              className={selectedCount > 0 ? "is-selected" : ""}
                             >
                               <span>
                                 <strong>{membership.membershipName}</strong>
                                 <small>{membership.folio}</small>
                               </span>
-                              <b>
-                                {remaining}{" "}
-                                {remaining === 1 ? "sesión" : "sesiones"}
-                              </b>
-                            </button>
+                              <small className="membership-usage-inline">
+                                {membership.usedSessions} tomadas · {remaining} disponibles
+                              </small>
+                              <div className="membership-service-actions">
+                                {selectedCount > 0 ? (
+                                  <>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="membership-clear-selection"
+                                      aria-label={`Quitar ${selectedCount} ${selectedCount === 1 ? "cita" : "citas"} de ${membership.membershipName}`}
+                                      onClick={() =>
+                                        clearMembershipAppointmentSelection(
+                                          membership.id,
+                                        )
+                                      }
+                                    >
+                                      <XCircle size={14} /> Quitar ({selectedCount})
+                                    </Button>
+                                    {selectedCount < remaining && (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        className="membership-add-another"
+                                        aria-label={`Agregar otra cita de ${membership.membershipName}`}
+                                        title="Agregar otra cita"
+                                        onClick={() =>
+                                          addMembershipAppointment(membership.id)
+                                        }
+                                      >
+                                        <PlusCircle size={14} />
+                                      </Button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      addMembershipAppointment(membership.id)
+                                    }
+                                  >
+                                    <PlusCircle size={14} /> Agregar cita
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
                           );
                         })}
                       </div>
                     )}
+                    {!requiresFirstMembershipAppointment && (
                     <div className="complaint-courtesy-options">
                       {complaintCourtesyServices.map((service) => {
                         const isSelected =
@@ -1968,7 +2870,7 @@ export function CheckoutDialog({
                               const nextValue = !isSelected;
                               setComplaintCourtesy(nextValue);
                               setNextSessionAnswer("YES");
-                              setNextSessionMembershipId("");
+                              setMembershipAppointments([]);
                               setNextSessionService(nextValue ? service : "");
                               setNextSessionTime("");
                             }}
@@ -1988,6 +2890,105 @@ export function CheckoutDialog({
                         );
                       })}
                     </div>
+                    )}
+                  </div>
+                )}
+
+              {clientMode === "search" &&
+                nextSessionAnswer === "YES" &&
+                !complaintCourtesy &&
+                membershipAppointments.length > 0 && (
+                  <div className="membership-multi-scheduler">
+                    <div className="appointment-scheduler-heading">
+                      <MapPin size={18} />
+                      <div>
+                        <strong>Horarios de las citas de membresía</strong>
+                        <small>
+                          Cada cita conserva su tarjetón, fecha, sucursal y espacio.
+                        </small>
+                      </div>
+                    </div>
+                    {membershipAppointments.map((selection, index) => {
+                      const membership = selectedClientMemberships.find(
+                        (candidate) => candidate.id === selection.membershipId,
+                      );
+                      const slots = membershipAppointmentSlots(selection);
+                      return (
+                        <div className="membership-appointment-row" key={selection.id}>
+                          <div className="membership-appointment-label">
+                            <Badge variant="outline">CITA {index + 1}</Badge>
+                            <span>
+                              <strong>{membership?.membershipName ?? "Membresía"}</strong>
+                              <small>{membership?.folio}</small>
+                            </span>
+                          </div>
+                          <DatePicker
+                            id={`membership-appointment-date-${selection.id}`}
+                            value={selection.date}
+                            onChange={(date) =>
+                              updateMembershipAppointment(selection.id, {
+                                date,
+                                slotId: "",
+                              })
+                            }
+                            placeholder="Selecciona fecha"
+                          />
+                          <Select
+                            value={selection.branch}
+                            onValueChange={(branch) =>
+                              updateMembershipAppointment(selection.id, {
+                                branch,
+                                slotId: "",
+                              })
+                            }
+                          >
+                            <SelectTrigger aria-label={`Sucursal de la cita ${index + 1}`}>
+                              <SelectValue placeholder="Sucursal" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {branches.map((branch) => (
+                                <SelectItem key={branch} value={branch}>{branch}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={selection.slotId}
+                            onValueChange={(slotId) =>
+                              updateMembershipAppointment(selection.id, { slotId })
+                            }
+                            disabled={!selection.branch || !selection.date}
+                          >
+                            <SelectTrigger aria-label={`Horario de la cita ${index + 1}`}>
+                              <SelectValue placeholder="Horario y cabina" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {slots.map((slot) => (
+                                <SelectItem key={slot.id} value={slot.id}>
+                                  {slot.startTime}–{slot.endTime} · {slot.resourceName}
+                                  {slot.resourceType === "DOUBLE"
+                                    ? ` · ${availableAgendaSeats(slot)} lugares`
+                                    : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label={`Quitar cita ${index + 1}`}
+                            onClick={() => removeMembershipAppointment(selection.id)}
+                          >
+                            <Trash2 size={15} />
+                          </Button>
+                          {selection.date && selection.branch && slots.length === 0 && (
+                            <small className="agenda-no-availability membership-appointment-error">
+                              Sin espacios disponibles para esta cita.
+                            </small>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -2030,7 +3031,10 @@ export function CheckoutDialog({
                 </div>
               )}
 
-              {clientMode === "search" && nextSessionAnswer === "YES" && (
+              {(requiresFirstMembershipAppointment ||
+                (clientMode === "search" &&
+                  nextSessionAnswer === "YES" &&
+                  (complaintCourtesy || !clientHasMembershipHistory))) && (
                 <div className="next-session-scheduler">
                   <div className="appointment-scheduler-heading">
                     <MapPin size={18} />
@@ -2045,57 +3049,35 @@ export function CheckoutDialog({
                     <div className="appointment-fields-grid">
                       <div className="field-stack">
                         <Label htmlFor="next-session-service">Servicio</Label>
-                        {clientHasMembershipHistory ? (
-                          complaintCourtesy ? (
-                            <div
-                              id="next-session-service"
-                              className="complaint-courtesy-service"
-                            >
-                              <Gift size={15} /> {nextSessionService}
-                            </div>
-                          ) : clientHasSchedulableMemberships ? (
-                            <Select
-                              value={nextSessionMembershipId}
-                              onValueChange={(membershipId) => {
-                                const membership =
-                                  selectedClientMemberships.find(
-                                    (candidate) => candidate.id === membershipId,
-                                  );
-                                setNextSessionMembershipId(membershipId);
-                                setNextSessionService(
-                                  membership?.membershipName ?? "",
-                                );
-                                setNextSessionTime("");
-                              }}
-                            >
-                              <SelectTrigger id="next-session-service">
-                                <SelectValue placeholder="Selecciona membresía" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {selectedClientMemberships.map((membership) => {
-                                  const remaining =
-                                    membership.totalSessions -
-                                    membership.usedSessions;
-                                  return (
-                                    <SelectItem
-                                      key={membership.id}
-                                      value={membership.id}
-                                    >
-                                      {membership.membershipName} · {remaining}{" "}
-                                      {remaining === 1 ? "sesión" : "sesiones"}
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div
-                              id="next-session-service"
-                              className="complaint-courtesy-service is-empty"
-                            >
-                              Selecciona una cortesía facial o corporal
-                            </div>
-                          )
+                        {requiresFirstMembershipAppointment ? (
+                          <Select
+                            value={firstAppointmentMembershipProduct?.id ?? ""}
+                            onValueChange={(productId) => {
+                              setFirstAppointmentMembershipProductId(productId);
+                              setNextSessionTime("");
+                            }}
+                          >
+                            <SelectTrigger id="next-session-service">
+                              <SelectValue placeholder="Selecciona membresía nueva" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {newlyPurchasedMembershipProducts.map((product) => (
+                                <SelectItem key={product.id} value={product.id}>
+                                  {product.name} · {product.membershipSessions ?? 1}{" "}
+                                  {(product.membershipSessions ?? 1) === 1
+                                    ? "sesión"
+                                    : "sesiones"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : clientHasMembershipHistory ? (
+                          <div
+                            id="next-session-service"
+                            className="complaint-courtesy-service"
+                          >
+                            <Gift size={15} /> {nextSessionService}
+                          </div>
                         ) : (
                           <Select
                             value={nextSessionService}
@@ -2185,7 +3167,9 @@ export function CheckoutDialog({
                 </div>
               )}
 
-              {clientMode === "search" && nextSessionAnswer === "NO" && (
+              {!requiresFirstMembershipAppointment &&
+                clientMode === "search" &&
+                nextSessionAnswer === "NO" && (
                 <div className="appointment-declined-note">
                   <CheckCircle2 size={18} />
                   <span>
@@ -2233,27 +3217,7 @@ export function CheckoutDialog({
                         <Select
                           value={payment.methodId}
                           onValueChange={(methodId) =>
-                            setPayments((current) =>
-                              current.map((item) =>
-                                {
-                                  if (item.id !== payment.id) return item;
-                                  const {
-                                    cardType: _cardType,
-                                    cardNetwork: _cardNetwork,
-                                    bankId: _bankId,
-                                    bankName: _bankName,
-                                    installmentMonths: _installmentMonths,
-                                    ...paymentWithoutCardTerms
-                                  } = item;
-                                  return {
-                                    ...paymentWithoutCardTerms,
-                                    methodId,
-                                    authorizationCode: "",
-                                    cardOrBank: "",
-                                  };
-                                }
-                              ),
-                            )
+                            changePaymentMethod(payment.id, methodId)
                           }
                         >
                           <SelectTrigger
@@ -2474,8 +3438,7 @@ export function CheckoutDialog({
           {checkoutStep === 1 && (
             <Button
               type="button"
-              onClick={() => setCheckoutStep(2)}
-              disabled={!clientIsValid}
+              onClick={() => requestCheckoutStep(2)}
             >
               Continuar a vendedores
             </Button>
@@ -2483,8 +3446,7 @@ export function CheckoutDialog({
           {checkoutStep === 2 && (
             <Button
               type="button"
-              onClick={() => setCheckoutStep(3)}
-              disabled={!sellerStepIsValid}
+              onClick={() => requestCheckoutStep(3)}
             >
               Continuar a citas
             </Button>
@@ -2492,8 +3454,7 @@ export function CheckoutDialog({
           {checkoutStep === 3 && (
             <Button
               type="button"
-              onClick={() => setCheckoutStep(4)}
-              disabled={!nextSessionIsValid}
+              onClick={() => requestCheckoutStep(4)}
             >
               Continuar al cobro
             </Button>
@@ -2502,7 +3463,6 @@ export function CheckoutDialog({
             <Button
               type="button"
               onClick={handleComplete}
-              disabled={!canComplete}
             >
               {paymentStatus === "PAID" ? (
                 <CheckCircle2 size={17} />
@@ -2519,5 +3479,57 @@ export function CheckoutDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog open={finishedMembershipsOpen} onOpenChange={setFinishedMembershipsOpen}>
+      <DialogContent className="finished-memberships-dialog sm:max-w-[760px]">
+        <DialogHeader>
+          <DialogTitle>Membresías finalizadas</DialogTitle>
+          <DialogDescription>
+            Historial de tarjetones agotados o cancelados de {selectedClient?.firstName}{" "}
+            {selectedClient?.lastName}.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="finished-memberships-list">
+          {selectedClientFinishedMemberships.map((membership) => (
+            <article key={membership.id}>
+              <span>
+                <Crown size={17} aria-hidden="true" />
+                <span>
+                  <strong>{membership.membershipName}</strong>
+                  <small>{membership.folio} · {membership.branch}</small>
+                </span>
+              </span>
+              <span className="finished-membership-sessions">
+                <strong>{membership.usedSessions} tomadas</strong>
+                <small>de {membership.totalSessions} sesiones</small>
+              </span>
+              <Badge variant="outline">
+                {membership.status === "CANCELLED" ? "CANCELADA" : "FINALIZADA"}
+              </Badge>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setFinishedMembershipsOpen(false);
+                  onViewTicket(membership.purchaseTicketId);
+                }}
+              >
+                <Eye size={14} /> {membership.purchaseTicketId}
+              </Button>
+            </article>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setFinishedMembershipsOpen(false)}
+          >
+            Cerrar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

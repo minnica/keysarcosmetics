@@ -67,28 +67,28 @@ export const notificationDefinitions: NotificationDefinition[] = [
     type: "PRODUCT_CREATED",
     label: "Alta de productos",
     description: "Productos o servicios nuevos dados de alta en catálogo.",
-    module: "Inventory · Catálogo",
+    module: "Catálogo e inventario",
     icon: PackagePlus,
   },
   {
     type: "INVENTORY_ADD",
     label: "Entradas de inventario",
     description: "Producto sumado y sucursal afectada después de aprobación.",
-    module: "Inventory · Movimientos",
+    module: "Inventario · Movimientos",
     icon: PackagePlus,
   },
   {
     type: "INVENTORY_REMOVE",
     label: "Bajas de inventario",
     description: "Bajas, daños, testers, regalos y otras salidas autorizadas.",
-    module: "Inventory · Movimientos",
+    module: "Inventario · Movimientos",
     icon: PackageMinus,
   },
   {
     type: "INVENTORY_TRANSFER",
     label: "Transferencias",
     description: "Movimientos de producto entre sucursales.",
-    module: "Inventory · Movimientos",
+    module: "Inventario · Movimientos",
     icon: Boxes,
   },
   {
@@ -169,7 +169,8 @@ export function NotificationBell({
     masterUser,
     ...sellers.filter((seller) => seller.active),
   ];
-  const authorizedUser = users.find((user) => user.id === authorizedUserId) ?? null;
+  const authorizedUser =
+    users.find((user) => user.id === authorizedUserId) ?? null;
   const masterViewer = authorizedUserId === masterUser.id;
   const permittedSellerIds = new Set(
     preferences.flatMap((preference) => preference.recipientUserIds),
@@ -177,11 +178,14 @@ export function NotificationBell({
   const todayNotifications = useMemo(
     () =>
       notifications
-        .filter((notification) => businessDate(notification.createdAtIso) === today())
+        .filter(
+          (notification) => businessDate(notification.createdAtIso) === today(),
+        )
         .filter(
           (notification) =>
             Boolean(authorizedUserId) &&
-            (masterViewer || notification.recipientUserIds.includes(authorizedUserId!)),
+            (masterViewer ||
+              notification.recipientUserIds.includes(authorizedUserId!)),
         )
         .filter(
           (notification) =>
@@ -192,15 +196,20 @@ export function NotificationBell({
             readFilter === "ALL" ||
             !notification.readByUserIds.includes(authorizedUserId!),
         )
-        .sort((left, right) => right.createdAtIso.localeCompare(left.createdAtIso)),
+        .sort((left, right) =>
+          right.createdAtIso.localeCompare(left.createdAtIso),
+        ),
     [authorizedUserId, masterViewer, moduleFilter, notifications, readFilter],
   );
-  const unreadCount = authorizedUserId ? notifications.filter(
-    (notification) =>
-      businessDate(notification.createdAtIso) === today() &&
-      (masterViewer || notification.recipientUserIds.includes(authorizedUserId)) &&
-      !notification.readByUserIds.includes(authorizedUserId),
-  ).length : 0;
+  const unreadCount = authorizedUserId
+    ? notifications.filter(
+        (notification) =>
+          businessDate(notification.createdAtIso) === today() &&
+          (masterViewer ||
+            notification.recipientUserIds.includes(authorizedUserId)) &&
+          !notification.readByUserIds.includes(authorizedUserId),
+      ).length
+    : 0;
 
   const authorizeViewer = () => {
     const code = accessCode.trim();
@@ -258,11 +267,17 @@ export function NotificationBell({
         aria-expanded={open}
       >
         {authorizedUser ? (
-          unreadCount > 0 ? <BellRing size={20} /> : <Bell size={20} />
+          unreadCount > 0 ? (
+            <BellRing size={20} />
+          ) : (
+            <Bell size={20} />
+          )
         ) : (
           <LockKeyhole size={19} />
         )}
-        {unreadCount > 0 && <span>{unreadCount > 99 ? "99+" : unreadCount}</span>}
+        {unreadCount > 0 && (
+          <span>{unreadCount > 99 ? "99+" : unreadCount}</span>
+        )}
       </button>
 
       {open && (
@@ -273,15 +288,21 @@ export function NotificationBell({
             aria-label="Cerrar notificaciones"
             onClick={() => setOpen(false)}
           />
-          <section className="notification-panel" aria-label="Centro de notificaciones">
+          <section
+            className="notification-panel"
+            aria-label="Centro de notificaciones"
+          >
             {!authorizedUser ? (
               <div className="notification-access-gate">
-                <span className="notification-access-icon"><BellRing size={25} /></span>
+                <span className="notification-access-icon">
+                  <BellRing size={25} />
+                </span>
                 <span className="section-kicker">ACCESO PROTEGIDO</span>
                 <h2>Centro de notificaciones</h2>
                 <p>
-                  Ingresa un código master o el código de un usuario autorizado en
-                  Settings. Cada usuario verá únicamente las alertas que recibe.
+                  Ingresa un código master o el código de un usuario autorizado
+                  en Settings. Cada usuario verá únicamente las alertas que
+                  recibe.
                 </p>
                 <Input
                   type="password"
@@ -293,96 +314,135 @@ export function NotificationBell({
                     if (event.key === "Enter") authorizeViewer();
                   }}
                 />
-                <Button type="button" onClick={authorizeViewer} disabled={!accessCode.trim()}>
+                <Button
+                  type="button"
+                  onClick={authorizeViewer}
+                  disabled={!accessCode.trim()}
+                >
                   <LockKeyhole size={16} /> Abrir notificaciones
                 </Button>
-                <button type="button" className="notification-access-close" onClick={() => setOpen(false)}>
+                <button
+                  type="button"
+                  className="notification-access-close"
+                  onClick={() => setOpen(false)}
+                >
                   Cancelar
                 </button>
               </div>
             ) : (
               <>
-            <div className="notification-panel-heading">
-              <div>
-                <span className="section-kicker">ACTIVIDAD DEL DÍA</span>
-                <h2>Notificaciones</h2>
-                <p>{authorizedUser.name} · {unreadCount} no leídas</p>
-              </div>
-              <div>
-                <button type="button" onClick={lockViewer} aria-label="Bloquear notificaciones" title="Cerrar acceso">
-                  <LockKeyhole size={16} />
-                </button>
-                <button type="button" onClick={() => setOpen(false)} aria-label="Cerrar">
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
+                <div className="notification-panel-heading">
+                  <div>
+                    <span className="section-kicker">ACTIVIDAD DEL DÍA</span>
+                    <h2>Notificaciones</h2>
+                    <p>
+                      {authorizedUser.name} · {unreadCount} no leídas
+                    </p>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={lockViewer}
+                      aria-label="Bloquear notificaciones"
+                      title="Cerrar acceso"
+                    >
+                      <LockKeyhole size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpen(false)}
+                      aria-label="Cerrar"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                </div>
 
-            <div className="notification-panel-tools">
-              <select
-                aria-label="Filtrar notificaciones por módulo"
-                value={moduleFilter}
-                onChange={(event) => setModuleFilter(event.target.value)}
-              >
-                <option value="ALL">Todos los módulos</option>
-                {notificationDefinitions.map((definition) => (
-                  <option value={definition.type} key={definition.type}>
-                    {definition.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Filtrar notificaciones por lectura"
-                value={readFilter}
-                onChange={(event) => setReadFilter(event.target.value as "ALL" | "UNREAD")}
-              >
-                <option value="ALL">Todas</option>
-                <option value="UNREAD">Sólo no leídas</option>
-              </select>
-              <button type="button" onClick={() => onMarkAllRead(authorizedUser.id)} disabled={unreadCount === 0}>
-                <CheckCheck size={15} /> Marcar leídas
-              </button>
-            </div>
-
-            <div className="notification-list">
-              {todayNotifications.map((notification) => {
-                const definition = notificationDefinitions.find(
-                  (item) => item.type === notification.type,
-                );
-                const Icon = definition?.icon ?? Bell;
-                const unread =
-                  !notification.readByUserIds.includes(authorizedUser.id);
-                return (
+                <div className="notification-panel-tools">
+                  <select
+                    aria-label="Filtrar notificaciones por módulo"
+                    value={moduleFilter}
+                    onChange={(event) => setModuleFilter(event.target.value)}
+                  >
+                    <option value="ALL">Todos los módulos</option>
+                    {notificationDefinitions.map((definition) => (
+                      <option value={definition.type} key={definition.type}>
+                        {definition.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Filtrar notificaciones por lectura"
+                    value={readFilter}
+                    onChange={(event) =>
+                      setReadFilter(event.target.value as "ALL" | "UNREAD")
+                    }
+                  >
+                    <option value="ALL">Todas</option>
+                    <option value="UNREAD">Sólo no leídas</option>
+                  </select>
                   <button
                     type="button"
-                    className={`notification-item ${unread ? "is-unread" : ""}`}
-                    key={notification.id}
-                    onClick={() => onMarkRead(notification.id, authorizedUser.id)}
+                    onClick={() => onMarkAllRead(authorizedUser.id)}
+                    disabled={unreadCount === 0}
                   >
-                    <span className="notification-item-icon"><Icon size={18} /></span>
-                    <span className="notification-item-copy">
-                      <span>
-                        <strong>{notification.title}</strong>
-                        <time>{notificationTime(notification.createdAtIso)}</time>
-                      </span>
-                      <small>{notification.detail}</small>
-                      <em>
-                        {notification.moduleLabel} · {notification.branch} · {notification.actorName}
-                      </em>
-                      <b>Para: {recipientNames(notification.recipientUserIds) || "Sin destinatarios"}</b>
-                    </span>
-                    {unread && <i aria-label="Sin leer" />}
+                    <CheckCheck size={15} /> Marcar leídas
                   </button>
-                );
-              })}
-              {todayNotifications.length === 0 && (
-                <div className="notification-empty-state">
-                  <Bell size={26} />
-                  <strong>Sin movimientos en esta vista</strong>
-                  <span>Las nuevas operaciones aparecerán aquí en tiempo real.</span>
                 </div>
-              )}
-            </div>
+
+                <div className="notification-list">
+                  {todayNotifications.map((notification) => {
+                    const definition = notificationDefinitions.find(
+                      (item) => item.type === notification.type,
+                    );
+                    const Icon = definition?.icon ?? Bell;
+                    const unread = !notification.readByUserIds.includes(
+                      authorizedUser.id,
+                    );
+                    return (
+                      <button
+                        type="button"
+                        className={`notification-item ${unread ? "is-unread" : ""}`}
+                        key={notification.id}
+                        onClick={() =>
+                          onMarkRead(notification.id, authorizedUser.id)
+                        }
+                      >
+                        <span className="notification-item-icon">
+                          <Icon size={18} />
+                        </span>
+                        <span className="notification-item-copy">
+                          <span>
+                            <strong>{notification.title}</strong>
+                            <time>
+                              {notificationTime(notification.createdAtIso)}
+                            </time>
+                          </span>
+                          <small>{notification.detail}</small>
+                          <em>
+                            {notification.moduleLabel} · {notification.branch} ·{" "}
+                            {notification.actorName}
+                          </em>
+                          <b>
+                            Para:{" "}
+                            {recipientNames(notification.recipientUserIds) ||
+                              "Sin destinatarios"}
+                          </b>
+                        </span>
+                        {unread && <i aria-label="Sin leer" />}
+                      </button>
+                    );
+                  })}
+                  {todayNotifications.length === 0 && (
+                    <div className="notification-empty-state">
+                      <Bell size={26} />
+                      <strong>Sin movimientos en esta vista</strong>
+                      <span>
+                        Las nuevas operaciones aparecerán aquí en tiempo real.
+                      </span>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </section>
@@ -427,7 +487,9 @@ export function NotificationSettings({
 
   const updatePreference = (
     type: OperationalNotificationType,
-    update: (current: OperationalNotificationPreference) => OperationalNotificationPreference,
+    update: (
+      current: OperationalNotificationPreference,
+    ) => OperationalNotificationPreference,
   ) =>
     onChange(
       preferences.map((preference) =>
@@ -446,9 +508,7 @@ export function NotificationSettings({
     window.setTimeout(() => setAuthorized(false), 180_000);
   };
 
-  const assignRecipient = (
-    type: OperationalNotificationType,
-  ) => {
+  const assignRecipient = (type: OperationalNotificationType) => {
     const userId = recipientDrafts[type];
     if (!userId) {
       toast.error("Selecciona un vendedor antes de asignar el permiso.");
@@ -471,16 +531,15 @@ export function NotificationSettings({
     );
   };
 
-  const removeRecipient = (
-    type: OperationalNotificationType,
-    userId: string,
-  ) =>
+  const removeRecipient = (type: OperationalNotificationType, userId: string) =>
     updatePreference(type, (current) => {
       const recipientAccess = { ...current.recipientAccess };
       delete recipientAccess[userId];
       return {
         ...current,
-        recipientUserIds: current.recipientUserIds.filter((id) => id !== userId),
+        recipientUserIds: current.recipientUserIds.filter(
+          (id) => id !== userId,
+        ),
         recipientAccess,
       };
     });
@@ -493,9 +552,10 @@ export function NotificationSettings({
             <span className="section-kicker">SISTEMA · ALERTAS</span>
             <h2>Notificaciones por usuario</h2>
             <p>
-              Elige qué movimientos generan campana y quién los recibe. Los cambios
-              aplican sólo a eventos nuevos y conservan el historial anterior. Seleccionar
-              un vendedor también le concede acceso a la campana con su código personal.
+              Elige qué movimientos generan campana y quién los recibe. Los
+              cambios aplican sólo a eventos nuevos y conservan el historial
+              anterior. Seleccionar un vendedor también le concede acceso a la
+              campana con su código personal.
             </p>
           </div>
           <BellRing size={24} />
@@ -503,10 +563,14 @@ export function NotificationSettings({
 
         {!authorized ? (
           <div className="notification-settings-lock">
-            <span><LockKeyhole size={19} /></span>
+            <span>
+              <LockKeyhole size={19} />
+            </span>
             <div>
               <strong>Configuración protegida</strong>
-              <small>Ingresa un código master para editar módulos y destinatarios.</small>
+              <small>
+                Ingresa un código master para editar módulos y destinatarios.
+              </small>
             </div>
             <Input
               type="password"
@@ -518,7 +582,11 @@ export function NotificationSettings({
                 if (event.key === "Enter") authorize();
               }}
             />
-            <Button type="button" onClick={authorize} disabled={!accessCode.trim()}>
+            <Button
+              type="button"
+              onClick={authorize}
+              disabled={!accessCode.trim()}
+            >
               Desbloquear
             </Button>
           </div>
@@ -530,10 +598,14 @@ export function NotificationSettings({
                 <span>
                   <strong>Usuarios sin permisos de notificación</strong>
                   <small>
-                    {usersWithoutPermissions.map((seller) => seller.name).join(" · ")}
+                    {usersWithoutPermissions
+                      .map((seller) => seller.name)
+                      .join(" · ")}
                   </small>
                 </span>
-                <Badge variant="outline">{usersWithoutPermissions.length} SIN ASIGNAR</Badge>
+                <Badge variant="outline">
+                  {usersWithoutPermissions.length} SIN ASIGNAR
+                </Badge>
               </div>
             )}
             {notificationDefinitions.map((definition) => {
@@ -550,7 +622,9 @@ export function NotificationSettings({
                   className={`notification-preference-row ${preference.enabled ? "is-active" : ""} ${preference.enabled && preference.recipientUserIds.length === 0 ? "has-no-recipients" : ""}`}
                   key={definition.type}
                 >
-                  <span className="notification-preference-icon"><Icon size={19} /></span>
+                  <span className="notification-preference-icon">
+                    <Icon size={19} />
+                  </span>
                   <div className="notification-preference-copy">
                     <span>
                       <strong>{definition.label}</strong>
@@ -568,12 +642,16 @@ export function NotificationSettings({
                         }
                         disabled={!preference.enabled}
                       >
-                        <SelectTrigger aria-label={`Seleccionar vendedor para ${definition.label}`}>
+                        <SelectTrigger
+                          aria-label={`Seleccionar vendedor para ${definition.label}`}
+                        >
                           <SelectValue placeholder="Seleccionar vendedor" />
                         </SelectTrigger>
                         <SelectContent>
                           {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.name}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -582,12 +660,15 @@ export function NotificationSettings({
                         onValueChange={(access) =>
                           setAccessDrafts((current) => ({
                             ...current,
-                            [definition.type]: access as OperationalNotificationAccess,
+                            [definition.type]:
+                              access as OperationalNotificationAccess,
                           }))
                         }
                         disabled={!preference.enabled}
                       >
-                        <SelectTrigger aria-label={`Tipo de permiso para ${definition.label}`}>
+                        <SelectTrigger
+                          aria-label={`Tipo de permiso para ${definition.label}`}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -599,7 +680,10 @@ export function NotificationSettings({
                         type="button"
                         size="icon"
                         className="icon-action-button"
-                        disabled={!preference.enabled || !recipientDrafts[definition.type]}
+                        disabled={
+                          !preference.enabled ||
+                          !recipientDrafts[definition.type]
+                        }
                         onClick={() => assignRecipient(definition.type)}
                         aria-label={`Asignar permiso en ${definition.label}`}
                         title="Asignar permiso"
@@ -609,19 +693,36 @@ export function NotificationSettings({
                     </div>
                     <div className="notification-recipient-list">
                       {preference.recipientUserIds.map((userId) => {
-                        const user = users.find((candidate) => candidate.id === userId);
+                        const user = users.find(
+                          (candidate) => candidate.id === userId,
+                        );
                         if (!user) return null;
-                        const access = preference.recipientAccess?.[userId] ??
+                        const access =
+                          preference.recipientAccess?.[userId] ??
                           (userId === masterUser.id ? "EDIT" : "VIEW");
                         return (
-                          <span className="notification-recipient-permission" key={userId}>
+                          <span
+                            className="notification-recipient-permission"
+                            key={userId}
+                          >
                             <i>{user.initials}</i>
-                            <span><strong>{user.name}</strong><small>{access === "EDIT" ? "Edición" : "Visualiza"}</small></span>
-                            {access === "EDIT" ? <Pencil size={13} /> : <Eye size={13} />}
+                            <span>
+                              <strong>{user.name}</strong>
+                              <small>
+                                {access === "EDIT" ? "Edición" : "Visualiza"}
+                              </small>
+                            </span>
+                            {access === "EDIT" ? (
+                              <Pencil size={13} />
+                            ) : (
+                              <Eye size={13} />
+                            )}
                             <button
                               type="button"
                               disabled={!preference.enabled}
-                              onClick={() => removeRecipient(definition.type, userId)}
+                              onClick={() =>
+                                removeRecipient(definition.type, userId)
+                              }
                               aria-label={`Quitar permiso de ${user.name}`}
                               title="Quitar permiso"
                             >
@@ -631,7 +732,9 @@ export function NotificationSettings({
                         );
                       })}
                       {preference.recipientUserIds.length === 0 && (
-                        <span className="notification-no-recipient"><ShieldAlert size={13} /> Sin usuarios asignados</span>
+                        <span className="notification-no-recipient">
+                          <ShieldAlert size={13} /> Sin usuarios asignados
+                        </span>
                       )}
                     </div>
                   </div>
@@ -655,8 +758,15 @@ export function NotificationSettings({
             })}
             <div className="notification-settings-footer">
               <UserRoundCheck size={17} />
-              <span>Las notificaciones nuevas se enviarán únicamente a los usuarios seleccionados.</span>
-              <Button type="button" variant="outline" onClick={() => setAuthorized(false)}>
+              <span>
+                Las notificaciones nuevas se enviarán únicamente a los usuarios
+                seleccionados.
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAuthorized(false)}
+              >
                 Bloquear
               </Button>
             </div>
