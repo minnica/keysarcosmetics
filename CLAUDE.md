@@ -442,6 +442,26 @@ Datos:
 
 ## Estado actual de apps/scheduler
 
+Entorno funcional de Producto en `design/scheduler-po` (29 de septiembre de
+2026): `pnpm --filter @cosmetics/scheduler dev:design` inicia Scheduler en el
+puerto 3008, con MSW, sesión/permisos ficticios y datos compartidos editables en
+memoria, sin API operativa ni BD. La base es `feature/scheduler` en
+`45c9927f7e382ed439e0fe12684b8ed8612b3ba5`. Guía: `SCHEDULER_PO_GUIDE.md`;
+instrucciones de Codex: `apps/scheduler/AGENTS.md`.
+
+Los mocks viven exclusivamente en `apps/scheduler/design`. El alias
+`@scheduler/runtime` y `tsconfig.design.json` seleccionan la entrada de diseño sólo con
+`SCHEDULER_DESIGN_MODE=1`; el runtime normal y los guards RV8 permanecen activos.
+`dev:design`/`build:design`/`start:design` fuerzan un destino HTTP `.invalid`,
+esperan el worker antes de montar sesión y usan `.next-design-dev`/`.next-design`.
+Las APIs sin mock se bloquean; las rutas nuevas devuelven 501 explícito. El modo
+se rechaza con `VERCEL_ENV=production`. No se configura ni despliega Vercel en
+esta tarea. `test:design` valida el cliente Axios real contra MSW, roles/alcance,
+duplicados, disponibilidad, idempotencia, versiones y separación de ajustes.
+Los reportes de citas/clientes leen el estado compartido; otros datasets son
+ejemplos visuales, y mensajes/archivos son simulados. Los flujos nuevos requieren
+revisión e implementación de contratos, persistencia e integraciones reales.
+
 Plan de restauración visual: `PLAN_RESTAURACION_VISUAL_SCHEDULER.md` (6 de septiembre de 2026). Define fases RV0–RV8 para recuperar la presentación aprobada del commit `e9077ddad945325b1a132962ce0c2fcd9ae7f74a` en todo Scheduler, conservando contratos, seguridad y persistencia del backend actual. RV0–RV8 quedaron implementadas con validación visual/funcional pendiente. `docs/SCHEDULER_VISUAL_RESTORATION_BASELINE.md` y los runbooks `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md` a `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md` contienen la evidencia y comandos. Los checks locales pasan, pero el sandbox bloquea servidores, Chromium y PostgreSQL desechable; ejecutar los runners documentados en un host compatible antes de validar las fases. No restaurar íntegramente el código mock ni considerar los workspaces API simplificados como referencia visual aprobada.
 
 `apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 10 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos, clientes compartidos, agenda canónica, integración POS, administración/configuración, comunicaciones/documentos/encuestas, reportes/exportaciones, conexión visual y puertas de calidad/despliegue. RV2 volvió a montar los componentes aprobados de Agenda, RV3 restauró Clientes, RV4 Administración, RV5 Configuraciones, RV6 engagement y RV7 Reportes/exportaciones sobre contratos reales. RV8 retiró workspaces/mocks sin consumidores, agregó guards de rutas/grafo/persistencia, revalidación de sesión/permisos y chunks dinámicos por módulo. Ninguna entrada productiva lee o escribe estado operativo simulado; los fixtures deterministas viven sólo en E2E.

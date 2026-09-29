@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@scheduler/runtime": ["./design/runtime.tsx"],
+      "@/*": ["./src/*"]
+    }
+  }
+}

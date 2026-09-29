@@ -20,6 +20,9 @@ function sourcePath(file) {
 }
 
 function resolveProjectImport(specifier, importer) {
+  if (specifier === "@scheduler/runtime") {
+    return path.join(sourceRoot, "lib/runtime.tsx");
+  }
   if (!specifier.startsWith(".") && !specifier.startsWith("@/")) return null;
   const base = specifier.startsWith("@/")
     ? path.join(sourceRoot, specifier.slice(2))
