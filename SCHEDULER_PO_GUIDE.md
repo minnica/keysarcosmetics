@@ -210,6 +210,21 @@ nunca guarda el código. Los clientes registrados sólo se editan después de
 abrir el expediente con autorización; master dispone además de edición directa
 en el entorno de diseño.
 
+En **Administración → Colores de status** la demo sustituye la paleta fija por
+un catálogo versionado. Master puede agregar un status personalizado, editar
+nombre/color o marcar cualquier definición como inactiva mediante autorización
+`STATUS_COLORS_CHANGE`. La clave técnica y el ID permanecen estables; cada
+cambio cierra la revisión anterior y crea una nueva con `effectiveFrom`,
+`effectiveTo` y número de versión. No se eliminan ni reescriben citas,
+transiciones o revisiones anteriores. La bitácora agrega `Alta de status`,
+`Actualización de status` o `Inactivación de status` sin guardar el código.
+
+Los ocho estados canónicos sincronizan el color de su versión activa con la
+Agenda. Los estados personalizados se muestran y versionan en la propuesta,
+pero asignarlos a citas reales requiere ampliar de forma aditiva el enum,
+transiciones, permisos, reportes e integración POS del contrato productivo; no
+se fuerza un valor personalizado dentro del enum vigente.
+
 Contratos propuestos, exclusivos de `apps/scheduler/design`:
 
 | Método         | Ruta                                                              | Uso propuesto                                                                 |
@@ -222,6 +237,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`        | Leer o guardar respuestas relacionadas con una cita.                          |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`    | Guardar cabina, visitantes, especialistas y compra por persona.               |
 | `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`              | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
+| `GET/POST/PUT` | `/api/scheduler/design-proposals/status-definitions[/:id]`         | Consultar, crear y versionar status; la baja es sólo inactivación lógica.      |
 
 Estos endpoints no existen en el runtime productivo. El alias
 `@scheduler/design-proposals` selecciona el cliente MSW sólo con
@@ -277,6 +293,9 @@ Recorrido manual recomendado:
 9. Abre Reportes → Ventas, combina fechas, sucursal, cabina y búsqueda. Confirma
    que tarjetas, gráficas y tabla cambian juntas; descarga PDF y Excel y verifica
    que los totales coincidan con el detalle visible.
+10. En Administración → Colores de status agrega uno, edita nombre/color y
+    después inactívalo. Despliega su historial: deben existir tres versiones,
+    conservar la misma clave y aparecer tres movimientos sin mostrar el código.
 
 ## Dónde trabajar
 

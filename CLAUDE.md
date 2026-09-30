@@ -507,6 +507,17 @@ la implementación real debe ser agregada en servidor, transaccional, idempotent
 y referenciar la venta canónica del POS en vez de convertir Scheduler en autoridad
 financiera.
 
+Colores de status incorpora en diseño un catálogo propuesto versionado por
+comercio. `GET/POST/PUT /api/scheduler/design-proposals/status-definitions[/:id]`
+permite alta, edición e inactivación lógica con autorización
+`STATUS_COLORS_CHANGE`; cada mutación conserva ID/clave, cierra la revisión
+vigente, agrega otra revisión y registra un movimiento sin el código personal.
+Las citas y `stateHistory` no se modifican. Los estados canónicos sincronizan su
+color actual con la Agenda; los personalizados no se asignan todavía porque el
+enum productivo y las transiciones siguen cerrados. La implementación real debe
+agregar tablas de definición/revisión y snapshots de etiqueta/color en cada
+evento histórico antes de habilitar estados personalizados.
+
 La vista de movimientos de diseño agrupa por `actorId` y fecha operativa de
 `America/Mexico_City`, manteniendo el detalle append-only al desplegar cada fila.
 Su exportación XLSX respeta los filtros visibles, carga `xlsx` sólo al solicitar
