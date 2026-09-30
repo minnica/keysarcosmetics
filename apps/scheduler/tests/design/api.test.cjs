@@ -544,6 +544,117 @@ test("un código activo sin permiso de compra no puede registrar montos", () => 
   );
 });
 
+test("el apartado valida venta, anticipo y conserva ambos importes", () => {
+  const { state, request } = session();
+  const appointmentId = state.appointments[0].id;
+  const branch = state.catalog.branches.find(
+    (item) => item.branchId === state.appointments[0].branchId,
+  );
+  const cabin = state.catalog.resources.find(
+    (resource) =>
+      resource.branchProfileId === branch.id && resource.capacity === 1,
+  );
+  const specialist = state.catalog.professionals[0];
+  const grant = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code: "1111",
+      purpose: "PURCHASE_CAPTURE",
+      targetType: "APPOINTMENT_PURCHASE",
+      targetId: appointmentId,
+    },
+  ).body.data;
+  const invalid = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+    {
+      cabinResourceId: cabin.id,
+      cabinCapacity: 1,
+      visitors: [
+        {
+          id: "visitor-primary",
+          customerId: state.appointments[0].customerId,
+          name: state.appointments[0].customerName,
+          specialistProfileId: specialist.id,
+          purchased: true,
+          purchaseAmount: 1200,
+          purchaseKind: "LAYAWAY",
+          saleAmount: 1200,
+          depositAmount: 1500,
+        },
+      ],
+    },
+    { "x-design-operation-authorization": grant.token },
+  );
+  assert.equal(invalid.status, 400);
+
+  const saved = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+    {
+      cabinResourceId: cabin.id,
+      cabinCapacity: 1,
+      visitors: [
+        {
+          id: "visitor-primary",
+          customerId: state.appointments[0].customerId,
+          name: state.appointments[0].customerName,
+          specialistProfileId: specialist.id,
+          purchased: true,
+          purchaseAmount: 1200,
+          purchaseKind: "LAYAWAY",
+          saleAmount: 1200,
+          depositAmount: 350,
+        },
+      ],
+    },
+    { "x-design-operation-authorization": grant.token },
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.data.visitors[0].purchaseKind, "LAYAWAY");
+  assert.equal(saved.body.data.visitors[0].saleAmount, 1200);
+  assert.equal(saved.body.data.visitors[0].depositAmount, 350);
+});
+
+test("el reporte por cabina usa la misma población para métricas y detalle", () => {
+  const { state, request } = session();
+  const report = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/cabin-sales",
+    {
+      dateFrom: state.controls.date,
+      dateTo: state.controls.date,
+      branchIds: state.catalog.branches.map((branch) => branch.branchId),
+    },
+  );
+  assert.equal(report.status, 201);
+  assert.equal(report.body.data.rows.length, 2);
+  assert.equal(report.body.data.summary.appointments, 1);
+  assert.equal(report.body.data.summary.visitors, 2);
+  assert.equal(report.body.data.summary.buyers, 2);
+  assert.equal(report.body.data.summary.saleAmount, 4250);
+  assert.equal(report.body.data.summary.depositAmount, 2450);
+  assert.equal(report.body.data.summary.balanceAmount, 1800);
+  assert.equal(report.body.data.summary.conversionRate, 100);
+  assert.equal(report.body.data.byCabin[0].saleAmount, 4250);
+
+  const filtered = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/cabin-sales",
+    {
+      dateFrom: state.controls.date,
+      dateTo: state.controls.date,
+      branchIds: state.catalog.branches.map((branch) => branch.branchId),
+      query: "Visitante demostración",
+    },
+  ).body.data;
+  assert.equal(filtered.rows.length, 1);
+  assert.equal(filtered.summary.saleAmount, 2400);
+  assert.equal(filtered.summary.depositAmount, 600);
+  assert.equal(filtered.summary.balanceAmount, 1800);
+});
+
 test("las respuestas adicionales se relacionan con la cita por ID", () => {
   const { state, request } = session();
   const appointmentId = state.appointments[0].id;

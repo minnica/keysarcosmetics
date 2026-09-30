@@ -50,6 +50,8 @@ export interface DesignAppointmentAnswer {
   value: string | number | boolean;
 }
 
+export type DesignPurchaseKind = "NONE" | "FULL" | "LAYAWAY" | null;
+
 export interface DesignCabinVisitPerson {
   id: string;
   customerId: string | null;
@@ -57,6 +59,9 @@ export interface DesignCabinVisitPerson {
   specialistProfileId: string;
   purchased: boolean | null;
   purchaseAmount: number | null;
+  purchaseKind: DesignPurchaseKind;
+  saleAmount: number | null;
+  depositAmount: number | null;
 }
 
 export interface DesignAppointmentCabinVisit {
@@ -66,6 +71,74 @@ export interface DesignAppointmentCabinVisit {
   cabinCapacity: number;
   visitors: DesignCabinVisitPerson[];
   updatedAt: string;
+}
+
+export interface DesignCabinSalesReportFilters {
+  dateFrom: string;
+  dateTo: string;
+  branchIds: string[];
+  cabinResourceId?: string;
+  query?: string;
+}
+
+export interface DesignCabinSalesReportRow {
+  appointmentId: string;
+  visitorId: string;
+  appointmentCreatedAt: string;
+  confirmedAt: string | null;
+  appointmentStartsAt: string;
+  appointmentEndsAt: string;
+  branchId: string;
+  branchName: string;
+  cabinResourceId: string;
+  cabinName: string;
+  cabinCapacity: number;
+  customerId: string;
+  customerName: string;
+  visitorName: string;
+  serviceNames: string[];
+  sellerName: string;
+  specialistProfileId: string;
+  specialistName: string;
+  purchaseKind: Exclude<DesignPurchaseKind, null>;
+  saleAmount: number;
+  depositAmount: number;
+  balanceAmount: number;
+  notes: string;
+  status: SchedulerAppointmentStatus;
+  origin: string;
+  cancellationReason: string;
+  updatedAt: string;
+}
+
+export interface DesignCabinSalesReportBreakdown {
+  key: string;
+  label: string;
+  appointments: number;
+  visitors: number;
+  buyers: number;
+  saleAmount: number;
+  depositAmount: number;
+  balanceAmount: number;
+}
+
+export interface DesignCabinSalesReport {
+  generatedAt: string;
+  filters: DesignCabinSalesReportFilters;
+  summary: {
+    appointments: number;
+    visitors: number;
+    buyers: number;
+    fullSales: number;
+    layaways: number;
+    saleAmount: number;
+    depositAmount: number;
+    balanceAmount: number;
+    conversionRate: number;
+  };
+  byCabin: DesignCabinSalesReportBreakdown[];
+  byDay: DesignCabinSalesReportBreakdown[];
+  rows: DesignCabinSalesReportRow[];
 }
 
 export interface DesignMovementRecord {
@@ -166,4 +239,7 @@ export interface DesignProposalClient {
     >,
     authorizationToken?: string,
   ): Promise<DesignAppointmentCabinVisit>;
+  cabinSalesReport(
+    input: DesignCabinSalesReportFilters,
+  ): Promise<DesignCabinSalesReport>;
 }

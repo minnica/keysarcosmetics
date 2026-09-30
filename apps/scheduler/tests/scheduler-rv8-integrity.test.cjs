@@ -150,17 +150,19 @@ test("limits browser persistence to auth and the documented visual preference", 
 });
 
 test("loads report generators only after the user requests an export", () => {
-  const source = readFileSync(
-    path.join(sourceRoot, "lib/scheduler-report-export.ts"),
-    "utf8",
-  );
-  assert.match(source, /await import\("xlsx"\)/);
-  assert.match(source, /import\("jspdf"\)/);
-  assert.match(source, /import\("jspdf-autotable"\)/);
-  assert.doesNotMatch(
-    source,
-    /^import .* from ["'](?:xlsx|jspdf|jspdf-autotable)["']/m,
-  );
+  for (const relativePath of [
+    "lib/scheduler-report-export.ts",
+    "components/reports/cabin-sales-report-export.ts",
+  ]) {
+    const source = readFileSync(path.join(sourceRoot, relativePath), "utf8");
+    assert.match(source, /await import\("xlsx"\)/);
+    assert.match(source, /import\("jspdf"\)/);
+    assert.match(source, /import\("jspdf-autotable"\)/);
+    assert.doesNotMatch(
+      source,
+      /^import .* from ["'](?:xlsx|jspdf|jspdf-autotable)["']/m,
+    );
+  }
 });
 
 test("splits each operational workspace into its route module", () => {

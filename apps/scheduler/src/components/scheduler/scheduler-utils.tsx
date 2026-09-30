@@ -158,6 +158,9 @@ export interface BookingVisitorDraft {
   specialistProfileId: string;
   purchased: boolean | null;
   purchaseAmount: string;
+  purchaseKind: "NONE" | "FULL" | "LAYAWAY" | null;
+  saleAmount: string;
+  depositAmount: string;
 }
 
 export interface EmptySlotAction {
@@ -412,6 +415,9 @@ export function createDraft(
         specialistProfileId: "",
         purchased: null,
         purchaseAmount: "",
+        purchaseKind: null,
+        saleAmount: "",
+        depositAmount: "",
       },
     ],
   };
@@ -454,6 +460,16 @@ export function createDraftFromBooking(
         purchaseAmount: booking.purchaseAmount
           ? String(booking.purchaseAmount)
           : "",
+        purchaseKind:
+          booking.purchased === true
+            ? "FULL"
+            : booking.purchased === false
+              ? "NONE"
+              : null,
+        saleAmount: booking.purchaseAmount
+          ? String(booking.purchaseAmount)
+          : "",
+        depositAmount: "",
       },
     ],
   };

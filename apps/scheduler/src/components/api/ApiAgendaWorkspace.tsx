@@ -326,6 +326,8 @@ export function ApiAgendaWorkspace() {
     useState<EmptySlotAction | null>(null);
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [bookingDraft, setBookingDraft] = useState<BookingDraft | null>(null);
+  const [attendanceStatusAppointmentId, setAttendanceStatusAppointmentId] =
+    useState<string | null>(null);
   const [bookingSaving, setBookingSaving] = useState(false);
   const [bookingIntentKey, setBookingIntentKey] = useState("");
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
@@ -821,6 +823,7 @@ export function ApiAgendaWorkspace() {
   }, [administrationCatalog.error]);
   useEffect(() => {
     setBookingDialogOpen(false);
+    setAttendanceStatusAppointmentId(null);
     setBlockDialogOpen(false);
     setSensitiveRequest(null);
     setFinancialRecords({});
@@ -1013,6 +1016,9 @@ export function ApiAgendaWorkspace() {
           specialistProfileId: targetSpecialists[index]?.id ?? "",
           purchased: null,
           purchaseAmount: "",
+          purchaseKind: null,
+          saleAmount: "",
+          depositAmount: "",
         }),
       ),
     });
@@ -1083,6 +1089,9 @@ export function ApiAgendaWorkspace() {
             "",
           purchased: null,
           purchaseAmount: "",
+          purchaseKind: null,
+          saleAmount: "",
+          depositAmount: "",
         }),
       ),
     });
@@ -1117,6 +1126,23 @@ export function ApiAgendaWorkspace() {
                             visitor.purchaseAmount === null
                               ? ""
                               : String(visitor.purchaseAmount),
+                          purchaseKind:
+                            visitor.purchaseKind ??
+                            (visitor.purchased === true
+                              ? "FULL"
+                              : visitor.purchased === false
+                                ? "NONE"
+                                : null),
+                          saleAmount:
+                            visitor.saleAmount === null
+                              ? visitor.purchaseAmount === null
+                                ? ""
+                                : String(visitor.purchaseAmount)
+                              : String(visitor.saleAmount),
+                          depositAmount:
+                            visitor.depositAmount === null
+                              ? ""
+                              : String(visitor.depositAmount),
                         })),
                       }
                     : {}),
@@ -1270,6 +1296,19 @@ export function ApiAgendaWorkspace() {
 
   function requestSaveBooking(options: SaveBookingOptions = {}) {
     if (!bookingDraft) return;
+    const editingId = bookingDraft.bookingId;
+    const existingAppointment = editingId
+      ? presentation?.appointments.find(
+          (appointment) => appointment.id === editingId,
+        )
+      : null;
+    const requiresAttendanceOutcome = Boolean(
+      existingAppointment &&
+        (attendanceStatusAppointmentId === existingAppointment.id ||
+          !["PENDING", "RESERVED", "CONFIRMED"].includes(
+            existingAppointment.status,
+          )),
+    );
     const selectedCabin = cabinOptions.find(
       (cabin) => cabin.id === bookingDraft.cabinResourceId,
     );
@@ -1305,34 +1344,40 @@ export function ApiAgendaWorkspace() {
       if (
         bookingDraft.visitors.some(
           (visitor) =>
-            visitor.purchased === true &&
-            (!Number.isFinite(Number(visitor.purchaseAmount)) ||
-              Number(visitor.purchaseAmount) <= 0),
+            (requiresAttendanceOutcome && visitor.purchaseKind === null) ||
+            ((visitor.purchaseKind === "FULL" ||
+              visitor.purchaseKind === "LAYAWAY") &&
+              (!Number.isFinite(Number(visitor.saleAmount)) ||
+                Number(visitor.saleAmount) <= 0)) ||
+            (visitor.purchaseKind === "LAYAWAY" &&
+              (!Number.isFinite(Number(visitor.depositAmount)) ||
+                Number(visitor.depositAmount) <= 0 ||
+                Number(visitor.depositAmount) > Number(visitor.saleAmount))),
         )
       ) {
         toast.error(
-          "Captura un monto mayor a cero para cada visitante que compró.",
+          "Indica el resultado de cada visitante; los apartados requieren total y anticipo válido.",
         );
         return;
       }
     }
-    const editingId = bookingDraft?.bookingId;
-    const existingAppointment = editingId
-      ? presentation?.appointments.find(
-          (appointment) => appointment.id === editingId,
-        )
-      : null;
     const capturesOnlyAttendance = Boolean(
       existingAppointment &&
-      !["PENDING", "RESERVED", "CONFIRMED"].includes(
-        existingAppointment.status,
-      ),
+        (attendanceStatusAppointmentId === existingAppointment.id ||
+          !["PENDING", "RESERVED", "CONFIRMED"].includes(
+            existingAppointment.status,
+          )),
+    );
+    const completesAttendance = Boolean(
+      editingId && attendanceStatusAppointmentId === editingId,
     );
     const continueWithPurchaseAuthorization = (
       appointmentGrant: DesignOperationGrant | null,
     ) => {
       const requiresPurchaseAuthorization = bookingDraft.visitors.some(
-        (visitor) => visitor.purchased === true,
+        (visitor) =>
+          visitor.purchaseKind === "FULL" ||
+          visitor.purchaseKind === "LAYAWAY",
       );
       if (
         bootstrap?.mockModeEnabled &&
@@ -1355,19 +1400,27 @@ export function ApiAgendaWorkspace() {
       }
       void saveBooking(options, appointmentGrant);
     };
-    if (capturesOnlyAttendance) {
+    if (capturesOnlyAttendance && !completesAttendance) {
       continueWithPurchaseAuthorization(null);
       return;
     }
     requestOperationAuthorization(
       {
-        title: editingId
+        title: completesAttendance
+          ? "Autorizar asistencia"
+          : editingId
           ? "Autorizar cambio de cita"
           : "Autorizar nueva reserva",
-        description: editingId
+        description: completesAttendance
+          ? "Confirma quién marca la cita como atendida. Después se solicitará el código de compra cuando exista un monto."
+          : editingId
           ? "Confirma quién realiza el cambio. El código autoriza sólo este movimiento."
           : "Confirma quién registra la reserva. El código autoriza sólo este movimiento.",
-        purpose: editingId ? "APPOINTMENT_UPDATE" : "APPOINTMENT_CREATE",
+        purpose: completesAttendance
+          ? "APPOINTMENT_STATUS_CHANGE"
+          : editingId
+            ? "APPOINTMENT_UPDATE"
+            : "APPOINTMENT_CREATE",
         targetType: "APPOINTMENT",
         ...(editingId ? { targetId: editingId } : {}),
       },
@@ -1392,7 +1445,11 @@ export function ApiAgendaWorkspace() {
       : null;
     const appointmentDetailsLocked = Boolean(
       existing &&
-      !["PENDING", "RESERVED", "CONFIRMED"].includes(existing.status),
+        (attendanceStatusAppointmentId === existing.id ||
+          !["PENDING", "RESERVED", "CONFIRMED"].includes(existing.status)),
+    );
+    const completesAttendance = Boolean(
+      existing && attendanceStatusAppointmentId === existing.id,
     );
     const currentTimeUnchanged = Boolean(
       existing &&
@@ -1572,16 +1629,42 @@ export function ApiAgendaWorkspace() {
               specialistProfileId: visitor.specialistProfileId,
               purchased: visitor.purchased,
               purchaseAmount:
-                visitor.purchased === true
-                  ? Number(visitor.purchaseAmount)
+                visitor.purchaseKind === "FULL" ||
+                visitor.purchaseKind === "LAYAWAY"
+                  ? Number(visitor.saleAmount)
                   : null,
+              purchaseKind: visitor.purchaseKind,
+              saleAmount:
+                visitor.purchaseKind === "FULL" ||
+                visitor.purchaseKind === "LAYAWAY"
+                  ? Number(visitor.saleAmount)
+                  : null,
+              depositAmount:
+                visitor.purchaseKind === "FULL"
+                  ? Number(visitor.saleAmount)
+                  : visitor.purchaseKind === "LAYAWAY"
+                    ? Number(visitor.depositAmount)
+                    : null,
             })),
           },
           purchaseGrant?.token,
         );
       }
+      if (completesAttendance) {
+        savedAppointment = await schedulerApi.changeAppointmentStatus(
+          savedAppointment.id,
+          {
+            status: "ATTENDED",
+            expectedVersion: savedAppointment.version,
+          },
+        );
+      }
       await commitAuthorizedOperation(grant, {
-        action: existing ? "Cambio de cita" : "Alta de cita",
+        action: completesAttendance
+          ? "Cambio de estado a attended"
+          : existing
+            ? "Cambio de cita"
+            : "Alta de cita",
         targetType: "APPOINTMENT",
         targetId: savedAppointment.id,
         metadata: {
@@ -1592,7 +1675,9 @@ export function ApiAgendaWorkspace() {
       });
       if (purchaseGrant) {
         const purchasedVisitors = bookingDraft.visitors.filter(
-          (visitor) => visitor.purchased === true,
+          (visitor) =>
+            visitor.purchaseKind === "FULL" ||
+            visitor.purchaseKind === "LAYAWAY",
         );
         await commitAuthorizedOperation(purchaseGrant, {
           action: "Registro de compra por visitante",
@@ -1604,9 +1689,24 @@ export function ApiAgendaWorkspace() {
             purchaseCount: String(purchasedVisitors.length),
             purchaseTotal: String(
               purchasedVisitors.reduce(
-                (total, visitor) => total + Number(visitor.purchaseAmount),
+                (total, visitor) => total + Number(visitor.saleAmount),
                 0,
               ),
+            ),
+            depositTotal: String(
+              purchasedVisitors.reduce(
+                (total, visitor) =>
+                  total +
+                  (visitor.purchaseKind === "FULL"
+                    ? Number(visitor.saleAmount)
+                    : Number(visitor.depositAmount)),
+                0,
+              ),
+            ),
+            layawayCount: String(
+              purchasedVisitors.filter(
+                (visitor) => visitor.purchaseKind === "LAYAWAY",
+              ).length,
             ),
           },
         });
@@ -1620,6 +1720,7 @@ export function ApiAgendaWorkspace() {
       );
       setBookingDialogOpen(false);
       setBookingDraft(null);
+      setAttendanceStatusAppointmentId(null);
       setCustomerRegistrationReview(null);
       setClientSearchInput("");
       delete createdCustomerByIntentRef.current[bookingIntentKey];
@@ -1820,6 +1921,14 @@ export function ApiAgendaWorkspace() {
     if (status === "canceled") {
       setCancelRequest(booking);
       setCancelReason("");
+      return;
+    }
+    if (status === "attended" && schedulerDesignProposals.available) {
+      setAttendanceStatusAppointmentId(appointment.id);
+      openEditBooking(booking);
+      toast.info(
+        "Completa especialista y resultado de venta antes de marcar la asistencia.",
+      );
       return;
     }
     requestOperationAuthorization(
@@ -2315,11 +2424,12 @@ export function ApiAgendaWorkspace() {
           additionalFieldDefinitions={activeFieldDefinitions}
           appointmentDetailsLocked={Boolean(
             bookingDraft.bookingId &&
-            !["PENDING", "RESERVED", "CONFIRMED"].includes(
-              presentation?.appointments.find(
-                (appointment) => appointment.id === bookingDraft.bookingId,
-              )?.status ?? "",
-            ),
+              (attendanceStatusAppointmentId === bookingDraft.bookingId ||
+                !["PENDING", "RESERVED", "CONFIRMED"].includes(
+                  presentation?.appointments.find(
+                    (appointment) => appointment.id === bookingDraft.bookingId,
+                  )?.status ?? "",
+                )),
           )}
           availableStartTimes={availableStartTimes}
           cabinOptions={cabinOptions}
@@ -2345,6 +2455,7 @@ export function ApiAgendaWorkspace() {
             );
             setBookingDialogOpen(false);
             setBookingDraft(null);
+            setAttendanceStatusAppointmentId(null);
             setCustomerRegistrationReview(null);
             toast.info(
               "Sucursal actualizada. Abre de nuevo la reserva para consultar su disponibilidad.",
@@ -2356,6 +2467,7 @@ export function ApiAgendaWorkspace() {
             setBookingDialogOpen(open);
             if (!open) {
               setBookingDraft(null);
+              setAttendanceStatusAppointmentId(null);
               setClientSearchInput("");
               setCustomerRegistrationReview(null);
             }

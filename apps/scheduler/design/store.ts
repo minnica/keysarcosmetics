@@ -508,6 +508,43 @@ export function createDesignState(
       ] as SchedulerAppointmentDto["status"];
       state.appointments.push(appointment);
     }
+    const attendedAppointment = state.appointments[1];
+    const mitikahCabin = catalog.resources.find(
+      (resource) => resource.id === "resource-rv4-2-double",
+    );
+    if (attendedAppointment && mitikahCabin) {
+      state.appointmentCabinVisits[attendedAppointment.id] = {
+        appointmentId: attendedAppointment.id,
+        cabinResourceId: mitikahCabin.id,
+        cabinName: mitikahCabin.name,
+        cabinCapacity: mitikahCabin.capacity,
+        visitors: [
+          {
+            id: "design-visitor-primary",
+            customerId: attendedAppointment.customerId,
+            name: attendedAppointment.customerName,
+            specialistProfileId: catalog.professionals[0]!.id,
+            purchased: true,
+            purchaseAmount: 1850,
+            purchaseKind: "FULL",
+            saleAmount: 1850,
+            depositAmount: 1850,
+          },
+          {
+            id: "design-visitor-companion",
+            customerId: null,
+            name: "Visitante demostración",
+            specialistProfileId: catalog.professionals[1]!.id,
+            purchased: true,
+            purchaseAmount: 2400,
+            purchaseKind: "LAYAWAY",
+            saleAmount: 2400,
+            depositAmount: 600,
+          },
+        ],
+        updatedAt: new Date().toISOString(),
+      };
+    }
   }
   return state;
 }

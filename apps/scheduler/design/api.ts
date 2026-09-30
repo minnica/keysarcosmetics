@@ -26,11 +26,16 @@ import {
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignCabinSalesReport,
+  DesignCabinSalesReportBreakdown,
+  DesignCabinSalesReportFilters,
+  DesignCabinSalesReportRow,
   DesignCustomerAdvancedFilters,
   DesignCustomerAdvancedPage,
   DesignMovementRecord,
   DesignOperationAgent,
   DesignOperationPurpose,
+  DesignPurchaseKind,
 } from "./contracts";
 import {
   schedulerReportRv7Fixture,
@@ -605,6 +610,220 @@ function buildReport(
   };
 }
 
+function localDateKey(value: string, timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
+function cabinSalesBreakdown(
+  rowsToGroup: DesignCabinSalesReportRow[],
+  keyForRow: (row: DesignCabinSalesReportRow) => string,
+  labelForRow: (row: DesignCabinSalesReportRow) => string,
+): DesignCabinSalesReportBreakdown[] {
+  const groups = new Map<
+    string,
+    { label: string; rows: DesignCabinSalesReportRow[] }
+  >();
+  for (const row of rowsToGroup) {
+    const key = keyForRow(row);
+    const group = groups.get(key) ?? { label: labelForRow(row), rows: [] };
+    group.rows.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.entries()]
+    .map(([key, group]) => ({
+      key,
+      label: group.label,
+      appointments: new Set(group.rows.map((row) => row.appointmentId)).size,
+      visitors: group.rows.length,
+      buyers: group.rows.filter((row) => row.purchaseKind !== "NONE").length,
+      saleAmount: group.rows.reduce((sum, row) => sum + row.saleAmount, 0),
+      depositAmount: group.rows.reduce(
+        (sum, row) => sum + row.depositAmount,
+        0,
+      ),
+      balanceAmount: group.rows.reduce(
+        (sum, row) => sum + row.balanceAmount,
+        0,
+      ),
+    }))
+    .sort((left, right) => left.key.localeCompare(right.key, "es-MX"));
+}
+
+function buildCabinSalesReport(
+  state: DesignState,
+  input: DesignCabinSalesReportFilters,
+): DesignCabinSalesReport {
+  const authorized = designBootstrap(state).authorizedBranchIds;
+  const branchIds = (input.branchIds.length ? input.branchIds : authorized)
+    .filter((branchId, index, values) => values.indexOf(branchId) === index);
+  branchIds.forEach((branchId) => inScope(state, branchId));
+  if (!input.dateFrom || !input.dateTo || input.dateFrom > input.dateTo) {
+    fail(400, "Selecciona un rango de fechas válido.");
+  }
+  const query = textKey(input.query ?? "");
+  const reportRows: DesignCabinSalesReportRow[] = [];
+  for (const appointmentItem of visibleAppointments(state)) {
+    const visit = state.appointmentCabinVisits[appointmentItem.id];
+    const date = localDateKey(
+      appointmentItem.startsAt,
+      appointmentItem.timezone,
+    );
+    if (
+      !visit ||
+      !branchIds.includes(appointmentItem.branchId) ||
+      date < input.dateFrom ||
+      date > input.dateTo ||
+      (input.cabinResourceId &&
+        visit.cabinResourceId !== input.cabinResourceId)
+    ) {
+      continue;
+    }
+    const customerItem = state.customers.find(
+      (candidate) => candidate.id === appointmentItem.customerId,
+    );
+    const sellerName = String(
+      customerItem?.customFields.find(
+        (field) => field.definitionId === "design-field-sales-owner",
+      )?.value ??
+        customerItem?.currentPortfolios.find(
+          (portfolio) => portfolio.branchId === appointmentItem.branchId,
+        )?.ownerName ??
+        "Sin asignar",
+    );
+    const confirmedAt =
+      appointmentItem.stateHistory.find(
+        (history) => history.toStatus === "CONFIRMED",
+      )?.createdAt ?? null;
+    for (const visitor of visit.visitors) {
+      const specialistName =
+        state.catalog.professionals.find(
+          (professional) => professional.id === visitor.specialistProfileId,
+        )?.name ?? "Sin especialista";
+      const purchaseKind =
+        visitor.purchaseKind ??
+        (visitor.purchased === true
+          ? "FULL"
+          : visitor.purchased === false
+            ? "NONE"
+            : "NONE");
+      if (visitor.purchaseKind === null && visitor.purchased === null) {
+        continue;
+      }
+      const saleAmount =
+        purchaseKind === "NONE"
+          ? 0
+          : Number(visitor.saleAmount ?? visitor.purchaseAmount ?? 0);
+      const depositAmount =
+        purchaseKind === "FULL"
+          ? saleAmount
+          : purchaseKind === "LAYAWAY"
+            ? Number(visitor.depositAmount ?? 0)
+            : 0;
+      const row: DesignCabinSalesReportRow = {
+        appointmentId: appointmentItem.id,
+        visitorId: visitor.id,
+        appointmentCreatedAt: appointmentItem.createdAt,
+        confirmedAt,
+        appointmentStartsAt: appointmentItem.startsAt,
+        appointmentEndsAt: appointmentItem.endsAt,
+        branchId: appointmentItem.branchId,
+        branchName: appointmentItem.branchName,
+        cabinResourceId: visit.cabinResourceId,
+        cabinName: visit.cabinName,
+        cabinCapacity: visit.cabinCapacity,
+        customerId: appointmentItem.customerId,
+        customerName: appointmentItem.customerName,
+        visitorName: visitor.name,
+        serviceNames: appointmentItem.services.map(
+          (service) => service.serviceName,
+        ),
+        sellerName,
+        specialistProfileId: visitor.specialistProfileId,
+        specialistName,
+        purchaseKind,
+        saleAmount,
+        depositAmount,
+        balanceAmount: Math.max(0, saleAmount - depositAmount),
+        notes: appointmentItem.notes ?? "",
+        status: appointmentItem.status,
+        origin: appointmentItem.origin,
+        cancellationReason: appointmentItem.cancellationReason ?? "",
+        updatedAt: appointmentItem.updatedAt,
+      };
+      if (
+        query &&
+        ![
+          row.appointmentId,
+          row.customerName,
+          row.visitorName,
+          row.branchName,
+          row.cabinName,
+          row.serviceNames.join(" "),
+          row.sellerName,
+          row.specialistName,
+          row.notes,
+          row.status,
+          row.origin,
+        ].some((value) => textKey(value).includes(query))
+      ) {
+        continue;
+      }
+      reportRows.push(row);
+    }
+  }
+  const rowsSorted = reportRows.sort((left, right) =>
+    right.appointmentStartsAt.localeCompare(left.appointmentStartsAt),
+  );
+  const buyers = rowsSorted.filter((row) => row.purchaseKind !== "NONE");
+  return {
+    generatedAt: new Date().toISOString(),
+    filters: {
+      dateFrom: input.dateFrom,
+      dateTo: input.dateTo,
+      branchIds,
+      ...(input.cabinResourceId
+        ? { cabinResourceId: input.cabinResourceId }
+        : {}),
+      ...(input.query?.trim() ? { query: input.query.trim() } : {}),
+    },
+    summary: {
+      appointments: new Set(rowsSorted.map((row) => row.appointmentId)).size,
+      visitors: rowsSorted.length,
+      buyers: buyers.length,
+      fullSales: buyers.filter((row) => row.purchaseKind === "FULL").length,
+      layaways: buyers.filter((row) => row.purchaseKind === "LAYAWAY").length,
+      saleAmount: rowsSorted.reduce((sum, row) => sum + row.saleAmount, 0),
+      depositAmount: rowsSorted.reduce(
+        (sum, row) => sum + row.depositAmount,
+        0,
+      ),
+      balanceAmount: rowsSorted.reduce(
+        (sum, row) => sum + row.balanceAmount,
+        0,
+      ),
+      conversionRate: rowsSorted.length
+        ? Math.round((buyers.length / rowsSorted.length) * 10_000) / 100
+        : 0,
+    },
+    byCabin: cabinSalesBreakdown(
+      rowsSorted,
+      (row) => row.cabinResourceId,
+      (row) => row.cabinName,
+    ),
+    byDay: cabinSalesBreakdown(
+      rowsSorted,
+      (row) => localDateKey(row.appointmentStartsAt, "America/Mexico_City"),
+      (row) => localDateKey(row.appointmentStartsAt, "America/Mexico_City"),
+    ),
+    rows: rowsSorted,
+  };
+}
+
 function advancedCustomerSearch(
   state: DesignState,
   input: DesignCustomerAdvancedFilters,
@@ -804,6 +1023,22 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     };
   }
   if (resource === "design-proposals") {
+    if (id === "reports" && action === "cabin-sales") {
+      if (method !== "POST") fail(405, "Usa POST para el reporte por cabina.");
+      return buildCabinSalesReport(state, {
+        dateFrom: String(body.dateFrom ?? ""),
+        dateTo: String(body.dateTo ?? ""),
+        branchIds: Array.isArray(body.branchIds)
+          ? body.branchIds.map(String)
+          : [],
+        ...(typeof body.cabinResourceId === "string" && body.cabinResourceId
+          ? { cabinResourceId: body.cabinResourceId }
+          : {}),
+        ...(typeof body.query === "string" && body.query.trim()
+          ? { query: body.query.trim() }
+          : {}),
+      });
+    }
     if (id === "customers" && action === "advanced-search") {
       if (method !== "POST") fail(405, "Usa POST para la búsqueda avanzada.");
       const input = body as unknown as DesignCustomerAdvancedFilters;
@@ -1048,20 +1283,42 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         if (!specialist) {
           fail(400, `Asigna un especialista válido al visitante ${index + 1}.`);
         }
-        const purchased =
-          visitor.purchased === true
-            ? true
-            : visitor.purchased === false
-              ? false
-              : null;
-        const purchaseAmount = purchased
-          ? Number(visitor.purchaseAmount)
+        const purchaseKind: DesignPurchaseKind =
+          visitor.purchaseKind === "FULL" ||
+          visitor.purchaseKind === "LAYAWAY" ||
+          visitor.purchaseKind === "NONE"
+            ? visitor.purchaseKind
+            : visitor.purchased === true
+              ? "FULL"
+              : visitor.purchased === false
+                ? "NONE"
+                : null;
+        const purchased = purchaseKind === null ? null : purchaseKind !== "NONE";
+        const saleAmount = purchased
+          ? Number(visitor.saleAmount ?? visitor.purchaseAmount)
           : null;
+        const depositAmount =
+          purchaseKind === "FULL"
+            ? saleAmount
+            : purchaseKind === "LAYAWAY"
+              ? Number(visitor.depositAmount)
+              : null;
         if (
           purchased &&
-          (!Number.isFinite(purchaseAmount) || purchaseAmount! <= 0)
+          (!Number.isFinite(saleAmount) || saleAmount! <= 0)
         ) {
-          fail(400, `Captura un monto mayor a cero para ${name}.`);
+          fail(400, `Captura un monto de venta mayor a cero para ${name}.`);
+        }
+        if (
+          purchaseKind === "LAYAWAY" &&
+          (!Number.isFinite(depositAmount) ||
+            depositAmount! <= 0 ||
+            depositAmount! > saleAmount!)
+        ) {
+          fail(
+            400,
+            `El apartado de ${name} debe ser mayor a cero y no superar la venta.`,
+          );
         }
         return {
           id: String(visitor.id ?? `visitor-${index + 1}`),
@@ -1072,7 +1329,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           name,
           specialistProfileId,
           purchased,
-          purchaseAmount,
+          purchaseAmount: saleAmount,
+          purchaseKind,
+          saleAmount,
+          depositAmount,
         };
       });
       if (

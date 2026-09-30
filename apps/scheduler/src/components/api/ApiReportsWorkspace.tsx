@@ -10,6 +10,7 @@ import type {
 } from "@cosmetics/types";
 import { toast } from "@cosmetics/ui";
 import { RestoredReportsWorkspace } from "@/components/reports/RestoredReportsWorkspace";
+import { CabinSalesReportWorkspace } from "@/components/reports/CabinSalesReportWorkspace";
 import { schedulerApi } from "@/lib/api";
 import {
   exportSchedulerReport,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/scheduler-report-presentation";
 import { useSchedulerSession } from "@/lib/session";
 import { useSchedulerQuery } from "./ApiState";
+import { schedulerDesignProposals } from "@scheduler/design-proposals";
 
 function dateInput(offsetDays = 0) {
   const date = new Date();
@@ -58,6 +60,43 @@ async function completeReport(
 }
 
 export function ApiReportsWorkspace({
+  view = "summary",
+  fixedBranchId,
+}: {
+  view?: SchedulerReportView;
+  fixedBranchId?: string;
+}) {
+  if (view === "sales" && schedulerDesignProposals.available) {
+    return (
+      <DesignCabinSalesReports
+        {...(fixedBranchId ? { fixedBranchId } : {})}
+      />
+    );
+  }
+  return (
+    <CanonicalReportsWorkspace
+      view={view}
+      {...(fixedBranchId ? { fixedBranchId } : {})}
+    />
+  );
+}
+
+function DesignCabinSalesReports({ fixedBranchId }: { fixedBranchId?: string }) {
+  const { bootstrap, canAccess } = useSchedulerSession();
+  const fixedBranch = bootstrap?.authorizedBranches.find(
+    (branch) => branch.id === fixedBranchId,
+  );
+  return (
+    <CabinSalesReportWorkspace
+      branches={bootstrap?.authorizedBranches ?? []}
+      {...(fixedBranch ? { fixedBranch } : {})}
+      userName={bootstrap?.user.name ?? "Keysar"}
+      canExport={canAccess("reports.sales", "EXPORT")}
+    />
+  );
+}
+
+function CanonicalReportsWorkspace({
   view = "summary",
   fixedBranchId,
 }: {

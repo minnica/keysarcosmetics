@@ -196,7 +196,14 @@ export function SchedulerBookingDialog({
           (index === 0 ? draft.customerName.trim() : visitor.name.trim())
             .length >= 2 &&
           Boolean(visitor.specialistProfileId) &&
-          (visitor.purchased !== true || Number(visitor.purchaseAmount) > 0),
+          (!appointmentDetailsLocked || visitor.purchaseKind !== null) &&
+          (visitor.purchaseKind === null ||
+            visitor.purchaseKind === "NONE" ||
+            (Number(visitor.saleAmount) > 0 &&
+              (visitor.purchaseKind === "FULL" ||
+                (Number(visitor.depositAmount) > 0 &&
+                  Number(visitor.depositAmount) <=
+                    Number(visitor.saleAmount))))),
       ) &&
       new Set(draft.visitors.map((visitor) => visitor.specialistProfileId))
         .size === draft.visitors.length,
@@ -256,6 +263,9 @@ export function SchedulerBookingDialog({
           specialistProfileId: "",
           purchased: null,
           purchaseAmount: "",
+          purchaseKind: null,
+          saleAmount: "",
+          depositAmount: "",
         },
     );
     patchDraft({
@@ -886,7 +896,7 @@ export function SchedulerBookingDialog({
                       </Select>
                       {draft.visitors.map((visitor, index) => (
                         <div
-                          className="grid gap-3 rounded-2xl border border-white bg-white/85 p-3 xl:grid-cols-[1.2fr_1fr_150px_150px]"
+                          className="grid gap-3 rounded-2xl border border-white bg-white/85 p-3 md:grid-cols-2 xl:grid-cols-5"
                           key={visitor.id}
                         >
                           <div className="space-y-2">
@@ -939,27 +949,29 @@ export function SchedulerBookingDialog({
                           </div>
                           <div className="space-y-2">
                             <label className="scheduler-modal-label">
-                              ¿Compró?
+                              Resultado de venta
                             </label>
                             <Select
-                              value={
-                                visitor.purchased === true
-                                  ? "yes"
-                                  : visitor.purchased === false
-                                    ? "no"
-                                    : "pending"
-                              }
+                              value={visitor.purchaseKind ?? "PENDING"}
                               onValueChange={(value) =>
                                 patchVisitor(index, {
+                                  purchaseKind:
+                                    value === "PENDING"
+                                      ? null
+                                      : (value as "NONE" | "FULL" | "LAYAWAY"),
                                   purchased:
-                                    value === "yes"
-                                      ? true
-                                      : value === "no"
-                                        ? false
-                                        : null,
-                                  ...(value === "yes"
-                                    ? {}
-                                    : { purchaseAmount: "" }),
+                                    value === "PENDING"
+                                      ? null
+                                      : value !== "NONE",
+                                  ...(value === "NONE" || value === "PENDING"
+                                    ? {
+                                        purchaseAmount: "",
+                                        saleAmount: "",
+                                        depositAmount: "",
+                                      }
+                                    : value === "FULL"
+                                      ? { depositAmount: "" }
+                                      : {}),
                                 })
                               }
                             >
@@ -967,34 +979,65 @@ export function SchedulerBookingDialog({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="scheduler-modal-select-content">
-                                <SelectItem value="pending">
+                                <SelectItem value="PENDING">
                                   Pendiente
                                 </SelectItem>
-                                <SelectItem value="yes">Sí compró</SelectItem>
-                                <SelectItem value="no">No compró</SelectItem>
+                                <SelectItem value="NONE">No compró</SelectItem>
+                                <SelectItem value="FULL">
+                                  Compra liquidada
+                                </SelectItem>
+                                <SelectItem value="LAYAWAY">Apartado</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                           <div className="space-y-2">
                             <label className="scheduler-modal-label">
-                              Monto
+                              Monto de venta
                             </label>
                             <div className="relative">
                               <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
                               <Input
                                 className="scheduler-modal-input pl-10"
-                                disabled={visitor.purchased !== true}
+                                disabled={
+                                  visitor.purchaseKind !== "FULL" &&
+                                  visitor.purchaseKind !== "LAYAWAY"
+                                }
                                 inputMode="decimal"
                                 min="0"
                                 onChange={(event) =>
                                   patchVisitor(index, {
+                                    saleAmount: event.target.value,
                                     purchaseAmount: event.target.value,
                                   })
                                 }
                                 placeholder="$0.00"
                                 step="0.01"
                                 type="number"
-                                value={visitor.purchaseAmount}
+                                value={visitor.saleAmount}
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="scheduler-modal-label">
+                              Monto apartado
+                            </label>
+                            <div className="relative">
+                              <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
+                              <Input
+                                className="scheduler-modal-input pl-10"
+                                disabled={visitor.purchaseKind !== "LAYAWAY"}
+                                inputMode="decimal"
+                                max={visitor.saleAmount || undefined}
+                                min="0"
+                                onChange={(event) =>
+                                  patchVisitor(index, {
+                                    depositAmount: event.target.value,
+                                  })
+                                }
+                                placeholder="$0.00"
+                                step="0.01"
+                                type="number"
+                                value={visitor.depositAmount}
                               />
                             </div>
                           </div>
@@ -1005,8 +1048,9 @@ export function SchedulerBookingDialog({
                           className="text-sm font-medium text-amber-800"
                           role="status"
                         >
-                          Completa cada visitante con un especialista distinto y
-                          agrega monto cuando exista compra.
+                          Completa cada visitante y especialista. Para compra
+                          captura el total; si es apartado, el anticipo debe ser
+                          mayor a cero y no superar la venta.
                         </p>
                       ) : null}
                     </div>

@@ -1,6 +1,7 @@
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignCabinSalesReport,
   DesignCustomerAdvancedPage,
   DesignDemoAccountOption,
   DesignMovementRecord,
@@ -103,5 +104,10 @@ export const schedulerDesignProposals: DesignProposalClient = {
             }
           : {}),
       },
+    ),
+  cabinSalesReport: (input) =>
+    request<DesignCabinSalesReport>(
+      "/api/scheduler/design-proposals/reports/cabin-sales",
+      { method: "POST", body: JSON.stringify(input) },
     ),
 };
