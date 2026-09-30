@@ -14,6 +14,8 @@ import {
   ChevronDown,
   FileText,
   Globe2,
+  KeyRound,
+  ListChecks,
   MessageCircle,
   Palette,
   SlidersHorizontal,
@@ -27,7 +29,13 @@ import {
 import { useSchedulerSession } from "@/lib/session";
 import { clientNavigationItems } from "@/lib/client-navigation";
 
-export type SchedulerNavArea = "agenda" | "clients" | "reports" | "administration" | "settings";
+export type SchedulerNavArea =
+  | "agenda"
+  | "clients"
+  | "reports"
+  | "administration"
+  | "settings"
+  | "movements";
 export type SchedulerReportPage = "summary" | "reservations";
 export type AdministrationSectionId =
   | "locals"
@@ -70,6 +78,21 @@ const administrationGroups: Array<{
     ],
   },
 ];
+
+const settingsItems = [
+  ["company", "Empresa"],
+  ["website", "Sitio web"],
+  ["agenda", "Agenda"],
+  ["payments", "Pagos Keysar"],
+  ["reminders", "Recordatorios"],
+  ["records", "Fichas médicas"],
+  ["emails", "E-mails"],
+  ["integrations", "Integraciones"],
+  ["notifications", "Notificaciones"],
+  ["clients", "Clientes y preguntas"],
+  ["surveys", "Encuestas"],
+  ["authorizations", "Códigos personales"],
+] as const;
 
 function getAdministrationScreenId(
   section: AdministrationSectionId,
@@ -265,7 +288,7 @@ export function ClientsNavMenu() {
         <button
           aria-label="Abrir menú de clientes"
           aria-expanded={open}
-          className={moduleLinkClass(pathname.startsWith("/clientes"))}
+          className={`${moduleLinkClass(pathname.startsWith("/clientes"))} gap-1.5 px-4 py-2.5`}
           type="button"
         >
           Clientes
@@ -289,6 +312,59 @@ export function ClientsNavMenu() {
   );
 }
 
+export function SettingsNavMenu() {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const { bootstrap } = useSchedulerSession();
+  const visibleItems = settingsItems.filter(([section]) =>
+    section === "authorizations"
+      ? bootstrap?.canManageAccess
+      : bootstrap?.permissions.some(
+          (permission) => permission.screenKey === `scheduler/settings/${section}`,
+        ),
+  );
+
+  if (visibleItems.length === 0) return null;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          aria-expanded={open}
+          className={`${moduleLinkClass(pathname === "/configuraciones")} gap-1.5 px-4 py-2.5`}
+          type="button"
+        >
+          Configuraciones
+          <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={10}
+        className="max-h-[min(70vh,34rem)] w-72 overflow-y-auto rounded-[20px] border-white/10 bg-[#1c2835] p-2 text-white"
+      >
+        {visibleItems.map(([section, label]) => (
+          <Link
+            key={section}
+            className="scheduler-nav-menu-item"
+            href={`/configuraciones?section=${section}`}
+            onClick={() => setOpen(false)}
+          >
+            <span className="flex items-center gap-3">
+              {section === "authorizations" ? (
+                <KeyRound className="h-4 w-4 text-[#c3a583]" />
+              ) : (
+                <SlidersHorizontal className="h-4 w-4 text-[#c3a583]" />
+              )}
+              {label}
+            </span>
+          </Link>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function SchedulerPrimaryNav({
   activeArea,
   activeAdmin,
@@ -302,7 +378,10 @@ export function SchedulerPrimaryNav({
 }) {
   const { canAccess } = useSchedulerSession();
   return (
-    <nav className="hidden items-center gap-1 xl:flex">
+    <nav
+      aria-label="Navegación principal"
+      className="flex min-w-max items-center gap-1"
+    >
       {canAccess("agenda") ? (
         <Link className={activeArea === "agenda" ? "report-nav-active" : "report-nav-link"} href="/">
           Agenda
@@ -314,6 +393,16 @@ export function SchedulerPrimaryNav({
         active={activeArea === "administration" ? activeAdmin : undefined}
         onSelect={onAdministrationSelect}
       />
+      <SettingsNavMenu />
+      {canAccess("reports.summary") ? (
+        <Link
+          className={`${activeArea === "movements" ? "scheduler-module-link-active" : "scheduler-module-link"} gap-2 px-4 py-2.5`}
+          href="/movimientos"
+        >
+          <ListChecks className="h-4 w-4" />
+          Movimientos
+        </Link>
+      ) : null}
     </nav>
   );
 }

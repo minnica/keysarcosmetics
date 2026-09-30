@@ -17,6 +17,10 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@cosmetics/ui";
 import { Ban, CalendarDays, Plus } from "lucide-react";
@@ -131,8 +135,6 @@ const compactAgendaMediaQuery = [
 const denseAgendaMediaQuery = "(min-width: 1024px) and (max-height: 780px)";
 const ultraDenseAgendaMediaQuery =
   "(min-width: 1024px) and (max-height: 680px)";
-const maxFittedTimeSlots = 13;
-
 function useAgendaLayoutMetrics(): SchedulerAgendaLayoutMetrics {
   const [layout, setLayout] = useState<SchedulerAgendaLayoutMetrics>(
     schedulerComfortableLayout,
@@ -257,21 +259,20 @@ export function SchedulerAgendaGrid({
     currentView === "day" ? dayCalendarRange : weekCalendarRange;
   const activeTimeSlotCount =
     currentView === "day" ? dayTimeSlots.length : weekTimeSlots.length;
-  const calendarNeedsVerticalScroll = activeTimeSlotCount > maxFittedTimeSlots;
+  const calendarNeedsVerticalScroll = false;
   const agendaLayout = useMemo(() => {
     if (gridViewportHeight <= 0 || activeTimeSlotCount <= 0)
       return baseAgendaLayout;
 
     const availableRowsHeight =
       gridViewportHeight - baseAgendaLayout.headerOffset;
-    const fittedSlotCount = Math.min(activeTimeSlotCount, maxFittedTimeSlots);
-    const fittedRowHeight = Math.floor(availableRowsHeight / fittedSlotCount);
+    const fittedRowHeight = Math.floor(availableRowsHeight / activeTimeSlotCount);
 
     return {
       ...baseAgendaLayout,
       rowHeight: Math.min(
         baseAgendaLayout.maxRowHeight,
-        Math.max(baseAgendaLayout.minRowHeight, fittedRowHeight),
+        Math.max(12, fittedRowHeight),
       ),
     };
   }, [activeTimeSlotCount, baseAgendaLayout, gridViewportHeight]);
@@ -498,6 +499,7 @@ export function SchedulerAgendaGrid({
     currentTimeMinutes <= dayClosingMinutes;
 
   return (
+    <TooltipProvider delayDuration={220}>
     <Card className="scheduler-agenda-card flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         {!activeCalendarRange ? (
@@ -606,8 +608,11 @@ export function SchedulerAgendaGrid({
               {dayAppointments.map(({ booking, style }) => {
                 return (
                   <Dialog key={booking.id}>
+                    <Tooltip>
+                    <TooltipTrigger asChild>
                     <DialogTrigger asChild>
                       <button
+                        aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}`}
                         className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
                         style={{
                           ...style,
@@ -636,6 +641,24 @@ export function SchedulerAgendaGrid({
                         </p>
                       </button>
                     </DialogTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      align="start"
+                      className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
+                      side="right"
+                      sideOffset={10}
+                    >
+                      <p className="font-semibold">{booking.customerName}</p>
+                      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
+                        <dt>Horario</dt><dd>{booking.start}–{booking.end}</dd>
+                        <dt>Servicio</dt><dd>{booking.serviceName}</dd>
+                        <dt>Especialista</dt><dd>{visibleProfessionals.find((item) => item.id === booking.professionalId)?.name ?? "Sin asignar"}</dd>
+                        <dt>Estado</dt><dd>{bookingStatuses[booking.status].label}</dd>
+                        <dt>Contacto</dt><dd>{booking.phone || booking.customerEmail || "Sin contacto"}</dd>
+                      </dl>
+                      {booking.notes ? <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">{booking.notes}</p> : null}
+                    </TooltipContent>
+                    </Tooltip>
                     <DialogContent
                       className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
                       style={{
@@ -870,8 +893,11 @@ export function SchedulerAgendaGrid({
 
                 return (
                   <Dialog key={booking.id}>
+                    <Tooltip>
+                    <TooltipTrigger asChild>
                     <DialogTrigger asChild>
                       <button
+                        aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}`}
                         className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
                         style={{
                           ...style,
@@ -901,6 +927,24 @@ export function SchedulerAgendaGrid({
                         </p>
                       </button>
                     </DialogTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      align="center"
+                      className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
+                      side="top"
+                      sideOffset={10}
+                    >
+                      <p className="font-semibold">{booking.customerName}</p>
+                      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
+                        <dt>Horario</dt><dd>{booking.start}–{booking.end}</dd>
+                        <dt>Servicio</dt><dd>{booking.serviceName}</dd>
+                        <dt>Especialista</dt><dd>{visibleProfessionals.find((item) => item.id === booking.professionalId)?.name ?? "Sin asignar"}</dd>
+                        <dt>Estado</dt><dd>{bookingStatuses[booking.status].label}</dd>
+                        <dt>Contacto</dt><dd>{booking.phone || booking.customerEmail || "Sin contacto"}</dd>
+                      </dl>
+                      {booking.notes ? <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">{booking.notes}</p> : null}
+                    </TooltipContent>
+                    </Tooltip>
                     <DialogContent
                       className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
                       style={{
@@ -1040,5 +1084,6 @@ export function SchedulerAgendaGrid({
         )}
       </CardContent>
     </Card>
+    </TooltipProvider>
   );
 }

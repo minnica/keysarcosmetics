@@ -3283,6 +3283,10 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .scheduler-top-navigation + #scheduler-main-content .sticky.top-0 {
+    top: 4rem;
+  }
+
   .report-nav-link {
     @apply rounded-full px-4 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/10 hover:text-white;
   }
