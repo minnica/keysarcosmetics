@@ -89,6 +89,15 @@ usar `designStore.state.controls.date` como referencia temporal.
 
 Los guardados y descargas se agregan a **Movimientos de la demo** con el actor
 seleccionado. Este registro local no sustituye la auditoría del servidor.
+La vista comprime los movimientos que comparten `actorId` y día local de
+`America/Mexico_City` en una sola fila. Al desplegarla conserva hora, acción,
+propósito, registro y metadatos de cada evento. La búsqueda y el filtro de agente
+se aplican antes de agrupar.
+
+**Descargar Excel** exporta únicamente los movimientos visibles después de esos
+filtros. El archivo contiene `Resumen por agente`, con una fila por agente/día,
+y `Detalle`, con un renglón por movimiento. Fechas, horas y cantidades se
+escriben como valores tipados de Excel; ninguna hoja incluye el código personal.
 
 La demo incluye dos identidades con acceso total y una limitada para comparar
 el comportamiento de los guards. La cuenta limitada puede trabajar en Agenda y
@@ -227,8 +236,11 @@ Recorrido manual recomendado:
    el nombre de local en cada columna, alterna el ajuste y abre la impresión diaria.
 5. En Clientes combina cancelación, servicio, cumpleaños, vendedor y un campo
    personalizado; después prueba el filtro de 30 días sin citas.
-6. Abre Movimientos, filtra por agente y comprueba que aparece la acción sin el
-   código personal.
+6. Genera dos movimientos el mismo día con el mismo código. Abre Movimientos,
+   filtra por agente y confirma que aparece una fila con contador; despliega la
+   fila para revisar ambas acciones sin el código personal. Descarga Excel y
+   confirma las hojas `Resumen por agente` y `Detalle` con sólo los registros
+   visibles.
 7. Entra como `limited@example.test`: confirma que sólo aparece su alcance y
    que Administración/Configuraciones son rechazadas. Después entra con ambos
    usuarios de acceso total, usa sus códigos distintos y comprueba en

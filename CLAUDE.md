@@ -493,6 +493,13 @@ mock `appointments/:id/cabin-visit` y su estado viven exclusivamente en
 `apps/scheduler/design`. POS continúa como autoridad financiera; el prototipo no
 crea ventas, pagos ni vendedores paralelos.
 
+La vista de movimientos de diseño agrupa por `actorId` y fecha operativa de
+`America/Mexico_City`, manteniendo el detalle append-only al desplegar cada fila.
+Su exportación XLSX respeta los filtros visibles, carga `xlsx` sólo al solicitar
+la descarga y genera hojas de resumen por agente/día y detalle individual con
+fechas y conteos tipados. La agrupación es exclusivamente de presentación: no
+combina ni reescribe eventos y nunca expone el código personal.
+
 Plan de restauración visual: `PLAN_RESTAURACION_VISUAL_SCHEDULER.md` (6 de septiembre de 2026). Define fases RV0–RV8 para recuperar la presentación aprobada del commit `e9077ddad945325b1a132962ce0c2fcd9ae7f74a` en todo Scheduler, conservando contratos, seguridad y persistencia del backend actual. RV0–RV8 quedaron implementadas con validación visual/funcional pendiente. `docs/SCHEDULER_VISUAL_RESTORATION_BASELINE.md` y los runbooks `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md` a `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md` contienen la evidencia y comandos. Los checks locales pasan, pero el sandbox bloquea servidores, Chromium y PostgreSQL desechable; ejecutar los runners documentados en un host compatible antes de validar las fases. No restaurar íntegramente el código mock ni considerar los workspaces API simplificados como referencia visual aprobada.
 
 `apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 10 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos, clientes compartidos, agenda canónica, integración POS, administración/configuración, comunicaciones/documentos/encuestas, reportes/exportaciones, conexión visual y puertas de calidad/despliegue. RV2 volvió a montar los componentes aprobados de Agenda, RV3 restauró Clientes, RV4 Administración, RV5 Configuraciones, RV6 engagement y RV7 Reportes/exportaciones sobre contratos reales. RV8 retiró workspaces/mocks sin consumidores, agregó guards de rutas/grafo/persistencia, revalidación de sesión/permisos y chunks dinámicos por módulo. Ninguna entrada productiva lee o escribe estado operativo simulado; los fixtures deterministas viven sólo en E2E.
