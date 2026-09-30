@@ -463,6 +463,15 @@ Los reportes de citas/clientes leen el estado compartido; otros datasets son
 ejemplos visuales, y mensajes/archivos son simulados. Los flujos nuevos requieren
 revisión e implementación de contratos, persistencia e integraciones reales.
 
+La demo de Scheduler ofrece tres cuentas ficticias desde el login: dos identidades
+master independientes (`master@example.test` y `operations@example.test`) con
+acceso total, y una identidad limitada a sucursal/profesional propio
+(`limited@example.test`) sin Administración ni Configuraciones. Todas usan la
+contraseña ficticia `demo`; sus códigos personales son respectivamente `0000`,
+`3333` y `4444`. Sesión y autorización se ligan al usuario concreto para que dos
+cuentas con el mismo rol no compartan tokens. No reutilizar estas credenciales,
+códigos o fixtures fuera de `apps/scheduler/design`.
+
 La propuesta PO del 29 de septiembre de 2026 mueve la navegación al encabezado,
 ajusta toda la jornada al alto visible, agrega detalle de cita por hover,
 preguntas compartidas entre reserva/cliente, códigos ficticios únicos por

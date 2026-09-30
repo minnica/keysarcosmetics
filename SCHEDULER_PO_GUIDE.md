@@ -22,18 +22,24 @@ ni credenciales de infraestructura. El comando fuerza el destino ficticio
 El puerto puede cambiarse con `SCHEDULER_DESIGN_PORT`.
 
 La primera entrada abre una sesión master ficticia. El botón **Controles de
-diseño** permite cambiar de perfil, probar estados y restablecer los datos.
+diseño** permite cambiar entre usuarios, probar estados y restablecer los datos.
 Para trabajar únicamente con esta demo utiliza los comandos `*:design`; el
 comando general `pnpm dev` inicia otras aplicaciones del monorepo.
 
 Si quieres probar la pantalla de login, cierra sesión e ingresa con cualquiera
-de estas cuentas. La contraseña es `demo` para las tres.
+de estas cuentas. La contraseña es `demo` para las tres; en modo diseño la
+pantalla de acceso incluye botones que rellenan cada cuenta.
 
-| Perfil       | Cuenta                    | Código personal ficticio |
-| ------------ | ------------------------- | ------------------------ |
-| Master       | `master@example.test`     | `0000`                   |
-| Especialista | `specialist@example.test` | `1111`                   |
-| Consulta     | `read-only@example.test`  | `2222`                   |
+| Usuario ficticio                 | Cuenta                    | Alcance                                                                 | Código personal |
+| -------------------------------- | ------------------------- | ----------------------------------------------------------------------- | --------------- |
+| PO · Master demo                 | `master@example.test`     | Total: todas las sucursales, pantallas, escrituras y administración     | `0000`          |
+| Alejandra Ruiz · Coordinación    | `operations@example.test` | Total: mismas capacidades master, con identidad y sesión independientes | `3333`          |
+| Daniela Mora · Recepción Polanco | `limited@example.test`    | Limitado: una sucursal y profesional propio; sin Administración/Ajustes | `4444`          |
+
+Los tokens y autorizaciones secundarias se ligan al usuario, no sólo al tipo de
+perfil. Cambiar entre las dos cuentas con acceso total invalida autorizaciones
+pendientes; el código de una no funciona para la otra. Todas las identidades,
+contraseñas y claves de esta tabla son exclusivamente ficticias.
 
 ## Qué puedes modificar
 
@@ -83,6 +89,12 @@ usar `designStore.state.controls.date` como referencia temporal.
 
 Los guardados y descargas se agregan a **Movimientos de la demo** con el actor
 seleccionado. Este registro local no sustituye la auditoría del servidor.
+
+La demo incluye dos identidades con acceso total y una limitada para comparar
+el comportamiento de los guards. La cuenta limitada puede trabajar en Agenda y
+Clientes dentro de su alcance asignado, pero recibe `403` al intentar acceder a
+Administración o Configuraciones. Cada movimiento conserva la identidad concreta
+que inició la sesión, incluso cuando dos usuarios comparten capacidades master.
 
 ## Propuesta de navegación, captura y auditoría (29 de septiembre de 2026)
 
@@ -144,14 +156,14 @@ en el entorno de diseño.
 
 Contratos propuestos, exclusivos de `apps/scheduler/design`:
 
-| Método | Ruta | Uso propuesto |
-| ------ | ---- | ------------- |
-| `GET/POST/PUT` | `/api/scheduler/design-proposals/authorization-agents[/:id]` | Consultar identidades externas y asignar un código ficticio único. |
-| `POST` | `/api/scheduler/design-proposals/operation-authorizations` | Resolver el agente por código y emitir un token de un solo movimiento. |
-| `POST` | `/api/scheduler/design-proposals/operation-authorizations/commit` | Consumir el token y agregar la bitácora redactada. |
-| `GET` | `/api/scheduler/design-proposals/movements` | Consultar la bitácora por agente. |
-| `POST` | `/api/scheduler/design-proposals/customers/advanced-search` | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
-| `GET/PUT` | `/api/scheduler/design-proposals/appointments/:id/answers` | Leer o guardar respuestas relacionadas con una cita. |
+| Método         | Ruta                                                              | Uso propuesto                                                                 |
+| -------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET/POST/PUT` | `/api/scheduler/design-proposals/authorization-agents[/:id]`      | Consultar identidades externas y asignar un código ficticio único.            |
+| `POST`         | `/api/scheduler/design-proposals/operation-authorizations`        | Resolver el agente por código y emitir un token de un solo movimiento.        |
+| `POST`         | `/api/scheduler/design-proposals/operation-authorizations/commit` | Consumir el token y agregar la bitácora redactada.                            |
+| `GET`          | `/api/scheduler/design-proposals/movements`                       | Consultar la bitácora por agente.                                             |
+| `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`       | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
+| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`        | Leer o guardar respuestas relacionadas con una cita.                          |
 
 Estos endpoints no existen en el runtime productivo. El alias
 `@scheduler/design-proposals` selecciona el cliente MSW sólo con
@@ -180,8 +192,9 @@ Recorrido manual recomendado:
 
 1. En Configuraciones, crea una pregunta y confirma que aparece en una reserva
    y en el alta de cliente.
-2. En Códigos personales, intenta repetir `0000`, `1111` o `2222`; debe
-   rechazarse sin revelar a quién pertenece.
+2. En Códigos personales, intenta repetir `0000`, `3333` o `4444` de las
+   cuentas, o `1111`/`2222` de los agentes POS/CRM ficticios; debe rechazarse
+   sin revelar a quién pertenece.
 3. Crea o modifica una cita con un código válido y confirma que el calendario
    cabe en la ventana y que el hover muestra el detalle.
 4. Selecciona Todas, Disponibles y una combinación manual de sucursales; comprueba
@@ -190,8 +203,10 @@ Recorrido manual recomendado:
    personalizado; después prueba el filtro de 30 días sin citas.
 6. Abre Movimientos, filtra por agente y comprueba que aparece la acción sin el
    código personal.
-7. Como especialista, intenta editar un cliente sin desbloquear el expediente;
-   la API ficticia debe rechazarlo. Como master, usa la acción Editar directa.
+7. Entra como `limited@example.test`: confirma que sólo aparece su alcance y
+   que Administración/Configuraciones son rechazadas. Después entra con ambos
+   usuarios de acceso total, usa sus códigos distintos y comprueba en
+   Movimientos que cada acción conserva el actor correcto.
 
 ## Dónde trabajar
 
