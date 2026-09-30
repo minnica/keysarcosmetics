@@ -149,11 +149,24 @@ export function createDesignState(
       companyOwnedByDefault: false,
     },
   ];
-  const customers: SchedulerCustomerDetailDto[] = [
+  const customerNames = [
     "María Camila Celis",
     "Ana Torres Ruiz",
     "Lucía Velasco Pérez",
-  ].map((name, index) => ({
+    "Sofía Mendoza Lara",
+  ];
+  const customerBirthDates = ["1988-09-12", "1993-05-21", "1985-11-03", "1990-09-30"];
+  const customerTypes = ["VIP", "Frecuente", "Nuevo", "Frecuente"];
+  const salesOwners = [
+    "Renata Castillo",
+    "Camila Torres",
+    "Venta de empresa",
+    "Renata Castillo",
+  ];
+  const customers: SchedulerCustomerDetailDto[] = customerNames.map((name, index) => {
+    const branch = catalog.branches[index % catalog.branches.length]!;
+    const professional = catalog.professionals[index % catalog.professionals.length]!;
+    return {
     id: `design-customer-${index + 1}`,
     displayName: name,
     preferredName: null,
@@ -166,10 +179,10 @@ export function createDesignState(
     currentPortfolios: [
       {
         id: `design-portfolio-${index + 1}`,
-        branchId: catalog.branches[0]!.branchId,
-        branchName: catalog.branches[0]!.branchName,
-        employeeId: catalog.professionals[0]!.employeeId,
-        ownerName: catalog.professionals[0]!.name,
+        branchId: branch.branchId,
+        branchName: branch.branchName,
+        employeeId: professional.employeeId,
+        ownerName: salesOwners[index]!,
         effectiveFrom: "2026-01-01T00:00:00.000Z",
         effectiveTo: null,
       },
@@ -182,9 +195,43 @@ export function createDesignState(
       version: 1,
     },
     emails: [],
-    customFields: [],
+    customFields: [
+      {
+        definitionId: "design-field-birthday",
+        definitionVersion: 1,
+        key: "birthDate",
+        label: "Fecha de nacimiento",
+        type: "DATE",
+        value: customerBirthDates[index]!,
+      },
+      {
+        definitionId: "design-field-type",
+        definitionVersion: 1,
+        key: "customerType",
+        label: "Tipo de cliente",
+        type: "SELECT",
+        value: customerTypes[index]!,
+      },
+      {
+        definitionId: "design-field-sales-owner",
+        definitionVersion: 1,
+        key: "salesOwner",
+        label: "Vendedor responsable",
+        type: "SELECT",
+        value: salesOwners[index]!,
+      },
+      {
+        definitionId: "design-field-attending-specialist",
+        definitionVersion: 1,
+        key: "attendingSpecialist",
+        label: "Especialista que atendió",
+        type: "SELECT",
+        value: professional.name,
+      },
+    ],
     mergeHistory: [],
-  }));
+  };
+  });
   const fields: SchedulerCustomerFieldDefinitionDto[] = [
     {
       id: "design-field-birthday",
@@ -322,13 +369,18 @@ export function createDesignState(
   };
   if (controls.scenario !== "empty") {
     for (let index = 0; index < 3; index += 1) {
+      const customerBranchId =
+        customers[index]!.currentPortfolios[0]!.branchId ??
+        catalog.branches[0]!.branchId;
+      const service =
+        index === 2 ? catalog.services[1]! : catalog.services[0]!;
       const appointment = buildDesignAppointment(state, {
-        branchId: catalog.branches[0]!.branchId,
+        branchId: customerBranchId,
         customerId: customers[index]!.id,
         startsAt: designInstant(controls.date, (9 + index * 3) * 60),
         services: [
           {
-            serviceProfileId: catalog.services[0]!.id,
+            serviceProfileId: service.id,
             professionalProfileIds: [
               catalog.professionals[index % catalog.professionals.length]!.id,
             ],

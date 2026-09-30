@@ -22,6 +22,8 @@ import {
 } from "./store";
 import type {
   DesignAppointmentAnswer,
+  DesignCustomerAdvancedFilters,
+  DesignCustomerAdvancedPage,
   DesignMovementRecord,
   DesignOperationAgent,
   DesignOperationPurpose,
@@ -594,6 +596,151 @@ function buildReport(
   };
 }
 
+function advancedCustomerSearch(
+  state: DesignState,
+  input: DesignCustomerAdvancedFilters,
+): DesignCustomerAdvancedPage {
+  const branchIds = new Set(input.branchIds.filter(Boolean));
+  const statuses = new Set(input.appointmentStatuses);
+  const serviceIds = new Set(input.serviceProfileIds);
+  const sellerNames = new Set(input.sellerNames.map(textKey));
+  const referenceTime = new Date(
+    designInstant(state.controls.date, 23 * 60 + 59),
+  ).getTime();
+  const inactivityBoundary = input.noAppointmentWithinDays
+    ? referenceTime - input.noAppointmentWithinDays * 86_400_000
+    : null;
+
+  const matched = visibleCustomers(state)
+    .filter((item) => {
+      if (!item.active) return false;
+      const customerAppointments = state.appointments.filter(
+        (appointment) => appointment.customerId === item.id,
+      );
+      const historicalAppointments = customerAppointments.filter(
+        (appointment) =>
+          new Date(appointment.startsAt).getTime() <= referenceTime,
+      );
+      if (
+        branchIds.size > 0 &&
+        !item.currentPortfolios.some((portfolio) =>
+          branchIds.has(portfolio.branchId ?? ""),
+        ) &&
+        !customerAppointments.some((appointment) =>
+          branchIds.has(appointment.branchId),
+        )
+      ) {
+        return false;
+      }
+      if (input.sourceId && item.source?.id !== input.sourceId) return false;
+      if (
+        input.query.trim() &&
+        ![item.displayName, item.phone, item.email, ...item.aliases].some(
+          (value) => textKey(value).includes(textKey(input.query)),
+        )
+      ) {
+        return false;
+      }
+      if (
+        inactivityBoundary !== null &&
+        historicalAppointments.some(
+          (appointment) =>
+            new Date(appointment.startsAt).getTime() >= inactivityBoundary,
+        )
+      ) {
+        return false;
+      }
+      if (
+        statuses.size > 0 &&
+        !customerAppointments.some((appointment) =>
+          statuses.has(appointment.status),
+        )
+      ) {
+        return false;
+      }
+      if (
+        serviceIds.size > 0 &&
+        !customerAppointments.some((appointment) =>
+          appointment.services.some((service) =>
+            serviceIds.has(service.serviceProfileId),
+          ),
+        )
+      ) {
+        return false;
+      }
+      if (input.birthdayMonth) {
+        const birthDate = item.customFields.find(
+          (field) => field.definitionId === "design-field-birthday",
+        )?.value;
+        const month = Number(String(birthDate ?? "").slice(5, 7));
+        if (month !== input.birthdayMonth) return false;
+      }
+      if (sellerNames.size > 0) {
+        const assignedSellers = [
+          ...item.currentPortfolios.map((portfolio) => portfolio.ownerName),
+          item.customFields.find(
+            (field) => field.definitionId === "design-field-sales-owner",
+          )?.value,
+        ].map(textKey);
+        if (!assignedSellers.some((seller) => sellerNames.has(seller))) {
+          return false;
+        }
+      }
+      return input.customFields.every((filter) => {
+        if (!filter.value.trim()) return true;
+        const value = item.customFields.find(
+          (field) => field.definitionId === filter.definitionId,
+        )?.value;
+        return textKey(value).includes(textKey(filter.value));
+      });
+    })
+    .map((item) => {
+      const appointments = state.appointments.filter(
+        (appointment) => appointment.customerId === item.id,
+      );
+      const historical = appointments.filter(
+        (appointment) =>
+          new Date(appointment.startsAt).getTime() <= referenceTime,
+      );
+      const lastAppointmentAt = historical.reduce<string | null>(
+        (latest, appointment) =>
+          !latest || appointment.startsAt > latest
+            ? appointment.startsAt
+            : latest,
+        null,
+      );
+      return {
+        ...item,
+        agenda: {
+          appointmentCount: appointments.length,
+          attendedCount: appointments.filter(
+            (appointment) => appointment.status === "ATTENDED",
+          ).length,
+          canceledCount: appointments.filter(
+            (appointment) => appointment.status === "CANCELED",
+          ).length,
+          noShowCount: appointments.filter(
+            (appointment) => appointment.status === "NO_SHOW",
+          ).length,
+          lastAppointmentAt,
+        },
+      };
+    })
+    .sort((left, right) =>
+      left.displayName.localeCompare(right.displayName, "es-MX"),
+    );
+
+  const pageNumber = Math.max(1, Number(input.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(input.pageSize) || 25));
+  const offset = (pageNumber - 1) * pageSize;
+  return {
+    items: matched.slice(offset, offset + pageSize),
+    page: pageNumber,
+    pageSize,
+    total: matched.length,
+  };
+}
+
 function dispatch(state: DesignState, request: DesignRequest): unknown {
   const { body, url, headers, method } = request;
   const path = url.pathname,
@@ -647,6 +794,43 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     };
   }
   if (resource === "design-proposals") {
+    if (id === "customers" && action === "advanced-search") {
+      if (method !== "POST") fail(405, "Usa POST para la búsqueda avanzada.");
+      const input = body as unknown as DesignCustomerAdvancedFilters;
+      return advancedCustomerSearch(state, {
+        query: String(input.query ?? ""),
+        branchIds: Array.isArray(input.branchIds)
+          ? input.branchIds.map(String)
+          : [],
+        ...(input.sourceId ? { sourceId: String(input.sourceId) } : {}),
+        ...(Number(input.noAppointmentWithinDays) > 0
+          ? { noAppointmentWithinDays: Number(input.noAppointmentWithinDays) }
+          : {}),
+        appointmentStatuses: Array.isArray(input.appointmentStatuses)
+          ? input.appointmentStatuses.filter((status) =>
+              SCHEDULER_APPOINTMENT_STATUSES.includes(status),
+            )
+          : [],
+        serviceProfileIds: Array.isArray(input.serviceProfileIds)
+          ? input.serviceProfileIds.map(String)
+          : [],
+        ...(Number(input.birthdayMonth) >= 1 &&
+        Number(input.birthdayMonth) <= 12
+          ? { birthdayMonth: Number(input.birthdayMonth) }
+          : {}),
+        sellerNames: Array.isArray(input.sellerNames)
+          ? input.sellerNames.map(String)
+          : [],
+        customFields: Array.isArray(input.customFields)
+          ? input.customFields.map((filter) => ({
+              definitionId: String(filter.definitionId ?? ""),
+              value: String(filter.value ?? ""),
+            }))
+          : [],
+        page: Number(input.page) || 1,
+        pageSize: Number(input.pageSize) || 25,
+      });
+    }
     if (id === "authorization-agents") {
       if (method === "GET") {
         return state.operationAgents.map(publicOperationAgent);

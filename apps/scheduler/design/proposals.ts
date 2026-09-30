@@ -1,5 +1,6 @@
 import type {
   DesignAppointmentAnswer,
+  DesignCustomerAdvancedPage,
   DesignMovementRecord,
   DesignOperationAgent,
   DesignOperationGrant,
@@ -53,6 +54,11 @@ export const schedulerDesignProposals: DesignProposalClient = {
     ),
   listMovements: () =>
     request<DesignMovementRecord[]>("/api/scheduler/design-proposals/movements"),
+  searchCustomersAdvanced: (input) =>
+    request<DesignCustomerAdvancedPage>(
+      "/api/scheduler/design-proposals/customers/advanced-search",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
   appointmentAnswers: (appointmentId) =>
     request<DesignAppointmentAnswer[]>(
       `/api/scheduler/design-proposals/appointments/${appointmentId}/answers`,

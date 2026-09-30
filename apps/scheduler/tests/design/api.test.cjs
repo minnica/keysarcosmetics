@@ -361,3 +361,47 @@ test("las respuestas adicionales se relacionan con la cita por ID", () => {
     answers,
   );
 });
+
+test("la búsqueda avanzada combina agenda, servicios, cumpleaños, vendedor y campos", () => {
+  const { state, request } = session();
+  const combined = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/advanced-search",
+    {
+      query: "",
+      branchIds: state.catalog.branches.map((branch) => branch.branchId),
+      appointmentStatuses: ["CANCELED"],
+      serviceProfileIds: ["class-rv4"],
+      birthdayMonth: 11,
+      sellerNames: ["Venta de empresa"],
+      customFields: [
+        { definitionId: "design-field-type", value: "Nuevo" },
+      ],
+      page: 1,
+      pageSize: 25,
+    },
+  );
+  assert.equal(combined.status, 201);
+  assert.equal(combined.body.data.total, 1);
+  assert.equal(combined.body.data.items[0].displayName, "Lucía Velasco Pérez");
+  assert.equal(combined.body.data.items[0].agenda.canceledCount, 1);
+
+  const inactive = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/advanced-search",
+    {
+      query: "",
+      branchIds: state.catalog.branches.map((branch) => branch.branchId),
+      noAppointmentWithinDays: 30,
+      appointmentStatuses: [],
+      serviceProfileIds: [],
+      sellerNames: [],
+      customFields: [],
+      page: 1,
+      pageSize: 25,
+    },
+  ).body.data;
+  assert.equal(inactive.total, 1);
+  assert.equal(inactive.items[0].displayName, "Sofía Mendoza Lara");
+  assert.equal(inactive.items[0].agenda.lastAppointmentAt, null);
+});

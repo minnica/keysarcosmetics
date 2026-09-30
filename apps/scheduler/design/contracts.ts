@@ -1,4 +1,8 @@
-import type { SchedulerCustomerFieldDefinitionDto } from "@cosmetics/types";
+import type {
+  SchedulerAppointmentStatus,
+  SchedulerCustomerFieldDefinitionDto,
+  SchedulerCustomerSummaryDto,
+} from "@cosmetics/types";
 
 export type DesignOperationPurpose =
   | "APPOINTMENT_CREATE"
@@ -55,6 +59,40 @@ export interface DesignQuestionConfiguration {
   appliesTo: readonly ["CUSTOMER", "APPOINTMENT"];
 }
 
+export interface DesignCustomerAdvancedFilters {
+  query: string;
+  branchIds: string[];
+  sourceId?: string;
+  noAppointmentWithinDays?: number;
+  appointmentStatuses: SchedulerAppointmentStatus[];
+  serviceProfileIds: string[];
+  birthdayMonth?: number;
+  sellerNames: string[];
+  customFields: Array<{ definitionId: string; value: string }>;
+  page: number;
+  pageSize: number;
+}
+
+export interface DesignCustomerAgendaInsights {
+  appointmentCount: number;
+  attendedCount: number;
+  canceledCount: number;
+  noShowCount: number;
+  lastAppointmentAt: string | null;
+}
+
+export interface DesignCustomerAdvancedResult
+  extends SchedulerCustomerSummaryDto {
+  agenda: DesignCustomerAgendaInsights;
+}
+
+export interface DesignCustomerAdvancedPage {
+  items: DesignCustomerAdvancedResult[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface DesignProposalClient {
   available: boolean;
   listAuthorizationAgents(): Promise<DesignOperationAgent[]>;
@@ -81,6 +119,9 @@ export interface DesignProposalClient {
     metadata?: Record<string, string>;
   }): Promise<DesignMovementRecord>;
   listMovements(): Promise<DesignMovementRecord[]>;
+  searchCustomersAdvanced(
+    input: DesignCustomerAdvancedFilters,
+  ): Promise<DesignCustomerAdvancedPage>;
   appointmentAnswers(appointmentId: string): Promise<DesignAppointmentAnswer[]>;
   saveAppointmentAnswers(
     appointmentId: string,

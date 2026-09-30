@@ -75,6 +75,12 @@ import {
   useSchedulerQuery,
 } from "./ApiState";
 import { CustomerEngagementPanel } from "@/components/clients/CustomerEngagementPanel";
+import {
+  SchedulerClientAdvancedFilters,
+  type SchedulerClientAdvancedFilterValue,
+} from "@/components/clients/SchedulerClientAdvancedFilters";
+import { schedulerDesignProposals } from "@scheduler/design-proposals";
+import type { DesignCustomerAdvancedResult } from "../../../design/contracts";
 
 type SensitiveSection = "profile" | "visits" | "financial";
 
@@ -140,6 +146,26 @@ const panelClass =
 const controlClass =
   "client-modal-control h-11 rounded-xl border-[#dfd5cc] bg-white text-[#364152] focus-visible:ring-[#c3a583]";
 
+const emptyAdvancedFilters: SchedulerClientAdvancedFilterValue = {
+  noAppointmentWithinDays: null,
+  appointmentStatuses: [],
+  serviceProfileIds: [],
+  birthdayMonth: null,
+  sellerNames: [],
+  customFields: {},
+};
+
+function advancedFilterCount(value: SchedulerClientAdvancedFilterValue): number {
+  return (
+    Number(value.noAppointmentWithinDays !== null) +
+    value.appointmentStatuses.length +
+    value.serviceProfileIds.length +
+    Number(value.birthdayMonth !== null) +
+    value.sellerNames.length +
+    Object.values(value.customFields).filter((entry) => entry.trim()).length
+  );
+}
+
 function initials(name: string): string {
   return name
     .split(/\s+/)
@@ -166,6 +192,12 @@ function formatMoney(value: string): string {
         currency: "MXN",
       }).format(amount)
     : value;
+}
+
+function hasAgendaInsights(
+  customer: SchedulerCustomerSummaryDto | DesignCustomerAdvancedResult,
+): customer is DesignCustomerAdvancedResult {
+  return "agenda" in customer;
 }
 
 function draftFromDetail(
@@ -316,6 +348,11 @@ export function ApiClientsWorkspace() {
     bootstrap?.authorizedBranchIds[0] ?? "",
   );
   const [sourceId, setSourceId] = useState("");
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [advancedFilters, setAdvancedFilters] =
+    useState<SchedulerClientAdvancedFilterValue>(emptyAdvancedFilters);
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] =
+    useState<SchedulerClientAdvancedFilterValue>(emptyAdvancedFilters);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -355,7 +392,7 @@ export function ApiClientsWorkspace() {
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
 
-  const results = useSchedulerQuery(
+  const canonicalResults = useSchedulerQuery(
     () =>
       schedulerApi.searchCustomers({
         query,
@@ -368,9 +405,53 @@ export function ApiClientsWorkspace() {
     {
       queryKey: `${schedulerCustomerQueryPrefix}:search`,
       branchId,
-      enabled: query.length >= 2 && Boolean(branchId),
+      enabled:
+        !schedulerDesignProposals.available &&
+        query.length >= 2 &&
+        Boolean(branchId),
     },
   );
+  const advancedFilterKey = JSON.stringify(appliedAdvancedFilters);
+  const appliedAdvancedFilterCount = advancedFilterCount(appliedAdvancedFilters);
+  const advancedResults = useSchedulerQuery(
+    () =>
+      schedulerDesignProposals.searchCustomersAdvanced({
+        query,
+        branchIds: branchId ? [branchId] : [],
+        ...(sourceId ? { sourceId } : {}),
+        ...(appliedAdvancedFilters.noAppointmentWithinDays
+          ? {
+              noAppointmentWithinDays:
+                appliedAdvancedFilters.noAppointmentWithinDays,
+            }
+          : {}),
+        appointmentStatuses: appliedAdvancedFilters.appointmentStatuses,
+        serviceProfileIds: appliedAdvancedFilters.serviceProfileIds,
+        ...(appliedAdvancedFilters.birthdayMonth
+          ? { birthdayMonth: appliedAdvancedFilters.birthdayMonth }
+          : {}),
+        sellerNames: appliedAdvancedFilters.sellerNames,
+        customFields: Object.entries(appliedAdvancedFilters.customFields)
+          .filter(([, value]) => value.trim())
+          .map(([definitionId, value]) => ({ definitionId, value })),
+        page,
+        pageSize,
+      }),
+    [query, branchId, sourceId, page, pageSize, advancedFilterKey],
+    {
+      queryKey: `${schedulerCustomerQueryPrefix}:advanced-search`,
+      branchId,
+      enabled:
+        schedulerDesignProposals.available &&
+        Boolean(branchId) &&
+        (query.length >= 2 ||
+          appliedAdvancedFilterCount > 0 ||
+          Boolean(sourceId)),
+    },
+  );
+  const results = schedulerDesignProposals.available
+    ? advancedResults
+    : canonicalResults;
   const sources = useSchedulerQuery(() => schedulerApi.customerSources(), [], {
     queryKey: `${schedulerCustomerQueryPrefix}:sources`,
   });
@@ -383,6 +464,11 @@ export function ApiClientsWorkspace() {
       enabled: Boolean(branchId),
     },
   );
+  const operationalCatalog = useSchedulerQuery(
+    () => schedulerApi.operationalCatalog(),
+    [],
+    { queryKey: `${schedulerCustomerQueryPrefix}:operational-catalog` },
+  );
 
   const totalPages = Math.max(
     1,
@@ -394,6 +480,30 @@ export function ApiClientsWorkspace() {
     () => definitions.data?.filter((definition) => definition.active) ?? [],
     [definitions.data],
   );
+  const advancedServices = useMemo(
+    () =>
+      (operationalCatalog.data?.services ?? [])
+        .filter((service) => service.active)
+        .map((service) => ({ id: service.id, name: service.name })),
+    [operationalCatalog.data?.services],
+  );
+  const advancedSellers = useMemo(
+    () => [
+      ...new Set([
+        ...(operationalCatalog.data?.professionals ?? [])
+          .filter((professional) => professional.active)
+          .map((professional) => professional.name),
+        ...(activeDefinitions.find((definition) => definition.key === "salesOwner")
+          ?.options ?? []),
+      ]),
+    ],
+    [activeDefinitions, operationalCatalog.data?.professionals],
+  );
+  const draftAdvancedFilterCount = advancedFilterCount(advancedFilters);
+  const hasSearchRequest =
+    query.length >= 2 ||
+    appliedAdvancedFilterCount > 0 ||
+    (schedulerDesignProposals.available && Boolean(sourceId));
 
   function clearSensitive(section?: SensitiveSection) {
     const sections: SensitiveSection[] = section
@@ -487,12 +597,24 @@ export function ApiClientsWorkspace() {
   function submitSearch(event?: FormEvent) {
     event?.preventDefault();
     const next = queryInput.trim();
-    if (next.length < 2) {
-      toast.error("Escribe al menos dos caracteres para buscar.");
+    const filters = advancedFilterCount(advancedFilters);
+    if (next.length > 0 && next.length < 2) {
+      toast.error("Escribe al menos dos caracteres o deja el texto vacío.");
+      return;
+    }
+    if (next.length < 2 && filters === 0 && !sourceId) {
+      toast.error("Escribe un término o selecciona al menos un filtro.");
       return;
     }
     setPage(1);
     setQuery(next);
+    setAppliedAdvancedFilters({
+      ...advancedFilters,
+      appointmentStatuses: [...advancedFilters.appointmentStatuses],
+      serviceProfileIds: [...advancedFilters.serviceProfileIds],
+      sellerNames: [...advancedFilters.sellerNames],
+      customFields: { ...advancedFilters.customFields },
+    });
   }
 
   function openCreate() {
@@ -784,7 +906,7 @@ export function ApiClientsWorkspace() {
             <FormField
               htmlFor="customer-query"
               label="Buscar cliente"
-              hint="Nombre, teléfono, correo o alias; mínimo 2 caracteres."
+              hint="Nombre, teléfono, correo o alias; también puedes buscar sólo con filtros."
             >
               <span className="relative block">
                 <Search className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
@@ -846,12 +968,34 @@ export function ApiClientsWorkspace() {
             </FormField>
             <Button
               className="h-11 rounded-xl bg-[#263649] px-5 text-white hover:bg-[#1d2b3a]"
-              disabled={queryInput.trim().length < 2}
+              disabled={
+                queryInput.trim().length === 1 ||
+                (queryInput.trim().length < 2 &&
+                  draftAdvancedFilterCount === 0 &&
+                  !sourceId)
+              }
               type="submit"
             >
               <Search className="mr-2 h-4 w-4" /> Buscar
             </Button>
           </form>
+          {schedulerDesignProposals.available ? (
+            <SchedulerClientAdvancedFilters
+              activeCount={draftAdvancedFilterCount}
+              definitions={activeDefinitions}
+              onChange={setAdvancedFilters}
+              onClear={() => {
+                setAdvancedFilters(emptyAdvancedFilters);
+                setAppliedAdvancedFilters(emptyAdvancedFilters);
+                setPage(1);
+              }}
+              onOpenChange={setAdvancedFiltersOpen}
+              open={advancedFiltersOpen}
+              sellers={advancedSellers}
+              services={advancedServices}
+              value={advancedFilters}
+            />
+          ) : null}
         </section>
 
         {canAdmin ? (
@@ -894,7 +1038,9 @@ export function ApiClientsWorkspace() {
               <h2 className="mt-1 font-semibold text-[#263649]">
                 {query
                   ? `Coincidencias para “${query}”`
-                  : "Consulta la base compartida"}
+                  : hasSearchRequest
+                    ? `${appliedAdvancedFilterCount + Number(Boolean(sourceId))} filtros combinados`
+                    : "Consulta la base compartida"}
               </h2>
             </div>
             {results.data ? (
@@ -904,17 +1050,17 @@ export function ApiClientsWorkspace() {
             ) : null}
           </div>
 
-          {query.length < 2 ? (
+          {!hasSearchRequest ? (
             <div className="flex min-h-64 flex-col items-center justify-center px-6 py-12 text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f5ede4] text-[#ad8b67]">
                 <UsersRound className="h-6 w-6" />
               </span>
               <h3 className="mt-4 font-semibold">
-                Busca una identidad compartida
+                Busca o combina filtros avanzados
               </h3>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                El backend exige una búsqueda acotada para proteger la base y
-                respetar el alcance de sucursal.
+                Usa texto, actividad en agenda, estatus, servicios,
+                cumpleaños, vendedor o cualquier campo personalizado.
               </p>
             </div>
           ) : (
@@ -932,7 +1078,9 @@ export function ApiClientsWorkspace() {
                 aria-label="Tabla de clientes"
                 tabIndex={0}
               >
-                <table className="w-full min-w-[960px] text-left text-sm">
+                <table
+                  className={`${schedulerDesignProposals.available ? "min-w-[1180px]" : "min-w-[960px]"} w-full text-left text-sm`}
+                >
                   <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
                     <tr>
                       {canAdmin ? (
@@ -942,6 +1090,9 @@ export function ApiClientsWorkspace() {
                       <th className="px-5 py-4">Contacto</th>
                       <th className="px-5 py-4">Procedencia</th>
                       <th className="px-5 py-4">Cartera vigente</th>
+                      {schedulerDesignProposals.available ? (
+                        <th className="px-5 py-4">Actividad de agenda</th>
+                      ) : null}
                       <th className="px-5 py-4 text-right">Opciones</th>
                     </tr>
                   </thead>
@@ -1015,6 +1166,32 @@ export function ApiClientsWorkspace() {
                                   ))
                               : "Sin cartera vigente"}
                           </td>
+                          {schedulerDesignProposals.available ? (
+                            <td className="px-5 py-4 text-slate-500">
+                              {hasAgendaInsights(customer) ? (
+                                <div className="space-y-1.5">
+                                  <p className="text-xs font-semibold text-[#526273]">
+                                    {customer.agenda.lastAppointmentAt
+                                      ? `Última: ${formatDateTime(customer.agenda.lastAppointmentAt)}`
+                                      : "Sin citas registradas"}
+                                  </p>
+                                  <div className="flex flex-wrap gap-1.5 text-[0.68rem]">
+                                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+                                      {customer.agenda.attendedCount} asistidas
+                                    </span>
+                                    <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-700">
+                                      {customer.agenda.canceledCount} canceladas
+                                    </span>
+                                    <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">
+                                      {customer.agenda.noShowCount} no show
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                "Sin métricas"
+                              )}
+                            </td>
+                          ) : null}
                           <td className="px-5 py-4 text-right">
                             <div className="flex justify-end gap-2">
                             {bootstrap?.canManageAccess && bootstrap.mockModeEnabled && canWrite ? (
@@ -1140,7 +1317,7 @@ export function ApiClientsWorkspace() {
             window.clearTimeout(editorSensitiveTimer.current);
             editorSensitiveTimer.current = null;
           }
-          if (query) void results.reload();
+          if (hasSearchRequest) void results.reload();
         }}
         onSubmit={(event) => void saveCustomer(event)}
         open={editorOpen}
