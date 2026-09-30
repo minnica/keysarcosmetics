@@ -1,5 +1,6 @@
 import {
   SCHEDULER_CAPABILITIES,
+  SCHEDULER_APPOINTMENT_STATUSES,
   SCHEDULER_SCREEN_KEYS,
   SCHEDULER_WEEKDAYS,
   type SchedulerAppointmentDto,
@@ -31,7 +32,31 @@ import type {
   DesignMovementRecord,
   DesignOperationAgentSource,
   DesignOperationPurpose,
+  DesignStatusDefinition,
+  DesignStatusDefinitionRevision,
 } from "./contracts";
+
+const designStatusLabels: Record<SchedulerAppointmentDto["status"], string> = {
+  PENDING: "Pendiente",
+  RESERVED: "Reservada",
+  CONFIRMED: "Confirmada",
+  ARRIVED: "Llegó",
+  WAITING: "En espera",
+  ATTENDED: "Atendida",
+  NO_SHOW: "No asistió",
+  CANCELED: "Cancelada",
+};
+
+const designStatusColors: Record<SchedulerAppointmentDto["status"], string> = {
+  PENDING: "#d8a54a",
+  RESERVED: "#6485a8",
+  CONFIRMED: "#4f8b73",
+  ARRIVED: "#9274a5",
+  WAITING: "#c1835b",
+  ATTENDED: "#3f7f6a",
+  NO_SHOW: "#a86b62",
+  CANCELED: "#7c858f",
+};
 
 export const designOrigin = "https://scheduler-design.invalid";
 export type DesignRole = "master" | "specialist" | "read-only";
@@ -376,6 +401,33 @@ export function createDesignState(
     },
   ];
   const now = new Date().toISOString();
+  const statusDefinitions: DesignStatusDefinition[] =
+    SCHEDULER_APPOINTMENT_STATUSES.map((status) => {
+      const configuredColor =
+        schedulerAdministrationCatalogRv4Fixture.statusColors
+          .flatMap((entry) => entry.colors)
+          .find((entry) => entry.status === status)?.color ??
+        designStatusColors[status];
+      return {
+        id: `design-status-${status.toLowerCase()}`,
+        commerceId: catalog.commerces[0]!.id,
+        key: status,
+        canonicalStatus: status,
+        label: designStatusLabels[status],
+        color: configuredColor,
+        active: true,
+        system: true,
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+  const statusDefinitionHistory: DesignStatusDefinitionRevision[] =
+    statusDefinitions.map((definition) => ({
+      ...definition,
+      effectiveFrom: now,
+      effectiveTo: null,
+    }));
   const operationAgents = [
     ...designDemoAccounts.map((account) => ({
       id: `design-agent-${account.id}`,
@@ -463,6 +515,8 @@ export function createDesignState(
       }
     >(),
     operationAgents,
+    statusDefinitions,
+    statusDefinitionHistory,
     usedAuthorizationCodes: new Set(operationAgents.map((agent) => agent.code)),
     operationAuthorizations: new Map<
       string,

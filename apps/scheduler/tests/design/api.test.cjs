@@ -367,6 +367,143 @@ test("escenarios, campos obligatorios y endpoints nuevos fallan de forma explíc
   );
 });
 
+test("el catálogo de status agrega, versiona e inactiva sin reescribir citas", () => {
+  const { state, request } = session();
+  const commerceId = state.catalog.commerces[0].id;
+  const appointmentSnapshot = structuredClone(state.appointments);
+  const authorize = () =>
+    request("POST", "/api/scheduler/authorizations", {
+      secret: "0000",
+      purpose: "STATUS_COLORS_CHANGE",
+      targetType: "SchedulerCommerce",
+      targetId: commerceId,
+    }).body.data.token;
+
+  const created = request(
+    "POST",
+    "/api/scheduler/design-proposals/status-definitions",
+    {
+      commerceId,
+      label: "Reprogramación solicitada",
+      color: "#8b6fa7",
+      active: true,
+      authorizationToken: authorize(),
+    },
+  );
+  assert.equal(created.status, 201);
+  assert.equal(created.body.data.version, 1);
+  assert.equal(created.body.data.system, false);
+  assert.match(created.body.data.key, /^CUSTOM_/);
+
+  const edited = request(
+    "PUT",
+    `/api/scheduler/design-proposals/status-definitions/${created.body.data.id}`,
+    {
+      commerceId,
+      label: "Reprogramación pendiente",
+      color: "#76558f",
+      active: true,
+      expectedVersion: 1,
+      authorizationToken: authorize(),
+    },
+  );
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.data.version, 2);
+  assert.equal(edited.body.data.key, created.body.data.key);
+
+  const inactive = request(
+    "PUT",
+    `/api/scheduler/design-proposals/status-definitions/${created.body.data.id}`,
+    {
+      commerceId,
+      label: "Reprogramación pendiente",
+      color: "#76558f",
+      active: false,
+      expectedVersion: 2,
+      authorizationToken: authorize(),
+    },
+  );
+  assert.equal(inactive.status, 200);
+  assert.equal(inactive.body.data.active, false);
+  assert.equal(inactive.body.data.version, 3);
+
+  const catalog = request(
+    "GET",
+    `/api/scheduler/design-proposals/status-definitions?commerceId=${commerceId}`,
+  ).body.data;
+  const definition = catalog.items.find(
+    (item) => item.id === created.body.data.id,
+  );
+  const revisions = catalog.revisions
+    .filter((item) => item.id === created.body.data.id)
+    .sort((left, right) => left.version - right.version);
+  assert.equal(definition.active, false);
+  assert.deepEqual(
+    revisions.map((revision) => ({
+      version: revision.version,
+      label: revision.label,
+      active: revision.active,
+      current: revision.effectiveTo === null,
+    })),
+    [
+      {
+        version: 1,
+        label: "Reprogramación solicitada",
+        active: true,
+        current: false,
+      },
+      {
+        version: 2,
+        label: "Reprogramación pendiente",
+        active: true,
+        current: false,
+      },
+      {
+        version: 3,
+        label: "Reprogramación pendiente",
+        active: false,
+        current: true,
+      },
+    ],
+  );
+  const confirmed = catalog.items.find(
+    (item) => item.canonicalStatus === "CONFIRMED",
+  );
+  const recolored = request(
+    "PUT",
+    `/api/scheduler/design-proposals/status-definitions/${confirmed.id}`,
+    {
+      commerceId,
+      label: confirmed.label,
+      color: "#315f52",
+      active: true,
+      expectedVersion: confirmed.version,
+      authorizationToken: authorize(),
+    },
+  );
+  assert.equal(recolored.status, 200);
+  assert.equal(
+    state.administration.statusColors[0].colors.find(
+      (item) => item.status === "CONFIRMED",
+    ).color,
+    "#315f52",
+  );
+  assert.deepEqual(state.appointments, appointmentSnapshot);
+  assert.ok(!JSON.stringify(catalog).includes("0000"));
+  assert.deepEqual(
+    state.movements
+      .filter((movement) => movement.targetType === "STATUS_DEFINITION")
+      .map((movement) => movement.action),
+    [
+      "Actualización de status",
+      "Inactivación de status",
+      "Actualización de status",
+      "Alta de status",
+    ],
+  );
+  assert.ok(!JSON.stringify(state.movements).includes("0000"));
+});
+
 test("los códigos de agente son únicos y cada movimiento consume una autorización", () => {
   const { state, request } = session();
   const agents = request(

@@ -36,6 +36,8 @@ import type {
   DesignOperationAgent,
   DesignOperationPurpose,
   DesignPurchaseKind,
+  DesignStatusDefinition,
+  DesignStatusDefinitionRevision,
 } from "./contracts";
 import {
   schedulerReportRv7Fixture,
@@ -1023,6 +1025,172 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     };
   }
   if (resource === "design-proposals") {
+    if (id === "status-definitions") {
+      const commerceId = String(
+        body.commerceId ?? query.get("commerceId") ?? "",
+      );
+      if (
+        !state.catalog.commerces.some(
+          (commerce) => commerce.id === commerceId && commerce.active,
+        )
+      ) {
+        fail(400, "Selecciona un comercio activo.");
+      }
+      if (method === "GET") {
+        return {
+          items: state.statusDefinitions
+            .filter((definition) => definition.commerceId === commerceId)
+            .sort((left, right) =>
+              left.label.localeCompare(right.label, "es-MX"),
+            ),
+          revisions: state.statusDefinitionHistory
+            .filter((revision) => revision.commerceId === commerceId)
+            .sort((left, right) =>
+              right.effectiveFrom.localeCompare(left.effectiveFrom),
+            ),
+        };
+      }
+      if (!["POST", "PUT"].includes(method)) {
+        fail(405, "Usa GET, POST o PUT para el catálogo de status.");
+      }
+      if (state.controls.role !== "master") {
+        fail(403, "Sólo master puede administrar el catálogo de status.");
+      }
+      consumeAuthorization(
+        state,
+        body.authorizationToken,
+        "STATUS_COLORS_CHANGE",
+        commerceId,
+      );
+      const label = String(body.label ?? "").trim();
+      const color = String(body.color ?? "").toLowerCase();
+      if (label.length < 2 || label.length > 40) {
+        fail(400, "El nombre del status debe tener de 2 a 40 caracteres.");
+      }
+      if (!/^#[0-9a-f]{6}$/.test(color)) {
+        fail(400, "Selecciona un color hexadecimal válido.");
+      }
+      const existing = action
+        ? state.statusDefinitions.find(
+            (definition) =>
+              definition.id === action &&
+              definition.commerceId === commerceId,
+          )
+        : undefined;
+      if (method === "PUT" && !existing) {
+        fail(404, "Status no encontrado.");
+      }
+      if (existing) versionGuard(existing, body);
+      const wasActive = existing?.active;
+      if (
+        state.statusDefinitions.some(
+          (definition) =>
+            definition.commerceId === commerceId &&
+            definition.id !== existing?.id &&
+            textKey(definition.label) === textKey(label),
+        )
+      ) {
+        fail(409, "Ya existe un status con ese nombre.");
+      }
+      const updatedAt = new Date().toISOString();
+      let definition: DesignStatusDefinition;
+      if (existing) {
+        const openRevision = state.statusDefinitionHistory.find(
+          (revision) =>
+            revision.id === existing.id &&
+            revision.effectiveTo === null,
+        );
+        if (openRevision) openRevision.effectiveTo = updatedAt;
+        existing.label = label;
+        existing.color = color;
+        existing.active = body.active !== false;
+        existing.version += 1;
+        existing.updatedAt = updatedAt;
+        definition = existing;
+      } else {
+        const baseKey = textKey(label)
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .toUpperCase();
+        if (!baseKey) fail(400, "No fue posible generar la clave del status.");
+        let key = `CUSTOM_${baseKey}`;
+        let suffix = 2;
+        while (
+          state.statusDefinitions.some(
+            (candidate) =>
+              candidate.commerceId === commerceId && candidate.key === key,
+          )
+        ) {
+          key = `CUSTOM_${baseKey}_${suffix}`;
+          suffix += 1;
+        }
+        definition = {
+          id: designId("design-status"),
+          commerceId,
+          key,
+          canonicalStatus: null,
+          label,
+          color,
+          active: body.active !== false,
+          system: false,
+          version: 1,
+          createdAt: updatedAt,
+          updatedAt,
+        };
+        state.statusDefinitions.push(definition);
+      }
+      const revision: DesignStatusDefinitionRevision = {
+        ...definition,
+        effectiveFrom: updatedAt,
+        effectiveTo: null,
+      };
+      state.statusDefinitionHistory.push(revision);
+
+      if (definition.canonicalStatus) {
+        const palette =
+          state.administration.statusColors.find(
+            (entry) => entry.commerceId === commerceId,
+          ) ??
+          (() => {
+            const created = { commerceId, colors: [] };
+            state.administration.statusColors.push(created);
+            return created;
+          })();
+        palette.colors = palette.colors.filter(
+          (entry) => entry.status !== definition.canonicalStatus,
+        );
+        if (definition.active) {
+          palette.colors.push({
+            status: definition.canonicalStatus,
+            color: definition.color,
+            version: definition.version,
+          });
+        }
+      }
+      state.movements.unshift({
+        id: designId("design-movement"),
+        actorId: designBootstrap(state).user.id,
+        actor: designBootstrap(state).user.name,
+        actorRole: designBootstrap(state).user.positionName ?? "Sesión",
+        actorSource: "SESSION",
+        action: existing
+          ? wasActive && !definition.active
+            ? "Inactivación de status"
+            : "Actualización de status"
+          : "Alta de status",
+        purpose: "SYSTEM_WRITE",
+        targetType: "STATUS_DEFINITION",
+        targetId: definition.id,
+        createdAt: updatedAt,
+        metadata: {
+          commerceId,
+          statusKey: definition.key,
+          version: String(definition.version),
+          active: String(definition.active),
+        },
+      });
+      return definition;
+    }
     if (id === "reports" && action === "cabin-sales") {
       if (method !== "POST") fail(405, "Usa POST para el reporte por cabina.");
       return buildCabinSalesReport(state, {

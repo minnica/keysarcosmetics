@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Gift,
+  History,
   Layers3,
   Palette,
   Pencil,
@@ -43,6 +44,11 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { schedulerApi } from "@/lib/api";
+import { schedulerDesignProposals } from "@scheduler/design-proposals";
+import type {
+  DesignStatusDefinition,
+  DesignStatusDefinitionRevision,
+} from "../../../design/contracts";
 import {
   schedulerAdministrationInvalidations,
   schedulerTimeToMinutes,
@@ -1116,7 +1122,351 @@ export function RestoredGiftCardsSection() {
   );
 }
 
+interface StatusDefinitionDraft {
+  id?: string;
+  label: string;
+  color: string;
+  active: boolean;
+  version?: number;
+}
+
+function statusRevisionDate(value: string) {
+  return new Intl.DateTimeFormat("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function DesignStatusColorsSection() {
+  const { canAccess } = useSchedulerSession();
+  const canAdmin = canAccess("administration.status-colors", "ADMIN");
+  const query = useAdministrationData();
+  const [commerceId, setCommerceId] = useState("");
+  const [draft, setDraft] = useState<StatusDefinitionDraft | null>(null);
+  const [secret, setSecret] = useState("");
+  const [saving, setSaving] = useState(false);
+  const selectedCommerceId =
+    commerceId || query.data?.operations.commerces[0]?.id || "";
+  const statusQuery = useSchedulerQuery(
+    () => schedulerDesignProposals.statusDefinitions(selectedCommerceId),
+    [selectedCommerceId],
+    {
+      queryKey: "design-status-definitions",
+      enabled: Boolean(selectedCommerceId),
+    },
+  );
+
+  useEffect(() => {
+    setDraft(null);
+    setSecret("");
+  }, [selectedCommerceId]);
+
+  function openCreate() {
+    setSecret("");
+    setDraft({ label: "", color: "#9a7658", active: true });
+  }
+
+  function openEdit(definition: DesignStatusDefinition) {
+    setSecret("");
+    setDraft({
+      id: definition.id,
+      label: definition.label,
+      color: definition.color,
+      active: definition.active,
+      version: definition.version,
+    });
+  }
+
+  async function saveDefinition() {
+    if (!draft || !selectedCommerceId) return;
+    setSaving(true);
+    try {
+      const authorization = await schedulerApi.createAuthorization({
+        secret,
+        purpose: "STATUS_COLORS_CHANGE",
+        screenKey: "scheduler/administration/status-colors",
+        targetType: "SchedulerCommerce",
+        targetId: selectedCommerceId,
+      });
+      await schedulerDesignProposals.saveStatusDefinition({
+        ...(draft.id ? { id: draft.id } : {}),
+        commerceId: selectedCommerceId,
+        label: draft.label.trim(),
+        color: draft.color,
+        active: draft.active,
+        ...(draft.version !== undefined
+          ? { expectedVersion: draft.version }
+          : {}),
+        authorizationToken: authorization.token,
+      });
+      toast.success(
+        draft.id
+          ? "Status actualizado sin modificar su historial."
+          : "Status agregado al catálogo versionado.",
+      );
+      setDraft(null);
+      setSecret("");
+      invalidateSchedulerQueries(...schedulerAdministrationInvalidations());
+      await Promise.all([statusQuery.reload(), query.reload()]);
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible guardar el status.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const revisionsFor = (definitionId: string) =>
+    (statusQuery.data?.revisions ?? []).filter(
+      (revision) => revision.id === definitionId,
+    );
+
+  return (
+    <RestoredAdministrationFrame
+      section="status-colors"
+      readOnly={!canAdmin}
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <AdministrationRefreshButton
+            onClick={() => void statusQuery.reload()}
+            loading={statusQuery.loading}
+          />
+          {canAdmin ? (
+            <Button onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" /> Agregar status
+            </Button>
+          ) : null}
+        </div>
+      }
+    >
+      <QueryBoundary
+        loading={query.loading || statusQuery.loading}
+        error={query.error ?? statusQuery.error}
+        onRetry={() => {
+          void query.reload();
+          void statusQuery.reload();
+        }}
+      >
+        <Card className="admin-card">
+          <CardContent className="space-y-6 p-5 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="admin-eyebrow">Catálogo versionado</p>
+                <h2 className="admin-section-title">Estados de la agenda</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                  Alta, edición e inactivación lógica. Cada cambio crea una
+                  revisión nueva; las citas y versiones históricas conservan
+                  el nombre, color y vigencia que les correspondía.
+                </p>
+              </div>
+              <div className="w-full sm:max-w-xs">
+                <Label>Comercio</Label>
+                <Select value={selectedCommerceId} onValueChange={setCommerceId}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {query.data?.operations.commerces.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              {(statusQuery.data?.items ?? []).map((definition) => {
+                const revisions = revisionsFor(definition.id);
+                return (
+                  <article
+                    className="rounded-2xl border border-slate-200 bg-white p-4"
+                    key={definition.id}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span
+                        className="mt-1 h-10 w-10 shrink-0 rounded-xl border-2 border-white shadow-sm ring-1 ring-slate-200"
+                        style={{ backgroundColor: definition.color }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-slate-800">
+                            {definition.label}
+                          </h3>
+                          <Badge variant={definition.active ? "default" : "secondary"}>
+                            {definition.active ? "Activo" : "Inactivo"}
+                          </Badge>
+                          <Badge variant="outline">
+                            {definition.system ? "Canónico" : "Personalizado"}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 font-mono text-xs text-slate-400">
+                          {definition.key} · {definition.color.toUpperCase()} · v{definition.version}
+                        </p>
+                      </div>
+                      {canAdmin ? (
+                        <Button
+                          aria-label={`Editar ${definition.label}`}
+                          onClick={() => openEdit(definition)}
+                          size="icon"
+                          variant="outline"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                    </div>
+                    <details className="mt-4 border-t border-slate-100 pt-3">
+                      <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-slate-600">
+                        <History className="h-4 w-4" /> Historial de versiones ({revisions.length})
+                      </summary>
+                      <div className="mt-3 space-y-2">
+                        {revisions.map((revision: DesignStatusDefinitionRevision) => (
+                          <div
+                            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-[#f8f5f1] px-3 py-2 text-xs text-slate-600"
+                            key={`${revision.id}:${revision.version}`}
+                          >
+                            <span className="font-semibold">v{revision.version}</span>
+                            <span>{revision.label}</span>
+                            <span className="font-mono">{revision.color.toUpperCase()}</span>
+                            <span>{revision.active ? "Activo" : "Inactivo"}</span>
+                            <span className="ml-auto text-slate-400">
+                              {statusRevisionDate(revision.effectiveFrom)}
+                              {revision.effectiveTo
+                                ? ` — ${statusRevisionDate(revision.effectiveTo)}`
+                                : " — vigente"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  </article>
+                );
+              })}
+            </div>
+            <p className="rounded-2xl bg-[#f8f5f1] p-4 text-sm leading-6 text-slate-500">
+              Los estados canónicos actualizan su color vigente en Agenda. Los
+              estados personalizados quedan listos como propuesta de catálogo;
+              asignarlos a citas requiere ampliar el enum y las transiciones del
+              contrato productivo antes de activarlos fuera de esta demo.
+            </p>
+          </CardContent>
+        </Card>
+      </QueryBoundary>
+
+      <Dialog open={Boolean(draft)} onOpenChange={(open) => !open && setDraft(null)}>
+        <DialogContent className="admin-dialog max-w-lg overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>{draft?.id ? "Editar status" : "Agregar status"}</DialogTitle>
+          </DialogHeader>
+          {draft ? (
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="status-name">Nombre</Label>
+                <Input
+                  id="status-name"
+                  className="mt-1.5"
+                  maxLength={40}
+                  value={draft.label}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current ? { ...current, label: event.target.value } : current,
+                    )
+                  }
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
+                <div>
+                  <Label htmlFor="status-color-text">Color</Label>
+                  <Input
+                    id="status-color-text"
+                    className="mt-1.5 font-mono uppercase"
+                    value={draft.color}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current ? { ...current, color: event.target.value } : current,
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="status-color-picker">Selector</Label>
+                  <Input
+                    id="status-color-picker"
+                    className="mt-1.5 h-10 cursor-pointer p-1"
+                    type="color"
+                    value={/^#[0-9a-fA-F]{6}$/.test(draft.color) ? draft.color : "#9a7658"}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current ? { ...current, color: event.target.value } : current,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Disponibilidad</Label>
+                <Select
+                  value={draft.active ? "ACTIVE" : "INACTIVE"}
+                  onValueChange={(value) =>
+                    setDraft((current) =>
+                      current ? { ...current, active: value === "ACTIVE" } : current,
+                    )
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Activo</SelectItem>
+                    <SelectItem value="INACTIVE">Inactivo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="status-catalog-secret">Código personal</Label>
+                <Input
+                  id="status-catalog-secret"
+                  autoComplete="off"
+                  className="mt-1.5"
+                  type="password"
+                  value={secret}
+                  onChange={(event) => setSecret(event.target.value)}
+                />
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Autoriza sólo esta versión. El código no se guarda en el historial.
+                </p>
+              </div>
+              <div className="flex justify-end border-t border-slate-200 pt-4">
+                <Button
+                  disabled={
+                    saving ||
+                    !secret ||
+                    draft.label.trim().length < 2 ||
+                    !/^#[0-9a-fA-F]{6}$/.test(draft.color)
+                  }
+                  onClick={() => void saveDefinition()}
+                >
+                  <Save className="mr-2 h-4 w-4" /> Guardar nueva versión
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </RestoredAdministrationFrame>
+  );
+}
+
 export function RestoredStatusColorsSection() {
+  if (schedulerDesignProposals.available) return <DesignStatusColorsSection />;
+  return <CanonicalStatusColorsSection />;
+}
+
+function CanonicalStatusColorsSection() {
   const { canAccess } = useSchedulerSession();
   const canAdmin = canAccess("administration.status-colors", "ADMIN");
   const query = useAdministrationData();

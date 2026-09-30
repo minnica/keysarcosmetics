@@ -8,6 +8,8 @@ import type {
   DesignOperationAgent,
   DesignOperationGrant,
   DesignProposalClient,
+  DesignStatusCatalog,
+  DesignStatusDefinition,
 } from "./contracts";
 import { designDemoAccounts } from "./store";
 
@@ -71,6 +73,18 @@ export const schedulerDesignProposals: DesignProposalClient = {
   listMovements: () =>
     request<DesignMovementRecord[]>(
       "/api/scheduler/design-proposals/movements",
+    ),
+  statusDefinitions: (commerceId) =>
+    request<DesignStatusCatalog>(
+      `/api/scheduler/design-proposals/status-definitions?commerceId=${encodeURIComponent(commerceId)}`,
+    ),
+  saveStatusDefinition: (input) =>
+    request<DesignStatusDefinition>(
+      `/api/scheduler/design-proposals/status-definitions${input.id ? `/${input.id}` : ""}`,
+      {
+        method: input.id ? "PUT" : "POST",
+        body: JSON.stringify(input),
+      },
     ),
   searchCustomersAdvanced: (input) =>
     request<DesignCustomerAdvancedPage>(

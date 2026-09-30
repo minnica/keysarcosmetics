@@ -50,6 +50,31 @@ export interface DesignAppointmentAnswer {
   value: string | number | boolean;
 }
 
+export interface DesignStatusDefinition {
+  id: string;
+  commerceId: string;
+  key: string;
+  canonicalStatus: SchedulerAppointmentStatus | null;
+  label: string;
+  color: string;
+  active: boolean;
+  system: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DesignStatusDefinitionRevision
+  extends DesignStatusDefinition {
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface DesignStatusCatalog {
+  items: DesignStatusDefinition[];
+  revisions: DesignStatusDefinitionRevision[];
+}
+
 export type DesignPurchaseKind = "NONE" | "FULL" | "LAYAWAY" | null;
 
 export interface DesignCabinVisitPerson {
@@ -220,6 +245,16 @@ export interface DesignProposalClient {
     metadata?: Record<string, string>;
   }): Promise<DesignMovementRecord>;
   listMovements(): Promise<DesignMovementRecord[]>;
+  statusDefinitions(commerceId: string): Promise<DesignStatusCatalog>;
+  saveStatusDefinition(input: {
+    id?: string;
+    commerceId: string;
+    label: string;
+    color: string;
+    active: boolean;
+    expectedVersion?: number;
+    authorizationToken: string;
+  }): Promise<DesignStatusDefinition>;
   searchCustomersAdvanced(
     input: DesignCustomerAdvancedFilters,
   ): Promise<DesignCustomerAdvancedPage>;
