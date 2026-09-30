@@ -23,7 +23,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@cosmetics/ui";
-import { Ban, CalendarDays, Plus } from "lucide-react";
+import { Ban, CalendarDays, DoorOpen, Plus, UserRound } from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -538,7 +538,12 @@ export function SchedulerAgendaGrid({
                 {visibleProfessionals.map((professional) => (
                   <div
                     key={professional.id}
-                    className="scheduler-column-header"
+                    className={cn(
+                      "scheduler-column-header",
+                      professional.kind === "RESOURCE"
+                        ? "scheduler-column-header-resource"
+                        : "scheduler-column-header-professional",
+                    )}
                   >
                     <SchedulerAvatar
                       accent={professional.accent}
@@ -548,11 +553,33 @@ export function SchedulerAgendaGrid({
                       size="header"
                     />
                     <div className="min-w-0">
+                      <span
+                        className={cn(
+                          "scheduler-column-kind",
+                          professional.kind === "RESOURCE"
+                            ? "scheduler-column-kind-resource"
+                            : "scheduler-column-kind-professional",
+                        )}
+                      >
+                        {professional.kind === "RESOURCE" ? (
+                          <DoorOpen className="h-3 w-3" />
+                        ) : (
+                          <UserRound className="h-3 w-3" />
+                        )}
+                        {professional.kind === "RESOURCE"
+                          ? professional.resourceKind === "ROOM"
+                            ? "Cabina"
+                            : "Recurso"
+                          : "Especialista"}
+                        {professional.capacity
+                          ? ` · ${professional.capacity}p`
+                          : ""}
+                      </span>
                       <p className="scheduler-professional-name truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800">
                         {professional.name}
                       </p>
                       <p className="scheduler-professional-status text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">
-                        {professional.branchName ?? "Cabina lista"}
+                        {professional.branchName ?? "Sucursal"}
                       </p>
                     </div>
                   </div>

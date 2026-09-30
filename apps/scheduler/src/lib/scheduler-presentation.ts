@@ -28,6 +28,8 @@ export interface Professional {
   id: string;
   entityId?: string;
   kind?: "PROFESSIONAL" | "RESOURCE";
+  resourceKind?: "ROOM" | "EQUIPMENT" | "STATION" | "OTHER";
+  capacity?: number;
   commerceIds: string[];
   branchIds: string[];
   branchName?: string;

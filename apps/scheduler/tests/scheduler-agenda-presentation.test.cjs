@@ -35,6 +35,10 @@ const {
   schedulerLocalDateTimeToInstant,
 } = loadSource("scheduler-agenda-data");
 const {
+  filterSchedulerAgendaColumns,
+  shouldFitSchedulerAgendaColumns,
+} = loadSource("scheduler-agenda-layout");
+const {
   buildSchedulerQueryScope,
   schedulerQueryMatchesInvalidation,
   shouldAcceptSchedulerResponse,
@@ -190,6 +194,8 @@ test("builds typed columns without turning resources into professionals", () => 
       {
         id: "resource-1",
         name: "Cabina 1",
+        kind: "ROOM",
+        capacity: 2,
         active: true,
         branchProfileId: "branch-profile-1",
       },
@@ -210,6 +216,37 @@ test("builds typed columns without turning resources into professionals", () => 
   });
   assert.equal(result.columns[0].kind, "PROFESSIONAL");
   assert.equal(result.columns[1].kind, "RESOURCE");
+  assert.equal(result.columns[1].resourceKind, "ROOM");
+  assert.equal(result.columns[1].capacity, 2);
+});
+
+test("filters agenda columns explicitly by cabins or specialists", () => {
+  const columns = [
+    { id: "professional-1", kind: "PROFESSIONAL" },
+    { id: "cabin-1", kind: "RESOURCE", resourceKind: "ROOM" },
+    { id: "cabin-2", kind: "RESOURCE", resourceKind: "ROOM" },
+    { id: "equipment-1", kind: "RESOURCE", resourceKind: "EQUIPMENT" },
+  ];
+
+  assert.deepEqual(
+    Array.from(filterSchedulerAgendaColumns(columns, "CABINS"), (item) => item.id),
+    ["cabin-1", "cabin-2"],
+  );
+  assert.deepEqual(
+    Array.from(
+      filterSchedulerAgendaColumns(columns, "SPECIALISTS"),
+      (item) => item.id,
+    ),
+    ["professional-1"],
+  );
+  assert.equal(filterSchedulerAgendaColumns(columns, "ALL").length, 4);
+});
+
+test("fits readable agenda columns automatically to the monitor width", () => {
+  assert.equal(shouldFitSchedulerAgendaColumns(1920, 6, true), true);
+  assert.equal(shouldFitSchedulerAgendaColumns(1366, 6, true), false);
+  assert.equal(shouldFitSchedulerAgendaColumns(390, 1, false), true);
+  assert.equal(shouldFitSchedulerAgendaColumns(390, 2, false), false);
 });
 
 test("projects one canonical appointment into its professional and resource columns", () => {

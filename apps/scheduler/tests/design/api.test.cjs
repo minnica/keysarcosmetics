@@ -752,6 +752,75 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
   assert.equal(saved.body.data.visitors[0].purchaseKind, "LAYAWAY");
   assert.equal(saved.body.data.visitors[0].saleAmount, 1200);
   assert.equal(saved.body.data.visitors[0].depositAmount, 350);
+  assert.equal(
+    saved.body.data.visitors[0].saleOwnerSpecialistProfileId,
+    specialist.id,
+  );
+  assert.equal(saved.body.data.visitors[0].settlementStatus, "OPEN");
+  assert.equal(saved.body.data.visitors[0].settledAt, null);
+
+  const settlementSpecialist = state.catalog.professionals.find(
+    (candidate) =>
+      candidate.id !== specialist.id &&
+      candidate.branchProfileIds.includes(branch.id),
+  );
+  const correctionGrant = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code: "1111",
+      purpose: "PURCHASE_CORRECTION",
+      targetType: "APPOINTMENT_PURCHASE",
+      targetId: appointmentId,
+    },
+  ).body.data;
+  const settled = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+    {
+      cabinResourceId: cabin.id,
+      cabinCapacity: 1,
+      visitors: [
+        {
+          id: "visitor-primary",
+          customerId: state.appointments[0].customerId,
+          name: state.appointments[0].customerName,
+          specialistProfileId: settlementSpecialist.id,
+          purchased: true,
+          purchaseAmount: 1200,
+          purchaseKind: "FULL",
+          saleAmount: 1200,
+          depositAmount: 1200,
+        },
+      ],
+    },
+    { "x-design-operation-authorization": correctionGrant.token },
+  );
+  assert.equal(settled.status, 200);
+  assert.equal(settled.body.data.visitors[0].specialistProfileId, settlementSpecialist.id);
+  assert.equal(
+    settled.body.data.visitors[0].saleOwnerSpecialistProfileId,
+    specialist.id,
+  );
+  assert.equal(settled.body.data.visitors[0].settlementStatus, "PAID");
+  assert.ok(settled.body.data.visitors[0].settledAt);
+
+  const attributedRow = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/cabin-sales",
+    {
+      dateFrom: state.controls.date,
+      dateTo: state.controls.date,
+      branchIds: [state.appointments[0].branchId],
+      query: state.appointments[0].customerName,
+    },
+  ).body.data.rows.find((row) => row.appointmentId === appointmentId);
+  assert.equal(attributedRow.specialistProfileId, specialist.id);
+  assert.equal(attributedRow.saleOwnerSpecialistProfileId, specialist.id);
+  assert.equal(
+    attributedRow.attendingSpecialistProfileId,
+    settlementSpecialist.id,
+  );
 });
 
 test("el reporte por cabina usa la misma población para métricas y detalle", () => {
@@ -914,6 +983,62 @@ test("no permite marcar asistencia antes de que termine la sesión", () => {
   );
   assert.equal(result.status, 409);
   assert.match(result.body.message, /termine el tiempo/);
+});
+
+test("no permite marcar asistencia sin completar compra o no compra", () => {
+  const { state, request } = session();
+  const appointment = state.appointments[0];
+  const branch = state.catalog.branches.find(
+    (item) => item.branchId === appointment.branchId,
+  );
+  const cabin = state.catalog.resources.find(
+    (resource) =>
+      resource.branchProfileId === branch.id && resource.capacity === 1,
+  );
+  const specialist = state.catalog.professionals.find((candidate) =>
+    candidate.branchProfileIds.includes(branch.id),
+  );
+  appointment.endsAt = "2000-01-01T00:00:00.000Z";
+
+  const incomplete = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/status`,
+    { status: "ATTENDED", expectedVersion: appointment.version },
+  );
+  assert.equal(incomplete.status, 409);
+  assert.match(incomplete.body.message, /Completa para cada visitante/);
+
+  const capture = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${appointment.id}/cabin-visit`,
+    {
+      cabinResourceId: cabin.id,
+      cabinCapacity: 1,
+      visitors: [
+        {
+          id: "visitor-primary",
+          customerId: appointment.customerId,
+          name: appointment.customerName,
+          specialistProfileId: specialist.id,
+          purchased: false,
+          purchaseAmount: null,
+          purchaseKind: "NONE",
+          saleAmount: null,
+          depositAmount: null,
+        },
+      ],
+    },
+  );
+  assert.equal(capture.status, 200);
+  assert.equal(capture.body.data.visitors[0].settlementStatus, "NOT_APPLICABLE");
+
+  const completed = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/status`,
+    { status: "ATTENDED", expectedVersion: appointment.version },
+  );
+  assert.equal(completed.status, 201);
+  assert.equal(completed.body.data.status, "ATTENDED");
 });
 
 test("las respuestas adicionales se relacionan con la cita por ID", () => {

@@ -1,0 +1,29 @@
+import type { Professional } from "./scheduler-presentation";
+
+export type SchedulerAgendaColumnMode = "CABINS" | "SPECIALISTS" | "ALL";
+
+export function filterSchedulerAgendaColumns(
+  columns: Professional[],
+  mode: SchedulerAgendaColumnMode,
+): Professional[] {
+  if (mode === "ALL") return columns;
+  return columns.filter((column) =>
+    mode === "CABINS"
+      ? column.kind === "RESOURCE" && column.resourceKind === "ROOM"
+      : column.kind !== "RESOURCE",
+  );
+}
+
+export function shouldFitSchedulerAgendaColumns(
+  viewportWidth: number,
+  columnCount: number,
+  sidebarVisible: boolean,
+): boolean {
+  if (columnCount <= 0) return true;
+
+  const horizontalChrome = sidebarVisible ? 448 : 112;
+  const availableWidth = Math.max(280, viewportWidth - horizontalChrome);
+  const minimumReadableColumnWidth = viewportWidth < 768 ? 210 : 168;
+
+  return availableWidth / columnCount >= minimumReadableColumnWidth;
+}

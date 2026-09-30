@@ -100,9 +100,14 @@ export function SchedulerAgendaList({
                   )}
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-[#263649]">
-                      {professional?.name ?? 'Especialista no disponible'}
+                      {professional?.name ?? 'Columna no disponible'}
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">Recurso asignado</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {professional?.kind === 'RESOURCE'
+                        ? `Cabina${professional.capacity ? ` · ${professional.capacity} personas` : ''}`
+                        : 'Especialista asignado'}
+                      {professional?.branchName ? ` · ${professional.branchName}` : ''}
+                    </p>
                   </div>
                 </div>
 
@@ -132,7 +137,7 @@ export function SchedulerAgendaList({
           </span>
           <h3 className="mt-4 text-lg font-semibold text-[#263649]">No hay reservas con estos filtros</h3>
           <p className="mt-1 max-w-md text-sm leading-6 text-slate-400">
-            Cambia la fecha, el estado o los especialistas seleccionados, o crea una nueva cita.
+            Cambia la fecha, el estado o las columnas seleccionadas, o crea una nueva cita.
           </p>
           <Button
             className="mt-5 rounded-2xl bg-[#263649] text-white hover:bg-[#1d2b3a]"

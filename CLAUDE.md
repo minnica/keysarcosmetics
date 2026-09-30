@@ -507,6 +507,16 @@ la implementación real debe ser agregada en servidor, transaccional, idempotent
 y referenciar la venta canónica del POS en vez de convertir Scheduler en autoridad
 financiera.
 
+El cierre de asistencia es fail-closed también en el API de diseño: `ATTENDED`
+requiere una captura de cabina cuya cantidad coincida con la capacidad y donde
+cada visitante tenga especialista y resultado final; compra/apartado deben tener
+importes válidos. Un apartado crea un snapshot
+`saleOwnerSpecialistProfileId`, `settlementStatus = OPEN` y `settledAt = null`.
+Cuando una corrección autorizada lo liquida, cambia a `PAID` y registra
+`settledAt`, pero conserva el propietario original aunque cambie la persona que
+atendió o procesó la liquidación. Reportes, ranking y exportaciones agrupan la
+venta por ese propietario y muestran por separado al especialista de atención.
+
 Colores de status incorpora en diseño un catálogo propuesto versionado por
 comercio. `GET/POST/PUT /api/scheduler/design-proposals/status-definitions[/:id]`
 permite alta, edición e inactivación lógica con autorización
@@ -599,6 +609,7 @@ Plan de restauración visual: `PLAN_RESTAURACION_VISUAL_SCHEDULER.md` (6 de sept
 
 - La agenda principal (`/`) usa `ApiAgendaWorkspace`, que desde RV2 compone la presentación aprobada (`SchedulerHeader`, panel de recursos, `SchedulerAgendaGrid`, `SchedulerAgendaList`, tarjetas y diálogos) sobre contratos reales. RV8 retiró `SchedulerWorkspace` y los archivos `mock-*` del runtime; los fixtures visuales deterministas viven exclusivamente en `apps/e2e/development/fixtures` y nunca son fallback operativo.
 - Comercio y sucursal salen del catálogo y del alcance materializado del bootstrap. Las columnas distinguen profesionales y recursos mediante IDs con namespace y conservan el ID canónico para disponibilidad/mutaciones. No existe cola de pendientes sin asignación mientras el backend exija un profesional por servicio.
+- El panel operativo separa explícitamente las columnas en `Cabinas`, `Especialistas` o `Ambos`. Una cabina conserva `resourceKind`, capacidad y sucursal; un especialista conserva identidad de empleado. La selección sólo cambia la proyección visual de la misma cita y nunca convierte recursos en profesionales. El ancho se ajusta automáticamente cuando el monitor permite conservar columnas legibles, descontando el panel lateral; en caso contrario el scroll horizontal queda confinado al grid y el botón de ajuste funciona como override manual.
 - Día y semana solicitan un rango UTC con guardas, cargan todas las páginas de citas según `total` y filtran después por fecha local IANA. La semana ya no usa `schedulerWeekBookings`; día/semana/lista comparten citas, estados, servicios, participantes, bloqueos y excepciones canónicos.
 - Los límites visibles se derivan de reglas `BRANCH/WORKING` y excepciones del catálogo. El tamaño de slot sigue siendo una preferencia exclusivamente visual; los inicios válidos siempre vienen de `/availability` y se vuelven a consultar después de una mutación.
 - El diálogo busca/selecciona clientes por API y puede crearlos sólo con `clients:WRITE`. Crear una cita conserva una clave de idempotencia durante el reintento; editar, mover, cancelar, transicionar y administrar bloqueos conserva `expectedVersion`, motivos y el manejo común de `401`/`403`/`409`/red.
@@ -618,6 +629,8 @@ La referencia histórica conserva una pestaña visual de Comisiones y normalizad
 
 La referencia histórica de Servicios conserva listados por categoría, edición, opciones avanzadas y carga/descarga visual de precios `.xlsx`; esas funciones no procesan archivos reales. En modo normal, perfiles de servicios, recursos, paquetes, complementos y horarios de clase usan API/Prisma. RV4 permite editar complementos ya materializados, pero el contrato todavía no publica candidatos para su activación inicial. Precio/categoría e importación/exportación masiva permanecen bajo autoridad comercial/POS; no interpretar capacidades exclusivas de la referencia como funciones persistentes. La validación histórica de uso de un recurso tampoco tiene endpoint administrativo dedicado: Agenda vuelve a validar requisitos al reservar, pero Administración no simula ese resultado.
 
+En Recursos, cada cabina es un `SchedulerResourceProfile(kind = ROOM)` ligado a un único `branchProfileId`; `capacity` representa personas simultáneas y la cantidad del formulario crea instancias canónicas independientes con nombres consecutivos. La pantalla muestra la sucursal propietaria, una vista previa y un resumen por tienda de cabinas, capacidad y especialistas. La relación especialista-sucursal continúa en `SchedulerProfessionalProfile.branchProfileIds`: ambos pueden producir columnas de Agenda, pero no son la misma entidad ni comparten reglas de disponibilidad.
+
 **Alcance administrativo por módulo:**
 
 | Módulo                 | Alcance funcional                                                                                                               | Estado de definición                                                 |
@@ -626,7 +639,7 @@ La referencia histórica de Servicios conserva listados por categoría, edición
 | Profesionales          | Asignación múltiple a comercios/sucursales, servicios, horarios, descansos, especialidades y grupos                             | API real; perfil explícito sobre `Empleado`                          |
 | Servicios              | Servicios, clases, paquetes y adicionales canónicos                                                                             | API real; precios masivos permanecen sólo en la referencia histórica |
 | Comisiones             | Por profesional, servicio/producto y valor por defecto; porcentaje o monto                                                      | API real versionada; pago final en Nómina                            |
-| Recursos               | Recursos generales y recursos con horario, asignación a servicios y locales                                                     | API real                                                             |
+| Recursos               | Cabinas/equipos por sucursal, capacidad, cantidad, horario y asignación a servicios                                              | API real; cada cantidad crea instancias independientes                |
 | Encuestas              | Encuestas, preguntas y asociación a servicios                                                                                   | API real; resultados mediante reporte canónico                       |
 | Consentimientos        | Catálogo y documentos privados versionados                                                                                      | API real; asignación/firma disponible en backend                     |
 | WhatsApp               | Plantillas versionadas, outbox y reintentos por canal                                                                           | API real; proveedor deshabilitado hasta sandbox                      |
@@ -657,7 +670,7 @@ La referencia histórica de Servicios conserva listados por categoría, edición
 - La interfaz es responsive desde el inicio: navegación compacta en móvil, tarjetas apiladas y tablas con scroll horizontal confinado. Administración, Clientes, Configuraciones y Reportes conservan scroll de documento; la Agenda operativa `/` usa el alto visible y confina sus scrolls al panel y al grid.
 - Los modales de Scheduler permiten scroll vertical en el cuerpo, pero nunca scroll horizontal. `DialogContent`, `admin-dialog`, `scheduler-dialog` y sus cuerpos bloquean el eje X; pestañas, horarios, tablas editables y escalas de comisión deben envolver o transformarse en layouts apilados al reducir el viewport, sin depender de `min-width` de escritorio ni ocultar campos fuera del área visible.
 - La Agenda operativa ocupa el alto visible y conserva densidades responsive y `ResizeObserver`. Su rango horario sale de las reglas/excepciones de la sucursal; las métricas del grid son visuales y nunca se usan para autorizar disponibilidad.
-- La agenda usa densidad responsive para laptops: en viewports de escritorio de hasta `900px` de alto (o pantallas táctiles de hasta `1100px`) compacta header, filas, tarjetas y columna horaria; por debajo de `780px` y `680px` aplica densidades adicionales. Las columnas se reparten de forma fluida y cuatro profesionales deben caber sin scroll horizontal en los viewports objetivo `1536×864`, `1366×768`, `1280×720` y `1280×600`; solo cuando hay más profesionales el desbordamiento queda confinado al scroll horizontal interno del grid. Los cálculos de posición deben reutilizar `SchedulerAgendaLayoutMetrics` para mantenerse alineados con las filas CSS.
+- La agenda usa densidad responsive para laptops: en viewports de escritorio de hasta `900px` de alto (o pantallas táctiles de hasta `1100px`) compacta header, filas, tarjetas y columna horaria; por debajo de `780px` y `680px` aplica densidades adicionales. `shouldFitSchedulerAgendaColumns` decide el ajuste según ancho real, número de columnas y presencia del panel: si cada cabina/especialista conserva un ancho legible se reparte de forma fluida; de lo contrario el desbordamiento queda confinado al scroll horizontal interno del grid. Los cálculos de posición deben reutilizar `SchedulerAgendaLayoutMetrics` para mantenerse alineados con las filas CSS.
 
 ### Fases de construcción
 

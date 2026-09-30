@@ -127,9 +127,14 @@ horaria y perfil canónico; las columnas se identifican con el nombre de la
 sucursal y sus IDs visuales se encapsulan por `branchId` para que una misma
 especialista pueda aparecer en más de un local sin colisiones. La sucursal
 operativa de una reserva o bloqueo se toma de la columna elegida. El botón de
-ajuste alterna entre ancho cómodo y todas las columnas dentro de la ventana; el
-botón de impresión cambia a día, ajusta columnas y abre la impresión horizontal
-del navegador sin menú ni panel lateral.
+ajuste permite forzar ancho cómodo o todas las columnas dentro de la ventana.
+Sin intervención, Agenda mide el monitor, descuenta el panel lateral y ajusta
+automáticamente las columnas cuando conservan un ancho legible; si no caben,
+mantiene el desplazamiento horizontal dentro de la cuadrícula. El panel ofrece
+los modos **Cabinas**, **Especialistas** y **Ambos**. Las cabinas se distinguen
+por icono, capacidad y acento café; los especialistas usan su propia etiqueta y
+acento azul. El botón de impresión cambia a día, ajusta columnas y abre la
+impresión horizontal del navegador sin menú ni panel lateral.
 
 Clientes incorpora en el entorno de diseño una búsqueda avanzada combinable.
 Los criterios entre grupos se aplican con `AND`; dentro de estatus, servicios y
@@ -157,9 +162,14 @@ pantalla nunca muestra el valor guardado.
 
 En **Administración → Recursos**, una cabina se registra con su capacidad. Al
 crear recursos nuevos se puede indicar cuántas cabinas iguales existen; la UI
-genera nombres consecutivos y conserva una fila canónica por cabina. Los datos
-ficticios incluyen cabina individual, doble y triple en Polanco, y una doble en
-Mítikah. La reserva sólo ofrece cabinas activas de la sucursal elegida.
+genera nombres consecutivos y conserva una fila canónica por cabina. La sucursal
+propietaria, el tipo, las personas por cabina y la cantidad son explícitos antes
+de guardar. Una vista previa describe qué columnas se crearán y un resumen por
+sucursal separa número de cabinas, capacidad total y especialistas asignados.
+Los datos ficticios incluyen cabina individual, doble y triple en Polanco, y
+tres cabinas en Mítikah. La reserva y el selector de columnas sólo ofrecen
+cabinas activas de la sucursal elegida; un especialista continúa siendo una
+persona canónica y nunca sustituye a una cabina.
 
 Al crear o editar una reserva en modo diseño, seleccionar una cabina abre una
 fila por cada lugar disponible. La primera corresponde al cliente principal y
@@ -177,7 +187,12 @@ posterior a `endsAt`; la UI lo informa y el API de diseño vuelve a validar la
 misma regla con `409`, por lo que no depende únicamente del navegador. Al elegir
 **Atendida** se abre directamente la captura de cabina, especialista, compra y
 apartado; las preguntas y notas adicionales se ocultan y no se sobrescriben.
-El cambio no se ejecuta hasta completar la captura. Primero pide
+El cambio no se ejecuta hasta que cada visitante tenga especialista y una
+decisión explícita de **No compró**, **Compra liquidada** o **Apartado**. Compra y
+apartado exigen total válido, y apartado exige además anticipo. El botón queda
+bloqueado mientras falte un dato y el endpoint de status rechaza `ATTENDED` con
+`409` si no existe una captura final completa, incluso si se invoca fuera de la
+pantalla. Primero pide
 una autorización `APPOINTMENT_STATUS_CHANGE` y, cuando existe compra o apartado,
 una segunda autorización `PURCHASE_CAPTURE`. En la propuesta ambas mutaciones
 son secuenciales; el contrato productivo deberá persistir estado, atención,
@@ -199,6 +214,14 @@ y códigos de especialistas/agentes a los que master habilite **Corregir compras
 registradas** pueden autorizarla; el token se consume como un movimiento distinto
 y queda auditado como `Corrección de compra por visitante`.
 
+Al registrar un **Apartado**, la venta guarda como propietario comercial al
+especialista/facialista asignado a ese visitante. El saldo permanece abierto y
+el propietario no cambia si otra persona procesa después la liquidación o una
+corrección autorizada. Al pasar de apartado a compra liquidada se registra
+`settledAt`, pero reportes, ranking, filtros y exportaciones siguen atribuyendo el
+total al especialista original; el detalle conserva por separado quién atendió,
+quién es propietario de la venta y el estado `OPEN`/`PAID` de la liquidación.
+
 En **Reportes → Compras de agenda o cabinas** el modo diseño muestra un dashboard
 independiente de **Ventas y pagos**. Puede seleccionar día, semana, mes o rango
 personalizado desde calendario, y combinar sucursal, cabina, status, resultado
@@ -211,7 +234,8 @@ servicio`, mostrando los índices mayores y menores sin confundirlos con ventas.
 El detalle conserva ID de cita, creación,
 confirmación cuando existe historial, horario, sucursal, cabina/capacidad,
 cliente y visitante, servicios, vendedor, especialista, resultado, venta,
-anticipo, saldo, comentarios, estado, origen y última actualización. Excel crea
+anticipo, saldo, especialista que atendió, propietario de la venta, estado/fecha
+de liquidación, comentarios, estado, origen y última actualización. Excel crea
 `Resumen`, `Por cabina`, `Por día` y `Detalle` con fechas/importes tipados; PDF
 incluye resumen, desglose, ranking, servicios y detalle. La impresión, PDF y Excel
 usan únicamente el resultado ya filtrado. Las librerías pesadas se cargan sólo al
@@ -312,8 +336,11 @@ Recorrido manual recomendado:
    que Administración/Configuraciones son rechazadas. Después entra con ambos
    usuarios de acceso total, usa sus códigos distintos y comprueba en
    Movimientos que cada acción conserva el actor correcto.
-8. En Administración crea dos cabinas con capacidad 2 y confirma la numeración.
-   Después crea una reserva en cabina doble y, al cambiarla a **Atendida**,
+8. En Administración selecciona una sucursal, crea dos cabinas con capacidad 2
+   y confirma la vista previa, numeración y resumen de esa tienda. En Agenda
+   alterna **Cabinas**, **Especialistas** y **Ambos**, y cambia el ancho de la
+   ventana para comprobar el ajuste automático. Después crea una reserva en
+   cabina doble y, al cambiarla a **Atendida**,
    registra dos personas, dos especialistas, una compra liquidada y un apartado.
    Debe pedir autorización de estado y después un código con permiso **Registrar
    compras**; desactiva ese permiso y confirma que el mismo código deja de

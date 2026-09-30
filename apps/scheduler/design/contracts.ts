@@ -77,6 +77,10 @@ export interface DesignStatusCatalog {
 }
 
 export type DesignPurchaseKind = "NONE" | "FULL" | "LAYAWAY" | null;
+export type DesignSaleSettlementStatus =
+  | "NOT_APPLICABLE"
+  | "OPEN"
+  | "PAID";
 
 export interface DesignCabinVisitPerson {
   id: string;
@@ -88,7 +92,15 @@ export interface DesignCabinVisitPerson {
   purchaseKind: DesignPurchaseKind;
   saleAmount: number | null;
   depositAmount: number | null;
+  saleOwnerSpecialistProfileId: string | null;
+  settlementStatus: DesignSaleSettlementStatus;
+  settledAt: string | null;
 }
+
+export type DesignCabinVisitPersonInput = Omit<
+  DesignCabinVisitPerson,
+  "saleOwnerSpecialistProfileId" | "settlementStatus" | "settledAt"
+>;
 
 export interface DesignAppointmentCabinVisit {
   appointmentId: string;
@@ -134,6 +146,12 @@ export interface DesignCabinSalesReportRow {
   sellerName: string;
   specialistProfileId: string;
   specialistName: string;
+  attendingSpecialistProfileId: string;
+  attendingSpecialistName: string;
+  saleOwnerSpecialistProfileId: string | null;
+  saleOwnerSpecialistName: string;
+  settlementStatus: DesignSaleSettlementStatus;
+  settledAt: string | null;
   purchaseKind: Exclude<DesignPurchaseKind, null>;
   saleAmount: number;
   depositAmount: number;
@@ -350,10 +368,11 @@ export interface DesignProposalClient {
   ): Promise<DesignAppointmentCabinVisit | null>;
   saveAppointmentCabinVisit(
     appointmentId: string,
-    input: Omit<
-      DesignAppointmentCabinVisit,
-      "appointmentId" | "cabinName" | "updatedAt"
-    >,
+    input: {
+      cabinResourceId: string;
+      cabinCapacity: number;
+      visitors: DesignCabinVisitPersonInput[];
+    },
     authorizationToken?: string,
   ): Promise<DesignAppointmentCabinVisit>;
   cabinSalesReport(

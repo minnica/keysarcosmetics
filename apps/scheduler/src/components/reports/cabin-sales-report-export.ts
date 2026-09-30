@@ -17,6 +17,12 @@ function purchaseLabel(kind: "NONE" | "FULL" | "LAYAWAY") {
   return "No compró";
 }
 
+function settlementLabel(status: "NOT_APPLICABLE" | "OPEN" | "PAID") {
+  if (status === "OPEN") return "Saldo pendiente";
+  if (status === "PAID") return "Liquidada";
+  return "Sin venta";
+}
+
 async function exportXlsx(report: DesignCabinSalesReport) {
   const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
@@ -112,8 +118,11 @@ async function exportXlsx(report: DesignCabinSalesReport) {
       Visitante: row.visitorName,
       Servicios: row.serviceNames.join(", "),
       Vendedor: row.sellerName,
-      Especialista: row.specialistName,
+      "Especialista que atendió": row.attendingSpecialistName,
+      "Venta asignada a": row.saleOwnerSpecialistName,
       Resultado: purchaseLabel(row.purchaseKind),
+      Liquidación: settlementLabel(row.settlementStatus),
+      "Fecha de liquidación": row.settledAt ? new Date(row.settledAt) : "",
       "Monto de venta": row.saleAmount,
       "Monto recibido": row.depositAmount,
       "Saldo pendiente": row.balanceAmount,
@@ -246,8 +255,9 @@ async function exportPdf(report: DesignCabinSalesReport) {
       "Sucursal / cabina",
       "Cliente / visitante",
       "Servicio",
-      "Vendedor / especialista",
+      "Vendedor / especialista de venta",
       "Resultado",
+      "Liquidación",
       "Venta",
       "Recibido",
       "Saldo",
@@ -260,8 +270,9 @@ async function exportPdf(report: DesignCabinSalesReport) {
       `${row.branchName} / ${row.cabinName}`,
       `${row.customerName} / ${row.visitorName}`,
       row.serviceNames.join(", "),
-      `${row.sellerName} / ${row.specialistName}`,
+      `${row.sellerName} / ${row.saleOwnerSpecialistName}`,
       purchaseLabel(row.purchaseKind),
+      settlementLabel(row.settlementStatus),
       money.format(row.saleAmount),
       money.format(row.depositAmount),
       money.format(row.balanceAmount),
@@ -289,10 +300,10 @@ export function printCabinSalesReport(report: DesignCabinSalesReport) {
   if (!target) throw new Error("El navegador bloqueó la ventana de impresión.");
   const rows = report.rows
     .map(
-      (row) => `<tr><td>${escapeHtml(new Date(row.appointmentStartsAt).toLocaleString("es-MX"))}</td><td>${escapeHtml(row.branchName)}</td><td>${escapeHtml(row.cabinName)}</td><td>${escapeHtml(row.visitorName)}</td><td>${escapeHtml(row.serviceNames.join(", "))}</td><td>${escapeHtml(row.specialistName)}</td><td>${escapeHtml(purchaseLabel(row.purchaseKind))}</td><td>${escapeHtml(money.format(row.saleAmount))}</td><td>${escapeHtml(money.format(row.depositAmount))}</td><td>${escapeHtml(money.format(row.balanceAmount))}</td></tr>`,
+      (row) => `<tr><td>${escapeHtml(new Date(row.appointmentStartsAt).toLocaleString("es-MX"))}</td><td>${escapeHtml(row.branchName)}</td><td>${escapeHtml(row.cabinName)}</td><td>${escapeHtml(row.visitorName)}</td><td>${escapeHtml(row.serviceNames.join(", "))}</td><td>${escapeHtml(row.attendingSpecialistName)}</td><td>${escapeHtml(row.saleOwnerSpecialistName)}</td><td>${escapeHtml(purchaseLabel(row.purchaseKind))}</td><td>${escapeHtml(settlementLabel(row.settlementStatus))}</td><td>${escapeHtml(money.format(row.saleAmount))}</td><td>${escapeHtml(money.format(row.depositAmount))}</td><td>${escapeHtml(money.format(row.balanceAmount))}</td></tr>`,
     )
     .join("");
-  target.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Compras de agenda o cabinas</title><style>body{font:12px Arial;color:#263649;margin:24px}h1{font-size:22px}section{display:flex;gap:12px;margin:18px 0}.kpi{border:1px solid #ddd;border-radius:8px;padding:10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px;text-align:left}th{background:#f4f1ed}@media print{body{margin:10mm}}</style></head><body><h1>Compras de agenda o cabinas</h1><p>Periodo ${escapeHtml(report.filters.dateFrom)} — ${escapeHtml(report.filters.dateTo)} · ${report.rows.length} filas filtradas</p><section><div class="kpi">Vendido<br><strong>${escapeHtml(money.format(report.summary.saleAmount))}</strong></div><div class="kpi">Recibido<br><strong>${escapeHtml(money.format(report.summary.depositAmount))}</strong></div><div class="kpi">Saldo<br><strong>${escapeHtml(money.format(report.summary.balanceAmount))}</strong></div><div class="kpi">Conversión<br><strong>${report.summary.conversionRate}%</strong></div></section><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Cabina</th><th>Visitante</th><th>Servicio</th><th>Especialista</th><th>Resultado</th><th>Venta</th><th>Recibido</th><th>Saldo</th></tr></thead><tbody>${rows || '<tr><td colspan="10">Sin registros para los filtros seleccionados.</td></tr>'}</tbody></table><script>window.addEventListener('load',()=>window.print())</script></body></html>`);
+  target.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Compras de agenda o cabinas</title><style>body{font:12px Arial;color:#263649;margin:24px}h1{font-size:22px}section{display:flex;gap:12px;margin:18px 0}.kpi{border:1px solid #ddd;border-radius:8px;padding:10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px;text-align:left}th{background:#f4f1ed}@media print{body{margin:10mm}}</style></head><body><h1>Compras de agenda o cabinas</h1><p>Periodo ${escapeHtml(report.filters.dateFrom)} — ${escapeHtml(report.filters.dateTo)} · ${report.rows.length} filas filtradas</p><section><div class="kpi">Vendido<br><strong>${escapeHtml(money.format(report.summary.saleAmount))}</strong></div><div class="kpi">Recibido<br><strong>${escapeHtml(money.format(report.summary.depositAmount))}</strong></div><div class="kpi">Saldo<br><strong>${escapeHtml(money.format(report.summary.balanceAmount))}</strong></div><div class="kpi">Conversión<br><strong>${report.summary.conversionRate}%</strong></div></section><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Cabina</th><th>Visitante</th><th>Servicio</th><th>Atendió</th><th>Venta asignada</th><th>Resultado</th><th>Liquidación</th><th>Venta</th><th>Recibido</th><th>Saldo</th></tr></thead><tbody>${rows || '<tr><td colspan="12">Sin registros para los filtros seleccionados.</td></tr>'}</tbody></table><script>window.addEventListener('load',()=>window.print())</script></body></html>`);
   target.document.close();
 }
 

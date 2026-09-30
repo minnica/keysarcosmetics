@@ -1,7 +1,7 @@
 'use client'
 
 import { Badge, Calendar, Card, CardContent, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@cosmetics/ui'
-import { Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, List, PanelLeftClose, Search } from 'lucide-react'
+import { Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, DoorOpen, List, PanelLeftClose, Search, UserRound } from 'lucide-react'
 import { addMonths, format, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -12,6 +12,7 @@ import {
   type Professional,
 } from '@/lib/scheduler-presentation'
 import { SchedulerAvatar } from './SchedulerAvatar'
+import type { SchedulerAgendaColumnMode } from '@/lib/scheduler-agenda-layout'
 
 export type SchedulerDisplayMode = 'calendar' | 'list'
 
@@ -24,6 +25,8 @@ interface SchedulerSidebarProps {
   availableBranchIds: string[]
   onBranchSelectionChange: (value: string[]) => void
   visibleProfessionalCount: number
+  columnMode: SchedulerAgendaColumnMode
+  onColumnModeChange: (mode: SchedulerAgendaColumnMode) => void
   professionals: Professional[]
   selectedProfessionalIds: string[]
   onToggleProfessional: (professionalId: string) => void
@@ -53,6 +56,8 @@ export function SchedulerSidebar({
   availableBranchIds,
   onBranchSelectionChange,
   visibleProfessionalCount,
+  columnMode,
+  onColumnModeChange,
   professionals,
   selectedProfessionalIds,
   onToggleProfessional,
@@ -235,19 +240,41 @@ export function SchedulerSidebar({
             <div className="scheduler-sidebar-card">
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <label className="scheduler-label !mb-0">Recursos de agenda</label>
-                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.14em] text-slate-500">Profesionales y espacios</p>
+                  <label className="scheduler-label !mb-0">Columnas de agenda</label>
+                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.14em] text-slate-500">Elige cabinas o especialistas</p>
                 </div>
                 <Badge className="rounded-full border-0 bg-[rgba(195,165,131,0.12)] px-3 py-1 text-xs font-semibold text-[var(--scheduler-accent-strong)]">
                   {visibleProfessionalCount} visibles
                 </Badge>
               </div>
 
+              <div className="mb-3 grid grid-cols-3 gap-1 rounded-[16px] border border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.92)] p-1">
+                {([
+                  ["CABINS", "Cabinas"],
+                  ["SPECIALISTS", "Especialistas"],
+                  ["ALL", "Ambos"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    aria-pressed={columnMode === value}
+                    className={
+                      columnMode === value
+                        ? "rounded-xl bg-[#263649] px-2 py-2 text-[0.68rem] font-semibold text-white shadow-sm"
+                        : "rounded-xl px-2 py-2 text-[0.68rem] font-semibold text-slate-500 transition hover:bg-white"
+                    }
+                    key={value}
+                    onClick={() => onColumnModeChange(value)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <div className="mb-3 flex items-center gap-2 rounded-[18px] border border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.92)] px-3 py-3">
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
                   className="w-full border-0 bg-transparent text-sm text-slate-600 outline-none placeholder:text-slate-400"
-                  placeholder="Buscar profesional o recurso"
+                  placeholder={columnMode === "CABINS" ? "Buscar cabina" : columnMode === "SPECIALISTS" ? "Buscar especialista" : "Buscar columna"}
                   value={professionalQuery}
                   onChange={(event) => onProfessionalQueryChange(event.target.value)}
                 />
@@ -277,8 +304,14 @@ export function SchedulerSidebar({
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[0.94rem] font-semibold tracking-[-0.02em] text-slate-800">{professional.name}</p>
-                        <p className="text-[0.92rem] text-slate-400">
-                          {professional.kind === 'RESOURCE' ? 'Recurso físico' : 'Profesional'}
+                        <p className="flex items-center gap-1.5 text-[0.78rem] text-slate-400">
+                          {professional.kind === 'RESOURCE' ? <DoorOpen className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
+                          <span>
+                            {professional.kind === 'RESOURCE'
+                              ? `${professional.resourceKind === "ROOM" ? "Cabina" : "Recurso"}${professional.capacity ? ` · ${professional.capacity} ${professional.capacity === 1 ? "persona" : "personas"}` : ""}`
+                              : 'Especialista'}
+                            {professional.branchName ? ` · ${professional.branchName}` : ""}
+                          </span>
                         </p>
                       </div>
                       <div className={isSelected ? 'h-3 w-3 rounded-full bg-[var(--scheduler-accent)]' : 'h-3 w-3 rounded-full bg-slate-200'} />
@@ -287,7 +320,7 @@ export function SchedulerSidebar({
                 })}
                 {professionals.length === 0 ? (
                   <div className="rounded-[22px] border border-dashed border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.7)] px-4 py-5 text-sm text-slate-500">
-                    No hay profesionales ni recursos disponibles en esta sucursal. Revisa sus asignaciones o tus permisos.
+                    No hay columnas disponibles para esta selección. Revisa las cabinas de la sucursal, las asignaciones de especialistas o tus permisos.
                   </div>
                 ) : null}
               </div>

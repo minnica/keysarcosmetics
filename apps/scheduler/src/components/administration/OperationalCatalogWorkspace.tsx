@@ -6,11 +6,13 @@ import { z } from "zod";
 import {
   Box,
   Building2,
+  DoorOpen,
   Plus,
   RefreshCw,
   Save,
   Sparkles,
   UserRound,
+  UsersRound,
 } from "lucide-react";
 import {
   Badge,
@@ -104,6 +106,15 @@ function StatusBadge({
       {active ? "Activo" : "Inactivo"}
     </Badge>
   );
+}
+
+function resourceKindLabel(kind: SchedulerResourceKind) {
+  return {
+    ROOM: "Cabina / sala",
+    EQUIPMENT: "Equipo",
+    STATION: "Estación",
+    OTHER: "Otro recurso",
+  }[kind];
 }
 
 function LoadingState() {
@@ -705,6 +716,15 @@ function ResourceEditor({
       active: resource?.active ?? true,
     },
   });
+  const selectedBranchProfileId = watch("branchProfileId");
+  const selectedKind = watch("kind");
+  const selectedCapacity = watch("capacity") || 1;
+  const selectedQuantity = resource ? 1 : watch("quantity") || 1;
+  const selectedName = watch("name").trim() || "Cabina";
+  const selectedBranchName =
+    catalog.branches.find((item) => item.id === selectedBranchProfileId)
+      ?.branchName ?? "Sucursal sin seleccionar";
+  const isCabin = selectedKind === "ROOM";
   const submit = handleSubmit(async (values) => {
     const parsed = resourceFormSchema.safeParse(values);
     if (!parsed.success)
@@ -734,7 +754,7 @@ function ResourceEditor({
           ? "Recurso actualizado"
           : quantity === 1
             ? "Recurso creado"
-            : `${quantity} cabinas creadas`,
+            : `${quantity} ${selectedKind === "ROOM" ? "cabinas creadas" : "unidades creadas"}`,
       );
       await onSaved();
     } catch (error) {
@@ -750,14 +770,14 @@ function ResourceEditor({
     <Card>
       <CardHeader>
         <CardTitle>
-          {resource ? `Editar ${resource.name}` : "Nuevo recurso"}
+          {resource ? `Editar ${resource.name}` : "Nueva cabina o recurso"}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <form className="space-y-5" onSubmit={submit} noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label htmlFor="resource-name">Nombre</Label>
+              <Label htmlFor="resource-name">Nombre base</Label>
               <Input
                 id="resource-name"
                 className="mt-2"
@@ -765,9 +785,12 @@ function ResourceEditor({
                 disabled={!canAdmin || saving}
                 aria-invalid={Boolean(errors.name)}
               />
+              <p className="mt-1 text-xs text-slate-500">
+                Ejemplo: Cabina doble, Cabina facial o Equipo Hydrafacial.
+              </p>
             </div>
             <div>
-              <Label htmlFor="resource-branch">Sucursal</Label>
+              <Label htmlFor="resource-branch">Sucursal propietaria</Label>
               <Select
                 value={watch("branchProfileId")}
                 onValueChange={(value) =>
@@ -788,9 +811,12 @@ function ResourceEditor({
                     ))}
                 </SelectContent>
               </Select>
+              <p className="mt-1 text-xs text-slate-500">
+                Las columnas creadas sólo aparecerán dentro de esta sucursal.
+              </p>
             </div>
             <div>
-              <Label htmlFor="resource-kind">Tipo</Label>
+              <Label htmlFor="resource-kind">Tipo de recurso</Label>
               <Select
                 value={watch("kind")}
                 onValueChange={(value: SchedulerResourceKind) =>
@@ -810,7 +836,9 @@ function ResourceEditor({
               </Select>
             </div>
             <div>
-              <Label htmlFor="resource-capacity">Capacidad</Label>
+              <Label htmlFor="resource-capacity">
+                {isCabin ? "Personas por cabina" : "Capacidad por unidad"}
+              </Label>
               <Input
                 id="resource-capacity"
                 type="number"
@@ -818,10 +846,19 @@ function ResourceEditor({
                 {...register("capacity")}
                 disabled={!canAdmin || saving}
               />
+              <p className="mt-1 text-xs text-slate-500">
+                {isCabin
+                  ? "1 individual, 2 doble, 3 triple, etc."
+                  : "Número máximo de usos simultáneos."}
+              </p>
             </div>
             {!resource ? (
               <div>
-                <Label htmlFor="resource-quantity">Cantidad de cabinas</Label>
+                <Label htmlFor="resource-quantity">
+                  {isCabin
+                    ? "Número de cabinas en esta sucursal"
+                    : "Número de unidades en esta sucursal"}
+                </Label>
                 <Input
                   id="resource-quantity"
                   type="number"
@@ -832,10 +869,41 @@ function ResourceEditor({
                   disabled={!canAdmin || saving}
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Se crearán con numeración consecutiva y la misma capacidad.
+                  Cada unidad tendrá su propia columna, numeración y disponibilidad.
                 </p>
               </div>
             ) : null}
+          </div>
+          <div className="rounded-2xl border border-[#e6d8ca] bg-[#fbf7f2] p-4">
+            <div className="flex items-start gap-3">
+              <DoorOpen className="mt-0.5 h-5 w-5 shrink-0 text-[#ad8b67]" />
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  Vista previa de configuración
+                </p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  {selectedBranchName} · {selectedQuantity}{" "}
+                  {isCabin
+                    ? selectedQuantity === 1
+                      ? "cabina"
+                      : "cabinas"
+                    : selectedQuantity === 1
+                      ? "unidad"
+                      : "unidades"}{" "}
+                  · {selectedCapacity}{" "}
+                  {selectedCapacity === 1 ? "persona" : "personas"} por unidad.
+                </p>
+                {!resource && selectedQuantity > 1 ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Se crearán: {selectedName} 1, {selectedName} 2
+                    {selectedQuantity > 2
+                      ? ` … ${selectedName} ${selectedQuantity}`
+                      : ""}
+                    .
+                  </p>
+                ) : null}
+              </div>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1158,11 +1226,40 @@ export function OperationalCatalogWorkspace({
   const selectedService = candidates.services.find(
     (item) => item.id === selectedId,
   );
+  const resourceSummary = catalog.branches.map((branch) => {
+    const branchResources = catalog.resources.filter(
+      (resource) => resource.branchProfileId === branch.id && resource.active,
+    );
+    const cabins = branchResources.filter((resource) => resource.kind === "ROOM");
+    return {
+      branch,
+      cabins: cabins.length,
+      cabinCapacity: cabins.reduce(
+        (total, resource) => total + resource.capacity,
+        0,
+      ),
+      specialists: catalog.professionals.filter(
+        (professional) =>
+          professional.active && professional.branchProfileIds.includes(branch.id),
+      ).length,
+    };
+  });
   const resourceColumns: ColumnDef<
     SchedulerOperationalCatalogDto["resources"][number]
   >[] = [
     { accessorKey: "name", header: "RECURSO" },
-    { accessorKey: "kind", header: "TIPO" },
+    {
+      id: "branch",
+      header: "SUCURSAL",
+      accessorFn: (row) =>
+        catalog.branches.find((branch) => branch.id === row.branchProfileId)
+          ?.branchName ?? "Sin sucursal",
+    },
+    {
+      accessorKey: "kind",
+      header: "TIPO",
+      cell: ({ row }) => resourceKindLabel(row.original.kind),
+    },
     { accessorKey: "capacity", header: "CAPACIDAD" },
     {
       id: "status",
@@ -1361,13 +1458,49 @@ export function OperationalCatalogWorkspace({
 
         {section === "resources" ? (
           <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {resourceSummary.map(({ branch, cabins, cabinCapacity, specialists }) => (
+                <Card className="admin-card" key={branch.id}>
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ad8b67]">
+                          Sucursal
+                        </p>
+                        <h2 className="mt-1 text-lg font-semibold text-slate-800">
+                          {branch.branchName}
+                        </h2>
+                      </div>
+                      <StatusBadge active={branch.active} />
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      <div className="rounded-xl bg-[#fbf7f2] p-3">
+                        <DoorOpen className="h-4 w-4 text-[#ad8b67]" />
+                        <strong className="mt-2 block text-lg text-slate-800">{cabins}</strong>
+                        <span className="text-[0.68rem] text-slate-500">Cabinas</span>
+                      </div>
+                      <div className="rounded-xl bg-[#fbf7f2] p-3">
+                        <UsersRound className="h-4 w-4 text-[#ad8b67]" />
+                        <strong className="mt-2 block text-lg text-slate-800">{cabinCapacity}</strong>
+                        <span className="text-[0.68rem] text-slate-500">Personas</span>
+                      </div>
+                      <div className="rounded-xl bg-[#fbf7f2] p-3">
+                        <UserRound className="h-4 w-4 text-[#60758a]" />
+                        <strong className="mt-2 block text-lg text-slate-800">{specialists}</strong>
+                        <span className="text-[0.68rem] text-slate-500">Especialistas</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
             <Card className="admin-card">
               <CardContent className="p-5 sm:p-6">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Box className="h-5 w-5 text-[#ad8b67]" />
                     <h2 className="admin-section-title">
-                      Recursos configurados
+                      Cabinas y recursos por sucursal
                     </h2>
                   </div>
                   {canAdmin ? (
@@ -1378,7 +1511,7 @@ export function OperationalCatalogWorkspace({
                         setEditorOpen(true);
                       }}
                     >
-                      <Plus className="mr-2 h-4 w-4" /> Nuevo recurso
+                      <Plus className="mr-2 h-4 w-4" /> Nueva cabina o recurso
                     </Button>
                   ) : null}
                 </div>

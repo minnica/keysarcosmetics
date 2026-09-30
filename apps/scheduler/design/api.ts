@@ -38,6 +38,7 @@ import type {
   DesignOperationAgent,
   DesignOperationPurpose,
   DesignPurchaseKind,
+  DesignSaleSettlementStatus,
   DesignSalesProjectionFilters,
   DesignSalesProjectionReport,
   DesignStatusDefinition,
@@ -746,11 +747,10 @@ function buildCabinSalesReport(
         (history) => history.toStatus === "CONFIRMED",
       )?.createdAt ?? null;
     for (const visitor of visit.visitors) {
-      const specialistName =
+      const attendingSpecialistName =
         state.catalog.professionals.find(
           (professional) => professional.id === visitor.specialistProfileId,
         )?.name ?? "Sin especialista";
-      specialistOptions.set(visitor.specialistProfileId, specialistName);
       const purchaseKind =
         visitor.purchaseKind ??
         (visitor.purchased === true
@@ -761,6 +761,13 @@ function buildCabinSalesReport(
       if (visitor.purchaseKind === null && visitor.purchased === null) {
         continue;
       }
+      const reportSpecialistProfileId =
+        visitor.saleOwnerSpecialistProfileId ?? visitor.specialistProfileId;
+      const reportSpecialistName =
+        state.catalog.professionals.find(
+          (professional) => professional.id === reportSpecialistProfileId,
+        )?.name ?? attendingSpecialistName;
+      specialistOptions.set(reportSpecialistProfileId, reportSpecialistName);
       const saleAmount =
         purchaseKind === "NONE"
           ? 0
@@ -793,8 +800,19 @@ function buildCabinSalesReport(
           (service) => service.serviceName,
         ),
         sellerName,
-        specialistProfileId: visitor.specialistProfileId,
-        specialistName,
+        specialistProfileId: reportSpecialistProfileId,
+        specialistName: reportSpecialistName,
+        attendingSpecialistProfileId: visitor.specialistProfileId,
+        attendingSpecialistName,
+        saleOwnerSpecialistProfileId:
+          visitor.saleOwnerSpecialistProfileId ??
+          (purchaseKind === "NONE" ? null : visitor.specialistProfileId),
+        saleOwnerSpecialistName:
+          purchaseKind === "NONE" ? "No aplica" : reportSpecialistName,
+        settlementStatus:
+          visitor.settlementStatus ??
+          (purchaseKind === "LAYAWAY" ? "OPEN" : purchaseKind === "FULL" ? "PAID" : "NOT_APPLICABLE"),
+        settledAt: visitor.settledAt ?? null,
         purchaseKind,
         saleAmount,
         depositAmount,
@@ -846,6 +864,8 @@ function buildCabinSalesReport(
         row.serviceNames.join(" "),
         row.sellerName,
         row.specialistName,
+        row.attendingSpecialistName,
+        row.saleOwnerSpecialistName,
         row.notes,
         row.status,
         row.origin,
@@ -1821,6 +1841,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           `La ${cabin.name} requiere ${cabin.capacity} visitante${cabin.capacity === 1 ? "" : "s"}.`,
         );
       }
+      const captureTime = new Date().toISOString();
       const visitors = visitorRows.map((visitor, index) => {
         const name = String(visitor.name ?? "").trim();
         const specialistProfileId = String(visitor.specialistProfileId ?? "");
@@ -1873,6 +1894,26 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             `El apartado de ${name} debe ser mayor a cero y no superar la venta.`,
           );
         }
+        const previousVisitor = previousVisit?.visitors.find(
+          (candidate) => candidate.id === String(visitor.id ?? `visitor-${index + 1}`),
+        );
+        const saleOwnerSpecialistProfileId =
+          purchaseKind === "NONE"
+            ? null
+            : previousVisitor?.saleOwnerSpecialistProfileId ??
+              specialistProfileId;
+        const settlementStatus: DesignSaleSettlementStatus =
+          purchaseKind === "NONE"
+            ? "NOT_APPLICABLE"
+            : purchaseKind === "LAYAWAY"
+              ? "OPEN"
+              : "PAID";
+        const settledAt =
+          settlementStatus === "PAID"
+            ? previousVisitor?.settlementStatus === "PAID"
+              ? previousVisitor.settledAt ?? captureTime
+              : captureTime
+            : null;
         return {
           id: String(visitor.id ?? `visitor-${index + 1}`),
           customerId:
@@ -1886,6 +1927,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           purchaseKind,
           saleAmount,
           depositAmount,
+          saleOwnerSpecialistProfileId,
+          settlementStatus,
+          settledAt,
         };
       });
       if (
@@ -1941,7 +1985,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         cabinName: cabin.name,
         cabinCapacity: cabin.capacity,
         visitors,
-        updatedAt: new Date().toISOString(),
+        updatedAt: captureTime,
       };
       state.appointmentCabinVisits[appointmentId] = result;
       return result;
@@ -2056,6 +2100,30 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           409,
           "La cita sólo puede marcarse como atendida cuando termine el tiempo de la sesión.",
         );
+      }
+      if (status === "ATTENDED") {
+        const cabinVisit = state.appointmentCabinVisits[existing!.id];
+        const purchaseCaptureComplete = Boolean(
+          cabinVisit &&
+            cabinVisit.visitors.length === cabinVisit.cabinCapacity &&
+            cabinVisit.visitors.every(
+              (visitor) =>
+                visitor.purchaseKind !== null &&
+                visitor.purchased !== null &&
+                (visitor.purchaseKind === "NONE" ||
+                  (Number(visitor.saleAmount) > 0 &&
+                    (visitor.purchaseKind === "FULL" ||
+                      (Number(visitor.depositAmount) > 0 &&
+                        Number(visitor.depositAmount) <=
+                          Number(visitor.saleAmount))))),
+            ),
+        );
+        if (!purchaseCaptureComplete) {
+          fail(
+            409,
+            "Completa para cada visitante si compró, el monto, el apartado y el especialista antes de marcar la cita como atendida.",
+          );
+        }
       }
       const previous = existing!.status;
       existing!.status = status as SchedulerAppointmentStatus;

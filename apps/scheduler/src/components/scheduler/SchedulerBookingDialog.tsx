@@ -863,6 +863,13 @@ export function SchedulerBookingDialog({
                             La capacidad define cuántos visitantes y
                             especialistas debes registrar.
                           </p>
+                          {appointmentDetailsLocked ? (
+                            <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                              Para marcar la cita como atendida debes indicar en
+                              cada persona si compró o no. Las compras y
+                              apartados requieren sus montos completos.
+                            </p>
+                          ) : null}
                         </div>
                         {selectedCabin ? (
                           <span className="scheduler-modal-chip">
@@ -981,8 +988,13 @@ export function SchedulerBookingDialog({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="scheduler-modal-select-content">
-                                <SelectItem value="PENDING">
-                                  Pendiente
+                                <SelectItem
+                                  disabled={appointmentDetailsLocked}
+                                  value="PENDING"
+                                >
+                                  {appointmentDetailsLocked
+                                    ? "Pendiente · obligatorio completar"
+                                    : "Pendiente"}
                                 </SelectItem>
                                 <SelectItem value="NONE">No compró</SelectItem>
                                 <SelectItem value="FULL">
@@ -1043,6 +1055,20 @@ export function SchedulerBookingDialog({
                               />
                             </div>
                           </div>
+                          {visitor.purchaseKind === "LAYAWAY" ? (
+                            <p className="rounded-xl border border-[#e6d8ca] bg-[#fbf7f2] px-3 py-2 text-sm text-[#795f45] md:col-span-2 xl:col-span-5">
+                              El total de esta venta queda asignado a{" "}
+                              <strong>
+                                {specialistOptions.find(
+                                  (specialist) =>
+                                    specialist.id ===
+                                    visitor.specialistProfileId,
+                                )?.name ?? "la especialista seleccionada"}
+                              </strong>{" "}
+                              y conservará esa atribución cuando se liquide el
+                              saldo.
+                            </p>
+                          ) : null}
                         </div>
                       ))}
                       {!cabinVisitValid ? (
@@ -1050,9 +1076,10 @@ export function SchedulerBookingDialog({
                           className="text-sm font-medium text-amber-800"
                           role="status"
                         >
-                          Completa cada visitante y especialista. Para compra
-                          captura el total; si es apartado, el anticipo debe ser
-                          mayor a cero y no superar la venta.
+                          Completa cada visitante y especialista, e indica
+                          obligatoriamente si compró o no. Para compra captura
+                          el total; si es apartado, el anticipo debe ser mayor a
+                          cero y no superar la venta.
                         </p>
                       ) : null}
                     </div>

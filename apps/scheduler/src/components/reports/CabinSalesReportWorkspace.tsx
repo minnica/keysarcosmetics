@@ -709,7 +709,7 @@ export function CabinSalesReportWorkspace({
                       <th className="px-4 py-3">Cliente / visitante</th>
                       <th className="px-4 py-3">Servicios</th>
                       <th className="px-4 py-3">Vendedor</th>
-                      <th className="px-4 py-3">Especialista</th>
+                      <th className="px-4 py-3">Atendió / venta asignada</th>
                       <th className="px-4 py-3">Resultado</th>
                       <th className="px-4 py-3 text-right">Venta</th>
                       <th className="px-4 py-3 text-right">Recibido</th>
@@ -731,8 +731,22 @@ export function CabinSalesReportWorkspace({
                         <td className="px-4 py-4"><p className="font-medium">{row.customerName}</p><p className="text-slate-500">{row.visitorName}</p></td>
                         <td className="px-4 py-4">{row.serviceNames.join(", ")}</td>
                         <td className="px-4 py-4">{row.sellerName}</td>
-                        <td className="px-4 py-4">{row.specialistName}</td>
-                        <td className="px-4 py-4"><span className="inline-flex rounded-full bg-[#eee8e1] px-2.5 py-1 text-xs font-medium">{purchaseLabel(row.purchaseKind)}</span></td>
+                        <td className="px-4 py-4">
+                          <p className="font-medium">{row.attendingSpecialistName}</p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            Venta: {row.saleOwnerSpecialistName}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="inline-flex rounded-full bg-[#eee8e1] px-2.5 py-1 text-xs font-medium">{purchaseLabel(row.purchaseKind)}</span>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {row.settlementStatus === "OPEN"
+                              ? "Saldo pendiente · conserva especialista"
+                              : row.settlementStatus === "PAID"
+                                ? "Liquidada"
+                                : "Sin venta"}
+                          </p>
+                        </td>
                         <td className="px-4 py-4 text-right font-medium">{money.format(row.saleAmount)}</td>
                         <td className="px-4 py-4 text-right">{money.format(row.depositAmount)}</td>
                         <td className="px-4 py-4 text-right">{money.format(row.balanceAmount)}</td>

@@ -78,6 +78,11 @@ import {
   getSchedulerAgendaSlotMinutes,
   type SchedulerAgendaSlotMinutes,
 } from "@/lib/scheduler-agenda-settings";
+import {
+  filterSchedulerAgendaColumns,
+  shouldFitSchedulerAgendaColumns,
+  type SchedulerAgendaColumnMode,
+} from "@/lib/scheduler-agenda-layout";
 import { SchedulerHeader } from "@/components/scheduler/SchedulerHeader";
 import {
   SchedulerSidebar,
@@ -318,7 +323,12 @@ export function ApiAgendaWorkspace() {
   const [resourcePanelOpen, setResourcePanelOpen] = useState(true);
   const [displayMode, setDisplayMode] =
     useState<SchedulerDisplayMode>("calendar");
-  const [columnsFitted, setColumnsFitted] = useState(false);
+  const [columnMode, setColumnMode] =
+    useState<SchedulerAgendaColumnMode>("ALL");
+  const [columnFitOverride, setColumnFitOverride] = useState<boolean | null>(
+    null,
+  );
+  const [viewportWidth, setViewportWidth] = useState(1440);
   const [agendaSlotMinutes] = useState<SchedulerAgendaSlotMinutes>(() =>
     getSchedulerAgendaSlotMinutes(),
   );
@@ -648,14 +658,18 @@ export function ApiAgendaWorkspace() {
     [catalog.data, selectedCommerce, viewBranchIds, weekDays],
   );
 
+  const modeColumns = useMemo(
+    () => filterSchedulerAgendaColumns(visualColumns, columnMode),
+    [columnMode, visualColumns],
+  );
   const sidebarColumns = useMemo(() => {
     const query = professionalQuery.trim().toLocaleLowerCase("es-MX");
     return query
-      ? visualColumns.filter((column) =>
+      ? modeColumns.filter((column) =>
           column.name.toLocaleLowerCase("es-MX").includes(query),
         )
-      : visualColumns;
-  }, [professionalQuery, visualColumns]);
+      : modeColumns;
+  }, [modeColumns, professionalQuery]);
   const visibleColumns = useMemo(() => {
     const selected = new Set(selectedColumnIds);
     const filtered = sidebarColumns.filter((column) => selected.has(column.id));
@@ -665,6 +679,12 @@ export function ApiAgendaWorkspace() {
     () => new Set(visibleColumns.map((column) => column.id)),
     [visibleColumns],
   );
+  const automaticColumnFit = shouldFitSchedulerAgendaColumns(
+    viewportWidth,
+    visibleColumns.length,
+    resourcePanelOpen && viewportWidth >= 1280,
+  );
+  const columnsFitted = columnFitOverride ?? automaticColumnFit;
   const visibleBookings = useMemo(
     () =>
       allBookings.filter((booking) => {
@@ -772,6 +792,12 @@ export function ApiAgendaWorkspace() {
     );
   }, [agendaSlotMinutes, operatingHours.schedule]);
 
+  useEffect(() => {
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+  }, []);
   useEffect(() => {
     if (!commerces.some((commerce) => commerce.id === selectedCommerce))
       setSelectedCommerce(commerces[0]?.id ?? "");
@@ -931,6 +957,11 @@ export function ApiAgendaWorkspace() {
           : current.filter((id) => id !== columnId)
         : [...current, columnId],
     );
+  }
+
+  function changeColumnMode(mode: SchedulerAgendaColumnMode) {
+    setColumnMode(mode);
+    setColumnFitOverride(null);
   }
 
   function updateVisibleBranches(branchIds: string[]) {
@@ -1373,7 +1404,7 @@ export function ApiAgendaWorkspace() {
         )
       ) {
         toast.error(
-          "Indica el resultado de cada visitante; los apartados requieren total y anticipo válido.",
+          "No puedes marcar la asistencia: indica si cada visitante compró o no; las compras y apartados requieren montos válidos.",
         );
         return;
       }
@@ -1970,7 +2001,7 @@ export function ApiAgendaWorkspace() {
       setAttendanceStatusAppointmentId(appointment.id);
       openEditBooking(booking);
       toast.info(
-        "Completa especialista y resultado de venta antes de marcar la asistencia.",
+        "No podrás continuar hasta indicar especialista, compra o no compra y los montos de cada visitante.",
       );
       return;
     }
@@ -2255,7 +2286,7 @@ export function ApiAgendaWorkspace() {
         onOpenNewBooking={() => openNewBooking()}
         onPrintDay={() => {
           setCurrentView("day");
-          setColumnsFitted(true);
+          setColumnFitOverride(true);
           window.setTimeout(() => window.print(), 180);
         }}
         onRefresh={() => {
@@ -2264,7 +2295,7 @@ export function ApiAgendaWorkspace() {
           if (canReadStatusColors) void administrationCatalog.reload();
         }}
         onViewChange={setCurrentView}
-        onToggleColumnFit={() => setColumnsFitted((current) => !current)}
+        onToggleColumnFit={() => setColumnFitOverride(!columnsFitted)}
         refreshing={
           catalog.loading ||
           agenda.loading ||
@@ -2293,11 +2324,13 @@ export function ApiAgendaWorkspace() {
           <SchedulerSidebar
             availableBranchIds={availableBranchIds}
             branches={branches}
+            columnMode={columnMode}
             commerces={commerces}
             displayMode={displayMode}
             monthCursor={monthCursor}
             onBranchSelectionChange={updateVisibleBranches}
             onCommerceChange={setSelectedCommerce}
+            onColumnModeChange={changeColumnMode}
             onDateQuickCreate={(date) => {
               setFiltersOpen(false);
               sidebarDateQuickCreate(date);
@@ -2329,11 +2362,13 @@ export function ApiAgendaWorkspace() {
             <SchedulerSidebar
               availableBranchIds={availableBranchIds}
               branches={branches}
+              columnMode={columnMode}
               commerces={commerces}
               displayMode={displayMode}
               monthCursor={monthCursor}
               onBranchSelectionChange={updateVisibleBranches}
               onCollapse={() => setResourcePanelOpen(false)}
+              onColumnModeChange={changeColumnMode}
               onCommerceChange={setSelectedCommerce}
               onDateQuickCreate={sidebarDateQuickCreate}
               onDisplayModeChange={setDisplayMode}

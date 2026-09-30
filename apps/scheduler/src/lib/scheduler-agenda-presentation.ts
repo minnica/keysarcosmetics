@@ -111,6 +111,8 @@ export interface SchedulerAgendaColumn {
   entityId: string | null;
   branchProfileId: string;
   kind: SchedulerAgendaColumnKind;
+  resourceKind: "ROOM" | "EQUIPMENT" | "STATION" | "OTHER" | null;
+  capacity: number | null;
   label: string;
   active: boolean;
   avatarUrl: string | null;
@@ -407,6 +409,8 @@ export function buildSchedulerAgendaPresentation({
         entityId: professional.id,
         branchProfileId: branch.id,
         kind: "PROFESSIONAL" as const,
+        resourceKind: null,
+        capacity: null,
         label: professional.name,
         active: professional.active,
         avatarUrl: null,
@@ -418,6 +422,8 @@ export function buildSchedulerAgendaPresentation({
         entityId: resource.id,
         branchProfileId: branch.id,
         kind: "RESOURCE" as const,
+        resourceKind: resource.kind,
+        capacity: resource.capacity,
         label: resource.name,
         active: resource.active,
         avatarUrl: null,
@@ -483,6 +489,8 @@ export function buildSchedulerVisualColumns(
       id: column.id,
       ...(column.entityId ? { entityId: column.entityId } : {}),
       kind: column.kind === "RESOURCE" ? "RESOURCE" : "PROFESSIONAL",
+      ...(column.resourceKind ? { resourceKind: column.resourceKind } : {}),
+      ...(column.capacity ? { capacity: column.capacity } : {}),
       commerceIds: [commerceId],
       branchIds: [branchId],
       name: column.label,
