@@ -84,6 +84,73 @@ usar `designStore.state.controls.date` como referencia temporal.
 Los guardados y descargas se agregan a **Movimientos de la demo** con el actor
 seleccionado. Este registro local no sustituye la auditoría del servidor.
 
+## Propuesta de navegación, captura y auditoría (29 de septiembre de 2026)
+
+El prototipo usa ahora un menú superior persistente. Conserva las rutas de
+Agenda, Clientes, Reportes, Administración y Configuraciones, y agrega
+`/movimientos` para revisar la actividad por agente. El sidebar histórico ya no
+se monta; en pantallas estrechas la navegación superior puede desplazarse de
+forma horizontal sin reducir el área del calendario.
+
+Agenda ajusta todas las filas del horario al alto disponible de la ventana. No
+requiere desplazamiento vertical interno en la vista diaria o semanal; si se
+configuran intervalos muy cortos, las tarjetas reducen su altura y el detalle
+completo permanece disponible al colocar el cursor sobre la cita. El tooltip
+muestra cliente, horario, servicio, especialista, estado, contacto y notas.
+
+En **Configuraciones → Clientes y preguntas** un usuario master puede dar de
+alta preguntas de texto, número, sí/no, fecha o selección, marcarlas como
+obligatorias y activarlas o desactivarlas. Se reutiliza la definición canónica
+de campo de cliente por `definitionId`: la misma pregunta aparece en la reserva
+y en el alta de cliente. Cuando la reserva crea al cliente, la respuesta se
+guarda también en su expediente ficticio. Las respuestas propias de la cita se
+relacionan por `appointmentId`; no se crea otro catálogo de clientes, empleados
+o vendedores.
+
+En **Configuraciones → Códigos personales** master asigna códigos ficticios a
+identidades que provienen de Scheduler o del catálogo externo POS/CRM. No se
+crean vendedores paralelos. Los códigos tienen de 4 a 12 dígitos, son únicos y
+un valor utilizado no se puede reasignar posteriormente durante la sesión. La
+pantalla nunca muestra el valor guardado.
+
+Alta/cambio/cancelación/estado de cita y alta/cambio/cancelación de bloqueos
+solicitan un código antes de ejecutar. Cada captura genera una autorización de
+dos minutos que se consume al registrar un solo movimiento. La bitácora guarda
+actor, rol, origen, acción, propósito, tipo/ID de registro y metadatos seguros;
+nunca guarda el código. Los clientes registrados sólo se editan después de
+abrir el expediente con autorización; master dispone además de edición directa
+en el entorno de diseño.
+
+Contratos propuestos, exclusivos de `apps/scheduler/design`:
+
+| Método | Ruta | Uso propuesto |
+| ------ | ---- | ------------- |
+| `GET/POST/PUT` | `/api/scheduler/design-proposals/authorization-agents[/:id]` | Consultar identidades externas y asignar un código ficticio único. |
+| `POST` | `/api/scheduler/design-proposals/operation-authorizations` | Resolver el agente por código y emitir un token de un solo movimiento. |
+| `POST` | `/api/scheduler/design-proposals/operation-authorizations/commit` | Consumir el token y agregar la bitácora redactada. |
+| `GET` | `/api/scheduler/design-proposals/movements` | Consultar la bitácora por agente. |
+| `GET/PUT` | `/api/scheduler/design-proposals/appointments/:id/answers` | Leer o guardar respuestas relacionadas con una cita. |
+
+Estos endpoints no existen en el runtime productivo. El alias
+`@scheduler/design-proposals` selecciona el cliente MSW sólo con
+`SCHEDULER_DESIGN_MODE=1`; el build normal usa un proveedor inactivo. Para la
+implementación real se requieren contratos canónicos, hash de códigos,
+revocación/rotación, permisos, auditoría append-only, persistencia transaccional
+y resolución de vendedores desde el POS/CRM.
+
+Recorrido manual recomendado:
+
+1. En Configuraciones, crea una pregunta y confirma que aparece en una reserva
+   y en el alta de cliente.
+2. En Códigos personales, intenta repetir `0000`, `1111` o `2222`; debe
+   rechazarse sin revelar a quién pertenece.
+3. Crea o modifica una cita con un código válido y confirma que el calendario
+   cabe en la ventana y que el hover muestra el detalle.
+4. Abre Movimientos, filtra por agente y comprueba que aparece la acción sin el
+   código personal.
+5. Como especialista, intenta editar un cliente sin desbloquear el expediente;
+   la API ficticia debe rechazarlo. Como master, usa la acción Editar directa.
+
 ## Dónde trabajar
 
 | Archivo/directorio                  | Uso                                                        |
@@ -142,13 +209,15 @@ Comprobaciones realizadas el 29 de septiembre de 2026: TypeScript, lint, suite
 existente y pruebas nuevas, lockfile congelado, build normal y build de diseño.
 El cliente Axios real se probó contra MSW: login, disponibilidad, reservas,
 cancelación, conflictos, duplicados y autorizaciones. Los chunks del build normal
-no contienen el runtime de diseño. Lint conserva cuatro avisos de `<img>` que ya
+no contienen el runtime de diseño. Lint conserva tres avisos de `<img>` que ya
 existían en la rama base.
 
-La revisión interactiva en navegador queda pendiente: este sandbox rechaza
-iniciar servidores locales con `listen EPERM`, incluso en `127.0.0.1`. Antes de
-entregarlo al PO, ejecuta `dev:design` en un host compatible y recorre Agenda,
-Clientes, Administración, Configuraciones y Reportes, con el backend apagado.
+En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
+el backend apagado. La revisión visual automatizada queda pendiente: la CLI
+`agent-browser` no está instalada y el navegador integrado no pudo iniciar
+porque el sandbox de Windows falló al aplicar sus ACL. Antes de entregar al PO,
+abre la demo en un host compatible y recorre Agenda, Clientes, Configuraciones y
+Movimientos siguiendo los pasos anteriores.
 
 No se ha creado ni configurado un proyecto de Vercel. Un Preview posterior debe
 usar un proyecto dedicado, el comando `build:design`, el directorio `.next-design`

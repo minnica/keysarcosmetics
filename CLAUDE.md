@@ -450,7 +450,8 @@ memoria, sin API operativa ni BD. La base es `feature/scheduler` en
 instrucciones de Codex: `apps/scheduler/AGENTS.md`.
 
 Los mocks viven exclusivamente en `apps/scheduler/design`. El alias
-`@scheduler/runtime` y `tsconfig.design.json` seleccionan la entrada de diseño sólo con
+`@scheduler/runtime`, el proveedor `@scheduler/design-proposals` y
+`tsconfig.design.json` seleccionan las entradas de diseño sólo con
 `SCHEDULER_DESIGN_MODE=1`; el runtime normal y los guards RV8 permanecen activos.
 `dev:design`/`build:design`/`start:design` fuerzan un destino HTTP `.invalid`,
 esperan el worker antes de montar sesión y usan `.next-design-dev`/`.next-design`.
@@ -462,11 +463,22 @@ Los reportes de citas/clientes leen el estado compartido; otros datasets son
 ejemplos visuales, y mensajes/archivos son simulados. Los flujos nuevos requieren
 revisión e implementación de contratos, persistencia e integraciones reales.
 
+La propuesta PO del 29 de septiembre de 2026 mueve la navegación al encabezado,
+ajusta toda la jornada al alto visible, agrega detalle de cita por hover,
+preguntas compartidas entre reserva/cliente, códigos ficticios únicos por
+identidad Scheduler/POS-CRM y la ruta `/movimientos`. Las respuestas se enlazan
+por `definitionId` y `appointmentId`; los códigos no se registran en la
+bitácora. Los endpoints `/api/scheduler/design-proposals/*` y su estado existen
+exclusivamente en `apps/scheduler/design`; el proveedor normal queda inactivo.
+La integración real debe resolver vendedores desde POS/CRM, almacenar hashes,
+aplicar autorizaciones transaccionales de un uso y persistir auditoría
+append-only. Detalle y recorrido: `SCHEDULER_PO_GUIDE.md`.
+
 Plan de restauración visual: `PLAN_RESTAURACION_VISUAL_SCHEDULER.md` (6 de septiembre de 2026). Define fases RV0–RV8 para recuperar la presentación aprobada del commit `e9077ddad945325b1a132962ce0c2fcd9ae7f74a` en todo Scheduler, conservando contratos, seguridad y persistencia del backend actual. RV0–RV8 quedaron implementadas con validación visual/funcional pendiente. `docs/SCHEDULER_VISUAL_RESTORATION_BASELINE.md` y los runbooks `docs/SCHEDULER_RV1_PRESENTATION_BOUNDARY.md` a `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md` contienen la evidencia y comandos. Los checks locales pasan, pero el sandbox bloquea servidores, Chromium y PostgreSQL desechable; ejecutar los runners documentados en un host compatible antes de validar las fases. No restaurar íntegramente el código mock ni considerar los workspaces API simplificados como referencia visual aprobada.
 
 `apps/scheduler` es la app de agenda y administración de reservas. Las Fases 1 a 10 ya implementaron login, bootstrap, permisos, alcance, autorizaciones secundarias, catálogos, clientes compartidos, agenda canónica, integración POS, administración/configuración, comunicaciones/documentos/encuestas, reportes/exportaciones, conexión visual y puertas de calidad/despliegue. RV2 volvió a montar los componentes aprobados de Agenda, RV3 restauró Clientes, RV4 Administración, RV5 Configuraciones, RV6 engagement y RV7 Reportes/exportaciones sobre contratos reales. RV8 retiró workspaces/mocks sin consumidores, agregó guards de rutas/grafo/persistencia, revalidación de sesión/permisos y chunks dinámicos por módulo. Ninguna entrada productiva lee o escribe estado operativo simulado; los fixtures deterministas viven sólo en E2E.
 
-- RV8 verifica las 19 entradas de App Router mediante `scheduler-rv8-integrity.test.cjs`, descarta respuestas de bootstrap posteriores a logout/cambio de token y revalida permisos cada 30 segundos, al recuperar foco/visibilidad o ante cambios de token entre pestañas. La pérdida de sesión o permisos desmonta el workspace. Se eliminaron 36 archivos históricos sin consumidores y la clave local de horarios; sólo permanecen el JWT y `slotMinutes` visual. Los cinco workspaces se cargan con `next/dynamic`: el JS inicial operativo bajó de 359 kB a 89.7–89.8 kB y los exportadores pesados siguen diferidos. La implementación RV8 quedó fijada en `a1e68b44957431c716c39d183843aba56085c12a`; la candidata de la PR será el `HEAD` que incorpore el cierre documental y el despliegue deberá verificar ese SHA completo. Rollback visual: redesplegar sólo Scheduler desde `9706a9f`, sin revertir migraciones ni cambiar `AGENDA_PROVIDER`. Capturas, E2E y API/PostgreSQL siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md`.
+- RV8 verifica las 20 entradas de App Router mediante `scheduler-rv8-integrity.test.cjs`, incluida la propuesta `/movimientos`; descarta respuestas de bootstrap posteriores a logout/cambio de token y revalida permisos cada 30 segundos, al recuperar foco/visibilidad o ante cambios de token entre pestañas. La pérdida de sesión o permisos desmonta el workspace. Se eliminaron 36 archivos históricos sin consumidores y la clave local de horarios; sólo permanecen el JWT y `slotMinutes` visual. Los workspaces se cargan por ruta y los exportadores pesados siguen diferidos. La implementación RV8 quedó fijada en `a1e68b44957431c716c39d183843aba56085c12a`; la candidata de la PR será el `HEAD` que incorpore el cierre documental y el despliegue deberá verificar ese SHA completo. Rollback visual: redesplegar sólo Scheduler desde `9706a9f`, sin revertir migraciones ni cambiar `AGENDA_PROVIDER`. Capturas, E2E y API/PostgreSQL siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV8_RELEASE_CANDIDATE.md`.
 
 - RV7 restaura Resumen, Reservas, Historial, Rendimiento, Ventas, Encuestas, Recordatorios y todos los desgloses profundos sobre los doce datasets canónicos. Pantalla recorre todas las páginas y exportación obtiene el conjunto completo desde `/exports` antes de generar CSV/XLSX/PDF. Las rutas por local validan `branchId` contra el bootstrap; ninguna vista inventa comparación, cuota, ingresos atribuidos o respuestas por pregunta. Capturas y paridad HTTP/PostgreSQL siguen pendientes por B06. Runbook: `docs/SCHEDULER_RV7_REPORTS_RESTORATION.md`.
 
@@ -1607,6 +1619,7 @@ packages/ui/
 | Agenda scheduler                | `apps/scheduler/src/app/(dashboard)/page.tsx`                      |
 | Admin scheduler                 | `apps/scheduler/src/app/(dashboard)/administracion/page.tsx`       |
 | Configuraciones scheduler       | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`      |
+| Movimientos scheduler           | `apps/scheduler/src/app/(dashboard)/movimientos/page.tsx`          |
 | Reportes scheduler              | `apps/scheduler/src/app/(dashboard)/reportes/`                     |
 | Entrada de workspaces Scheduler | `apps/scheduler/src/components/api/SchedulerPageEntries.tsx`       |
 | Agenda Scheduler                | `apps/scheduler/src/components/api/ApiAgendaWorkspace.tsx`         |
