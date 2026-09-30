@@ -100,6 +100,25 @@ configuran intervalos muy cortos, las tarjetas reducen su altura y el detalle
 completo permanece disponible al colocar el cursor sobre la cita. El tooltip
 muestra cliente, horario, servicio, especialista, estado, contacto y notas.
 
+La selección de sucursales de Agenda admite **Todas**, **Disponibles en la
+fecha** o una combinación manual. Cada sucursal conserva su consulta, zona
+horaria y perfil canónico; las columnas se identifican con el nombre de la
+sucursal y sus IDs visuales se encapsulan por `branchId` para que una misma
+especialista pueda aparecer en más de un local sin colisiones. La sucursal
+operativa de una reserva o bloqueo se toma de la columna elegida. El botón de
+ajuste alterna entre ancho cómodo y todas las columnas dentro de la ventana; el
+botón de impresión cambia a día, ajusta columnas y abre la impresión horizontal
+del navegador sin menú ni panel lateral.
+
+Clientes incorpora en el entorno de diseño una búsqueda avanzada combinable.
+Los criterios entre grupos se aplican con `AND`; dentro de estatus, servicios y
+vendedores, las selecciones se aplican con `OR`. Permite buscar clientes sin
+citas en 30/60/90/180/365 días, cualquier estatus de Agenda, uno o varios
+servicios, mes de cumpleaños, vendedor de cartera/POS y valores de campos
+personalizados activos. Los resultados muestran última cita y conteos de
+asistencias, cancelaciones y no show. La consulta productiva existente no se
+amplía en esta rama.
+
 En **Configuraciones → Clientes y preguntas** un usuario master puede dar de
 alta preguntas de texto, número, sí/no, fecha o selección, marcarlas como
 obligatorias y activarlas o desactivarlas. Se reutiliza la definición canónica
@@ -131,6 +150,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `POST` | `/api/scheduler/design-proposals/operation-authorizations` | Resolver el agente por código y emitir un token de un solo movimiento. |
 | `POST` | `/api/scheduler/design-proposals/operation-authorizations/commit` | Consumir el token y agregar la bitácora redactada. |
 | `GET` | `/api/scheduler/design-proposals/movements` | Consultar la bitácora por agente. |
+| `POST` | `/api/scheduler/design-proposals/customers/advanced-search` | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
 | `GET/PUT` | `/api/scheduler/design-proposals/appointments/:id/answers` | Leer o guardar respuestas relacionadas con una cita. |
 
 Estos endpoints no existen en el runtime productivo. El alias
@@ -138,7 +158,23 @@ Estos endpoints no existen en el runtime productivo. El alias
 `SCHEDULER_DESIGN_MODE=1`; el build normal usa un proveedor inactivo. Para la
 implementación real se requieren contratos canónicos, hash de códigos,
 revocación/rotación, permisos, auditoría append-only, persistencia transaccional
-y resolución de vendedores desde el POS/CRM.
+y resolución de vendedores desde el POS/CRM. La búsqueda avanzada real requiere
+índices por cliente/fecha/estatus/servicio, filtros JSON tipados para campos
+personalizados y un catálogo de vendedores leído desde el POS/CRM; no debe
+resolver esos criterios cargando historiales completos en el navegador.
+
+Opciones de dirección visual pendientes de elección del PO:
+
+1. **Editorial Keysar** (recomendada): conserva marfil, antracita y dorado,
+   reduce ornamentos, agrupa acciones y usa jerarquía tipográfica elegante.
+2. **Agenda ejecutiva**: mayor densidad, encabezados compactos y prioridad a
+   métricas/estatus para operación con muchas sucursales.
+3. **Spa minimal**: más aire, fondos suaves y controles discretos; favorece una
+   experiencia premium sobre la densidad operativa.
+
+La implementación actual permanece en **Editorial Keysar** hasta que Producto
+elija una dirección; los nuevos controles respetan esa línea sin introducir un
+segundo sistema visual.
 
 Recorrido manual recomendado:
 
@@ -148,9 +184,13 @@ Recorrido manual recomendado:
    rechazarse sin revelar a quién pertenece.
 3. Crea o modifica una cita con un código válido y confirma que el calendario
    cabe en la ventana y que el hover muestra el detalle.
-4. Abre Movimientos, filtra por agente y comprueba que aparece la acción sin el
+4. Selecciona Todas, Disponibles y una combinación manual de sucursales; comprueba
+   el nombre de local en cada columna, alterna el ajuste y abre la impresión diaria.
+5. En Clientes combina cancelación, servicio, cumpleaños, vendedor y un campo
+   personalizado; después prueba el filtro de 30 días sin citas.
+6. Abre Movimientos, filtra por agente y comprueba que aparece la acción sin el
    código personal.
-5. Como especialista, intenta editar un cliente sin desbloquear el expediente;
+7. Como especialista, intenta editar un cliente sin desbloquear el expediente;
    la API ficticia debe rechazarlo. Como master, usa la acción Editar directa.
 
 ## Dónde trabajar

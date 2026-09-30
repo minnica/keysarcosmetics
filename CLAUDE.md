@@ -1444,9 +1444,10 @@ apps/scheduler/
 │   ├── api/                       → workspaces reales y entrada dinámica por módulo
 │   ├── layout/
 │   │   ├── SchedulerLayoutShell.tsx → shell responsive compartido por las rutas autenticadas
-│   │   └── SchedulerAppSidebar.tsx  → navegación primaria global filtrada por permisos
+│   │   ├── SchedulerTopNavigation.tsx → navegación superior global filtrada por permisos
+│   │   └── SchedulerAppSidebar.tsx  → navegación lateral histórica, no montada por el shell actual
 │   ├── administration/            → presentación RV4/RV6 y catálogos administrativos reales
-│   ├── clients/                   → engagement y documentos privados de Clientes
+│   ├── clients/                   → engagement, documentos privados y filtros avanzados de diseño
 │   ├── reports/                   → presentación restaurada y encabezados de Reportes
 │   └── scheduler/                 → header, filtros, grid, tarjetas y diálogos de Agenda
 └── src/lib/
@@ -1466,6 +1467,13 @@ apps/scheduler/
     ├── scheduler-query-scope.ts            → alcance y descarte de respuestas obsoletas
     └── scheduler-session-state.ts          → guard contra bootstrap tardío
 ```
+
+En `design/scheduler-po`, Agenda permite combinar sucursales autorizadas en una
+sola cuadrícula, encapsula las columnas por `branchId`, imprime el día en
+horizontal y alterna ancho cómodo/ajustado. La búsqueda avanzada de Clientes es
+una propuesta exclusiva de `design-proposals`: combina inactividad, estatus,
+servicios, cumpleaños, vendedor y campos personalizados sin ampliar todavía el
+contrato productivo de `packages/types` o `packages/api-client`.
 
 ### backend/api
 
