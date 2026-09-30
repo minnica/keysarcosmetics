@@ -146,6 +146,31 @@ crean vendedores paralelos. Los códigos tienen de 4 a 12 dígitos, son únicos 
 un valor utilizado no se puede reasignar posteriormente durante la sesión. La
 pantalla nunca muestra el valor guardado.
 
+En **Administración → Recursos**, una cabina se registra con su capacidad. Al
+crear recursos nuevos se puede indicar cuántas cabinas iguales existen; la UI
+genera nombres consecutivos y conserva una fila canónica por cabina. Los datos
+ficticios incluyen cabina individual, doble y triple en Polanco, y una doble en
+Mítikah. La reserva sólo ofrece cabinas activas de la sucursal elegida.
+
+Al crear o editar una reserva en modo diseño, seleccionar una cabina abre una
+fila por cada lugar disponible. La primera corresponde al cliente principal y
+las demás permiten capturar visitantes. Cada persona exige nombre y un
+especialista diferente; así, una cabina doble muestra dos clientes/visitantes y
+dos especialistas, y una triple muestra tres. Por persona se registra compra
+pendiente, sí compró o no compró; una compra exige un monto mayor a cero.
+
+Registrar uno o más montos solicita una segunda autorización de uso único con el
+propósito `PURCHASE_CAPTURE`, además del código usado para alta/cambio de cita.
+El código debe pertenecer a una identidad Scheduler o a un empleado con rol de
+especialista/facialista/cosmetólogo, y esa identidad debe tener habilitado
+**Registrar compras** en Códigos personales. Un código válido sin ese permiso —o
+de un vendedor— se rechaza. **Cambiar estados** se administra de forma separada.
+La bitácora guarda conteo y total, nunca el código personal.
+
+El monto de la demo es un dato operativo propuesto, no un cobro ni una venta:
+POS conserva la autoridad financiera. La implementación real debe resolver el
+ticket/venta canónica en POS y guardar sólo su referencia y snapshot autorizado.
+
 Alta/cambio/cancelación/estado de cita y alta/cambio/cancelación de bloqueos
 solicitan un código antes de ejecutar. Cada captura genera una autorización de
 dos minutos que se consume al registrar un solo movimiento. La bitácora guarda
@@ -164,6 +189,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `GET`          | `/api/scheduler/design-proposals/movements`                       | Consultar la bitácora por agente.                                             |
 | `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`       | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`        | Leer o guardar respuestas relacionadas con una cita.                          |
+| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`    | Guardar cabina, visitantes, especialistas y compra por persona.               |
 
 Estos endpoints no existen en el runtime productivo. El alias
 `@scheduler/design-proposals` selecciona el cliente MSW sólo con
@@ -193,7 +219,7 @@ Recorrido manual recomendado:
 1. En Configuraciones, crea una pregunta y confirma que aparece en una reserva
    y en el alta de cliente.
 2. En Códigos personales, intenta repetir `0000`, `3333` o `4444` de las
-   cuentas, o `1111`/`2222` de los agentes POS/CRM ficticios; debe rechazarse
+   cuentas, o `1111`/`2222`/`5555` de los especialistas POS/CRM ficticios; debe rechazarse
    sin revelar a quién pertenece.
 3. Crea o modifica una cita con un código válido y confirma que el calendario
    cabe en la ventana y que el hover muestra el detalle.
@@ -207,6 +233,11 @@ Recorrido manual recomendado:
    que Administración/Configuraciones son rechazadas. Después entra con ambos
    usuarios de acceso total, usa sus códigos distintos y comprueba en
    Movimientos que cada acción conserva el actor correcto.
+8. En Administración crea dos cabinas con capacidad 2 y confirma la numeración.
+   Después crea una reserva en cabina doble: registra dos personas, dos
+   especialistas y una compra. Debe pedir primero autorización de cita y después
+   un código con permiso **Registrar compras**; desactiva ese permiso y confirma
+   que el mismo código deja de autorizar el monto.
 
 ## Dónde trabajar
 
