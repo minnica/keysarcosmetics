@@ -30,6 +30,7 @@ export interface Professional {
   kind?: "PROFESSIONAL" | "RESOURCE";
   commerceIds: string[];
   branchIds: string[];
+  branchName?: string;
   name: string;
   shortName: string;
   avatar: string;

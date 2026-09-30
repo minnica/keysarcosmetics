@@ -433,6 +433,27 @@ export function buildSchedulerAgendaPresentation({
   };
 }
 
+export function scopeSchedulerAgendaPresentationColumns(
+  presentation: SchedulerAgendaPresentation,
+  branchId: string,
+): SchedulerAgendaPresentation {
+  const scope = (columnId: string) => `branch:${branchId}:${columnId}`;
+  return {
+    columns: presentation.columns.map((column) => ({
+      ...column,
+      id: scope(column.id),
+    })),
+    appointments: presentation.appointments.map((appointment) => ({
+      ...appointment,
+      columnIds: appointment.columnIds.map(scope),
+    })),
+    blocks: presentation.blocks.map((block) => ({
+      ...block,
+      columnIds: block.columnIds.map(scope),
+    })),
+  };
+}
+
 const columnAccents = [
   "#c3a583",
   "#b994a8",

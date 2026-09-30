@@ -110,6 +110,7 @@ interface SchedulerAgendaGridProps {
   financialHistoryReadOnly?: boolean;
   clientAccountsByClient?: Record<string, ClientPurchaseAccount>;
   paymentHistoryByClient?: Record<string, ClientPaymentHistoryEntry[]>;
+  columnsFitted?: boolean;
 }
 
 interface DayOverlayBooking {
@@ -225,6 +226,7 @@ export function SchedulerAgendaGrid({
   financialHistoryReadOnly = false,
   clientAccountsByClient = {},
   paymentHistoryByClient = {},
+  columnsFitted = false,
 }: SchedulerAgendaGridProps) {
   const baseAgendaLayout = useAgendaLayoutMetrics();
   const gridViewportRef = useRef<HTMLDivElement>(null);
@@ -299,8 +301,10 @@ export function SchedulerAgendaGrid({
     agendaLayout.timeColumnWidth +
     professionalCount * agendaLayout.minColumnWidth;
   const dayGridStyle: CSSProperties & Record<string, string> = {
-    gridTemplateColumns: `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(${agendaLayout.minColumnWidth}px, 1fr))`,
-    minWidth: `${dayGridMinWidth}px`,
+    gridTemplateColumns: columnsFitted
+      ? `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(0, 1fr))`
+      : `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(${agendaLayout.minColumnWidth}px, 1fr))`,
+    minWidth: columnsFitted ? "100%" : `${dayGridMinWidth}px`,
     width: "100%",
     "--scheduler-grid-header-height": `${agendaLayout.headerOffset}px`,
     "--scheduler-grid-row-height": `${agendaLayout.rowHeight}px`,
@@ -541,7 +545,7 @@ export function SchedulerAgendaGrid({
                       {professional.name}
                     </p>
                     <p className="scheduler-professional-status text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">
-                      Cabina lista
+                      {professional.branchName ?? "Cabina lista"}
                     </p>
                   </div>
                 </div>

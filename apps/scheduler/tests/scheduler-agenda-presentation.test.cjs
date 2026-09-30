@@ -27,6 +27,7 @@ const {
   buildSchedulerAgendaPresentation,
   buildSchedulerCanonicalOperatingHours,
   buildSchedulerVisualBookings,
+  scopeSchedulerAgendaPresentationColumns,
 } = loadSource("scheduler-agenda-presentation");
 const {
   buildSchedulerAgendaRange,
@@ -251,6 +252,42 @@ test("projects one canonical appointment into its professional and resource colu
   assert.deepEqual(
     bookings.map((item) => item.professionalId),
     ["professional:professional-1", "resource:resource-1"],
+  );
+});
+
+test("scopes repeated professional columns by branch for combined agendas", () => {
+  const presentation = {
+    columns: [
+      {
+        id: "professional:professional-1",
+        entityId: "professional-1",
+        branchProfileId: "profile-1",
+        kind: "PROFESSIONAL",
+        label: "Renata",
+        active: true,
+        avatarUrl: null,
+      },
+    ],
+    appointments: [
+      {
+        ...adaptSchedulerAppointment(appointment()),
+        columnIds: ["professional:professional-1"],
+      },
+    ],
+    blocks: [],
+  };
+  const polanco = scopeSchedulerAgendaPresentationColumns(
+    presentation,
+    "polanco",
+  );
+  const mitikah = scopeSchedulerAgendaPresentationColumns(
+    presentation,
+    "mitikah",
+  );
+  assert.notEqual(polanco.columns[0].id, mitikah.columns[0].id);
+  assert.equal(
+    polanco.appointments[0].columnIds[0],
+    "branch:polanco:professional:professional-1",
   );
 });
 

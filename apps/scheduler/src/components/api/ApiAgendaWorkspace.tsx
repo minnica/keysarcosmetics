@@ -40,8 +40,11 @@ import {
   buildSchedulerVisualBookings,
   buildSchedulerVisualColumns,
   buildSchedulerVisualServices,
+  scopeSchedulerAgendaPresentationColumns,
   schedulerCanonicalToBookingStatus,
   schedulerBookingToCanonicalStatus,
+  type SchedulerAgendaPresentation,
+  type SchedulerOperatingHours,
 } from "@/lib/scheduler-agenda-presentation";
 import {
   buildSchedulerAgendaRange,
@@ -254,6 +257,36 @@ function financialPayments(
   );
 }
 
+function mergeOperatingHours(
+  commerceId: string,
+  schedules: SchedulerOperatingHours[],
+): SchedulerOperatingHours {
+  const dayNames = schedules[0]?.schedule.map((day) => day.day) ?? [];
+  const toMinutes = (value: string) => {
+    const [hours = "0", minutes = "0"] = value.split(":");
+    return Number(hours) * 60 + Number(minutes);
+  };
+  const toTime = (value: number) =>
+    `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+  return {
+    commerceId,
+    is24Hours: schedules.some((schedule) => schedule.is24Hours),
+    schedule: dayNames.map((dayName, index) => {
+      const windows = schedules
+        .map((schedule) => schedule.schedule[index])
+        .filter((day) => day?.enabled);
+      return windows.length
+        ? {
+            day: dayName,
+            enabled: true,
+            open: toTime(Math.min(...windows.map((day) => toMinutes(day!.open)))),
+            close: toTime(Math.max(...windows.map((day) => toMinutes(day!.close)))),
+          }
+        : { day: dayName, enabled: false, open: "00:00", close: "00:00" };
+    }),
+  };
+}
+
 export function ApiAgendaWorkspace() {
   const { bootstrap, canAccess } = useSchedulerSession();
   const canWrite = canAccess("agenda", "WRITE");
@@ -268,6 +301,9 @@ export function ApiAgendaWorkspace() {
   const [selectedBranch, setSelectedBranch] = useState(
     bootstrap?.authorizedBranchIds[0] ?? "",
   );
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
+    () => bootstrap?.authorizedBranchIds ?? [],
+  );
   const [statusFilter, setStatusFilter] = useState<BookingStatus | "active">(
     "active",
   );
@@ -278,6 +314,7 @@ export function ApiAgendaWorkspace() {
   const [resourcePanelOpen, setResourcePanelOpen] = useState(true);
   const [displayMode, setDisplayMode] =
     useState<SchedulerDisplayMode>("calendar");
+  const [columnsFitted, setColumnsFitted] = useState(false);
   const [agendaSlotMinutes] = useState<SchedulerAgendaSlotMinutes>(() =>
     getSchedulerAgendaSlotMinutes(),
   );
@@ -386,70 +423,136 @@ export function ApiAgendaWorkspace() {
   const branchProfile = catalogBranches.find(
     (branch) => branch.branchId === selectedBranch,
   );
+  const viewBranchIds = useMemo(
+    () =>
+      branches
+        .map((branch) => branch.id)
+        .filter((branchId) => selectedBranchIds.includes(branchId)),
+    [branches, selectedBranchIds],
+  );
+  const branchScopeKey = viewBranchIds.join(",");
+  const weekDays = useMemo(
+    () => eachDayOfInterval({ start: range.firstDate, end: range.lastDate }),
+    [range.firstDate, range.lastDate],
+  );
+  const availableBranchIds = useMemo(
+    () =>
+      catalog.data
+        ? branches
+            .filter((branch) =>
+              buildSchedulerCanonicalOperatingHours(
+                catalog.data!,
+                branch.id,
+                [selectedDate],
+              ).schedule.some((day) => day.enabled),
+            )
+            .map((branch) => branch.id)
+        : [],
+    [branches, catalog.data, selectedDate],
+  );
 
   const agenda = useSchedulerQuery(
     async () => {
-      const request = {
-        branchId: selectedBranch,
-        from: range.from,
-        to: range.to,
-        ...(statusFilter === "active"
-          ? {}
-          : { status: schedulerBookingToCanonicalStatus[statusFilter] }),
-      };
-      const [appointments, blocks] = await Promise.all([
-        loadAllSchedulerAppointments(
-          (page) => schedulerApi.appointments(page),
-          request,
-        ),
-        schedulerApi.scheduleBlocks({
-          branchId: selectedBranch,
-          from: range.from,
-          to: range.to,
+      const entries = await Promise.all(
+        viewBranchIds.map(async (branchId) => {
+          const request = {
+            branchId,
+            from: range.from,
+            to: range.to,
+            ...(statusFilter === "active"
+              ? {}
+              : { status: schedulerBookingToCanonicalStatus[statusFilter] }),
+          };
+          const [appointments, blocks] = await Promise.all([
+            loadAllSchedulerAppointments(
+              (page) => schedulerApi.appointments(page),
+              request,
+            ),
+            schedulerApi.scheduleBlocks({
+              branchId,
+              from: range.from,
+              to: range.to,
+            }),
+          ]);
+          return [branchId, { appointments, blocks }] as const;
         }),
-      ]);
-      return { appointments, blocks };
+      );
+      return { byBranch: Object.fromEntries(entries) };
     },
-    [selectedBranch, range.from, range.to, statusFilter],
+    [branchScopeKey, range.from, range.to, statusFilter],
     {
-      queryKey: "agenda",
-      branchId: selectedBranch,
-      enabled: Boolean(selectedBranch),
+      queryKey: `agenda:${branchScopeKey}`,
+      branchId: branchScopeKey,
+      enabled: viewBranchIds.length > 0,
     },
   );
 
-  const fullPresentation = useMemo(() => {
-    if (!catalog.data || !agenda.data) return null;
-    return buildSchedulerAgendaPresentation({
-      catalog: catalog.data,
-      branchId: selectedBranch,
-      appointments: agenda.data.appointments,
-      blocks: agenda.data.blocks,
-    });
-  }, [agenda.data, catalog.data, selectedBranch]);
-  const presentation = useMemo(() => {
-    if (!fullPresentation) return null;
+  const branchPresentations = useMemo(() => {
+    const catalogData = catalog.data;
+    const agendaData = agenda.data;
+    if (!catalogData || !agendaData) return [];
     const visibleDates = new Set(range.visibleDateKeys);
-    return {
-      ...fullPresentation,
-      appointments: fullPresentation.appointments.filter((appointment) =>
-        visibleDates.has(appointment.localDate),
-      ),
-      blocks: fullPresentation.blocks.filter((block) =>
-        visibleDates.has(block.localDate),
-      ),
-    };
-  }, [fullPresentation, range.visibleDateKeys]);
+    return viewBranchIds.flatMap((branchId) => {
+      const profile = catalogBranches.find(
+        (branch) => branch.branchId === branchId,
+      );
+      const branchAgenda = agendaData.byBranch[branchId];
+      if (!profile || !branchAgenda) return [];
+      const scoped = scopeSchedulerAgendaPresentationColumns(
+        buildSchedulerAgendaPresentation({
+          catalog: catalogData,
+          branchId,
+          appointments: branchAgenda.appointments,
+          blocks: branchAgenda.blocks,
+        }),
+        branchId,
+      );
+      const visiblePresentation: SchedulerAgendaPresentation = {
+        ...scoped,
+        appointments: scoped.appointments.filter((appointment) =>
+          visibleDates.has(appointment.localDate),
+        ),
+        blocks: scoped.blocks.filter((block) =>
+          visibleDates.has(block.localDate),
+        ),
+      };
+      return [
+        {
+          branchId,
+          branchName: profile.branchName,
+          profile,
+          presentation: visiblePresentation,
+        },
+      ];
+    });
+  }, [agenda.data, catalog.data, catalogBranches, range.visibleDateKeys, viewBranchIds]);
+  const presentation = useMemo<SchedulerAgendaPresentation | null>(
+    () =>
+      branchPresentations.length
+        ? {
+            columns: branchPresentations.flatMap(
+              (entry) => entry.presentation.columns,
+            ),
+            appointments: branchPresentations.flatMap(
+              (entry) => entry.presentation.appointments,
+            ),
+            blocks: branchPresentations.flatMap(
+              (entry) => entry.presentation.blocks,
+            ),
+          }
+        : null,
+    [branchPresentations],
+  );
   const visualColumns = useMemo(
     () =>
-      presentation
-        ? buildSchedulerVisualColumns(
-            presentation,
-            branchProfile?.commerceId ?? selectedCommerce,
-            selectedBranch,
-          )
-        : [],
-    [branchProfile?.commerceId, presentation, selectedBranch, selectedCommerce],
+      branchPresentations.flatMap((entry) =>
+        buildSchedulerVisualColumns(
+          entry.presentation,
+          entry.profile.commerceId,
+          entry.branchId,
+        ).map((column) => ({ ...column, branchName: entry.branchName })),
+      ),
+    [branchPresentations],
   );
   const services = useMemo(
     () =>
@@ -474,25 +577,28 @@ export function ApiAgendaWorkspace() {
   );
   const allBlocks = useMemo(
     () =>
-      presentation && catalog.data
-        ? buildSchedulerVisualBlocks(presentation, catalog.data)
+      catalog.data
+        ? branchPresentations.flatMap((entry) =>
+            buildSchedulerVisualBlocks(entry.presentation, catalog.data!),
+          )
         : [],
-    [catalog.data, presentation],
-  );
-  const weekDays = useMemo(
-    () => eachDayOfInterval({ start: range.firstDate, end: range.lastDate }),
-    [range.firstDate, range.lastDate],
+    [branchPresentations, catalog.data],
   );
   const operatingHours = useMemo(
     () =>
       catalog.data
-        ? buildSchedulerCanonicalOperatingHours(
-            catalog.data,
-            selectedBranch,
-            weekDays,
+        ? mergeOperatingHours(
+            selectedCommerce,
+            viewBranchIds.map((branchId) =>
+              buildSchedulerCanonicalOperatingHours(
+                catalog.data!,
+                branchId,
+                weekDays,
+              ),
+            ),
           )
         : { commerceId: "", is24Hours: false, schedule: [] },
-    [catalog.data, selectedBranch, weekDays],
+    [catalog.data, selectedCommerce, viewBranchIds, weekDays],
   );
 
   const sidebarColumns = useMemo(() => {
@@ -624,9 +730,21 @@ export function ApiAgendaWorkspace() {
       setSelectedCommerce(commerces[0]?.id ?? "");
   }, [commerces, selectedCommerce]);
   useEffect(() => {
-    if (!branches.some((branch) => branch.id === selectedBranch))
-      setSelectedBranch(branches[0]?.id ?? "");
-  }, [branches, selectedBranch]);
+    const branchIds = branches.map((branch) => branch.id);
+    setSelectedBranchIds((current) => {
+      const preserved = branchIds.filter((id) => current.includes(id));
+      const next = preserved.length ? preserved : branchIds;
+      return next.length === current.length &&
+        next.every((id, index) => id === current[index])
+        ? current
+        : next;
+    });
+  }, [branches]);
+  useEffect(() => {
+    if (!viewBranchIds.includes(selectedBranch)) {
+      setSelectedBranch(viewBranchIds[0] ?? "");
+    }
+  }, [selectedBranch, viewBranchIds]);
   useEffect(() => {
     setSelectedColumnIds((current) => {
       const available = new Set(visualColumns.map((column) => column.id));
@@ -767,6 +885,15 @@ export function ApiAgendaWorkspace() {
     );
   }
 
+  function updateVisibleBranches(branchIds: string[]) {
+    const ordered = branches
+      .map((branch) => branch.id)
+      .filter((branchId) => branchIds.includes(branchId));
+    if (!ordered.length) return;
+    setSelectedBranchIds(ordered);
+    if (!ordered.includes(selectedBranch)) setSelectedBranch(ordered[0]!);
+  }
+
   function handleDateStep(direction: "prev" | "next") {
     setSelectedDate((current) =>
       addDays(
@@ -782,11 +909,34 @@ export function ApiAgendaWorkspace() {
     date = selectedDate,
   ) {
     if (!canWrite) return;
-    const sourceColumns = visibleColumns.length
+    const availableColumns = visibleColumns.length
       ? visibleColumns
       : visualColumns;
+    const selectedColumn = availableColumns.find(
+      (column) => column.id === columnId,
+    );
+    const targetBranchId = selectedColumn?.branchIds[0] ?? selectedBranch;
+    const sourceColumns = availableColumns.some((column) =>
+      column.branchIds.includes(targetBranchId),
+    )
+      ? availableColumns.filter((column) =>
+          column.branchIds.includes(targetBranchId),
+        )
+      : visualColumns.filter((column) =>
+          column.branchIds.includes(targetBranchId),
+        );
+    const targetBranchProfile = catalogBranches.find(
+      (branch) => branch.branchId === targetBranchId,
+    );
+    const targetServices =
+      catalog.data && targetBranchProfile
+        ? buildSchedulerVisualServices(catalog.data, targetBranchProfile.id)
+        : services;
+    if (targetBranchId && targetBranchId !== selectedBranch) {
+      setSelectedBranch(targetBranchId);
+    }
     setBookingDraft(
-      createDraft(date, sourceColumns, columnId, startTime, services),
+      createDraft(date, sourceColumns, columnId, startTime, targetServices),
     );
     setBookingIntentKey(crypto.randomUUID());
     setClientSearchInput("");
@@ -806,6 +956,9 @@ export function ApiAgendaWorkspace() {
     ) {
       toast.error("Esta cita ya no admite edición operativa.");
       return;
+    }
+    if (appointment.branchId !== selectedBranch) {
+      setSelectedBranch(appointment.branchId);
     }
     const [hour = "00", minute = "00"] = booking.start.split(":");
     setBookingDraft({
@@ -1204,6 +1357,12 @@ export function ApiAgendaWorkspace() {
 
   function openBlock(columnId: string, startTime: string) {
     if (!canWrite) return;
+    const targetBranchId = visualColumns.find(
+      (column) => column.id === columnId,
+    )?.branchIds[0];
+    if (targetBranchId && targetBranchId !== selectedBranch) {
+      setSelectedBranch(targetBranchId);
+    }
     setBlockDraft(
       createBlockDraft(selectedDate, visualColumns, columnId, startTime),
     );
@@ -1220,12 +1379,16 @@ export function ApiAgendaWorkspace() {
     end: string;
     label: string;
     variant: "unavailable" | "blocked";
+    branchId?: string;
   }) {
     if (!canWrite || block.variant === "unavailable") {
       toast.error(
         "Las excepciones de horario se administran desde Administración.",
       );
       return;
+    }
+    if (block.branchId && block.branchId !== selectedBranch) {
+      setSelectedBranch(block.branchId);
     }
     setBlockDraft(createBlockDraftFromBlock(block, selectedDate));
     setBlockDialogOpen(true);
@@ -1606,9 +1769,15 @@ export function ApiAgendaWorkspace() {
   const selectedCommerceName =
     commerces.find((commerce) => commerce.id === selectedCommerce)?.name ??
     "Sin comercio";
-  const selectedBranchName =
-    branches.find((branch) => branch.id === selectedBranch)?.name ??
-    "Sin sucursal";
+  const visibleBranchNames = branches
+    .filter((branch) => viewBranchIds.includes(branch.id))
+    .map((branch) => branch.name);
+  const selectedBranchName = visibleBranchNames.length
+    ? `${visibleBranchNames.length} ${visibleBranchNames.length === 1 ? "sucursal" : "sucursales"} · ${visibleBranchNames.join(", ")}`
+    : "Sin sucursal";
+  const agendaAppointmentCount = Object.values(
+    agenda.data?.byBranch ?? {},
+  ).reduce((total, entry) => total + entry.appointments.length, 0);
   const sensitiveBooking = sensitiveRequest?.booking ?? null;
   const financialProfiles = Object.fromEntries(
     Object.entries(financialRecords).map(([id, record]) => [
@@ -1636,9 +1805,10 @@ export function ApiAgendaWorkspace() {
   const noop = () => undefined;
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] min-h-[560px] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(195,165,131,0.14),transparent_16%),linear-gradient(180deg,#f3f0e9_0%,#f7f3ed_100%)]">
+    <div className="scheduler-agenda-shell flex h-[calc(100dvh-4rem)] min-h-[560px] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(195,165,131,0.14),transparent_16%),linear-gradient(180deg,#f3f0e9_0%,#f7f3ed_100%)]">
       <SchedulerHeader
         canWrite={canWrite}
+        columnsFitted={columnsFitted}
         currentView={currentView}
         onDateStep={handleDateStep}
         onGoToday={() => setSelectedDate(new Date())}
@@ -1648,12 +1818,18 @@ export function ApiAgendaWorkspace() {
             : setFiltersOpen(true)
         }
         onOpenNewBooking={() => openNewBooking()}
+        onPrintDay={() => {
+          setCurrentView("day");
+          setColumnsFitted(true);
+          window.setTimeout(() => window.print(), 180);
+        }}
         onRefresh={() => {
           void catalog.reload();
           void agenda.reload();
           if (canReadStatusColors) void administrationCatalog.reload();
         }}
         onViewChange={setCurrentView}
+        onToggleColumnFit={() => setColumnsFitted((current) => !current)}
         refreshing={
           catalog.loading ||
           agenda.loading ||
@@ -1662,7 +1838,7 @@ export function ApiAgendaWorkspace() {
         selectedBranchName={selectedBranchName}
         selectedCommerceName={selectedCommerceName}
         selectedDate={selectedDate}
-        updatedLabel={`${agenda.data?.appointments.length ?? 0} citas cargadas`}
+        updatedLabel={`${agendaAppointmentCount} citas · ${viewBranchIds.length} sucursales`}
         weekDays={weekDays}
       />
 
@@ -1680,11 +1856,12 @@ export function ApiAgendaWorkspace() {
             </SheetDescription>
           </SheetHeader>
           <SchedulerSidebar
+            availableBranchIds={availableBranchIds}
             branches={branches}
             commerces={commerces}
             displayMode={displayMode}
             monthCursor={monthCursor}
-            onBranchChange={setSelectedBranch}
+            onBranchSelectionChange={updateVisibleBranches}
             onCommerceChange={setSelectedCommerce}
             onDateQuickCreate={(date) => {
               setFiltersOpen(false);
@@ -1700,7 +1877,7 @@ export function ApiAgendaWorkspace() {
             professionalQuery={professionalQuery}
             professionals={sidebarColumns}
             quickTimeFilter={quickTimeFilter}
-            selectedBranch={selectedBranch}
+            selectedBranchIds={viewBranchIds}
             selectedCommerce={selectedCommerce}
             selectedDate={selectedDate}
             selectedProfessionalIds={selectedColumnIds}
@@ -1713,13 +1890,14 @@ export function ApiAgendaWorkspace() {
 
       <main className="flex min-h-0 min-w-0 flex-1 items-stretch overflow-hidden">
         {resourcePanelOpen ? (
-          <aside className="hidden h-full min-h-0 w-[304px] shrink-0 overflow-y-auto overscroll-contain border-r border-[rgba(236,209,200,0.82)] xl:block">
+          <aside className="scheduler-agenda-sidebar hidden h-full min-h-0 w-[304px] shrink-0 overflow-y-auto overscroll-contain border-r border-[rgba(236,209,200,0.82)] xl:block">
             <SchedulerSidebar
+              availableBranchIds={availableBranchIds}
               branches={branches}
               commerces={commerces}
               displayMode={displayMode}
               monthCursor={monthCursor}
-              onBranchChange={setSelectedBranch}
+              onBranchSelectionChange={updateVisibleBranches}
               onCollapse={() => setResourcePanelOpen(false)}
               onCommerceChange={setSelectedCommerce}
               onDateQuickCreate={sidebarDateQuickCreate}
@@ -1733,7 +1911,7 @@ export function ApiAgendaWorkspace() {
               professionalQuery={professionalQuery}
               professionals={sidebarColumns}
               quickTimeFilter={quickTimeFilter}
-              selectedBranch={selectedBranch}
+              selectedBranchIds={viewBranchIds}
               selectedCommerce={selectedCommerce}
               selectedDate={selectedDate}
               selectedProfessionalIds={selectedColumnIds}
@@ -1747,7 +1925,7 @@ export function ApiAgendaWorkspace() {
         <section className="scheduler-agenda-content flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-6 xl:px-8">
           {!resourcePanelOpen ? (
             <button
-              className="mb-4 hidden h-11 w-fit items-center gap-2 rounded-2xl border border-[rgba(236,209,200,0.82)] bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[var(--scheduler-accent)] hover:bg-[var(--scheduler-accent-soft)] xl:flex"
+              className="scheduler-agenda-resource-toggle mb-4 hidden h-11 w-fit items-center gap-2 rounded-2xl border border-[rgba(236,209,200,0.82)] bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[var(--scheduler-accent)] hover:bg-[var(--scheduler-accent-soft)] xl:flex"
               onClick={() => setResourcePanelOpen(true)}
               type="button"
             >
@@ -1774,6 +1952,7 @@ export function ApiAgendaWorkspace() {
                 <SchedulerAgendaGrid
                   allBookings={allBookings}
                   canWrite={canWrite}
+                  columnsFitted={columnsFitted}
                   commerceName={selectedCommerceName}
                   clientAccountsByClient={clientAccountsByClient}
                   commerceOperatingHours={operatingHours}
@@ -1859,12 +2038,17 @@ export function ApiAgendaWorkspace() {
               (appointment) => appointment.id === bookingDraft.bookingId,
             )?.services.length ?? 0) > 1
               ? []
-              : visualColumns
+              : visualColumns.filter((column) =>
+                  column.branchIds.includes(selectedBranch),
+                )
           }
           draft={bookingDraft}
           canCreateClient={canCreateClient}
           onBranchChange={(branchId) => {
             setSelectedBranch(branchId);
+            setSelectedBranchIds((current) =>
+              current.includes(branchId) ? current : [...current, branchId],
+            );
             setBookingDialogOpen(false);
             setBookingDraft(null);
             setCustomerRegistrationReview(null);

@@ -4,13 +4,14 @@ import { Button, Popover, PopoverContent, PopoverTrigger } from '@cosmetics/ui'
 import {
   ArrowLeft,
   ArrowRight,
-  ChevronsLeftRight,
   CircleHelp,
-  Copy,
   Filter,
   MapPinned,
+  Maximize2,
   Plus,
+  Printer,
   RefreshCcw,
+  Shrink,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -29,6 +30,9 @@ interface SchedulerHeaderProps {
   onRefresh: () => void
   onOpenFilters: () => void
   onOpenNewBooking: () => void
+  onPrintDay: () => void
+  onToggleColumnFit: () => void
+  columnsFitted: boolean
   canWrite?: boolean
   refreshing?: boolean
   updatedLabel?: string
@@ -46,6 +50,9 @@ export function SchedulerHeader({
   onRefresh,
   onOpenFilters,
   onOpenNewBooking,
+  onPrintDay,
+  onToggleColumnFit,
+  columnsFitted,
   canWrite = true,
   refreshing = false,
   updatedLabel = 'Datos canónicos',
@@ -146,8 +153,15 @@ export function SchedulerHeader({
             <button aria-label="Actualizar agenda" className="scheduler-toolbar-button" disabled={refreshing} onClick={onRefresh} type="button">
               <RefreshCcw className={refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             </button>
-            <button aria-label="Ajustar ancho (no disponible)" aria-disabled="true" className="scheduler-toolbar-button opacity-40" disabled type="button">
-              <ChevronsLeftRight className="h-4 w-4" />
+            <button
+              aria-label={columnsFitted ? "Restaurar ancho de columnas" : "Ajustar columnas a la ventana"}
+              aria-pressed={columnsFitted}
+              className={columnsFitted ? "scheduler-toolbar-button !bg-[#263649] !text-white" : "scheduler-toolbar-button"}
+              onClick={onToggleColumnFit}
+              title={columnsFitted ? "Restaurar columnas" : "Ajustar columnas"}
+              type="button"
+            >
+              {columnsFitted ? <Shrink className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
             <button
               aria-label="Abrir filtros de agenda"
@@ -157,8 +171,14 @@ export function SchedulerHeader({
             >
               <Filter className="h-4 w-4" />
             </button>
-            <button aria-label="Duplicar vista (no disponible)" aria-disabled="true" className="scheduler-toolbar-button opacity-40" disabled type="button">
-              <Copy className="h-4 w-4" />
+            <button
+              aria-label="Imprimir horarios del día"
+              className="scheduler-toolbar-button"
+              onClick={onPrintDay}
+              title="Imprimir horarios del día"
+              type="button"
+            >
+              <Printer className="h-4 w-4" />
             </button>
             <Button className="scheduler-agenda-new-button scheduler-modal-cta h-[52px] rounded-[20px] px-6 text-base font-medium" disabled={!canWrite} onClick={onOpenNewBooking}>
               Nuevo

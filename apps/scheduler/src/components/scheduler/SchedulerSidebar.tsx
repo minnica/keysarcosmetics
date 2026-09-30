@@ -1,7 +1,7 @@
 'use client'
 
-import { Badge, Calendar, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@cosmetics/ui'
-import { CalendarDays, ChevronLeft, ChevronRight, List, PanelLeftClose, Search } from 'lucide-react'
+import { Badge, Calendar, Card, CardContent, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@cosmetics/ui'
+import { Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, List, PanelLeftClose, Search } from 'lucide-react'
 import { addMonths, format, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -20,8 +20,9 @@ interface SchedulerSidebarProps {
   selectedCommerce: string
   onCommerceChange: (value: string) => void
   branches: BranchOption[]
-  selectedBranch: string
-  onBranchChange: (value: string) => void
+  selectedBranchIds: string[]
+  availableBranchIds: string[]
+  onBranchSelectionChange: (value: string[]) => void
   visibleProfessionalCount: number
   professionals: Professional[]
   selectedProfessionalIds: string[]
@@ -48,8 +49,9 @@ export function SchedulerSidebar({
   selectedCommerce,
   onCommerceChange,
   branches,
-  selectedBranch,
-  onBranchChange,
+  selectedBranchIds,
+  availableBranchIds,
+  onBranchSelectionChange,
   visibleProfessionalCount,
   professionals,
   selectedProfessionalIds,
@@ -139,19 +141,94 @@ export function SchedulerSidebar({
               </div>
 
               <div>
-                <label className="scheduler-label">Sucursal</label>
-              <Select value={selectedBranch} onValueChange={onBranchChange}>
-                <SelectTrigger className="scheduler-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="scheduler-select-content max-h-[220px]">
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} className="scheduler-select-item" value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <label className="scheduler-label">Sucursales visibles</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="scheduler-select flex w-full items-center justify-between px-4 text-left"
+                      type="button"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Building2 className="h-4 w-4 shrink-0 text-[#ad8b67]" />
+                        <span className="truncate">
+                          {selectedBranchIds.length === branches.length
+                            ? `Todas (${branches.length})`
+                            : `${selectedBranchIds.length} seleccionadas`}
+                        </span>
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[270px] rounded-[22px] border-[#e4d8cd] bg-white p-3 shadow-[0_20px_54px_rgba(38,54,73,0.16)]"
+                  >
+                    <div className="grid grid-cols-2 gap-2 border-b border-[#eee6df] pb-3">
+                      <button
+                        className="rounded-xl bg-[#263649] px-3 py-2 text-xs font-semibold text-white"
+                        onClick={() =>
+                          onBranchSelectionChange(branches.map((branch) => branch.id))
+                        }
+                        type="button"
+                      >
+                        Todas
+                      </button>
+                      <button
+                        className="rounded-xl border border-[#dfd5cc] bg-[#fbf8f4] px-3 py-2 text-xs font-semibold text-[#8e6c4b]"
+                        onClick={() =>
+                          onBranchSelectionChange(
+                            availableBranchIds.length
+                              ? availableBranchIds
+                              : selectedBranchIds,
+                          )
+                        }
+                        type="button"
+                      >
+                        Disponibles
+                      </button>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {branches.map((branch) => {
+                        const selected = selectedBranchIds.includes(branch.id)
+                        const available = availableBranchIds.includes(branch.id)
+                        return (
+                          <button
+                            key={branch.id}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-[#f8f2ec]"
+                            onClick={() => {
+                              const next = selected
+                                ? selectedBranchIds.filter((id) => id !== branch.id)
+                                : [...selectedBranchIds, branch.id]
+                              if (next.length) onBranchSelectionChange(next)
+                            }}
+                            type="button"
+                          >
+                            <span
+                              className={
+                                selected
+                                  ? "flex h-5 w-5 items-center justify-center rounded-md bg-[#263649] text-white"
+                                  : "flex h-5 w-5 items-center justify-center rounded-md border border-[#d8ccc1] bg-white"
+                              }
+                            >
+                              {selected ? <Check className="h-3.5 w-3.5" /> : null}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-[#364152]">
+                                {branch.name}
+                              </span>
+                              <span className={available ? "text-[0.68rem] text-emerald-600" : "text-[0.68rem] text-slate-400"}>
+                                {available ? "Disponible en la fecha" : "Sin horario en la fecha"}
+                              </span>
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  Puedes combinar varias; las columnas indican su sucursal.
+                </p>
               </div>
             </div>
 
