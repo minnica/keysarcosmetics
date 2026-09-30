@@ -38,6 +38,24 @@ const {
   filterSchedulerAgendaColumns,
   shouldFitSchedulerAgendaColumns,
 } = loadSource("scheduler-agenda-layout");
+const { getSchedulerStatusColorTokens } = loadSource(
+  "scheduler-status-presentation",
+);
+
+test("keeps the configured status color visible on every reservation", () => {
+  const tokens = getSchedulerStatusColorTokens("#c026d3");
+  assert.equal(tokens.accent, "#c026d3");
+  assert.equal(tokens.surface, "color-mix(in srgb, #c026d3 12%, white)");
+  assert.equal(tokens.border, "color-mix(in srgb, #c026d3 32%, white)");
+  assert.equal(
+    tokens.foreground,
+    "color-mix(in srgb, #c026d3 74%, #263649)",
+  );
+  assert.equal(
+    getSchedulerStatusColorTokens("not-a-color").accent,
+    "#94a3b8",
+  );
+});
 const {
   buildSchedulerQueryScope,
   schedulerQueryMatchesInvalidation,

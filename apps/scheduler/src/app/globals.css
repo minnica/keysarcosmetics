@@ -755,12 +755,8 @@
       gap: 0.3rem;
     }
 
-    .scheduler-appointment-meta > span:first-child {
-      width: 0.38rem;
-      height: 0.38rem;
-    }
-
-    .scheduler-appointment-meta > span:last-child,
+    .scheduler-appointment-time,
+    .scheduler-appointment-status-badge,
     .scheduler-appointment-detail {
       font-size: 0.54rem;
       letter-spacing: 0.06em;
@@ -834,6 +830,10 @@
 
     .scheduler-appointment-booking .scheduler-appointment-meta {
       display: none;
+    }
+
+    .scheduler-appointment-booking {
+      border-left-width: 5px !important;
     }
   }
 

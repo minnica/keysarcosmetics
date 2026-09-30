@@ -27,7 +27,6 @@ import { Ban, CalendarDays, DoorOpen, Plus, UserRound } from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  bookingStatuses,
   type AvailabilityBlock,
   type Booking,
   type BookingStatus,
@@ -65,6 +64,8 @@ import {
 } from "@/lib/scheduler-agenda-presentation";
 import { SchedulerBookingCard } from "./SchedulerBookingCard";
 import { SchedulerAvatar } from "./SchedulerAvatar";
+import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
+import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
 
 interface SchedulerAgendaGridProps {
   currentView: SchedulerView;
@@ -644,6 +645,10 @@ export function SchedulerAgendaGrid({
                 ))}
 
                 {dayAppointments.map(({ booking, style }) => {
+                  const statusColor = statusColors[booking.status];
+                  const statusTokens =
+                    getSchedulerStatusColorTokens(statusColor);
+
                   return (
                     <Dialog key={booking.id}>
                       <Tooltip>
@@ -654,23 +659,24 @@ export function SchedulerAgendaGrid({
                               className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
                               style={{
                                 ...style,
-                                backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
-                                borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
-                                color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
+                                backgroundColor: statusTokens.surface,
+                                borderColor: statusTokens.border,
+                                borderLeftColor: statusTokens.accent,
+                                borderLeftWidth: "5px",
+                                color: statusTokens.foreground,
                               }}
                               type="button"
                             >
-                              <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
-                                <span
-                                  className="h-2.5 w-2.5 rounded-full"
-                                  style={{
-                                    backgroundColor:
-                                      statusColors[booking.status],
-                                  }}
-                                />
-                                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
+                              <div className="scheduler-appointment-meta mb-1 flex items-center justify-between gap-2">
+                                <span className="scheduler-appointment-time text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
                                   {booking.start}
                                 </span>
+                                <SchedulerStatusBadge
+                                  className="scheduler-appointment-status-badge max-w-[68%]"
+                                  color={statusColor}
+                                  compact
+                                  status={booking.status}
+                                />
                               </div>
                               <p className="scheduler-appointment-title line-clamp-2 text-[0.96rem] font-semibold tracking-[-0.02em]">
                                 {booking.customerName}
@@ -704,7 +710,13 @@ export function SchedulerAgendaGrid({
                               )?.name ?? "Sin asignar"}
                             </dd>
                             <dt>Estado</dt>
-                            <dd>{bookingStatuses[booking.status].label}</dd>
+                            <dd>
+                              <SchedulerStatusBadge
+                                color={statusColor}
+                                compact
+                                status={booking.status}
+                              />
+                            </dd>
                             <dt>Contacto</dt>
                             <dd>
                               {booking.phone ||
@@ -722,8 +734,8 @@ export function SchedulerAgendaGrid({
                       <DialogContent
                         className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
                         style={{
-                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
-                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                          backgroundColor: statusTokens.surface,
+                          borderColor: statusTokens.border,
                         }}
                       >
                         <SchedulerBookingCard
@@ -951,6 +963,9 @@ export function SchedulerAgendaGrid({
                     7,
                     agendaLayout,
                   );
+                  const statusColor = statusColors[booking.status];
+                  const statusTokens =
+                    getSchedulerStatusColorTokens(statusColor);
 
                   return (
                     <Dialog key={booking.id}>
@@ -963,23 +978,24 @@ export function SchedulerAgendaGrid({
                               style={{
                                 ...style,
                                 ...horizontalStyle,
-                                backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
-                                borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
-                                color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
+                                backgroundColor: statusTokens.surface,
+                                borderColor: statusTokens.border,
+                                borderLeftColor: statusTokens.accent,
+                                borderLeftWidth: "5px",
+                                color: statusTokens.foreground,
                               }}
                               type="button"
                             >
-                              <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
-                                <span
-                                  className="h-2.5 w-2.5 rounded-full"
-                                  style={{
-                                    backgroundColor:
-                                      statusColors[booking.status],
-                                  }}
-                                />
-                                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
+                              <div className="scheduler-appointment-meta mb-1 flex items-center justify-between gap-2">
+                                <span className="scheduler-appointment-time text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
                                   {booking.start}
                                 </span>
+                                <SchedulerStatusBadge
+                                  className="scheduler-appointment-status-badge max-w-[68%]"
+                                  color={statusColor}
+                                  compact
+                                  status={booking.status}
+                                />
                               </div>
                               <p className="scheduler-appointment-title line-clamp-2 text-[0.9rem] font-semibold">
                                 {booking.customerName}
@@ -1013,7 +1029,13 @@ export function SchedulerAgendaGrid({
                               )?.name ?? "Sin asignar"}
                             </dd>
                             <dt>Estado</dt>
-                            <dd>{bookingStatuses[booking.status].label}</dd>
+                            <dd>
+                              <SchedulerStatusBadge
+                                color={statusColor}
+                                compact
+                                status={booking.status}
+                              />
+                            </dd>
                             <dt>Contacto</dt>
                             <dd>
                               {booking.phone ||
@@ -1031,8 +1053,8 @@ export function SchedulerAgendaGrid({
                       <DialogContent
                         className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
                         style={{
-                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
-                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                          backgroundColor: statusTokens.surface,
+                          borderColor: statusTokens.border,
                         }}
                       >
                         <SchedulerBookingCard

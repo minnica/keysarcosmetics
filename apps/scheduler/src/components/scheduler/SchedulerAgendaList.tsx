@@ -5,12 +5,13 @@ import { CalendarDays, Clock3, Phone, Plus, UserRound } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
-  bookingStatuses,
   type Booking,
   type BookingStatusColors,
   type Professional,
 } from '@/lib/scheduler-presentation'
 import { SchedulerAvatar } from './SchedulerAvatar'
+import { SchedulerStatusBadge } from './SchedulerStatusBadge'
+import { getSchedulerStatusColorTokens } from '@/lib/scheduler-status-presentation'
 
 interface SchedulerAgendaListProps {
   bookings: Booking[]
@@ -63,14 +64,18 @@ export function SchedulerAgendaList({
             const professional = professionals.find(
               (candidate) => candidate.id === booking.professionalId,
             )
-            const status = bookingStatuses[booking.status]
             const statusColor = statusColors[booking.status]
+            const statusTokens = getSchedulerStatusColorTokens(statusColor)
 
             return (
               <button
                 className="grid w-full gap-4 px-5 py-5 text-left transition-colors hover:bg-[#fcfaf8] sm:px-6 lg:grid-cols-[110px_minmax(220px,1.2fr)_minmax(190px,1fr)_minmax(150px,.8fr)_auto] lg:items-center"
                 key={booking.id}
                 onClick={() => onOpenBooking(booking)}
+                style={{
+                  borderLeftColor: statusTokens.accent,
+                  borderLeftWidth: '5px',
+                }}
                 type="button"
               >
                 <div className="flex items-center gap-2 font-semibold text-[#263649]">
@@ -116,16 +121,11 @@ export function SchedulerAgendaList({
                   {booking.phone}
                 </div>
 
-                <span
-                  className="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{
-                    backgroundColor: `${statusColor}20`,
-                    color: statusColor,
-                  }}
-                >
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColor }} />
-                  {status.label}
-                </span>
+                <SchedulerStatusBadge
+                  className="w-fit"
+                  color={statusColor}
+                  status={booking.status}
+                />
               </button>
             )
           })}

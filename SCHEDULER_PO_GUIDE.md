@@ -359,6 +359,12 @@ Recorrido manual recomendado:
 12. Abre Reportes → Proyecciones, cambia de 3 a 6 meses y combina sucursales.
     Confirma que histórico, comparativa, distribución y exportaciones usan el
     mismo alcance y que la proyección se distingue de la venta real.
+13. Configura un color distinto para cada status y vuelve a Agenda. Cada reserva
+    debe conservar una franja lateral sólida, un fondo suave y la etiqueta del
+    status con ese color en las vistas diaria, semanal y de lista. Al pasar el
+    cursor, el detalle emergente debe repetir la misma etiqueta coloreada; en
+    pantallas de poca altura la franja debe seguir visible aunque se compacte el
+    contenido de la tarjeta.
 
 ## Dónde trabajar
 

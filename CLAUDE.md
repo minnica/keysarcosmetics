@@ -1844,6 +1844,17 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 13. No cambiar backend, Prisma ni variables de entorno salvo que la tarea lo pida explícitamente.
 14. Si hay duda sobre borrar datos o archivos → detenerse y pedir confirmación.
 
+### Scheduler: color visible por reserva (2026-09-30)
+
+- Agenda aplica el color vigente configurado para cada status a todas las
+  reservas: franja lateral sólida, superficie suave y etiqueta explícita en las
+  vistas diaria, semanal y de lista.
+- El tooltip de la reserva repite la etiqueta coloreada. En layouts compactos la
+  franja permanece visible aunque se oculten metadatos secundarios.
+- La normalización visual está centralizada en
+  `apps/scheduler/src/lib/scheduler-status-presentation.ts`; colores inválidos
+  usan un gris seguro sin alterar el status ni su historial.
+
 ---
 
 ## Pendientes conocidos
