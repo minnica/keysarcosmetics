@@ -493,6 +493,20 @@ mock `appointments/:id/cabin-visit` y su estado viven exclusivamente en
 `apps/scheduler/design`. POS continúa como autoridad financiera; el prototipo no
 crea ventas, pagos ni vendedores paralelos.
 
+La ampliación del 30 de septiembre de 2026 obliga a completar la atención antes
+de cambiar una cita a `ATTENDED`. Cada ocupante registra especialista y resultado
+`NONE`, `FULL` o `LAYAWAY`; `FULL` conserva el monto vendido/recibido y `LAYAWAY`
+separa venta total, anticipo y saldo. El cambio de estado usa
+`APPOINTMENT_STATUS_CHANGE` y los importes usan una autorización independiente
+`PURCHASE_CAPTURE`. `/reportes/ventas` monta en diseño un dashboard por cabina
+con rango, sucursal, cabina, búsqueda, indicadores, comparación por cabina,
+evolución diaria y detalle de la cita. PDF y XLSX se generan desde exactamente el
+mismo dataset filtrado mediante imports dinámicos. El mock nuevo
+`POST /api/scheduler/design-proposals/reports/cabin-sales` no existe en producción;
+la implementación real debe ser agregada en servidor, transaccional, idempotente
+y referenciar la venta canónica del POS en vez de convertir Scheduler en autoridad
+financiera.
+
 La vista de movimientos de diseño agrupa por `actorId` y fecha operativa de
 `America/Mexico_City`, manteniendo el detalle append-only al desplegar cada fila.
 Su exportación XLSX respeta los filtros visibles, carga `xlsx` sólo al solicitar

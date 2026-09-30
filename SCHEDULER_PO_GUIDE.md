@@ -166,7 +166,18 @@ fila por cada lugar disponible. La primera corresponde al cliente principal y
 las demás permiten capturar visitantes. Cada persona exige nombre y un
 especialista diferente; así, una cabina doble muestra dos clientes/visitantes y
 dos especialistas, y una triple muestra tres. Por persona se registra compra
-pendiente, sí compró o no compró; una compra exige un monto mayor a cero.
+pendiente mientras se agenda. Al cambiar la cita a **Atendida**, el mismo
+diálogo exige elegir **No compró**, **Compra liquidada** o **Apartado**. Una
+compra exige monto de venta mayor a cero; un apartado exige además un anticipo
+mayor a cero que no puede superar la venta. La especialista que atendió queda
+relacionada por persona, no sólo por cita.
+
+El cambio a **Atendida** no se ejecuta hasta completar la captura. Primero pide
+una autorización `APPOINTMENT_STATUS_CHANGE` y, cuando existe compra o apartado,
+una segunda autorización `PURCHASE_CAPTURE`. En la propuesta ambas mutaciones
+son secuenciales; el contrato productivo deberá persistir estado, atención,
+venta referenciada y auditoría en una única operación transaccional o mediante
+una saga idempotente que no deje capturas parciales.
 
 Registrar uno o más montos solicita una segunda autorización de uso único con el
 propósito `PURCHASE_CAPTURE`, además del código usado para alta/cambio de cita.
@@ -175,6 +186,17 @@ especialista/facialista/cosmetólogo, y esa identidad debe tener habilitado
 **Registrar compras** en Códigos personales. Un código válido sin ese permiso —o
 de un vendedor— se rechaza. **Cambiar estados** se administra de forma separada.
 La bitácora guarda conteo y total, nunca el código personal.
+
+En **Reportes → Ventas** el modo diseño muestra el reporte de ventas por cabina.
+Rango de fechas, sucursal, cabina y búsqueda producen una sola población a nivel
+visitante; esa misma población alimenta indicadores, comparación por cabina,
+evolución diaria, tabla, PDF y Excel. El detalle conserva ID de cita, creación,
+confirmación cuando existe historial, horario, sucursal, cabina/capacidad,
+cliente y visitante, servicios, vendedor, especialista, resultado, venta,
+anticipo, saldo, comentarios, estado, origen y última actualización. Excel crea
+`Resumen`, `Por cabina`, `Por día` y `Detalle` con fechas/importes tipados; PDF
+incluye resumen, desglose y detalle. Las librerías pesadas se cargan sólo al
+solicitar una descarga.
 
 El monto de la demo es un dato operativo propuesto, no un cobro ni una venta:
 POS conserva la autoridad financiera. La implementación real debe resolver el
@@ -199,6 +221,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`       | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`        | Leer o guardar respuestas relacionadas con una cita.                          |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`    | Guardar cabina, visitantes, especialistas y compra por persona.               |
+| `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`              | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
 
 Estos endpoints no existen en el runtime productivo. El alias
 `@scheduler/design-proposals` selecciona el cliente MSW sólo con
@@ -246,10 +269,14 @@ Recorrido manual recomendado:
    usuarios de acceso total, usa sus códigos distintos y comprueba en
    Movimientos que cada acción conserva el actor correcto.
 8. En Administración crea dos cabinas con capacidad 2 y confirma la numeración.
-   Después crea una reserva en cabina doble: registra dos personas, dos
-   especialistas y una compra. Debe pedir primero autorización de cita y después
-   un código con permiso **Registrar compras**; desactiva ese permiso y confirma
-   que el mismo código deja de autorizar el monto.
+   Después crea una reserva en cabina doble y, al cambiarla a **Atendida**,
+   registra dos personas, dos especialistas, una compra liquidada y un apartado.
+   Debe pedir autorización de estado y después un código con permiso **Registrar
+   compras**; desactiva ese permiso y confirma que el mismo código deja de
+   autorizar el monto.
+9. Abre Reportes → Ventas, combina fechas, sucursal, cabina y búsqueda. Confirma
+   que tarjetas, gráficas y tabla cambian juntas; descarga PDF y Excel y verifica
+   que los totales coincidan con el detalle visible.
 
 ## Dónde trabajar
 
@@ -305,7 +332,7 @@ Para servir un build de diseño ya compilado:
 pnpm --filter @cosmetics/scheduler start:design
 ```
 
-Comprobaciones realizadas el 29 de septiembre de 2026: TypeScript, lint, suite
+Comprobaciones realizadas el 30 de septiembre de 2026: TypeScript, lint, suite
 existente y pruebas nuevas, lockfile congelado, build normal y build de diseño.
 El cliente Axios real se probó contra MSW: login, disponibilidad, reservas,
 cancelación, conflictos, duplicados y autorizaciones. Los chunks del build normal
