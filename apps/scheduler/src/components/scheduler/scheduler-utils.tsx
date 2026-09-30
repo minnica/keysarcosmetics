@@ -134,6 +134,7 @@ export interface BookingDraft {
   paymentLabel: string
   notes: string
   internalNote: string
+  additionalAnswers: Record<string, string | boolean>
 }
 
 export interface EmptySlotAction {
@@ -355,6 +356,7 @@ export function createDraft(
     paymentLabel: 'No pagado',
     notes: '',
     internalNote: '',
+    additionalAnswers: {},
   }
 }
 
@@ -382,6 +384,7 @@ export function createDraftFromBooking(
     paymentLabel: booking.paymentLabel,
     notes: booking.notes ?? '',
     internalNote: '',
+    additionalAnswers: {},
   }
 }
 

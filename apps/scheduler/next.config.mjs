@@ -40,6 +40,10 @@ export default function createNextConfig(phase) {
         directory,
         designMode ? "design/runtime.tsx" : "src/lib/runtime.tsx",
       );
+      config.resolve.alias["@scheduler/design-proposals"] = path.join(
+        directory,
+        designMode ? "design/proposals.ts" : "src/lib/design-proposals.ts",
+      );
       return config;
     },
   };

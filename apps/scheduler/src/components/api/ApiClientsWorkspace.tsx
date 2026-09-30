@@ -501,6 +501,21 @@ export function ApiClientsWorkspace() {
     setEditorOpen(true);
   }
 
+  async function openMasterEdit(customerId: string) {
+    if (!bootstrap?.canManageAccess || !bootstrap.mockModeEnabled) return;
+    setSaving(true);
+    try {
+      const customerDetail = await schedulerApi.customerDetail(customerId, "");
+      setDraft(draftFromDetail(customerDetail, activeDefinitions));
+      setConflict(null);
+      setEditorOpen(true);
+    } catch (cause) {
+      toast.error(schedulerApiErrorMessage(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveCustomer(event: FormEvent) {
     event.preventDefault();
     if (!branchId || draft.displayName.trim().length < 2) {
@@ -1001,6 +1016,18 @@ export function ApiClientsWorkspace() {
                               : "Sin cartera vigente"}
                           </td>
                           <td className="px-5 py-4 text-right">
+                            <div className="flex justify-end gap-2">
+                            {bootstrap?.canManageAccess && bootstrap.mockModeEnabled && canWrite ? (
+                              <Button
+                                className="rounded-xl border-[#dfd5cc]"
+                                onClick={() => void openMasterEdit(customer.id)}
+                                size="sm"
+                                variant="outline"
+                              >
+                                <Pencil className="mr-2 h-3.5 w-3.5" />
+                                Editar
+                              </Button>
+                            ) : null}
                             <Button
                               className="rounded-xl border-[#dfd5cc]"
                               onClick={() => {
@@ -1013,6 +1040,7 @@ export function ApiClientsWorkspace() {
                               <FileText className="mr-2 h-3.5 w-3.5" />
                               Expediente
                             </Button>
+                            </div>
                           </td>
                         </tr>
                       );

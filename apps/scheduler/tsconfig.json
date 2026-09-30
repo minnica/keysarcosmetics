@@ -10,6 +10,7 @@
     ],
     "paths": {
       "@scheduler/runtime": ["./src/lib/runtime.tsx"],
+      "@scheduler/design-proposals": ["./src/lib/design-proposals.ts"],
       "@/*": ["./src/*"]
     },
     "allowJs": true,

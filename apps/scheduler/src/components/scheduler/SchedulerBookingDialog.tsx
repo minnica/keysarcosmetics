@@ -24,6 +24,7 @@ import {
 import { CalendarDays, ChevronDown, ChevronUp, Clock3, Copy, Sparkles, UserRoundPlus, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import type { SchedulerCustomerFieldDefinitionDto } from '@cosmetics/types'
 import {
   bookingStatuses,
   type AvailabilityBlock,
@@ -70,6 +71,7 @@ interface SchedulerBookingDialogProps {
   serviceLocked?: boolean
   saving?: boolean
   canCreateClient?: boolean
+  additionalFieldDefinitions?: SchedulerCustomerFieldDefinitionDto[]
 }
 
 export function SchedulerBookingDialog({
@@ -97,6 +99,7 @@ export function SchedulerBookingDialog({
   serviceLocked = false,
   saving = false,
   canCreateClient = true,
+  additionalFieldDefinitions = [],
 }: SchedulerBookingDialogProps) {
   const selectedService = services.find((service) => service.id === draft.serviceId)
   const isEditing = Boolean(draft.bookingId)
@@ -648,6 +651,65 @@ export function SchedulerBookingDialog({
 
                 {isAdditionalInfoOpen ? (
                   <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr]">
+                    {additionalFieldDefinitions.length ? (
+                      <div className="grid gap-4 rounded-[20px] border border-[rgba(236,209,200,0.9)] bg-white/80 p-4 lg:col-span-2 md:grid-cols-2">
+                        <div className="md:col-span-2">
+                          <p className="scheduler-modal-label">Preguntas configurables</p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Estas respuestas se vinculan por ID a la cita y, si das de alta un cliente, también a su expediente.
+                          </p>
+                        </div>
+                        {additionalFieldDefinitions.map((definition) => {
+                          const value = draft.additionalAnswers[definition.id]
+                          const updateValue = (next: string | boolean) =>
+                            patchDraft({
+                              additionalAnswers: {
+                                ...draft.additionalAnswers,
+                                [definition.id]: next,
+                              },
+                            })
+                          return (
+                            <div className="space-y-2" key={definition.id}>
+                              <label className="scheduler-modal-label" htmlFor={`booking-question-${definition.id}`}>
+                                {definition.label}{definition.required ? ' *' : ''}
+                              </label>
+                              {definition.type === 'SELECT' ? (
+                                <Select value={typeof value === 'string' ? value : ''} onValueChange={updateValue}>
+                                  <SelectTrigger id={`booking-question-${definition.id}`} className="scheduler-modal-select-trigger">
+                                    <SelectValue placeholder="Selecciona una opción" />
+                                  </SelectTrigger>
+                                  <SelectContent className="scheduler-modal-select-content">
+                                    {(definition.options ?? []).map((option) => (
+                                      <SelectItem key={option} className="scheduler-modal-select-item" value={option}>{option}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : definition.type === 'BOOLEAN' ? (
+                                <label className="flex h-14 items-center gap-3 rounded-[22px] border border-[rgba(236,209,200,0.95)] bg-white px-4 text-sm text-slate-700">
+                                  <input
+                                    checked={value === true}
+                                    className="h-4 w-4 accent-[var(--scheduler-accent)]"
+                                    id={`booking-question-${definition.id}`}
+                                    onChange={(event) => updateValue(event.target.checked)}
+                                    type="checkbox"
+                                  />
+                                  Sí
+                                </label>
+                              ) : (
+                                <Input
+                                  className="scheduler-modal-input"
+                                  id={`booking-question-${definition.id}`}
+                                  inputMode={definition.type === 'NUMBER' ? 'decimal' : undefined}
+                                  onChange={(event) => updateValue(event.target.value)}
+                                  type={definition.type === 'DATE' ? 'date' : definition.type === 'NUMBER' ? 'number' : 'text'}
+                                  value={typeof value === 'string' ? value : ''}
+                                />
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
                     {showCommercialFields ? <div className="space-y-2">
                       <label className="scheduler-modal-label">Precio</label>
                       <Input

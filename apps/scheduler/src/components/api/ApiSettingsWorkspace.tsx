@@ -12,6 +12,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
   SCHEDULER_SETTING_SECTIONS,
+  type SchedulerCustomerFieldDefinitionDto,
+  type SchedulerCustomerFieldType,
   type SchedulerSettingScope,
   type SchedulerSettingSection,
 } from "@cosmetics/types";
@@ -48,6 +50,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { schedulerApi } from "@/lib/api";
+import { schedulerDesignProposals } from "@scheduler/design-proposals";
+import type { DesignOperationAgent } from "../../../design/contracts";
 import {
   schedulerAgendaSettingsChangeEvent,
   schedulerAgendaSettingsStorageKey,
@@ -70,6 +74,177 @@ import {
 } from "./ApiState";
 
 const SETTINGS_SECTION_CHANGE_EVENT = "scheduler-settings-section-change";
+
+const customerFieldTypes: Array<{
+  value: SchedulerCustomerFieldType;
+  label: string;
+}> = [
+  { value: "TEXT", label: "Texto" },
+  { value: "NUMBER", label: "Número" },
+  { value: "BOOLEAN", label: "Sí / no" },
+  { value: "DATE", label: "Fecha" },
+  { value: "SELECT", label: "Selección" },
+];
+
+function questionKey(label: string): string {
+  return label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+}
+
+function CustomerQuestionSettings({
+  commerceId,
+  branchId,
+  canManage,
+}: {
+  commerceId: string;
+  branchId: string;
+  canManage: boolean;
+}) {
+  const [label, setLabel] = useState("");
+  const [type, setType] = useState<SchedulerCustomerFieldType>("TEXT");
+  const [required, setRequired] = useState(false);
+  const [options, setOptions] = useState("");
+  const [saving, setSaving] = useState(false);
+  const definitions = useSchedulerQuery(
+    () => schedulerApi.customerFieldDefinitions({ branchId }),
+    [branchId],
+    {
+      queryKey: "settings:customer-field-definitions",
+      branchId,
+      enabled: Boolean(branchId),
+    },
+  );
+
+  async function createQuestion() {
+    if (!label.trim() || !commerceId) return;
+    const selectOptions = options
+      .split("\n")
+      .map((option) => option.trim())
+      .filter(Boolean);
+    if (type === "SELECT" && selectOptions.length < 2) {
+      toast.error("Agrega al menos dos opciones, una por línea.");
+      return;
+    }
+    setSaving(true);
+    await runSchedulerMutation(
+      () =>
+        schedulerApi.createCustomerFieldDefinition({
+          commerceId,
+          key: questionKey(label) || `question_${Date.now()}`,
+          label: label.trim(),
+          type,
+          options: type === "SELECT" ? selectOptions : null,
+          required,
+          active: true,
+        }),
+      {
+        onSuccess: async () => {
+          setLabel("");
+          setType("TEXT");
+          setRequired(false);
+          setOptions("");
+          toast.success("Pregunta disponible en reservas y altas de cliente.");
+          await definitions.reload();
+        },
+        onError: toast.error,
+        onConflict: toast.error,
+      },
+    );
+    setSaving(false);
+  }
+
+  async function toggleQuestion(definition: SchedulerCustomerFieldDefinitionDto) {
+    setSaving(true);
+    await runSchedulerMutation(
+      () =>
+        schedulerApi.updateCustomerFieldDefinition(definition.id, {
+          commerceId: definition.commerceId,
+          key: definition.key,
+          label: definition.label,
+          type: definition.type,
+          options: definition.options,
+          required: definition.required,
+          active: !definition.active,
+          expectedVersion: definition.version,
+        }),
+      {
+        onSuccess: async () => {
+          toast.success(definition.active ? "Pregunta desactivada." : "Pregunta activada.");
+          await definitions.reload();
+        },
+        onError: toast.error,
+        onConflict: toast.error,
+      },
+    );
+    setSaving(false);
+  }
+
+  return (
+    <section className="settings-card">
+      <div className="settings-card-heading">
+        <div>
+          <p className="settings-kicker">Preguntas compartidas</p>
+          <h2 className="settings-title">Datos adicionales de reserva y cliente</h2>
+          <p className="settings-description">
+            Una sola definición se muestra en la reserva y en el alta de cliente. Las respuestas se enlazan por IDs y no duplican catálogos del POS/CRM.
+          </p>
+        </div>
+        <Badge variant="outline">Cliente + cita</Badge>
+      </div>
+      <div className="grid gap-4 border-b border-[#eee6df] p-5 md:grid-cols-2 xl:grid-cols-4 sm:p-6">
+        <div className="space-y-2 xl:col-span-2">
+          <Label htmlFor="question-label">Pregunta</Label>
+          <Input id="question-label" onChange={(event) => setLabel(event.target.value)} placeholder="Ej. Vendedor responsable" value={label} />
+        </div>
+        <div className="space-y-2">
+          <Label>Tipo de respuesta</Label>
+          <Select onValueChange={(value) => setType(value as SchedulerCustomerFieldType)} value={type}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>{customerFieldTypes.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <label className="flex items-center gap-3 self-end rounded-xl border border-[#dfd5cc] px-4 py-3 text-sm">
+          <input checked={required} className="h-4 w-4 accent-[#ad8b67]" onChange={(event) => setRequired(event.target.checked)} type="checkbox" /> Obligatoria
+        </label>
+        {type === "SELECT" ? (
+          <div className="space-y-2 md:col-span-2 xl:col-span-3">
+            <Label htmlFor="question-options">Opciones, una por línea</Label>
+            <Textarea id="question-options" onChange={(event) => setOptions(event.target.value)} placeholder={'Vendedor A\nVendedor B\nVenta de empresa'} value={options} />
+          </div>
+        ) : null}
+        <div className="flex items-end">
+          <Button className="w-full bg-[#263649] text-white hover:bg-[#1d2b3a]" disabled={!canManage || !label.trim() || saving} onClick={() => void createQuestion()}>
+            <Plus className="mr-2 h-4 w-4" /> Dar de alta
+          </Button>
+        </div>
+      </div>
+      <div className="divide-y divide-[#eee6df]">
+        {(definitions.data ?? []).map((definition) => (
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6" key={definition.id}>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-[#263649]">{definition.label}</p>
+                <Badge variant="outline">{customerFieldTypes.find((item) => item.value === definition.type)?.label}</Badge>
+                {definition.required ? <Badge>Obligatoria</Badge> : null}
+                {!definition.active ? <Badge variant="outline">Inactiva</Badge> : null}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">ID {definition.id} · clave {definition.key}</p>
+            </div>
+            <Button disabled={!canManage || saving} onClick={() => void toggleQuestion(definition)} size="sm" variant="outline">
+              {definition.active ? "Desactivar" : "Activar"}
+            </Button>
+          </div>
+        ))}
+        {!definitions.loading && !(definitions.data ?? []).length ? <p className="p-6 text-sm text-slate-500">Aún no hay preguntas configuradas.</p> : null}
+      </div>
+    </section>
+  );
+}
 
 function isSettingSection(
   value: string | null,
@@ -95,6 +270,101 @@ function SettingsHeader({ section }: { section: string }) {
         </div>
       </div>
     </header>
+  );
+}
+
+function AuthorizationAgentsSettings() {
+  const [agents, setAgents] = useState<DesignOperationAgent[]>([]);
+  const [codes, setCodes] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!schedulerDesignProposals.available) return;
+    setLoading(true);
+    try {
+      setAgents(await schedulerDesignProposals.listAuthorizationAgents());
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "No fue posible cargar los agentes.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function saveCode(agent: DesignOperationAgent) {
+    const code = codes[agent.id] ?? "";
+    if (!/^\d{4,12}$/.test(code)) {
+      toast.error("El código debe contener de 4 a 12 dígitos.");
+      return;
+    }
+    setSavingId(agent.id);
+    try {
+      await schedulerDesignProposals.saveAuthorizationAgent({
+        id: agent.id,
+        externalId: agent.externalId,
+        name: agent.name,
+        role: agent.role,
+        source: agent.source,
+        active: agent.active,
+        code,
+      });
+      setCodes((current) => ({ ...current, [agent.id]: "" }));
+      toast.success("Código asignado. El valor anterior no podrá reutilizarse.");
+      await load();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "No fue posible asignar el código.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  if (!schedulerDesignProposals.available) return null;
+
+  return (
+    <section className="settings-card mt-6">
+      <div className="settings-card-heading">
+        <div>
+          <p className="settings-kicker">Agentes y vendedores</p>
+          <h2 className="settings-title">Códigos de movimiento</h2>
+          <p className="settings-description">
+            La identidad proviene de Scheduler o del CRM/POS. Aquí sólo se asigna un código ficticio único; no se crean vendedores paralelos.
+          </p>
+        </div>
+        <Badge variant="outline">Sin códigos visibles</Badge>
+      </div>
+      <div className="divide-y divide-[#eee6df]">
+        {loading ? <p className="p-6 text-sm text-slate-500">Cargando agentes…</p> : null}
+        {agents.map((agent) => (
+          <div className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_220px_auto] md:items-center sm:px-6" key={agent.id}>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-[#263649]">{agent.name}</p>
+                <Badge variant="outline">{agent.source}</Badge>
+                <Badge variant="outline">{agent.codeConfigured ? "Código configurado" : "Pendiente"}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">{agent.role} · ID externo {agent.externalId}</p>
+            </div>
+            <Input
+              aria-label={`Nuevo código para ${agent.name}`}
+              autoComplete="off"
+              inputMode="numeric"
+              maxLength={12}
+              onChange={(event) => setCodes((current) => ({ ...current, [agent.id]: event.target.value.replace(/\D/g, "") }))}
+              placeholder="Nuevo código"
+              type="password"
+              value={codes[agent.id] ?? ""}
+            />
+            <Button disabled={(codes[agent.id]?.length ?? 0) < 4 || savingId === agent.id} onClick={() => void saveCode(agent)} variant="outline">
+              {savingId === agent.id ? "Asignando…" : "Asignar"}
+            </Button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -273,6 +543,7 @@ function PersonalSecretSettings() {
             </div>
           </div>
         </section>
+        {bootstrap?.canManageAccess ? <AuthorizationAgentsSettings /> : null}
       </main>
     </div>
   );
@@ -686,6 +957,10 @@ export function ApiSettingsWorkspace() {
       ) ?? [],
     [bootstrap?.authorizedBranchIds, catalog.data?.branches, commerceId],
   );
+  const selectedBranchId =
+    authorizedProfiles.find((branch) => branch.id === branchProfileId)?.branchId ??
+    authorizedProfiles[0]?.branchId ??
+    "";
   useEffect(() => {
     if (!authorizedProfiles.some((branch) => branch.id === branchProfileId))
       setBranchProfileId(authorizedProfiles[0]?.id ?? "");
@@ -993,6 +1268,13 @@ export function ApiSettingsWorkspace() {
           </section>
 
           {section === "agenda" ? <LocalAgendaDensity /> : null}
+          {section === "clients" ? (
+            <CustomerQuestionSettings
+              branchId={selectedBranchId}
+              canManage={Boolean(bootstrap?.canManageAccess)}
+              commerceId={commerceId}
+            />
+          ) : null}
 
           {definition.fields.length === 0 ? (
             <section className="settings-card flex min-h-[300px] items-center justify-center p-8 text-center">

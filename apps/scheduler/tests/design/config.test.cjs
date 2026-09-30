@@ -9,11 +9,9 @@ test("el alias, destino HTTP y salida de diseño quedan separados del build norm
     const normal = config("phase-production-build");
     assert.equal(normal.distDir, ".next");
     assert.equal(normal.env, undefined);
-    assert.ok(
-      normal
-        .webpack({ resolve: { alias: {} } })
-        .resolve.alias["@scheduler/runtime"].endsWith("/src/lib/runtime.tsx"),
-    );
+    const normalAliases = normal.webpack({ resolve: { alias: {} } }).resolve.alias;
+    assert.ok(normalAliases["@scheduler/runtime"].replaceAll("\\", "/").endsWith("/src/lib/runtime.tsx"));
+    assert.ok(normalAliases["@scheduler/design-proposals"].replaceAll("\\", "/").endsWith("/src/lib/design-proposals.ts"));
     process.env.SCHEDULER_DESIGN_MODE = "1";
     const design = config("phase-production-build");
     assert.equal(design.distDir, ".next-design");
@@ -22,11 +20,9 @@ test("el alias, destino HTTP y salida de diseño quedan separados del build norm
       design.env.NEXT_PUBLIC_API_URL,
       "https://scheduler-design.invalid",
     );
-    assert.ok(
-      design
-        .webpack({ resolve: { alias: {} } })
-        .resolve.alias["@scheduler/runtime"].endsWith("/design/runtime.tsx"),
-    );
+    const designAliases = design.webpack({ resolve: { alias: {} } }).resolve.alias;
+    assert.ok(designAliases["@scheduler/runtime"].replaceAll("\\", "/").endsWith("/design/runtime.tsx"));
+    assert.ok(designAliases["@scheduler/design-proposals"].replaceAll("\\", "/").endsWith("/design/proposals.ts"));
     const previousEnvironment = process.env.VERCEL_ENV;
     process.env.VERCEL_ENV = "production";
     try {

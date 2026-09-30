@@ -25,6 +25,12 @@ import {
 } from "./fixtures/engagement";
 import { schedulerSettingsRv5Documents } from "./fixtures/settings";
 import { schedulerLocalDateTimeToInstant } from "../src/lib/scheduler-agenda-data";
+import type {
+  DesignAppointmentAnswer,
+  DesignMovementRecord,
+  DesignOperationAgentSource,
+  DesignOperationPurpose,
+} from "./contracts";
 
 export const designOrigin = "https://scheduler-design.invalid";
 export type DesignRole = "master" | "specialist" | "read-only";
@@ -37,10 +43,16 @@ export interface DesignControls {
 }
 export interface DesignMovement {
   id: string;
+  actorId: string;
   actor: string;
+  actorRole: string;
+  actorSource: DesignOperationAgentSource | "SESSION";
   action: string;
+  purpose: DesignOperationPurpose | "SYSTEM_WRITE";
+  targetType: string;
   targetId: string;
   createdAt: string;
+  metadata: Record<string, string>;
 }
 
 export function designToday(): string {
@@ -200,6 +212,57 @@ export function createDesignState(
       effectiveFrom: "2026-01-01T00:00:00.000Z",
       effectiveTo: null,
     },
+    {
+      id: "design-field-sales-owner",
+      commerceId: catalog.commerces[0]!.id,
+      key: "salesOwner",
+      label: "Vendedor responsable",
+      type: "SELECT",
+      options: ["Renata Castillo", "Camila Torres", "Venta de empresa"],
+      required: false,
+      active: true,
+      version: 1,
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+    },
+    {
+      id: "design-field-attending-specialist",
+      commerceId: catalog.commerces[0]!.id,
+      key: "attendingSpecialist",
+      label: "Especialista que atendió",
+      type: "SELECT",
+      options: catalog.professionals.map((professional) => professional.name),
+      required: false,
+      active: true,
+      version: 1,
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+    },
+  ];
+  const now = new Date().toISOString();
+  const operationAgents = [
+    {
+      id: "design-agent-master",
+      externalId: "design-master",
+      name: "PO · Master demo",
+      role: "Master",
+      source: "SCHEDULER" as const,
+      active: true,
+      code: "0000",
+      updatedAt: now,
+    },
+    ...schedulerAdministrationCandidatesFixture.employees.map(
+      (employee, index) => ({
+        id: `design-agent-${employee.id}`,
+        externalId: employee.id,
+        name: employee.name,
+        role: employee.positionName,
+        source: "POS_CRM" as const,
+        active: employee.active,
+        code: index === 0 ? "1111" : "2222",
+        updatedAt: now,
+      }),
+    ),
   ];
   const state = {
     controls: { ...controls },
@@ -237,8 +300,25 @@ export function createDesignState(
       string,
       { role: DesignRole; purpose: string; targetId: string; expiresAt: number }
     >(),
+    operationAgents,
+    usedAuthorizationCodes: new Set(operationAgents.map((agent) => agent.code)),
+    operationAuthorizations: new Map<
+      string,
+      {
+        agentId: string;
+        purpose: DesignOperationPurpose;
+        targetType: string;
+        targetId: string;
+        expiresAt: number;
+      }
+    >(),
+    customerEditAccess: new Map<
+      string,
+      { role: DesignRole; expiresAt: number }
+    >(),
+    appointmentAnswers: {} as Record<string, DesignAppointmentAnswer[]>,
     idempotency: new Map<string, { payload: string; result: unknown }>(),
-    movements: [] as DesignMovement[],
+    movements: [] as Array<DesignMovement | DesignMovementRecord>,
   };
   if (controls.scenario !== "empty") {
     for (let index = 0; index < 3; index += 1) {

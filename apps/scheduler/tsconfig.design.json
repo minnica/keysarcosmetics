@@ -3,6 +3,7 @@
   "compilerOptions": {
     "paths": {
       "@scheduler/runtime": ["./design/runtime.tsx"],
+      "@scheduler/design-proposals": ["./design/proposals.ts"],
       "@/*": ["./src/*"]
     }
   }

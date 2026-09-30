@@ -23,6 +23,9 @@ function resolveProjectImport(specifier, importer) {
   if (specifier === "@scheduler/runtime") {
     return path.join(sourceRoot, "lib/runtime.tsx");
   }
+  if (specifier === "@scheduler/design-proposals") {
+    return path.join(sourceRoot, "lib/design-proposals.ts");
+  }
   if (!specifier.startsWith(".") && !specifier.startsWith("@/")) return null;
   const base = specifier.startsWith("@/")
     ? path.join(sourceRoot, specifier.slice(2))
@@ -79,6 +82,7 @@ test("keeps the complete RV0 route inventory mounted", () => {
     "app/(dashboard)/clientes/[section]/page.tsx",
     "app/(dashboard)/clientes/page.tsx",
     "app/(dashboard)/configuraciones/page.tsx",
+    "app/(dashboard)/movimientos/page.tsx",
     "app/(dashboard)/page.tsx",
     "app/(dashboard)/reportes/page.tsx",
     "app/(dashboard)/reportes/reservas/historial/page.tsx",

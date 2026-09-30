@@ -20,6 +20,12 @@ import {
   type DesignRow,
   type DesignState,
 } from "./store";
+import type {
+  DesignAppointmentAnswer,
+  DesignMovementRecord,
+  DesignOperationAgent,
+  DesignOperationPurpose,
+} from "./contracts";
 import {
   schedulerReportRv7Fixture,
   schedulerReportKeys,
@@ -154,6 +160,39 @@ function consumeAuthorization(
     fail(403, "Autorización demo inválida o vencida.");
   }
   state.authorizations.delete(key);
+}
+
+function publicOperationAgent(
+  agent: DesignState["operationAgents"][number],
+): DesignOperationAgent {
+  return {
+    id: agent.id,
+    externalId: agent.externalId,
+    name: agent.name,
+    role: agent.role,
+    source: agent.source,
+    active: agent.active,
+    codeConfigured: Boolean(agent.code),
+    updatedAt: agent.updatedAt,
+  };
+}
+
+function operationPurpose(value: unknown): DesignOperationPurpose {
+  const purposes: DesignOperationPurpose[] = [
+    "APPOINTMENT_CREATE",
+    "APPOINTMENT_UPDATE",
+    "APPOINTMENT_MOVE",
+    "APPOINTMENT_STATUS_CHANGE",
+    "APPOINTMENT_CANCEL",
+    "SCHEDULE_BLOCK_CREATE",
+    "SCHEDULE_BLOCK_UPDATE",
+    "SCHEDULE_BLOCK_DELETE",
+    "CUSTOMER_UPDATE",
+  ];
+  if (!purposes.includes(value as DesignOperationPurpose)) {
+    fail(400, "Propósito de autorización no reconocido.");
+  }
+  return value as DesignOperationPurpose;
 }
 function authorizeRequest(state: DesignState, request: DesignRequest) {
   const path = request.url.pathname;
@@ -607,6 +646,139 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       },
     };
   }
+  if (resource === "design-proposals") {
+    if (id === "authorization-agents") {
+      if (method === "GET") {
+        return state.operationAgents.map(publicOperationAgent);
+      }
+      if (state.controls.role !== "master") {
+        fail(403, "Sólo master puede administrar códigos ficticios.");
+      }
+      const agentId = action;
+      const existing = agentId
+        ? state.operationAgents.find((agent) => agent.id === agentId)
+        : undefined;
+      if (agentId && !existing) fail(404, "Agente no encontrado.");
+      const code = typeof body.code === "string" ? body.code.trim() : "";
+      if (code && !/^\d{4,12}$/.test(code)) {
+        fail(400, "El código debe contener de 4 a 12 dígitos.");
+      }
+      if (code && code !== existing?.code && state.usedAuthorizationCodes.has(code)) {
+        fail(409, "Ese código ya fue asignado y no puede repetirse.");
+      }
+      if (!existing && !code) fail(400, "Captura un código inicial.");
+      const updatedAt = new Date().toISOString();
+      const next = existing ?? {
+        id: designId("design-agent"),
+        externalId: String(body.externalId ?? designId("external-agent")),
+        name: "",
+        role: "Vendedor",
+        source: "POS_CRM" as const,
+        active: true,
+        code: "",
+        updatedAt,
+      };
+      next.externalId = String(body.externalId ?? next.externalId);
+      next.name = String(body.name ?? next.name).trim();
+      next.role = String(body.role ?? next.role).trim();
+      next.source = body.source === "SCHEDULER" ? "SCHEDULER" : "POS_CRM";
+      next.active = body.active !== false;
+      next.updatedAt = updatedAt;
+      if (!next.name || !next.role) fail(400, "Captura nombre y rol del agente.");
+      if (code && code !== next.code) {
+        state.usedAuthorizationCodes.add(code);
+        next.code = code;
+      }
+      if (!existing) state.operationAgents.push(next);
+      return publicOperationAgent(next);
+    }
+    if (id === "operation-authorizations") {
+      if (action === "commit") {
+        const token = String(body.token ?? "");
+        const authorization =
+          state.operationAuthorizations.get(token) ??
+          fail(403, "La autorización del movimiento es inválida o venció.");
+        if (authorization.expiresAt < Date.now()) {
+          fail(403, "La autorización del movimiento es inválida o venció.");
+        }
+        const targetId = String(body.targetId ?? "");
+        if (authorization.targetId && authorization.targetId !== targetId) {
+          fail(403, "La autorización pertenece a otro registro.");
+        }
+        const agent =
+          state.operationAgents.find(
+            (candidate) => candidate.id === authorization.agentId,
+          ) ?? fail(403, "El agente ya no está activo.");
+        if (!agent.active) fail(403, "El agente ya no está activo.");
+        state.operationAuthorizations.delete(token);
+        const movement: DesignMovementRecord = {
+          id: designId("design-movement"),
+          actorId: agent.id,
+          actor: agent.name,
+          actorRole: agent.role,
+          actorSource: agent.source,
+          action: String(body.action ?? authorization.purpose),
+          purpose: authorization.purpose,
+          targetType: String(body.targetType ?? authorization.targetType),
+          targetId,
+          createdAt: new Date().toISOString(),
+          metadata: Object.fromEntries(
+            Object.entries(record(body.metadata)).map(([key, value]) => [
+              key,
+              String(value),
+            ]),
+          ),
+        };
+        state.movements.unshift(movement);
+        return movement;
+      }
+      const code = String(body.code ?? "").trim();
+      const agent =
+        state.operationAgents.find(
+          (candidate) => candidate.active && candidate.code === code,
+        ) ?? fail(403, "Código personal ficticio incorrecto o inactivo.");
+      const token = designId("design-operation-authorization");
+      const expiresAt = Date.now() + 120_000;
+      const purpose = operationPurpose(body.purpose);
+      state.operationAuthorizations.set(token, {
+        agentId: agent.id,
+        purpose,
+        targetType: String(body.targetType ?? ""),
+        targetId: String(body.targetId ?? ""),
+        expiresAt,
+      });
+      return {
+        token,
+        purpose,
+        expiresAt: new Date(expiresAt).toISOString(),
+        actor: {
+          id: agent.id,
+          name: agent.name,
+          role: agent.role,
+          source: agent.source,
+        },
+      };
+    }
+    if (id === "movements") return state.movements;
+    if (id === "appointments" && parts[5] === "answers") {
+      const appointmentId = String(action ?? "");
+      appointment(state, appointmentId);
+      if (method === "GET") return state.appointmentAnswers[appointmentId] ?? [];
+      const answers = rows(body.answers).map((answer) => {
+        const value = answer.value;
+        if (!["string", "number", "boolean"].includes(typeof value)) {
+          fail(400, "Respuesta adicional inválida.");
+        }
+        return {
+          definitionId: String(answer.definitionId ?? ""),
+          value,
+        } as DesignAppointmentAnswer;
+      });
+      state.appointmentAnswers[appointmentId] = answers;
+      return answers;
+    }
+    fail(404, "Propuesta de diseño no encontrada.");
+  }
   if (resource === "operations") {
     if (id === "catalog") {
       const allowed = designBootstrap(state).authorizedBranchIds;
@@ -856,15 +1028,27 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     }
     if (method === "GET" && id) {
       const item = customer(state, id);
-      consumeAuthorization(
-        state,
-        headers.get("x-scheduler-authorization"),
-        {
-          visits: "CLIENT_VISIT_HISTORY_VIEW",
-          financial: "CLIENT_FINANCIAL_HISTORY_VIEW",
-        }[action as "visits"] ?? "CLIENT_RECORD_VIEW",
-        id,
-      );
+      const masterIdentityEdit =
+        state.controls.role === "master" &&
+        !action &&
+        !headers.get("x-scheduler-authorization");
+      if (!masterIdentityEdit) {
+        consumeAuthorization(
+          state,
+          headers.get("x-scheduler-authorization"),
+          {
+            visits: "CLIENT_VISIT_HISTORY_VIEW",
+            financial: "CLIENT_FINANCIAL_HISTORY_VIEW",
+          }[action as "visits"] ?? "CLIENT_RECORD_VIEW",
+          id,
+        );
+        if (!action) {
+          state.customerEditAccess.set(`${state.controls.role}:${id}`, {
+            role: state.controls.role,
+            expiresAt: Date.now() + 120_000,
+          });
+        }
+      }
       if (action === "visits")
         return {
           ...page(
@@ -891,6 +1075,14 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       return item;
     }
     if (method === "POST" || method === "PUT") {
+      if (method === "PUT" && id && state.controls.role !== "master") {
+        const accessKey = `${state.controls.role}:${id}`;
+        const access = state.customerEditAccess.get(accessKey);
+        if (!access || access.expiresAt < Date.now()) {
+          fail(403, "Editar un cliente registrado requiere acceso autorizado o master.");
+        }
+        state.customerEditAccess.delete(accessKey);
+      }
       const input = body as unknown as SchedulerCustomerWriteDto;
       if (!input.displayName?.trim() || !input.branchId)
         fail(400, "Captura nombre y sucursal.");
@@ -1263,7 +1455,9 @@ export function handleDesignRequest(
     const dataRoute =
       !["/api/auth/login", "/api/scheduler/bootstrap"].includes(
         request.url.pathname,
-      ) && !request.url.pathname.includes("/authorizations");
+      ) &&
+      !request.url.pathname.includes("/authorizations") &&
+      !request.url.pathname.includes("/design-proposals");
     if (dataRoute && state.controls.scenario === "error")
       fail(
         503,
@@ -1301,16 +1495,26 @@ export function handleDesignRequest(
         payload,
         result: structuredClone(result),
       });
+    const guardedWrite =
+      request.url.pathname.startsWith("/api/scheduler/appointments") ||
+      request.url.pathname.startsWith("/api/scheduler/blocks");
     if (
       dataRoute &&
+      !guardedWrite &&
       (isWriting(request.method) || request.url.pathname.includes("/exports/"))
     ) {
       state.movements.unshift({
         id: designId("design-movement"),
+        actorId: designBootstrap(state).user.id,
         actor: designBootstrap(state).user.name,
+        actorRole: designBootstrap(state).user.positionName ?? "Sesión",
+        actorSource: "SESSION",
         action: `${request.method} ${request.url.pathname}`,
+        purpose: "SYSTEM_WRITE",
+        targetType: request.url.pathname.split("/").filter(Boolean)[2] ?? "record",
         targetId: String(record(result).id ?? ""),
         createdAt: new Date().toISOString(),
+        metadata: {},
       });
     }
     return {

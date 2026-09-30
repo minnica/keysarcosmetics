@@ -283,3 +283,81 @@ test("escenarios, campos obligatorios y endpoints nuevos fallan de forma explíc
     401,
   );
 });
+
+test("los códigos de agente son únicos y cada movimiento consume una autorización", () => {
+  const { state, request } = session();
+  const agents = request(
+    "GET",
+    "/api/scheduler/design-proposals/authorization-agents",
+  ).body.data;
+  assert.ok(agents.length >= 3);
+  assert.ok(agents.every((agent) => !("code" in agent)));
+
+  const duplicate = request(
+    "PUT",
+    `/api/scheduler/design-proposals/authorization-agents/${agents[1].id}`,
+    { ...agents[1], code: "0000" },
+  );
+  assert.equal(duplicate.status, 409);
+
+  const grant = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code: "1111",
+      purpose: "APPOINTMENT_UPDATE",
+      targetType: "APPOINTMENT",
+      targetId: state.appointments[0].id,
+    },
+  ).body.data;
+  const committed = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations/commit",
+    {
+      token: grant.token,
+      action: "Cambio de cita",
+      targetType: "APPOINTMENT",
+      targetId: state.appointments[0].id,
+    },
+  );
+  assert.equal(committed.status, 201);
+  assert.equal(committed.body.data.actor, "Renata Castillo");
+  assert.ok(!JSON.stringify(committed.body.data).includes("1111"));
+  assert.equal(
+    request(
+      "POST",
+      "/api/scheduler/design-proposals/operation-authorizations/commit",
+      {
+        token: grant.token,
+        action: "Reintento",
+        targetType: "APPOINTMENT",
+        targetId: state.appointments[0].id,
+      },
+    ).status,
+    403,
+  );
+});
+
+test("las respuestas adicionales se relacionan con la cita por ID", () => {
+  const { state, request } = session();
+  const appointmentId = state.appointments[0].id;
+  const answers = [
+    { definitionId: "design-field-sales-owner", value: "Renata Castillo" },
+    { definitionId: "design-field-attending-specialist", value: "Camila Torres" },
+  ];
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/appointments/${appointmentId}/answers`,
+      { answers },
+    ).status,
+    200,
+  );
+  assert.deepEqual(
+    request(
+      "GET",
+      `/api/scheduler/design-proposals/appointments/${appointmentId}/answers`,
+    ).body.data,
+    answers,
+  );
+});
