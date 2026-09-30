@@ -421,6 +421,129 @@ test("los códigos de agente son únicos y cada movimiento consume una autorizac
   );
 });
 
+test("la cabina exige un visitante y especialista por lugar y autoriza cada monto", () => {
+  const { state, request } = session();
+  const appointmentId = state.appointments[0].id;
+  const cabin = state.catalog.resources.find(
+    (resource) => resource.id === "resource-rv4-double",
+  );
+  const specialists = state.catalog.professionals.slice(0, 2);
+  const input = {
+    cabinResourceId: cabin.id,
+    cabinCapacity: cabin.capacity,
+    visitors: [
+      {
+        id: "visitor-primary",
+        customerId: state.customers[0].id,
+        name: state.customers[0].displayName,
+        specialistProfileId: specialists[0].id,
+        purchased: true,
+        purchaseAmount: 1750,
+      },
+      {
+        id: "visitor-2",
+        customerId: null,
+        name: "Visitante ficticia",
+        specialistProfileId: specialists[1].id,
+        purchased: false,
+        purchaseAmount: null,
+      },
+    ],
+  };
+
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+      input,
+    ).status,
+    403,
+  );
+  const grant = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code: "1111",
+      purpose: "PURCHASE_CAPTURE",
+      targetType: "APPOINTMENT_PURCHASE",
+      targetId: appointmentId,
+    },
+  ).body.data;
+  const saved = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+    input,
+    { "x-design-operation-authorization": grant.token },
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.data.cabinCapacity, 2);
+  assert.equal(saved.body.data.visitors.length, 2);
+  assert.equal(saved.body.data.visitors[0].purchaseAmount, 1750);
+
+  const committed = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations/commit",
+    {
+      token: grant.token,
+      action: "Registro de compra por visitante",
+      targetType: "APPOINTMENT_PURCHASE",
+      targetId: appointmentId,
+      metadata: { purchaseTotal: "1750" },
+    },
+  );
+  assert.equal(committed.status, 201);
+  assert.equal(committed.body.data.actor, "Renata Castillo");
+  assert.ok(!JSON.stringify(committed.body.data).includes("1111"));
+});
+
+test("un código activo sin permiso de compra no puede registrar montos", () => {
+  const { state, request } = session();
+  const agent = state.operationAgents.find(
+    (candidate) => candidate.code === "1111",
+  );
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/authorization-agents/${agent.id}`,
+      {
+        externalId: agent.externalId,
+        name: agent.name,
+        role: agent.role,
+        source: agent.source,
+        active: true,
+        allowedPurposes: ["APPOINTMENT_STATUS_CHANGE"],
+      },
+    ).status,
+    200,
+  );
+  assert.equal(
+    request(
+      "POST",
+      "/api/scheduler/design-proposals/operation-authorizations",
+      {
+        code: "1111",
+        purpose: "PURCHASE_CAPTURE",
+        targetType: "APPOINTMENT_PURCHASE",
+        targetId: state.appointments[0].id,
+      },
+    ).status,
+    403,
+  );
+  assert.equal(
+    request(
+      "POST",
+      "/api/scheduler/design-proposals/operation-authorizations",
+      {
+        code: "1111",
+        purpose: "APPOINTMENT_STATUS_CHANGE",
+        targetType: "APPOINTMENT",
+        targetId: state.appointments[0].id,
+      },
+    ).status,
+    201,
+  );
+});
+
 test("las respuestas adicionales se relacionan con la cita por ID", () => {
   const { state, request } = session();
   const appointmentId = state.appointments[0].id;

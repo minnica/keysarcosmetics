@@ -107,6 +107,7 @@ interface SchedulerAgendaGridProps {
     paymentBookingId: string,
   ) => void;
   canWrite?: boolean;
+  enableCabinVisitFlow?: boolean;
   financialHistoryReadOnly?: boolean;
   clientAccountsByClient?: Record<string, ClientPurchaseAccount>;
   paymentHistoryByClient?: Record<string, ClientPaymentHistoryEntry[]>;
@@ -223,6 +224,7 @@ export function SchedulerAgendaGrid({
   onUpdatePaymentHistory,
   onDeletePaymentHistory,
   canWrite = true,
+  enableCabinVisitFlow = false,
   financialHistoryReadOnly = false,
   clientAccountsByClient = {},
   paymentHistoryByClient = {},
@@ -268,7 +270,9 @@ export function SchedulerAgendaGrid({
 
     const availableRowsHeight =
       gridViewportHeight - baseAgendaLayout.headerOffset;
-    const fittedRowHeight = Math.floor(availableRowsHeight / activeTimeSlotCount);
+    const fittedRowHeight = Math.floor(
+      availableRowsHeight / activeTimeSlotCount,
+    );
 
     return {
       ...baseAgendaLayout,
@@ -504,590 +508,639 @@ export function SchedulerAgendaGrid({
 
   return (
     <TooltipProvider delayDuration={220}>
-    <Card className="scheduler-agenda-card flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
-      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-        {!activeCalendarRange ? (
-          <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 text-center">
-            <CalendarDays className="h-9 w-9 text-slate-300" />
-            <div>
-              <p className="font-semibold text-slate-700">Comercio cerrado</p>
-              <p className="mt-1 text-sm text-slate-500">
-                No hay horarios de servicio definidos para{" "}
-                {currentView === "day" ? "este día" : "esta semana"}.
-              </p>
-            </div>
-          </div>
-        ) : currentView === "day" ? (
-          <div
-            ref={gridViewportRef}
-            className={cn(
-              "scheduler-grid-wrapper scheduler-grid-wrapper-day overflow-x-auto",
-              calendarNeedsVerticalScroll &&
-                "scheduler-grid-wrapper-scrollable-y",
-            )}
-          >
-            <div
-              className="scheduler-grid scheduler-grid-day"
-              style={dayGridStyle}
-            >
-              <div className="scheduler-grid-corner" />
-              {visibleProfessionals.map((professional) => (
-                <div key={professional.id} className="scheduler-column-header">
-                  <SchedulerAvatar
-                    accent={professional.accent}
-                    avatar={professional.avatar}
-                    name={professional.name}
-                    shortName={professional.shortName}
-                    size="header"
-                  />
-                  <div className="min-w-0">
-                    <p className="scheduler-professional-name truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800">
-                      {professional.name}
-                    </p>
-                    <p className="scheduler-professional-status text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">
-                      {professional.branchName ?? "Cabina lista"}
-                    </p>
-                  </div>
-                </div>
-              ))}
-
-              {dayTimeSlots.map((slot) => (
-                <div key={slot} className="contents">
-                  <div className="scheduler-time-cell">{slot}</div>
-                  {visibleProfessionals.map((professional) => {
-                    const isOccupied = occupiedDaySlots.has(
-                      `${slot}-${professional.id}`,
-                    );
-
-                    return (
-                      <div
-                        key={`${slot}-${professional.id}`}
-                        className={cn(
-                          "scheduler-body-cell",
-                          isOccupied
-                            ? "scheduler-body-cell-occupied"
-                            : "scheduler-body-cell-interactive",
-                        )}
-                      >
-                        {isOccupied || !canWrite ? null : (
-                          <button
-                            aria-label={`Abrir acciones para ${professional.name} a las ${slot}`}
-                            className="scheduler-cell-hitbox"
-                            type="button"
-                            onClick={() =>
-                              onOpenSlotAction(professional.id, slot)
-                            }
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-
-              {dayBlocks.map(({ block, style }) => (
-                <button
-                  key={block.id}
-                  aria-label={`Editar disponibilidad de ${block.start} a ${block.end}`}
-                  className={cn(
-                    "scheduler-appointment scheduler-appointment-contained cursor-pointer text-left transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.1)]",
-                    block.variant === "blocked"
-                      ? "scheduler-appointment-blocked"
-                      : "scheduler-appointment-unavailable",
-                  )}
-                  style={style}
-                  type="button"
-                  onClick={() => onEditBlock(block)}
-                  disabled={!canWrite}
-                >
-                  <p className="scheduler-appointment-title truncate text-[0.9rem] font-semibold">
-                    {block.label}
-                  </p>
-                  <p className="scheduler-appointment-detail text-[0.72rem] uppercase tracking-[0.16em]">
-                    {block.start} - {block.end}
-                  </p>
-                </button>
-              ))}
-
-              {dayAppointments.map(({ booking, style }) => {
-                return (
-                  <Dialog key={booking.id}>
-                    <Tooltip>
-                    <TooltipTrigger asChild>
-                    <DialogTrigger asChild>
-                      <button
-                        aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}`}
-                        className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
-                        style={{
-                          ...style,
-                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
-                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
-                          color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
-                        }}
-                        type="button"
-                      >
-                        <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{
-                              backgroundColor: statusColors[booking.status],
-                            }}
-                          />
-                          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
-                            {booking.start}
-                          </span>
-                        </div>
-                        <p className="scheduler-appointment-title line-clamp-2 text-[0.96rem] font-semibold tracking-[-0.02em]">
-                          {booking.customerName}
-                        </p>
-                        <p className="scheduler-appointment-detail mt-1 truncate text-[0.74rem] uppercase tracking-[0.12em] opacity-75">
-                          {booking.serviceName}
-                        </p>
-                      </button>
-                    </DialogTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      align="start"
-                      className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
-                      side="right"
-                      sideOffset={10}
-                    >
-                      <p className="font-semibold">{booking.customerName}</p>
-                      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
-                        <dt>Horario</dt><dd>{booking.start}–{booking.end}</dd>
-                        <dt>Servicio</dt><dd>{booking.serviceName}</dd>
-                        <dt>Especialista</dt><dd>{visibleProfessionals.find((item) => item.id === booking.professionalId)?.name ?? "Sin asignar"}</dd>
-                        <dt>Estado</dt><dd>{bookingStatuses[booking.status].label}</dd>
-                        <dt>Contacto</dt><dd>{booking.phone || booking.customerEmail || "Sin contacto"}</dd>
-                      </dl>
-                      {booking.notes ? <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">{booking.notes}</p> : null}
-                    </TooltipContent>
-                    </Tooltip>
-                    <DialogContent
-                      className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
-                      style={{
-                        backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
-                        borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
-                      }}
-                    >
-                      <SchedulerBookingCard
-                        booking={booking}
-                        commerceName={commerceName}
-                        clientAccount={
-                          (booking.clientId
-                            ? clientAccountsByClient[booking.clientId]
-                            : undefined) ??
-                          getClientPurchaseAccount(allBookings, booking)
-                        }
-                        paymentHistory={
-                          (booking.clientId
-                            ? paymentHistoryByClient[booking.clientId]
-                            : undefined) ??
-                          (financialAccessByClient[
-                            getSchedulerClientAccessKey(
-                              booking.clientId,
-                              booking.phone,
-                            )
-                          ]
-                            ? getClientPaymentHistory(allBookings, booking)
-                            : [])
-                        }
-                        {...(financialAccessByClient[
-                          getSchedulerClientAccessKey(
-                            booking.clientId,
-                            booking.phone,
-                          )
-                        ]
-                          ? {
-                              financialProfile:
-                                financialAccessByClient[
-                                  getSchedulerClientAccessKey(
-                                    booking.clientId,
-                                    booking.phone,
-                                  )
-                                ],
-                            }
-                          : {})}
-                        financialAuditEvents={financialAuditEvents.filter(
-                          (event) =>
-                            event.clientKey ===
-                            getSchedulerClientAccessKey(
-                              booking.clientId,
-                              booking.phone,
-                            ),
-                        )}
-                        selectedDate={selectedDate}
-                        statusColors={statusColors}
-                        onDelete={onDeleteBooking}
-                        onEdit={onEditBooking}
-                        onOpenDetail={onOpenBookingDetail}
-                        onOpenClientHistory={onOpenClientHistory}
-                        onStatusChange={onUpdateBookingStatus}
-                        onPurchaseDecision={onPurchaseDecision}
-                        onRequestFinancialAccess={onRequestFinancialAccess}
-                        onRevokeFinancialAccess={onRevokeFinancialAccess}
-                        onUpdatePaymentHistory={(
-                          paymentBookingId,
-                          amount,
-                          tentativeAmount,
-                        ) =>
-                          onUpdatePaymentHistory(
-                            booking,
-                            paymentBookingId,
-                            amount,
-                            tentativeAmount,
-                          )
-                        }
-                        onDeletePaymentHistory={(paymentBookingId) =>
-                          onDeletePaymentHistory(booking, paymentBookingId)
-                        }
-                        canWrite={canWrite}
-                        financialHistoryReadOnly={financialHistoryReadOnly}
-                      />
-                    </DialogContent>
-                  </Dialog>
-                );
-              })}
-
-              {slotActionOverlay && canWrite ? (
-                <div
-                  className="scheduler-slot-action"
-                  style={slotActionOverlay.style}
-                >
-                  <div className="scheduler-slot-action-header">
-                    <button
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--scheduler-ink-strong)] transition hover:bg-[rgba(195,165,131,0.14)]"
-                      type="button"
-                    >
-                      <Plus className="h-5 w-5" />
-                    </button>
-                    <span className="text-[0.96rem] font-medium text-slate-500">
-                      Agregar
-                    </span>
-                    <button
-                      className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                      onClick={onCloseSlotAction}
-                      type="button"
-                    >
-                      <Plus className="h-4 w-4 rotate-45" />
-                    </button>
-                  </div>
-
-                  <button
-                    className="scheduler-slot-action-item"
-                    onClick={() =>
-                      onOpenNewBooking(
-                        slotActionOverlay.professionalId,
-                        slotActionOverlay.startTime,
-                      )
-                    }
-                    type="button"
-                  >
-                    <CalendarDays className="h-5 w-5" />
-                    <span>Reserva</span>
-                  </button>
-
-                  <button
-                    className="scheduler-slot-action-item"
-                    onClick={() =>
-                      onCreateBlock(
-                        slotActionOverlay.professionalId,
-                        slotActionOverlay.startTime,
-                      )
-                    }
-                    type="button"
-                  >
-                    <Ban className="h-5 w-5" />
-                    <span>Bloquear horario</span>
-                  </button>
-                </div>
-              ) : null}
-
-              {showCurrentTimeLine ? (
-                <div
-                  className="scheduler-current-time-line"
-                  style={getCurrentTimeLineStyle(
-                    currentTimeLabel,
-                    dayBaseMinutes,
-                    slotMinutes,
-                    agendaLayout,
-                  )}
-                >
-                  <span className="scheduler-current-time-pill">
-                    {currentTimeLabel}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div
-            ref={gridViewportRef}
-            className={cn(
-              "scheduler-grid-wrapper scheduler-grid-wrapper-calendar overflow-x-auto",
-              calendarNeedsVerticalScroll &&
-                "scheduler-grid-wrapper-scrollable-y",
-            )}
-          >
-            <div className="scheduler-grid" style={weekGridStyle}>
-              <div className="scheduler-grid-corner flex items-center justify-center">
-                <Badge className="rounded-full bg-slate-100 px-4 py-1 text-slate-500">
-                  {visibleProfessionals[0]?.name ?? "Especialista"}
-                </Badge>
+      <Card className="scheduler-agenda-card flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+          {!activeCalendarRange ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 text-center">
+              <CalendarDays className="h-9 w-9 text-slate-300" />
+              <div>
+                <p className="font-semibold text-slate-700">Comercio cerrado</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  No hay horarios de servicio definidos para{" "}
+                  {currentView === "day" ? "este día" : "esta semana"}.
+                </p>
               </div>
-              {weekDays.map((day) => (
-                <div
-                  key={day.toISOString()}
-                  className="scheduler-column-header"
-                >
-                  <div>
-                    <p className="text-base font-semibold capitalize text-slate-800">
-                      {format(day, "EEEE dd/MM", { locale: es })}
-                    </p>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                      {isSameDay(day, selectedDate)
-                        ? "Fecha activa"
-                        : "Disponible"}
-                    </p>
-                  </div>
-                </div>
-              ))}
-
-              {weekTimeSlots.map((slot) => (
-                <div key={`week-${slot}`} className="contents">
-                  <div className="scheduler-time-cell">{slot}</div>
-                  {weekDays.map((day) => (
-                    <div
-                      key={`${slot}-${day.toISOString()}`}
-                      className={cn(
-                        "scheduler-body-cell",
-                        isOutsideSchedulerOperatingHours(
-                          commerceOperatingHours,
-                          day,
-                          slot,
-                          addMinutesToTime(slot, slotMinutes),
-                        )
-                          ? "scheduler-body-cell-commerce-closed"
-                          : "",
-                      )}
+            </div>
+          ) : currentView === "day" ? (
+            <div
+              ref={gridViewportRef}
+              className={cn(
+                "scheduler-grid-wrapper scheduler-grid-wrapper-day overflow-x-auto",
+                calendarNeedsVerticalScroll &&
+                  "scheduler-grid-wrapper-scrollable-y",
+              )}
+            >
+              <div
+                className="scheduler-grid scheduler-grid-day"
+                style={dayGridStyle}
+              >
+                <div className="scheduler-grid-corner" />
+                {visibleProfessionals.map((professional) => (
+                  <div
+                    key={professional.id}
+                    className="scheduler-column-header"
+                  >
+                    <SchedulerAvatar
+                      accent={professional.accent}
+                      avatar={professional.avatar}
+                      name={professional.name}
+                      shortName={professional.shortName}
+                      size="header"
                     />
-                  ))}
-                </div>
-              ))}
+                    <div className="min-w-0">
+                      <p className="scheduler-professional-name truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800">
+                        {professional.name}
+                      </p>
+                      <p className="scheduler-professional-status text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">
+                        {professional.branchName ?? "Cabina lista"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
 
-              {weekBookings.map((booking) => {
-                const bookingStartMinutes = getMinutesFromTime(booking.start);
-                if (
-                  bookingStartMinutes < weekBaseMinutes ||
-                  bookingStartMinutes >= weekClosingMinutes
-                )
-                  return null;
-                const style = getSingleCellAppointmentStyle(
-                  booking.start,
-                  weekBaseMinutes,
-                  weekClosingMinutes,
-                  slotMinutes,
-                  agendaLayout,
-                );
-                const horizontalStyle = getOverlayHorizontalStyle(
-                  booking.dayOffset,
-                  7,
-                  agendaLayout,
-                );
+                {dayTimeSlots.map((slot) => (
+                  <div key={slot} className="contents">
+                    <div className="scheduler-time-cell">{slot}</div>
+                    {visibleProfessionals.map((professional) => {
+                      const isOccupied = occupiedDaySlots.has(
+                        `${slot}-${professional.id}`,
+                      );
 
-                return (
-                  <Dialog key={booking.id}>
-                    <Tooltip>
-                    <TooltipTrigger asChild>
-                    <DialogTrigger asChild>
-                      <button
-                        aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}`}
-                        className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
-                        style={{
-                          ...style,
-                          ...horizontalStyle,
-                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
-                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
-                          color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
-                        }}
-                        type="button"
-                      >
-                        <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{
-                              backgroundColor: statusColors[booking.status],
-                            }}
-                          />
-                          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
-                            {booking.start}
-                          </span>
+                      return (
+                        <div
+                          key={`${slot}-${professional.id}`}
+                          className={cn(
+                            "scheduler-body-cell",
+                            isOccupied
+                              ? "scheduler-body-cell-occupied"
+                              : "scheduler-body-cell-interactive",
+                          )}
+                        >
+                          {isOccupied || !canWrite ? null : (
+                            <button
+                              aria-label={`Abrir acciones para ${professional.name} a las ${slot}`}
+                              className="scheduler-cell-hitbox"
+                              type="button"
+                              onClick={() =>
+                                onOpenSlotAction(professional.id, slot)
+                              }
+                            />
+                          )}
                         </div>
-                        <p className="scheduler-appointment-title line-clamp-2 text-[0.9rem] font-semibold">
-                          {booking.customerName}
-                        </p>
-                        <p className="scheduler-appointment-detail mt-1 truncate text-[0.7rem] uppercase tracking-[0.12em] opacity-75">
-                          {booking.serviceName}
-                        </p>
-                      </button>
-                    </DialogTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      align="center"
-                      className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
-                      side="top"
-                      sideOffset={10}
-                    >
-                      <p className="font-semibold">{booking.customerName}</p>
-                      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
-                        <dt>Horario</dt><dd>{booking.start}–{booking.end}</dd>
-                        <dt>Servicio</dt><dd>{booking.serviceName}</dd>
-                        <dt>Especialista</dt><dd>{visibleProfessionals.find((item) => item.id === booking.professionalId)?.name ?? "Sin asignar"}</dd>
-                        <dt>Estado</dt><dd>{bookingStatuses[booking.status].label}</dd>
-                        <dt>Contacto</dt><dd>{booking.phone || booking.customerEmail || "Sin contacto"}</dd>
-                      </dl>
-                      {booking.notes ? <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">{booking.notes}</p> : null}
-                    </TooltipContent>
-                    </Tooltip>
-                    <DialogContent
-                      className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
-                      style={{
-                        backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
-                        borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
-                      }}
-                    >
-                      <SchedulerBookingCard
-                        booking={booking}
-                        commerceName={commerceName}
-                        clientAccount={
-                          (booking.clientId
-                            ? clientAccountsByClient[booking.clientId]
-                            : undefined) ??
-                          getClientPurchaseAccount(allBookings, booking)
-                        }
-                        paymentHistory={
-                          (booking.clientId
-                            ? paymentHistoryByClient[booking.clientId]
-                            : undefined) ??
-                          (financialAccessByClient[
-                            getSchedulerClientAccessKey(
-                              booking.clientId,
-                              booking.phone,
-                            )
-                          ]
-                            ? getClientPaymentHistory(allBookings, booking)
-                            : [])
-                        }
-                        {...(financialAccessByClient[
-                          getSchedulerClientAccessKey(
-                            booking.clientId,
-                            booking.phone,
-                          )
-                        ]
-                          ? {
-                              financialProfile:
-                                financialAccessByClient[
-                                  getSchedulerClientAccessKey(
-                                    booking.clientId,
-                                    booking.phone,
-                                  )
-                                ],
-                            }
-                          : {})}
-                        financialAuditEvents={financialAuditEvents.filter(
-                          (event) =>
-                            event.clientKey ===
-                            getSchedulerClientAccessKey(
-                              booking.clientId,
-                              booking.phone,
-                            ),
-                        )}
-                        selectedDate={
-                          new Date(
-                            `${booking.date ?? format(selectedDate, "yyyy-MM-dd")}T12:00:00`,
-                          )
-                        }
-                        statusColors={statusColors}
-                        onDelete={onDeleteBooking}
-                        onEdit={onEditBooking}
-                        onOpenDetail={onOpenBookingDetail}
-                        onOpenClientHistory={onOpenClientHistory}
-                        onStatusChange={onUpdateBookingStatus}
-                        onPurchaseDecision={onPurchaseDecision}
-                        onRequestFinancialAccess={onRequestFinancialAccess}
-                        onRevokeFinancialAccess={onRevokeFinancialAccess}
-                        onUpdatePaymentHistory={(
-                          paymentBookingId,
-                          amount,
-                          tentativeAmount,
-                        ) =>
-                          onUpdatePaymentHistory(
-                            booking,
-                            paymentBookingId,
-                            amount,
-                            tentativeAmount,
-                          )
-                        }
-                        onDeletePaymentHistory={(paymentBookingId) =>
-                          onDeletePaymentHistory(booking, paymentBookingId)
-                        }
-                        canWrite={canWrite}
-                        financialHistoryReadOnly={financialHistoryReadOnly}
-                      />
-                    </DialogContent>
-                  </Dialog>
-                );
-              })}
+                      );
+                    })}
+                  </div>
+                ))}
 
-              {weekBlocks.map((block) => {
-                const blockStartMinutes = getMinutesFromTime(block.start);
-                if (
-                  blockStartMinutes < weekBaseMinutes ||
-                  blockStartMinutes >= weekClosingMinutes
-                )
-                  return null;
-                const style = getSingleCellAppointmentStyle(
-                  block.start,
-                  weekBaseMinutes,
-                  weekClosingMinutes,
-                  slotMinutes,
-                  agendaLayout,
-                );
-                const horizontalStyle = getOverlayHorizontalStyle(
-                  block.dayOffset,
-                  7,
-                  agendaLayout,
-                );
-
-                return (
+                {dayBlocks.map(({ block, style }) => (
                   <button
                     key={block.id}
-                    aria-label={`${block.label}, ${block.start} a ${block.end}`}
+                    aria-label={`Editar disponibilidad de ${block.start} a ${block.end}`}
                     className={cn(
-                      "scheduler-appointment scheduler-appointment-contained text-left",
+                      "scheduler-appointment scheduler-appointment-contained cursor-pointer text-left transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.1)]",
                       block.variant === "blocked"
                         ? "scheduler-appointment-blocked"
                         : "scheduler-appointment-unavailable",
                     )}
-                    disabled={!canWrite || block.variant === "unavailable"}
-                    onClick={() => onEditBlock(block)}
-                    style={{ ...style, ...horizontalStyle }}
+                    style={style}
                     type="button"
+                    onClick={() => onEditBlock(block)}
+                    disabled={!canWrite}
                   >
-                    <p className="truncate text-sm font-semibold">
+                    <p className="scheduler-appointment-title truncate text-[0.9rem] font-semibold">
                       {block.label}
                     </p>
-                    <p className="text-xs uppercase tracking-[0.12em]">
+                    <p className="scheduler-appointment-detail text-[0.72rem] uppercase tracking-[0.16em]">
                       {block.start} - {block.end}
                     </p>
                   </button>
-                );
-              })}
+                ))}
+
+                {dayAppointments.map(({ booking, style }) => {
+                  return (
+                    <Dialog key={booking.id}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DialogTrigger asChild>
+                            <button
+                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}`}
+                              className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
+                              style={{
+                                ...style,
+                                backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                                borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                                color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
+                              }}
+                              type="button"
+                            >
+                              <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full"
+                                  style={{
+                                    backgroundColor:
+                                      statusColors[booking.status],
+                                  }}
+                                />
+                                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
+                                  {booking.start}
+                                </span>
+                              </div>
+                              <p className="scheduler-appointment-title line-clamp-2 text-[0.96rem] font-semibold tracking-[-0.02em]">
+                                {booking.customerName}
+                              </p>
+                              <p className="scheduler-appointment-detail mt-1 truncate text-[0.74rem] uppercase tracking-[0.12em] opacity-75">
+                                {booking.serviceName}
+                              </p>
+                            </button>
+                          </DialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          align="start"
+                          className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
+                          side="right"
+                          sideOffset={10}
+                        >
+                          <p className="font-semibold">
+                            {booking.customerName}
+                          </p>
+                          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
+                            <dt>Horario</dt>
+                            <dd>
+                              {booking.start}–{booking.end}
+                            </dd>
+                            <dt>Servicio</dt>
+                            <dd>{booking.serviceName}</dd>
+                            <dt>Especialista</dt>
+                            <dd>
+                              {visibleProfessionals.find(
+                                (item) => item.id === booking.professionalId,
+                              )?.name ?? "Sin asignar"}
+                            </dd>
+                            <dt>Estado</dt>
+                            <dd>{bookingStatuses[booking.status].label}</dd>
+                            <dt>Contacto</dt>
+                            <dd>
+                              {booking.phone ||
+                                booking.customerEmail ||
+                                "Sin contacto"}
+                            </dd>
+                          </dl>
+                          {booking.notes ? (
+                            <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
+                              {booking.notes}
+                            </p>
+                          ) : null}
+                        </TooltipContent>
+                      </Tooltip>
+                      <DialogContent
+                        className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                        }}
+                      >
+                        <SchedulerBookingCard
+                          booking={booking}
+                          commerceName={commerceName}
+                          enableCabinVisitFlow={enableCabinVisitFlow}
+                          clientAccount={
+                            (booking.clientId
+                              ? clientAccountsByClient[booking.clientId]
+                              : undefined) ??
+                            getClientPurchaseAccount(allBookings, booking)
+                          }
+                          paymentHistory={
+                            (booking.clientId
+                              ? paymentHistoryByClient[booking.clientId]
+                              : undefined) ??
+                            (financialAccessByClient[
+                              getSchedulerClientAccessKey(
+                                booking.clientId,
+                                booking.phone,
+                              )
+                            ]
+                              ? getClientPaymentHistory(allBookings, booking)
+                              : [])
+                          }
+                          {...(financialAccessByClient[
+                            getSchedulerClientAccessKey(
+                              booking.clientId,
+                              booking.phone,
+                            )
+                          ]
+                            ? {
+                                financialProfile:
+                                  financialAccessByClient[
+                                    getSchedulerClientAccessKey(
+                                      booking.clientId,
+                                      booking.phone,
+                                    )
+                                  ],
+                              }
+                            : {})}
+                          financialAuditEvents={financialAuditEvents.filter(
+                            (event) =>
+                              event.clientKey ===
+                              getSchedulerClientAccessKey(
+                                booking.clientId,
+                                booking.phone,
+                              ),
+                          )}
+                          selectedDate={selectedDate}
+                          statusColors={statusColors}
+                          onDelete={onDeleteBooking}
+                          onEdit={onEditBooking}
+                          onOpenDetail={onOpenBookingDetail}
+                          onOpenClientHistory={onOpenClientHistory}
+                          onStatusChange={onUpdateBookingStatus}
+                          onPurchaseDecision={onPurchaseDecision}
+                          onRequestFinancialAccess={onRequestFinancialAccess}
+                          onRevokeFinancialAccess={onRevokeFinancialAccess}
+                          onUpdatePaymentHistory={(
+                            paymentBookingId,
+                            amount,
+                            tentativeAmount,
+                          ) =>
+                            onUpdatePaymentHistory(
+                              booking,
+                              paymentBookingId,
+                              amount,
+                              tentativeAmount,
+                            )
+                          }
+                          onDeletePaymentHistory={(paymentBookingId) =>
+                            onDeletePaymentHistory(booking, paymentBookingId)
+                          }
+                          canWrite={canWrite}
+                          financialHistoryReadOnly={financialHistoryReadOnly}
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  );
+                })}
+
+                {slotActionOverlay && canWrite ? (
+                  <div
+                    className="scheduler-slot-action"
+                    style={slotActionOverlay.style}
+                  >
+                    <div className="scheduler-slot-action-header">
+                      <button
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--scheduler-ink-strong)] transition hover:bg-[rgba(195,165,131,0.14)]"
+                        type="button"
+                      >
+                        <Plus className="h-5 w-5" />
+                      </button>
+                      <span className="text-[0.96rem] font-medium text-slate-500">
+                        Agregar
+                      </span>
+                      <button
+                        className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                        onClick={onCloseSlotAction}
+                        type="button"
+                      >
+                        <Plus className="h-4 w-4 rotate-45" />
+                      </button>
+                    </div>
+
+                    <button
+                      className="scheduler-slot-action-item"
+                      onClick={() =>
+                        onOpenNewBooking(
+                          slotActionOverlay.professionalId,
+                          slotActionOverlay.startTime,
+                        )
+                      }
+                      type="button"
+                    >
+                      <CalendarDays className="h-5 w-5" />
+                      <span>Reserva</span>
+                    </button>
+
+                    <button
+                      className="scheduler-slot-action-item"
+                      onClick={() =>
+                        onCreateBlock(
+                          slotActionOverlay.professionalId,
+                          slotActionOverlay.startTime,
+                        )
+                      }
+                      type="button"
+                    >
+                      <Ban className="h-5 w-5" />
+                      <span>Bloquear horario</span>
+                    </button>
+                  </div>
+                ) : null}
+
+                {showCurrentTimeLine ? (
+                  <div
+                    className="scheduler-current-time-line"
+                    style={getCurrentTimeLineStyle(
+                      currentTimeLabel,
+                      dayBaseMinutes,
+                      slotMinutes,
+                      agendaLayout,
+                    )}
+                  >
+                    <span className="scheduler-current-time-pill">
+                      {currentTimeLabel}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          ) : (
+            <div
+              ref={gridViewportRef}
+              className={cn(
+                "scheduler-grid-wrapper scheduler-grid-wrapper-calendar overflow-x-auto",
+                calendarNeedsVerticalScroll &&
+                  "scheduler-grid-wrapper-scrollable-y",
+              )}
+            >
+              <div className="scheduler-grid" style={weekGridStyle}>
+                <div className="scheduler-grid-corner flex items-center justify-center">
+                  <Badge className="rounded-full bg-slate-100 px-4 py-1 text-slate-500">
+                    {visibleProfessionals[0]?.name ?? "Especialista"}
+                  </Badge>
+                </div>
+                {weekDays.map((day) => (
+                  <div
+                    key={day.toISOString()}
+                    className="scheduler-column-header"
+                  >
+                    <div>
+                      <p className="text-base font-semibold capitalize text-slate-800">
+                        {format(day, "EEEE dd/MM", { locale: es })}
+                      </p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                        {isSameDay(day, selectedDate)
+                          ? "Fecha activa"
+                          : "Disponible"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {weekTimeSlots.map((slot) => (
+                  <div key={`week-${slot}`} className="contents">
+                    <div className="scheduler-time-cell">{slot}</div>
+                    {weekDays.map((day) => (
+                      <div
+                        key={`${slot}-${day.toISOString()}`}
+                        className={cn(
+                          "scheduler-body-cell",
+                          isOutsideSchedulerOperatingHours(
+                            commerceOperatingHours,
+                            day,
+                            slot,
+                            addMinutesToTime(slot, slotMinutes),
+                          )
+                            ? "scheduler-body-cell-commerce-closed"
+                            : "",
+                        )}
+                      />
+                    ))}
+                  </div>
+                ))}
+
+                {weekBookings.map((booking) => {
+                  const bookingStartMinutes = getMinutesFromTime(booking.start);
+                  if (
+                    bookingStartMinutes < weekBaseMinutes ||
+                    bookingStartMinutes >= weekClosingMinutes
+                  )
+                    return null;
+                  const style = getSingleCellAppointmentStyle(
+                    booking.start,
+                    weekBaseMinutes,
+                    weekClosingMinutes,
+                    slotMinutes,
+                    agendaLayout,
+                  );
+                  const horizontalStyle = getOverlayHorizontalStyle(
+                    booking.dayOffset,
+                    7,
+                    agendaLayout,
+                  );
+
+                  return (
+                    <Dialog key={booking.id}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DialogTrigger asChild>
+                            <button
+                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}`}
+                              className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
+                              style={{
+                                ...style,
+                                ...horizontalStyle,
+                                backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                                borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                                color: `color-mix(in srgb, ${statusColors[booking.status]} 70%, #364152)`,
+                              }}
+                              type="button"
+                            >
+                              <div className="scheduler-appointment-meta mb-1 flex items-center gap-2">
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full"
+                                  style={{
+                                    backgroundColor:
+                                      statusColors[booking.status],
+                                  }}
+                                />
+                                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
+                                  {booking.start}
+                                </span>
+                              </div>
+                              <p className="scheduler-appointment-title line-clamp-2 text-[0.9rem] font-semibold">
+                                {booking.customerName}
+                              </p>
+                              <p className="scheduler-appointment-detail mt-1 truncate text-[0.7rem] uppercase tracking-[0.12em] opacity-75">
+                                {booking.serviceName}
+                              </p>
+                            </button>
+                          </DialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          align="center"
+                          className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
+                          side="top"
+                          sideOffset={10}
+                        >
+                          <p className="font-semibold">
+                            {booking.customerName}
+                          </p>
+                          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
+                            <dt>Horario</dt>
+                            <dd>
+                              {booking.start}–{booking.end}
+                            </dd>
+                            <dt>Servicio</dt>
+                            <dd>{booking.serviceName}</dd>
+                            <dt>Especialista</dt>
+                            <dd>
+                              {visibleProfessionals.find(
+                                (item) => item.id === booking.professionalId,
+                              )?.name ?? "Sin asignar"}
+                            </dd>
+                            <dt>Estado</dt>
+                            <dd>{bookingStatuses[booking.status].label}</dd>
+                            <dt>Contacto</dt>
+                            <dd>
+                              {booking.phone ||
+                                booking.customerEmail ||
+                                "Sin contacto"}
+                            </dd>
+                          </dl>
+                          {booking.notes ? (
+                            <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
+                              {booking.notes}
+                            </p>
+                          ) : null}
+                        </TooltipContent>
+                      </Tooltip>
+                      <DialogContent
+                        className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 8%, white)`,
+                          borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 25%, white)`,
+                        }}
+                      >
+                        <SchedulerBookingCard
+                          booking={booking}
+                          commerceName={commerceName}
+                          enableCabinVisitFlow={enableCabinVisitFlow}
+                          clientAccount={
+                            (booking.clientId
+                              ? clientAccountsByClient[booking.clientId]
+                              : undefined) ??
+                            getClientPurchaseAccount(allBookings, booking)
+                          }
+                          paymentHistory={
+                            (booking.clientId
+                              ? paymentHistoryByClient[booking.clientId]
+                              : undefined) ??
+                            (financialAccessByClient[
+                              getSchedulerClientAccessKey(
+                                booking.clientId,
+                                booking.phone,
+                              )
+                            ]
+                              ? getClientPaymentHistory(allBookings, booking)
+                              : [])
+                          }
+                          {...(financialAccessByClient[
+                            getSchedulerClientAccessKey(
+                              booking.clientId,
+                              booking.phone,
+                            )
+                          ]
+                            ? {
+                                financialProfile:
+                                  financialAccessByClient[
+                                    getSchedulerClientAccessKey(
+                                      booking.clientId,
+                                      booking.phone,
+                                    )
+                                  ],
+                              }
+                            : {})}
+                          financialAuditEvents={financialAuditEvents.filter(
+                            (event) =>
+                              event.clientKey ===
+                              getSchedulerClientAccessKey(
+                                booking.clientId,
+                                booking.phone,
+                              ),
+                          )}
+                          selectedDate={
+                            new Date(
+                              `${booking.date ?? format(selectedDate, "yyyy-MM-dd")}T12:00:00`,
+                            )
+                          }
+                          statusColors={statusColors}
+                          onDelete={onDeleteBooking}
+                          onEdit={onEditBooking}
+                          onOpenDetail={onOpenBookingDetail}
+                          onOpenClientHistory={onOpenClientHistory}
+                          onStatusChange={onUpdateBookingStatus}
+                          onPurchaseDecision={onPurchaseDecision}
+                          onRequestFinancialAccess={onRequestFinancialAccess}
+                          onRevokeFinancialAccess={onRevokeFinancialAccess}
+                          onUpdatePaymentHistory={(
+                            paymentBookingId,
+                            amount,
+                            tentativeAmount,
+                          ) =>
+                            onUpdatePaymentHistory(
+                              booking,
+                              paymentBookingId,
+                              amount,
+                              tentativeAmount,
+                            )
+                          }
+                          onDeletePaymentHistory={(paymentBookingId) =>
+                            onDeletePaymentHistory(booking, paymentBookingId)
+                          }
+                          canWrite={canWrite}
+                          financialHistoryReadOnly={financialHistoryReadOnly}
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  );
+                })}
+
+                {weekBlocks.map((block) => {
+                  const blockStartMinutes = getMinutesFromTime(block.start);
+                  if (
+                    blockStartMinutes < weekBaseMinutes ||
+                    blockStartMinutes >= weekClosingMinutes
+                  )
+                    return null;
+                  const style = getSingleCellAppointmentStyle(
+                    block.start,
+                    weekBaseMinutes,
+                    weekClosingMinutes,
+                    slotMinutes,
+                    agendaLayout,
+                  );
+                  const horizontalStyle = getOverlayHorizontalStyle(
+                    block.dayOffset,
+                    7,
+                    agendaLayout,
+                  );
+
+                  return (
+                    <button
+                      key={block.id}
+                      aria-label={`${block.label}, ${block.start} a ${block.end}`}
+                      className={cn(
+                        "scheduler-appointment scheduler-appointment-contained text-left",
+                        block.variant === "blocked"
+                          ? "scheduler-appointment-blocked"
+                          : "scheduler-appointment-unavailable",
+                      )}
+                      disabled={!canWrite || block.variant === "unavailable"}
+                      onClick={() => onEditBlock(block)}
+                      style={{ ...style, ...horizontalStyle }}
+                      type="button"
+                    >
+                      <p className="truncate text-sm font-semibold">
+                        {block.label}
+                      </p>
+                      <p className="text-xs uppercase tracking-[0.12em]">
+                        {block.start} - {block.end}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </TooltipProvider>
   );
 }

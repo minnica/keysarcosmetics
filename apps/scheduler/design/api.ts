@@ -25,6 +25,7 @@ import {
 } from "./store";
 import type {
   DesignAppointmentAnswer,
+  DesignAppointmentCabinVisit,
   DesignCustomerAdvancedFilters,
   DesignCustomerAdvancedPage,
   DesignMovementRecord,
@@ -178,6 +179,10 @@ function publicOperationAgent(
     source: agent.source,
     active: agent.active,
     codeConfigured: Boolean(agent.code),
+    canAuthorizePurchases:
+      agent.source === "SCHEDULER" ||
+      /(especialista|facialista|cosmet[oó]log)/i.test(agent.role),
+    allowedPurposes: [...agent.allowedPurposes],
     updatedAt: agent.updatedAt,
   };
 }
@@ -193,6 +198,7 @@ function operationPurpose(value: unknown): DesignOperationPurpose {
     "SCHEDULE_BLOCK_UPDATE",
     "SCHEDULE_BLOCK_DELETE",
     "CUSTOMER_UPDATE",
+    "PURCHASE_CAPTURE",
   ];
   if (!purposes.includes(value as DesignOperationPurpose)) {
     fail(400, "Propósito de autorización no reconocido.");
@@ -868,6 +874,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         source: "POS_CRM" as const,
         active: true,
         code: "",
+        allowedPurposes: [
+          "APPOINTMENT_STATUS_CHANGE",
+        ] as DesignOperationPurpose[],
         updatedAt,
       };
       next.externalId = String(body.externalId ?? next.externalId);
@@ -875,6 +884,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       next.role = String(body.role ?? next.role).trim();
       next.source = body.source === "SCHEDULER" ? "SCHEDULER" : "POS_CRM";
       next.active = body.active !== false;
+      next.allowedPurposes = Array.isArray(body.allowedPurposes)
+        ? body.allowedPurposes.map(operationPurpose)
+        : next.allowedPurposes;
       next.updatedAt = updatedAt;
       if (!next.name || !next.role)
         fail(400, "Captura nombre y rol del agente.");
@@ -903,6 +915,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             (candidate) => candidate.id === authorization.agentId,
           ) ?? fail(403, "El agente ya no está activo.");
         if (!agent.active) fail(403, "El agente ya no está activo.");
+        if (!agent.allowedPurposes.includes(authorization.purpose)) {
+          fail(403, "El agente ya no tiene permiso para este movimiento.");
+        }
         state.operationAuthorizations.delete(token);
         const movement: DesignMovementRecord = {
           id: designId("design-movement"),
@@ -933,6 +948,22 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const token = designId("design-operation-authorization");
       const expiresAt = Date.now() + 120_000;
       const purpose = operationPurpose(body.purpose);
+      if (
+        purpose === "PURCHASE_CAPTURE" &&
+        agent.source !== "SCHEDULER" &&
+        !/(especialista|facialista|cosmet[oó]log)/i.test(agent.role)
+      ) {
+        fail(
+          403,
+          "El código de compra debe pertenecer a un especialista o agente de Scheduler.",
+        );
+      }
+      if (!agent.allowedPurposes.includes(purpose)) {
+        fail(
+          403,
+          "Este especialista o agente no tiene permiso para este movimiento.",
+        );
+      }
       state.operationAuthorizations.set(token, {
         agentId: agent.id,
         purpose,
@@ -970,6 +1001,122 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       });
       state.appointmentAnswers[appointmentId] = answers;
       return answers;
+    }
+    if (id === "appointments" && parts[5] === "cabin-visit") {
+      const appointmentId = String(action ?? "");
+      const appointmentItem = appointment(state, appointmentId);
+      if (method === "GET") {
+        return state.appointmentCabinVisits[appointmentId] ?? null;
+      }
+      if (method !== "PUT")
+        fail(405, "Usa GET o PUT para la atención en cabina.");
+      const cabin =
+        state.catalog.resources.find(
+          (resource) => resource.id === String(body.cabinResourceId ?? ""),
+        ) ??
+        fail(400, "Selecciona una cabina activa de la sucursal de la cita.");
+      const branchProfile =
+        state.catalog.branches.find(
+          (branch) => branch.branchId === appointmentItem.branchId,
+        ) ?? fail(400, "La cita no tiene una sucursal operativa válida.");
+      if (
+        !cabin.active ||
+        cabin.kind !== "ROOM" ||
+        cabin.branchProfileId !== branchProfile.id
+      ) {
+        fail(400, "Selecciona una cabina activa de la sucursal de la cita.");
+      }
+      const visitorRows = rows(body.visitors);
+      if (visitorRows.length !== cabin.capacity) {
+        fail(
+          400,
+          `La ${cabin.name} requiere ${cabin.capacity} visitante${cabin.capacity === 1 ? "" : "s"}.`,
+        );
+      }
+      const visitors = visitorRows.map((visitor, index) => {
+        const name = String(visitor.name ?? "").trim();
+        const specialistProfileId = String(visitor.specialistProfileId ?? "");
+        const specialist = state.catalog.professionals.find(
+          (professional) =>
+            professional.id === specialistProfileId &&
+            professional.active &&
+            professional.branchProfileIds.includes(branchProfile.id),
+        );
+        if (name.length < 2) {
+          fail(400, `Captura el nombre del visitante ${index + 1}.`);
+        }
+        if (!specialist) {
+          fail(400, `Asigna un especialista válido al visitante ${index + 1}.`);
+        }
+        const purchased =
+          visitor.purchased === true
+            ? true
+            : visitor.purchased === false
+              ? false
+              : null;
+        const purchaseAmount = purchased
+          ? Number(visitor.purchaseAmount)
+          : null;
+        if (
+          purchased &&
+          (!Number.isFinite(purchaseAmount) || purchaseAmount! <= 0)
+        ) {
+          fail(400, `Captura un monto mayor a cero para ${name}.`);
+        }
+        return {
+          id: String(visitor.id ?? `visitor-${index + 1}`),
+          customerId:
+            typeof visitor.customerId === "string" && visitor.customerId
+              ? visitor.customerId
+              : null,
+          name,
+          specialistProfileId,
+          purchased,
+          purchaseAmount,
+        };
+      });
+      if (
+        new Set(visitors.map((visitor) => visitor.specialistProfileId)).size !==
+        visitors.length
+      ) {
+        fail(
+          400,
+          "Asigna un especialista diferente a cada visitante de la cabina.",
+        );
+      }
+      if (visitors.some((visitor) => visitor.purchased)) {
+        const token = headers.get("x-design-operation-authorization") ?? "";
+        const authorization = state.operationAuthorizations.get(token);
+        const agent = authorization
+          ? state.operationAgents.find(
+              (candidate) => candidate.id === authorization.agentId,
+            )
+          : undefined;
+        if (
+          !authorization ||
+          authorization.purpose !== "PURCHASE_CAPTURE" ||
+          (authorization.targetId &&
+            authorization.targetId !== appointmentId) ||
+          authorization.expiresAt < Date.now() ||
+          !agent?.active ||
+          !agent.allowedPurposes.includes("PURCHASE_CAPTURE")
+        ) {
+          fail(
+            403,
+            "Registrar montos requiere autorización de un especialista o agente con permiso de compra.",
+          );
+        }
+      }
+      const result: DesignAppointmentCabinVisit = {
+        appointmentId,
+        cabinResourceId: cabin.id,
+        cabinName: cabin.name,
+        cabinCapacity: cabin.capacity,
+        visitors,
+        updatedAt: new Date().toISOString(),
+      };
+      state.appointmentCabinVisits[appointmentId] = result;
+      return result;
     }
     fail(404, "Propuesta de diseño no encontrada.");
   }

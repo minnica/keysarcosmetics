@@ -664,6 +664,7 @@ const resourceFormSchema = z.object({
   name: z.string().trim().min(1).max(160),
   kind: z.enum(["ROOM", "EQUIPMENT", "STATION", "OTHER"]),
   capacity: z.coerce.number().int().min(1).max(1000),
+  quantity: z.coerce.number().int().min(1).max(20),
   exclusive: z.boolean(),
   acceptsOnline: z.boolean(),
   active: z.boolean(),
@@ -698,6 +699,7 @@ function ResourceEditor({
       name: resource?.name ?? "",
       kind: resource?.kind ?? "ROOM",
       capacity: resource?.capacity ?? 1,
+      quantity: 1,
       exclusive: resource?.exclusive ?? true,
       acceptsOnline: resource?.acceptsOnline ?? false,
       active: resource?.active ?? true,
@@ -711,13 +713,29 @@ function ResourceEditor({
       );
     setSaving(true);
     try {
+      const { quantity, ...resourceData } = parsed.data;
       const input = {
-        ...parsed.data,
+        ...resourceData,
         ...(resource ? { expectedVersion: resource.version } : {}),
       };
       if (resource) await schedulerApi.updateResource(resource.id, input);
-      else await schedulerApi.createResource(input);
-      toast.success(resource ? "Recurso actualizado" : "Recurso creado");
+      else {
+        await Promise.all(
+          Array.from({ length: quantity }, (_value, index) =>
+            schedulerApi.createResource({
+              ...input,
+              name: quantity === 1 ? input.name : `${input.name} ${index + 1}`,
+            }),
+          ),
+        );
+      }
+      toast.success(
+        resource
+          ? "Recurso actualizado"
+          : quantity === 1
+            ? "Recurso creado"
+            : `${quantity} cabinas creadas`,
+      );
       await onSaved();
     } catch (error) {
       toast.error(
@@ -801,6 +819,23 @@ function ResourceEditor({
                 disabled={!canAdmin || saving}
               />
             </div>
+            {!resource ? (
+              <div>
+                <Label htmlFor="resource-quantity">Cantidad de cabinas</Label>
+                <Input
+                  id="resource-quantity"
+                  type="number"
+                  min={1}
+                  max={20}
+                  className="mt-2"
+                  {...register("quantity")}
+                  disabled={!canAdmin || saving}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Se crearán con numeración consecutiva y la misma capacidad.
+                </p>
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button

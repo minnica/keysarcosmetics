@@ -22,4 +22,6 @@ export const schedulerDesignProposals: DesignProposalClient = {
   searchCustomersAdvanced: unavailable,
   appointmentAnswers: unavailable,
   saveAppointmentAnswers: unavailable,
+  appointmentCabinVisit: unavailable,
+  saveAppointmentCabinVisit: unavailable,
 };

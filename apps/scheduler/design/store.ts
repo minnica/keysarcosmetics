@@ -27,6 +27,7 @@ import { schedulerSettingsRv5Documents } from "./fixtures/settings";
 import { schedulerLocalDateTimeToInstant } from "../src/lib/scheduler-agenda-data";
 import type {
   DesignAppointmentAnswer,
+  DesignAppointmentCabinVisit,
   DesignMovementRecord,
   DesignOperationAgentSource,
   DesignOperationPurpose,
@@ -384,6 +385,18 @@ export function createDesignState(
       source: "SCHEDULER" as const,
       active: true,
       code: account.authorizationCode,
+      allowedPurposes: [
+        "APPOINTMENT_CREATE",
+        "APPOINTMENT_UPDATE",
+        "APPOINTMENT_MOVE",
+        "APPOINTMENT_STATUS_CHANGE",
+        "APPOINTMENT_CANCEL",
+        "SCHEDULE_BLOCK_CREATE",
+        "SCHEDULE_BLOCK_UPDATE",
+        "SCHEDULE_BLOCK_DELETE",
+        "CUSTOMER_UPDATE",
+        "PURCHASE_CAPTURE",
+      ] as DesignOperationPurpose[],
       updatedAt: now,
     })),
     ...schedulerAdministrationCandidatesFixture.employees.map(
@@ -394,7 +407,16 @@ export function createDesignState(
         role: employee.positionName,
         source: "POS_CRM" as const,
         active: employee.active,
-        code: index === 0 ? "1111" : "2222",
+        code: ["1111", "2222", "5555"][index]!,
+        allowedPurposes: [
+          "APPOINTMENT_CREATE",
+          "APPOINTMENT_UPDATE",
+          "APPOINTMENT_MOVE",
+          "APPOINTMENT_STATUS_CHANGE",
+          "APPOINTMENT_CANCEL",
+          "CUSTOMER_UPDATE",
+          "PURCHASE_CAPTURE",
+        ] as DesignOperationPurpose[],
         updatedAt: now,
       }),
     ),
@@ -457,6 +479,7 @@ export function createDesignState(
       { role: DesignRole; expiresAt: number }
     >(),
     appointmentAnswers: {} as Record<string, DesignAppointmentAnswer[]>,
+    appointmentCabinVisits: {} as Record<string, DesignAppointmentCabinVisit>,
     idempotency: new Map<string, { payload: string; result: unknown }>(),
     movements: [] as Array<DesignMovement | DesignMovementRecord>,
   };

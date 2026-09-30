@@ -279,8 +279,12 @@ function mergeOperatingHours(
         ? {
             day: dayName,
             enabled: true,
-            open: toTime(Math.min(...windows.map((day) => toMinutes(day!.open)))),
-            close: toTime(Math.max(...windows.map((day) => toMinutes(day!.close)))),
+            open: toTime(
+              Math.min(...windows.map((day) => toMinutes(day!.open))),
+            ),
+            close: toTime(
+              Math.max(...windows.map((day) => toMinutes(day!.close))),
+            ),
           }
         : { day: dayName, enabled: false, open: "00:00", close: "00:00" };
     }),
@@ -346,9 +350,11 @@ export function ApiAgendaWorkspace() {
   const [recordBooking, setRecordBooking] = useState<Booking | null>(null);
   const [customerDetail, setCustomerDetail] =
     useState<SchedulerCustomerDetailDto | null>(null);
-  const [operationPrompt, setOperationPrompt] = useState<OperationPrompt | null>(null);
+  const [operationPrompt, setOperationPrompt] =
+    useState<OperationPrompt | null>(null);
   const [operationAuthorizing, setOperationAuthorizing] = useState(false);
-  const [operationAuthorizationError, setOperationAuthorizationError] = useState<string | null>(null);
+  const [operationAuthorizationError, setOperationAuthorizationError] =
+    useState<string | null>(null);
   const pendingOperationRef = useRef<
     ((grant: DesignOperationGrant | null) => Promise<void>) | null
   >(null);
@@ -423,6 +429,39 @@ export function ApiAgendaWorkspace() {
   const branchProfile = catalogBranches.find(
     (branch) => branch.branchId === selectedBranch,
   );
+  const cabinOptions = useMemo(
+    () =>
+      (catalog.data?.resources ?? [])
+        .filter(
+          (resource) =>
+            resource.active &&
+            resource.kind === "ROOM" &&
+            resource.branchProfileId === branchProfile?.id,
+        )
+        .map((resource) => ({
+          id: resource.id,
+          name: resource.name,
+          capacity: resource.capacity,
+        })),
+    [branchProfile?.id, catalog.data?.resources],
+  );
+  const specialistOptions = useMemo(
+    () =>
+      (catalog.data?.professionals ?? [])
+        .filter(
+          (professional) =>
+            professional.active &&
+            Boolean(
+              branchProfile?.id &&
+              professional.branchProfileIds.includes(branchProfile.id),
+            ),
+        )
+        .map((professional) => ({
+          id: professional.id,
+          name: professional.name,
+        })),
+    [branchProfile?.id, catalog.data?.professionals],
+  );
   const viewBranchIds = useMemo(
     () =>
       branches
@@ -440,11 +479,9 @@ export function ApiAgendaWorkspace() {
       catalog.data
         ? branches
             .filter((branch) =>
-              buildSchedulerCanonicalOperatingHours(
-                catalog.data!,
-                branch.id,
-                [selectedDate],
-              ).schedule.some((day) => day.enabled),
+              buildSchedulerCanonicalOperatingHours(catalog.data!, branch.id, [
+                selectedDate,
+              ]).schedule.some((day) => day.enabled),
             )
             .map((branch) => branch.id)
         : [],
@@ -525,7 +562,13 @@ export function ApiAgendaWorkspace() {
         },
       ];
     });
-  }, [agenda.data, catalog.data, catalogBranches, range.visibleDateKeys, viewBranchIds]);
+  }, [
+    agenda.data,
+    catalog.data,
+    catalogBranches,
+    range.visibleDateKeys,
+    viewBranchIds,
+  ]);
   const presentation = useMemo<SchedulerAgendaPresentation | null>(
     () =>
       branchPresentations.length
@@ -935,9 +978,44 @@ export function ApiAgendaWorkspace() {
     if (targetBranchId && targetBranchId !== selectedBranch) {
       setSelectedBranch(targetBranchId);
     }
-    setBookingDraft(
-      createDraft(date, sourceColumns, columnId, startTime, targetServices),
+    const nextDraft = createDraft(
+      date,
+      sourceColumns,
+      columnId,
+      startTime,
+      targetServices,
     );
+    const targetCabins = (catalog.data?.resources ?? []).filter(
+      (resource) =>
+        resource.active &&
+        resource.kind === "ROOM" &&
+        resource.branchProfileId === targetBranchProfile?.id,
+    );
+    const defaultCabin = targetCabins[0];
+    const targetSpecialists = (catalog.data?.professionals ?? []).filter(
+      (professional) =>
+        professional.active &&
+        Boolean(
+          targetBranchProfile?.id &&
+          professional.branchProfileIds.includes(targetBranchProfile.id),
+        ),
+    );
+    setBookingDraft({
+      ...nextDraft,
+      cabinResourceId: defaultCabin?.id ?? "",
+      cabinCapacity: defaultCabin?.capacity ?? 1,
+      visitors: Array.from(
+        { length: defaultCabin?.capacity ?? 1 },
+        (_value, index) => ({
+          id: `visitor-${index + 1}`,
+          customerId: null,
+          name: "",
+          specialistProfileId: targetSpecialists[index]?.id ?? "",
+          purchased: null,
+          purchaseAmount: "",
+        }),
+      ),
+    });
     setBookingIntentKey(crypto.randomUUID());
     setClientSearchInput("");
     setConflict(null);
@@ -950,17 +1028,31 @@ export function ApiAgendaWorkspace() {
     const appointment = presentation?.appointments.find(
       (item) => item.id === bookingSourceId(booking),
     );
-    if (
-      !appointment ||
-      !["PENDING", "RESERVED", "CONFIRMED"].includes(appointment.status)
-    ) {
-      toast.error("Esta cita ya no admite edición operativa.");
+    if (!appointment || ["CANCELED", "NO_SHOW"].includes(appointment.status)) {
+      toast.error("Esta cita ya no admite captura de atención o compra.");
       return;
     }
     if (appointment.branchId !== selectedBranch) {
       setSelectedBranch(appointment.branchId);
     }
     const [hour = "00", minute = "00"] = booking.start.split(":");
+    const appointmentBranchProfile = catalogBranches.find(
+      (branch) => branch.branchId === appointment.branchId,
+    );
+    const appointmentCabin = (catalog.data?.resources ?? []).find(
+      (resource) =>
+        resource.active &&
+        resource.kind === "ROOM" &&
+        resource.branchProfileId === appointmentBranchProfile?.id,
+    );
+    const appointmentSpecialists = (catalog.data?.professionals ?? []).filter(
+      (professional) =>
+        professional.active &&
+        Boolean(
+          appointmentBranchProfile?.id &&
+          professional.branchProfileIds.includes(appointmentBranchProfile.id),
+        ),
+    );
     setBookingDraft({
       bookingId: appointment.id,
       clientId: appointment.customerId,
@@ -977,14 +1069,32 @@ export function ApiAgendaWorkspace() {
       notes: appointment.canonical.notes ?? "",
       internalNote: "",
       additionalAnswers: {},
+      cabinResourceId: appointmentCabin?.id ?? "",
+      cabinCapacity: appointmentCabin?.capacity ?? 1,
+      visitors: Array.from(
+        { length: appointmentCabin?.capacity ?? 1 },
+        (_value, index) => ({
+          id: `visitor-${index + 1}`,
+          customerId: index === 0 ? appointment.customerId : null,
+          name: index === 0 ? appointment.customerName : "",
+          specialistProfileId:
+            appointmentSpecialists[index]?.id ??
+            appointmentSpecialists[0]?.id ??
+            "",
+          purchased: null,
+          purchaseAmount: "",
+        }),
+      ),
     });
     setClientSearchInput(appointment.customerName);
     setConflict(null);
     setBookingDialogOpen(true);
     if (schedulerDesignProposals.available) {
-      void schedulerDesignProposals
-        .appointmentAnswers(appointment.id)
-        .then((answers) => {
+      void Promise.all([
+        schedulerDesignProposals.appointmentAnswers(appointment.id),
+        schedulerDesignProposals.appointmentCabinVisit(appointment.id),
+      ])
+        .then(([answers, cabinVisit]) => {
           setBookingDraft((current) =>
             current?.bookingId === appointment.id
               ? {
@@ -997,12 +1107,27 @@ export function ApiAgendaWorkspace() {
                         : answer.value,
                     ]),
                   ),
+                  ...(cabinVisit
+                    ? {
+                        cabinResourceId: cabinVisit.cabinResourceId,
+                        cabinCapacity: cabinVisit.cabinCapacity,
+                        visitors: cabinVisit.visitors.map((visitor) => ({
+                          ...visitor,
+                          purchaseAmount:
+                            visitor.purchaseAmount === null
+                              ? ""
+                              : String(visitor.purchaseAmount),
+                        })),
+                      }
+                    : {}),
                 }
               : current,
           );
         })
         .catch(() => {
-          toast.warning("No fue posible cargar las respuestas adicionales de la cita.");
+          toast.warning(
+            "No fue posible cargar el detalle adicional de la cita.",
+          );
         });
     }
   }
@@ -1108,7 +1233,9 @@ export function ApiAgendaWorkspace() {
         code,
         purpose: operationPrompt.purpose,
         targetType: operationPrompt.targetType,
-        ...(operationPrompt.targetId ? { targetId: operationPrompt.targetId } : {}),
+        ...(operationPrompt.targetId
+          ? { targetId: operationPrompt.targetId }
+          : {}),
       });
       const operation = pendingOperationRef.current;
       pendingOperationRef.current = null;
@@ -1116,7 +1243,9 @@ export function ApiAgendaWorkspace() {
       await operation(grant);
     } catch (cause) {
       setOperationAuthorizationError(
-        cause instanceof Error ? cause.message : "No fue posible autorizar el movimiento.",
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible autorizar el movimiento.",
       );
     } finally {
       setOperationAuthorizing(false);
@@ -1140,10 +1269,101 @@ export function ApiAgendaWorkspace() {
   }
 
   function requestSaveBooking(options: SaveBookingOptions = {}) {
+    if (!bookingDraft) return;
+    const selectedCabin = cabinOptions.find(
+      (cabin) => cabin.id === bookingDraft.cabinResourceId,
+    );
+    if (schedulerDesignProposals.available) {
+      if (!selectedCabin) {
+        toast.error("Selecciona una cabina activa para la reserva.");
+        return;
+      }
+      if (bookingDraft.visitors.length !== selectedCabin.capacity) {
+        toast.error(
+          `La ${selectedCabin.name} requiere ${selectedCabin.capacity} visitantes.`,
+        );
+        return;
+      }
+      const visitorNames = bookingDraft.visitors.map((visitor, index) =>
+        index === 0 ? bookingDraft.customerName.trim() : visitor.name.trim(),
+      );
+      if (
+        visitorNames.some((name) => name.length < 2) ||
+        bookingDraft.visitors.some((visitor) => !visitor.specialistProfileId)
+      ) {
+        toast.error("Completa el nombre y especialista de cada visitante.");
+        return;
+      }
+      if (
+        new Set(
+          bookingDraft.visitors.map((visitor) => visitor.specialistProfileId),
+        ).size !== bookingDraft.visitors.length
+      ) {
+        toast.error("Asigna un especialista diferente a cada visitante.");
+        return;
+      }
+      if (
+        bookingDraft.visitors.some(
+          (visitor) =>
+            visitor.purchased === true &&
+            (!Number.isFinite(Number(visitor.purchaseAmount)) ||
+              Number(visitor.purchaseAmount) <= 0),
+        )
+      ) {
+        toast.error(
+          "Captura un monto mayor a cero para cada visitante que compró.",
+        );
+        return;
+      }
+    }
     const editingId = bookingDraft?.bookingId;
+    const existingAppointment = editingId
+      ? presentation?.appointments.find(
+          (appointment) => appointment.id === editingId,
+        )
+      : null;
+    const capturesOnlyAttendance = Boolean(
+      existingAppointment &&
+      !["PENDING", "RESERVED", "CONFIRMED"].includes(
+        existingAppointment.status,
+      ),
+    );
+    const continueWithPurchaseAuthorization = (
+      appointmentGrant: DesignOperationGrant | null,
+    ) => {
+      const requiresPurchaseAuthorization = bookingDraft.visitors.some(
+        (visitor) => visitor.purchased === true,
+      );
+      if (
+        bootstrap?.mockModeEnabled &&
+        schedulerDesignProposals.available &&
+        requiresPurchaseAuthorization
+      ) {
+        requestOperationAuthorization(
+          {
+            title: "Autorizar registro de compras",
+            description:
+              "Ingresa el código de un especialista o agente con permiso para registrar montos. No se acepta un vendedor sin este permiso.",
+            purpose: "PURCHASE_CAPTURE",
+            targetType: "APPOINTMENT_PURCHASE",
+            ...(editingId ? { targetId: editingId } : {}),
+          },
+          (purchaseGrant) =>
+            saveBooking(options, appointmentGrant, purchaseGrant),
+        );
+        return;
+      }
+      void saveBooking(options, appointmentGrant);
+    };
+    if (capturesOnlyAttendance) {
+      continueWithPurchaseAuthorization(null);
+      return;
+    }
     requestOperationAuthorization(
       {
-        title: editingId ? "Autorizar cambio de cita" : "Autorizar nueva reserva",
+        title: editingId
+          ? "Autorizar cambio de cita"
+          : "Autorizar nueva reserva",
         description: editingId
           ? "Confirma quién realiza el cambio. El código autoriza sólo este movimiento."
           : "Confirma quién registra la reserva. El código autoriza sólo este movimiento.",
@@ -1151,13 +1371,14 @@ export function ApiAgendaWorkspace() {
         targetType: "APPOINTMENT",
         ...(editingId ? { targetId: editingId } : {}),
       },
-      (grant) => saveBooking(options, grant),
+      async (grant) => continueWithPurchaseAuthorization(grant),
     );
   }
 
   async function saveBooking(
     options: SaveBookingOptions = {},
     grant: DesignOperationGrant | null = null,
+    purchaseGrant: DesignOperationGrant | null = null,
   ) {
     if (!bookingDraft || !branchProfile) return;
     if (bookingDraft.customerName.trim().length < 2) {
@@ -1169,6 +1390,10 @@ export function ApiAgendaWorkspace() {
           (appointment) => appointment.id === bookingDraft.bookingId,
         )
       : null;
+    const appointmentDetailsLocked = Boolean(
+      existing &&
+      !["PENDING", "RESERVED", "CONFIRMED"].includes(existing.status),
+    );
     const currentTimeUnchanged = Boolean(
       existing &&
       existing.localDate === draftDateKey &&
@@ -1176,7 +1401,7 @@ export function ApiAgendaWorkspace() {
       existing.columnIds.includes(bookingDraft.professionalId),
     );
     const slot = selectedSlot();
-    if (!slot && !currentTimeUnchanged) {
+    if (!slot && !currentTimeUnchanged && !appointmentDetailsLocked) {
       toast.error(
         "Selecciona un horario disponible confirmado por el servidor.",
       );
@@ -1190,7 +1415,9 @@ export function ApiAgendaWorkspace() {
       );
     } catch (cause) {
       toast.error(
-        cause instanceof Error ? cause.message : "Revisa las preguntas configurables.",
+        cause instanceof Error
+          ? cause.message
+          : "Revisa las preguntas configurables.",
       );
       return;
     }
@@ -1241,7 +1468,9 @@ export function ApiAgendaWorkspace() {
       if (!startsAt || !customerId)
         throw new Error("No fue posible resolver la cita.");
       let savedAppointment: SchedulerAppointmentDto;
-      if (existing) {
+      if (existing && appointmentDetailsLocked) {
+        savedAppointment = existing.canonical;
+      } else if (existing) {
         const nextStatus =
           schedulerBookingToCanonicalStatus[bookingDraft.status];
         if (!["PENDING", "RESERVED", "CONFIRMED"].includes(nextStatus))
@@ -1328,6 +1557,28 @@ export function ApiAgendaWorkspace() {
           savedAppointment.id,
           additionalAnswers,
         );
+        await schedulerDesignProposals.saveAppointmentCabinVisit(
+          savedAppointment.id,
+          {
+            cabinResourceId: bookingDraft.cabinResourceId,
+            cabinCapacity: bookingDraft.cabinCapacity,
+            visitors: bookingDraft.visitors.map((visitor, index) => ({
+              id: visitor.id,
+              customerId: index === 0 ? customerId : visitor.customerId,
+              name:
+                index === 0
+                  ? bookingDraft.customerName.trim()
+                  : visitor.name.trim(),
+              specialistProfileId: visitor.specialistProfileId,
+              purchased: visitor.purchased,
+              purchaseAmount:
+                visitor.purchased === true
+                  ? Number(visitor.purchaseAmount)
+                  : null,
+            })),
+          },
+          purchaseGrant?.token,
+        );
       }
       await commitAuthorizedOperation(grant, {
         action: existing ? "Cambio de cita" : "Alta de cita",
@@ -1339,7 +1590,34 @@ export function ApiAgendaWorkspace() {
           serviceId: bookingDraft.serviceId,
         },
       });
-      toast.success(existing ? "Reserva actualizada." : "Reserva creada.");
+      if (purchaseGrant) {
+        const purchasedVisitors = bookingDraft.visitors.filter(
+          (visitor) => visitor.purchased === true,
+        );
+        await commitAuthorizedOperation(purchaseGrant, {
+          action: "Registro de compra por visitante",
+          targetType: "APPOINTMENT_PURCHASE",
+          targetId: savedAppointment.id,
+          metadata: {
+            cabinResourceId: bookingDraft.cabinResourceId,
+            visitorCount: String(bookingDraft.visitors.length),
+            purchaseCount: String(purchasedVisitors.length),
+            purchaseTotal: String(
+              purchasedVisitors.reduce(
+                (total, visitor) => total + Number(visitor.purchaseAmount),
+                0,
+              ),
+            ),
+          },
+        });
+      }
+      toast.success(
+        appointmentDetailsLocked
+          ? "Atención y compras registradas."
+          : existing
+            ? "Reserva actualizada."
+            : "Reserva creada.",
+      );
       setBookingDialogOpen(false);
       setBookingDraft(null);
       setCustomerRegistrationReview(null);
@@ -1398,8 +1676,11 @@ export function ApiAgendaWorkspace() {
     const targetId = blockDraft?.blockId?.split(":")[0];
     requestOperationAuthorization(
       {
-        title: targetId ? "Autorizar cambio de bloqueo" : "Autorizar nuevo bloqueo",
-        description: "El bloqueo modifica la disponibilidad y quedará asociado al responsable.",
+        title: targetId
+          ? "Autorizar cambio de bloqueo"
+          : "Autorizar nuevo bloqueo",
+        description:
+          "El bloqueo modifica la disponibilidad y quedará asociado al responsable.",
         purpose: targetId ? "SCHEDULE_BLOCK_UPDATE" : "SCHEDULE_BLOCK_CREATE",
         targetType: "SCHEDULE_BLOCK",
         ...(targetId ? { targetId } : {}),
@@ -1544,7 +1825,8 @@ export function ApiAgendaWorkspace() {
     requestOperationAuthorization(
       {
         title: "Autorizar cambio de estado",
-        description: "El código personal quedará asociado al cambio de estado, no a la cita.",
+        description:
+          "El código personal quedará asociado al cambio de estado, no a la cita.",
         purpose: "APPOINTMENT_STATUS_CHANGE",
         targetType: "APPOINTMENT",
         targetId: appointment.id,
@@ -1592,7 +1874,8 @@ export function ApiAgendaWorkspace() {
     requestOperationAuthorization(
       {
         title: "Autorizar cancelación",
-        description: "Confirma al responsable de cancelar la cita. La autorización se consume una sola vez.",
+        description:
+          "Confirma al responsable de cancelar la cita. La autorización se consume una sola vez.",
         purpose: "APPOINTMENT_CANCEL",
         targetType: "APPOINTMENT",
         targetId: appointment.id,
@@ -1958,6 +2241,7 @@ export function ApiAgendaWorkspace() {
                   commerceOperatingHours={operatingHours}
                   currentView={currentView}
                   emptySlotAction={emptySlotAction}
+                  enableCabinVisitFlow={schedulerDesignProposals.available}
                   financialAccessByClient={financialProfiles}
                   financialAuditEvents={[]}
                   financialHistoryReadOnly
@@ -2029,7 +2313,16 @@ export function ApiAgendaWorkspace() {
           availabilityError={availability.error}
           availabilityLoading={availability.loading}
           additionalFieldDefinitions={activeFieldDefinitions}
+          appointmentDetailsLocked={Boolean(
+            bookingDraft.bookingId &&
+            !["PENDING", "RESERVED", "CONFIRMED"].includes(
+              presentation?.appointments.find(
+                (appointment) => appointment.id === bookingDraft.bookingId,
+              )?.status ?? "",
+            ),
+          )}
           availableStartTimes={availableStartTimes}
+          cabinOptions={cabinOptions}
           bookings={allBookings}
           branches={branches}
           clients={customerOptions}
@@ -2043,6 +2336,7 @@ export function ApiAgendaWorkspace() {
                 )
           }
           draft={bookingDraft}
+          enableCabinVisitFlow={schedulerDesignProposals.available}
           canCreateClient={canCreateClient}
           onBranchChange={(branchId) => {
             setSelectedBranch(branchId);
@@ -2072,6 +2366,7 @@ export function ApiAgendaWorkspace() {
           open={bookingDialogOpen}
           saving={bookingSaving}
           selectedBranch={selectedBranch}
+          specialistOptions={specialistOptions}
           serviceLocked={Boolean(
             bookingDraft.bookingId &&
             (presentation?.appointments.find(
@@ -2093,7 +2388,8 @@ export function ApiAgendaWorkspace() {
           requestOperationAuthorization(
             {
               title: "Autorizar cancelación de bloqueo",
-              description: "Confirma al responsable de liberar este espacio de agenda.",
+              description:
+                "Confirma al responsable de liberar este espacio de agenda.",
               purpose: "SCHEDULE_BLOCK_DELETE",
               targetType: "SCHEDULE_BLOCK",
               targetId,
@@ -2172,7 +2468,11 @@ export function ApiAgendaWorkspace() {
             </div>
           </AlertDialogHeader>
 
-          <div className="space-y-2" role="radiogroup" aria-label="Clientes coincidentes">
+          <div
+            className="space-y-2"
+            role="radiogroup"
+            aria-label="Clientes coincidentes"
+          >
             {customerRegistrationReview?.customers.map((customer) => {
               const selected =
                 customer.id === customerRegistrationReview.selectedCustomerId;
@@ -2300,7 +2600,10 @@ export function ApiAgendaWorkspace() {
         </AlertDialogContent>
       </AlertDialog>
       <SchedulerOperationAuthorizationDialog
-        description={operationPrompt?.description ?? "Confirma el responsable del movimiento."}
+        description={
+          operationPrompt?.description ??
+          "Confirma el responsable del movimiento."
+        }
         error={operationAuthorizationError}
         onAuthorize={(code) => void authorizePendingOperation(code)}
         onOpenChange={(open) => {

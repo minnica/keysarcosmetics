@@ -13,7 +13,8 @@ export type DesignOperationPurpose =
   | "SCHEDULE_BLOCK_CREATE"
   | "SCHEDULE_BLOCK_UPDATE"
   | "SCHEDULE_BLOCK_DELETE"
-  | "CUSTOMER_UPDATE";
+  | "CUSTOMER_UPDATE"
+  | "PURCHASE_CAPTURE";
 
 export type DesignOperationAgentSource = "SCHEDULER" | "POS_CRM";
 
@@ -32,6 +33,8 @@ export interface DesignOperationAgent {
   source: DesignOperationAgentSource;
   active: boolean;
   codeConfigured: boolean;
+  canAuthorizePurchases: boolean;
+  allowedPurposes: DesignOperationPurpose[];
   updatedAt: string;
 }
 
@@ -45,6 +48,24 @@ export interface DesignOperationGrant {
 export interface DesignAppointmentAnswer {
   definitionId: string;
   value: string | number | boolean;
+}
+
+export interface DesignCabinVisitPerson {
+  id: string;
+  customerId: string | null;
+  name: string;
+  specialistProfileId: string;
+  purchased: boolean | null;
+  purchaseAmount: number | null;
+}
+
+export interface DesignAppointmentCabinVisit {
+  appointmentId: string;
+  cabinResourceId: string;
+  cabinName: string;
+  cabinCapacity: number;
+  visitors: DesignCabinVisitPerson[];
+  updatedAt: string;
 }
 
 export interface DesignMovementRecord {
@@ -110,6 +131,7 @@ export interface DesignProposalClient {
     source: DesignOperationAgentSource;
     active: boolean;
     code?: string;
+    allowedPurposes: DesignOperationPurpose[];
   }): Promise<DesignOperationAgent>;
   authorizeOperation(input: {
     code: string;
@@ -133,4 +155,15 @@ export interface DesignProposalClient {
     appointmentId: string,
     answers: DesignAppointmentAnswer[],
   ): Promise<DesignAppointmentAnswer[]>;
+  appointmentCabinVisit(
+    appointmentId: string,
+  ): Promise<DesignAppointmentCabinVisit | null>;
+  saveAppointmentCabinVisit(
+    appointmentId: string,
+    input: Omit<
+      DesignAppointmentCabinVisit,
+      "appointmentId" | "cabinName" | "updatedAt"
+    >,
+    authorizationToken?: string,
+  ): Promise<DesignAppointmentCabinVisit>;
 }

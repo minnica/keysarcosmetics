@@ -1,5 +1,6 @@
 import type {
   DesignAppointmentAnswer,
+  DesignAppointmentCabinVisit,
   DesignCustomerAdvancedPage,
   DesignDemoAccountOption,
   DesignMovementRecord,
@@ -83,5 +84,24 @@ export const schedulerDesignProposals: DesignProposalClient = {
     request<DesignAppointmentAnswer[]>(
       `/api/scheduler/design-proposals/appointments/${appointmentId}/answers`,
       { method: "PUT", body: JSON.stringify({ answers }) },
+    ),
+  appointmentCabinVisit: (appointmentId) =>
+    request<DesignAppointmentCabinVisit | null>(
+      `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+    ),
+  saveAppointmentCabinVisit: (appointmentId, input, authorizationToken) =>
+    request<DesignAppointmentCabinVisit>(
+      `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+      {
+        method: "PUT",
+        body: JSON.stringify(input),
+        ...(authorizationToken
+          ? {
+              headers: {
+                "x-design-operation-authorization": authorizationToken,
+              },
+            }
+          : {}),
+      },
     ),
 };

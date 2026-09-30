@@ -51,7 +51,10 @@ import {
 } from "lucide-react";
 import { schedulerApi } from "@/lib/api";
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
-import type { DesignOperationAgent } from "../../../design/contracts";
+import type {
+  DesignOperationAgent,
+  DesignOperationPurpose,
+} from "../../../design/contracts";
 import {
   schedulerAgendaSettingsChangeEvent,
   schedulerAgendaSettingsStorageKey,
@@ -158,7 +161,9 @@ function CustomerQuestionSettings({
     setSaving(false);
   }
 
-  async function toggleQuestion(definition: SchedulerCustomerFieldDefinitionDto) {
+  async function toggleQuestion(
+    definition: SchedulerCustomerFieldDefinitionDto,
+  ) {
     setSaving(true);
     await runSchedulerMutation(
       () =>
@@ -174,7 +179,9 @@ function CustomerQuestionSettings({
         }),
       {
         onSuccess: async () => {
-          toast.success(definition.active ? "Pregunta desactivada." : "Pregunta activada.");
+          toast.success(
+            definition.active ? "Pregunta desactivada." : "Pregunta activada.",
+          );
           await definitions.reload();
         },
         onError: toast.error,
@@ -189,9 +196,13 @@ function CustomerQuestionSettings({
       <div className="settings-card-heading">
         <div>
           <p className="settings-kicker">Preguntas compartidas</p>
-          <h2 className="settings-title">Datos adicionales de reserva y cliente</h2>
+          <h2 className="settings-title">
+            Datos adicionales de reserva y cliente
+          </h2>
           <p className="settings-description">
-            Una sola definición se muestra en la reserva y en el alta de cliente. Las respuestas se enlazan por IDs y no duplican catálogos del POS/CRM.
+            Una sola definición se muestra en la reserva y en el alta de
+            cliente. Las respuestas se enlazan por IDs y no duplican catálogos
+            del POS/CRM.
           </p>
         </div>
         <Badge variant="outline">Cliente + cita</Badge>
@@ -199,48 +210,105 @@ function CustomerQuestionSettings({
       <div className="grid gap-4 border-b border-[#eee6df] p-5 md:grid-cols-2 xl:grid-cols-4 sm:p-6">
         <div className="space-y-2 xl:col-span-2">
           <Label htmlFor="question-label">Pregunta</Label>
-          <Input id="question-label" onChange={(event) => setLabel(event.target.value)} placeholder="Ej. Vendedor responsable" value={label} />
+          <Input
+            id="question-label"
+            onChange={(event) => setLabel(event.target.value)}
+            placeholder="Ej. Vendedor responsable"
+            value={label}
+          />
         </div>
         <div className="space-y-2">
           <Label>Tipo de respuesta</Label>
-          <Select onValueChange={(value) => setType(value as SchedulerCustomerFieldType)} value={type}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{customerFieldTypes.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+          <Select
+            onValueChange={(value) =>
+              setType(value as SchedulerCustomerFieldType)
+            }
+            value={type}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {customerFieldTypes.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <label className="flex items-center gap-3 self-end rounded-xl border border-[#dfd5cc] px-4 py-3 text-sm">
-          <input checked={required} className="h-4 w-4 accent-[#ad8b67]" onChange={(event) => setRequired(event.target.checked)} type="checkbox" /> Obligatoria
+          <input
+            checked={required}
+            className="h-4 w-4 accent-[#ad8b67]"
+            onChange={(event) => setRequired(event.target.checked)}
+            type="checkbox"
+          />{" "}
+          Obligatoria
         </label>
         {type === "SELECT" ? (
           <div className="space-y-2 md:col-span-2 xl:col-span-3">
             <Label htmlFor="question-options">Opciones, una por línea</Label>
-            <Textarea id="question-options" onChange={(event) => setOptions(event.target.value)} placeholder={'Vendedor A\nVendedor B\nVenta de empresa'} value={options} />
+            <Textarea
+              id="question-options"
+              onChange={(event) => setOptions(event.target.value)}
+              placeholder={"Vendedor A\nVendedor B\nVenta de empresa"}
+              value={options}
+            />
           </div>
         ) : null}
         <div className="flex items-end">
-          <Button className="w-full bg-[#263649] text-white hover:bg-[#1d2b3a]" disabled={!canManage || !label.trim() || saving} onClick={() => void createQuestion()}>
+          <Button
+            className="w-full bg-[#263649] text-white hover:bg-[#1d2b3a]"
+            disabled={!canManage || !label.trim() || saving}
+            onClick={() => void createQuestion()}
+          >
             <Plus className="mr-2 h-4 w-4" /> Dar de alta
           </Button>
         </div>
       </div>
       <div className="divide-y divide-[#eee6df]">
         {(definitions.data ?? []).map((definition) => (
-          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6" key={definition.id}>
+          <div
+            className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+            key={definition.id}
+          >
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <p className="font-semibold text-[#263649]">{definition.label}</p>
-                <Badge variant="outline">{customerFieldTypes.find((item) => item.value === definition.type)?.label}</Badge>
+                <p className="font-semibold text-[#263649]">
+                  {definition.label}
+                </p>
+                <Badge variant="outline">
+                  {
+                    customerFieldTypes.find(
+                      (item) => item.value === definition.type,
+                    )?.label
+                  }
+                </Badge>
                 {definition.required ? <Badge>Obligatoria</Badge> : null}
-                {!definition.active ? <Badge variant="outline">Inactiva</Badge> : null}
+                {!definition.active ? (
+                  <Badge variant="outline">Inactiva</Badge>
+                ) : null}
               </div>
-              <p className="mt-1 text-xs text-slate-500">ID {definition.id} · clave {definition.key}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                ID {definition.id} · clave {definition.key}
+              </p>
             </div>
-            <Button disabled={!canManage || saving} onClick={() => void toggleQuestion(definition)} size="sm" variant="outline">
+            <Button
+              disabled={!canManage || saving}
+              onClick={() => void toggleQuestion(definition)}
+              size="sm"
+              variant="outline"
+            >
               {definition.active ? "Desactivar" : "Activar"}
             </Button>
           </div>
         ))}
-        {!definitions.loading && !(definitions.data ?? []).length ? <p className="p-6 text-sm text-slate-500">Aún no hay preguntas configuradas.</p> : null}
+        {!definitions.loading && !(definitions.data ?? []).length ? (
+          <p className="p-6 text-sm text-slate-500">
+            Aún no hay preguntas configuradas.
+          </p>
+        ) : null}
       </div>
     </section>
   );
@@ -285,7 +353,11 @@ function AuthorizationAgentsSettings() {
     try {
       setAgents(await schedulerDesignProposals.listAuthorizationAgents());
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "No fue posible cargar los agentes.");
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible cargar los agentes.",
+      );
     } finally {
       setLoading(false);
     }
@@ -295,10 +367,33 @@ function AuthorizationAgentsSettings() {
     void load();
   }, [load]);
 
-  async function saveCode(agent: DesignOperationAgent) {
+  function togglePermission(
+    agentId: string,
+    purpose: DesignOperationPurpose,
+    enabled: boolean,
+  ) {
+    setAgents((current) =>
+      current.map((agent) =>
+        agent.id === agentId
+          ? {
+              ...agent,
+              allowedPurposes: enabled
+                ? [...new Set([...agent.allowedPurposes, purpose])]
+                : agent.allowedPurposes.filter((item) => item !== purpose),
+            }
+          : agent,
+      ),
+    );
+  }
+
+  async function saveAgentAccess(agent: DesignOperationAgent) {
     const code = codes[agent.id] ?? "";
-    if (!/^\d{4,12}$/.test(code)) {
+    if (code && !/^\d{4,12}$/.test(code)) {
       toast.error("El código debe contener de 4 a 12 dígitos.");
+      return;
+    }
+    if (!code && !agent.codeConfigured) {
+      toast.error("Captura un código inicial para este agente.");
       return;
     }
     setSavingId(agent.id);
@@ -310,13 +405,22 @@ function AuthorizationAgentsSettings() {
         role: agent.role,
         source: agent.source,
         active: agent.active,
-        code,
+        ...(code ? { code } : {}),
+        allowedPurposes: agent.allowedPurposes,
       });
       setCodes((current) => ({ ...current, [agent.id]: "" }));
-      toast.success("Código asignado. El valor anterior no podrá reutilizarse.");
+      toast.success(
+        code
+          ? "Código y permisos actualizados. El valor anterior no podrá reutilizarse."
+          : "Permisos de autorización actualizados.",
+      );
       await load();
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "No fue posible asignar el código.");
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible asignar el código.",
+      );
     } finally {
       setSavingId(null);
     }
@@ -331,35 +435,85 @@ function AuthorizationAgentsSettings() {
           <p className="settings-kicker">Agentes y vendedores</p>
           <h2 className="settings-title">Códigos de movimiento</h2>
           <p className="settings-description">
-            La identidad proviene de Scheduler o del CRM/POS. Aquí sólo se asigna un código ficticio único; no se crean vendedores paralelos.
+            La identidad proviene de Scheduler o del CRM/POS. Asigna un código
+            ficticio único y define si puede cambiar estados o registrar
+            compras; no se crean vendedores paralelos.
           </p>
         </div>
         <Badge variant="outline">Sin códigos visibles</Badge>
       </div>
       <div className="divide-y divide-[#eee6df]">
-        {loading ? <p className="p-6 text-sm text-slate-500">Cargando agentes…</p> : null}
+        {loading ? (
+          <p className="p-6 text-sm text-slate-500">Cargando agentes…</p>
+        ) : null}
         {agents.map((agent) => (
-          <div className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_220px_auto] md:items-center sm:px-6" key={agent.id}>
+          <div
+            className="grid gap-4 px-5 py-4 xl:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)_220px_auto] xl:items-center sm:px-6"
+            key={agent.id}
+          >
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold text-[#263649]">{agent.name}</p>
                 <Badge variant="outline">{agent.source}</Badge>
-                <Badge variant="outline">{agent.codeConfigured ? "Código configurado" : "Pendiente"}</Badge>
+                <Badge variant="outline">
+                  {agent.codeConfigured ? "Código configurado" : "Pendiente"}
+                </Badge>
               </div>
-              <p className="mt-1 text-xs text-slate-500">{agent.role} · ID externo {agent.externalId}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {agent.role} · ID externo {agent.externalId}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3 rounded-xl border border-[#eee6df] bg-[#faf8f5] px-3 py-2">
+              {(
+                [
+                  ["APPOINTMENT_STATUS_CHANGE", "Cambiar estados"],
+                  ["PURCHASE_CAPTURE", "Registrar compras"],
+                ] as const
+              ).map(([purpose, label]) => (
+                <label
+                  className="flex items-center gap-2 text-xs font-medium text-[#263649]"
+                  key={purpose}
+                >
+                  <input
+                    checked={agent.allowedPurposes.includes(purpose)}
+                    className="h-4 w-4 accent-[#263649]"
+                    disabled={
+                      purpose === "PURCHASE_CAPTURE" &&
+                      !agent.canAuthorizePurchases
+                    }
+                    onChange={(event) =>
+                      togglePermission(agent.id, purpose, event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                  {label}
+                </label>
+              ))}
             </div>
             <Input
               aria-label={`Nuevo código para ${agent.name}`}
               autoComplete="off"
               inputMode="numeric"
               maxLength={12}
-              onChange={(event) => setCodes((current) => ({ ...current, [agent.id]: event.target.value.replace(/\D/g, "") }))}
+              onChange={(event) =>
+                setCodes((current) => ({
+                  ...current,
+                  [agent.id]: event.target.value.replace(/\D/g, ""),
+                }))
+              }
               placeholder="Nuevo código"
               type="password"
               value={codes[agent.id] ?? ""}
             />
-            <Button disabled={(codes[agent.id]?.length ?? 0) < 4 || savingId === agent.id} onClick={() => void saveCode(agent)} variant="outline">
-              {savingId === agent.id ? "Asignando…" : "Asignar"}
+            <Button
+              disabled={
+                (!agent.codeConfigured && (codes[agent.id]?.length ?? 0) < 4) ||
+                savingId === agent.id
+              }
+              onClick={() => void saveAgentAccess(agent)}
+              variant="outline"
+            >
+              {savingId === agent.id ? "Guardando…" : "Guardar"}
             </Button>
           </div>
         ))}
@@ -958,7 +1112,8 @@ export function ApiSettingsWorkspace() {
     [bootstrap?.authorizedBranchIds, catalog.data?.branches, commerceId],
   );
   const selectedBranchId =
-    authorizedProfiles.find((branch) => branch.id === branchProfileId)?.branchId ??
+    authorizedProfiles.find((branch) => branch.id === branchProfileId)
+      ?.branchId ??
     authorizedProfiles[0]?.branchId ??
     "";
   useEffect(() => {
