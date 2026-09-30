@@ -14,9 +14,12 @@ import {
 } from "@cosmetics/types";
 import {
   buildDesignAppointment,
+  designAccountForControls,
   designBootstrap,
+  designDemoAccounts,
   designId,
   designInstant,
+  designSessionToken,
   type DesignRow,
   type DesignState,
 } from "./store";
@@ -154,7 +157,7 @@ function consumeAuthorization(
   const auth = state.authorizations.get(key);
   if (
     !auth ||
-    auth.role !== state.controls.role ||
+    auth.accountId !== state.controls.accountId ||
     auth.expiresAt < Date.now() ||
     (purpose && auth.purpose !== purpose) ||
     (targetId && auth.targetId && auth.targetId !== targetId)
@@ -201,7 +204,7 @@ function authorizeRequest(state: DesignState, request: DesignRequest) {
   if (path === "/api/auth/login") return;
   if (
     request.headers.get("authorization") !==
-    `Bearer design-token-${state.controls.role}`
+    `Bearer ${designSessionToken(state.controls.accountId)}`
   )
     fail(401, "Inicia una sesión demo.");
   if (
@@ -750,15 +753,16 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     id = parts[3],
     action = parts[4];
   if (path === "/api/auth/login") {
-    const roles = {
-      "master@example.test": "master",
-      "specialist@example.test": "specialist",
-      "read-only@example.test": "read-only",
-    } as const;
-    if (body.password !== "demo" || !(String(body.email) in roles))
-      fail(401, "Usa una cuenta demo y la contraseña demo.");
-    state.controls.role = roles[String(body.email) as keyof typeof roles];
-    return { token: `design-token-${state.controls.role}` };
+    const account =
+      designDemoAccounts.find(
+        (candidate) =>
+          candidate.email === String(body.email).trim().toLowerCase() &&
+          candidate.password === body.password,
+      ) ?? fail(401, "Usa una cuenta demo y la contraseña demo.");
+    state.controls.accountId = account.id;
+    state.controls.role = account.role;
+    state.authorizations.clear();
+    return { token: designSessionToken(account.id) };
   }
   if (resource === "bootstrap") return designBootstrap(state);
   if (resource === "security") return { updated: true };
@@ -767,8 +771,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       consumeAuthorization(state, body.token, String(body.purpose));
       return { consumed: true };
     }
-    const codes = { master: "0000", specialist: "1111", "read-only": "2222" };
-    if (body.secret !== codes[state.controls.role])
+    const account = designAccountForControls(state.controls);
+    if (body.secret !== account.authorizationCode)
       fail(403, "Código demo incorrecto.");
     if (
       state.controls.role === "read-only" &&
@@ -778,7 +782,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     const token = designId("design-authorization"),
       expiresAt = Date.now() + 120_000;
     state.authorizations.set(token, {
-      role: state.controls.role,
+      accountId: account.id,
       purpose: String(body.purpose),
       targetId: String(body.targetId ?? ""),
       expiresAt,
@@ -788,7 +792,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       purpose: body.purpose,
       expiresAt: new Date(expiresAt).toISOString(),
       actor: {
-        userId: `design-${state.controls.role}`,
+        userId: `design-${account.id}`,
         name: designBootstrap(state).user.name,
       },
     };
@@ -847,7 +851,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       if (code && !/^\d{4,12}$/.test(code)) {
         fail(400, "El código debe contener de 4 a 12 dígitos.");
       }
-      if (code && code !== existing?.code && state.usedAuthorizationCodes.has(code)) {
+      if (
+        code &&
+        code !== existing?.code &&
+        state.usedAuthorizationCodes.has(code)
+      ) {
         fail(409, "Ese código ya fue asignado y no puede repetirse.");
       }
       if (!existing && !code) fail(400, "Captura un código inicial.");
@@ -868,7 +876,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       next.source = body.source === "SCHEDULER" ? "SCHEDULER" : "POS_CRM";
       next.active = body.active !== false;
       next.updatedAt = updatedAt;
-      if (!next.name || !next.role) fail(400, "Captura nombre y rol del agente.");
+      if (!next.name || !next.role)
+        fail(400, "Captura nombre y rol del agente.");
       if (code && code !== next.code) {
         state.usedAuthorizationCodes.add(code);
         next.code = code;
@@ -947,7 +956,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     if (id === "appointments" && parts[5] === "answers") {
       const appointmentId = String(action ?? "");
       appointment(state, appointmentId);
-      if (method === "GET") return state.appointmentAnswers[appointmentId] ?? [];
+      if (method === "GET")
+        return state.appointmentAnswers[appointmentId] ?? [];
       const answers = rows(body.answers).map((answer) => {
         const value = answer.value;
         if (!["string", "number", "boolean"].includes(typeof value)) {
@@ -1227,7 +1237,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           id,
         );
         if (!action) {
-          state.customerEditAccess.set(`${state.controls.role}:${id}`, {
+          state.customerEditAccess.set(`${state.controls.accountId}:${id}`, {
             role: state.controls.role,
             expiresAt: Date.now() + 120_000,
           });
@@ -1260,10 +1270,13 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     }
     if (method === "POST" || method === "PUT") {
       if (method === "PUT" && id && state.controls.role !== "master") {
-        const accessKey = `${state.controls.role}:${id}`;
+        const accessKey = `${state.controls.accountId}:${id}`;
         const access = state.customerEditAccess.get(accessKey);
         if (!access || access.expiresAt < Date.now()) {
-          fail(403, "Editar un cliente registrado requiere acceso autorizado o master.");
+          fail(
+            403,
+            "Editar un cliente registrado requiere acceso autorizado o master.",
+          );
         }
         state.customerEditAccess.delete(accessKey);
       }
@@ -1389,7 +1402,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const references = {
         COMMERCE: commerce,
         BRANCH: branch,
-        USER: `design-${state.controls.role}`,
+        USER: `design-${state.controls.accountId}`,
       };
       const scopes: SchedulerSettingScope[] = ["COMMERCE", "BRANCH", "USER"];
       if (method === "GET") {
@@ -1695,7 +1708,8 @@ export function handleDesignRequest(
         actorSource: "SESSION",
         action: `${request.method} ${request.url.pathname}`,
         purpose: "SYSTEM_WRITE",
-        targetType: request.url.pathname.split("/").filter(Boolean)[2] ?? "record",
+        targetType:
+          request.url.pathname.split("/").filter(Boolean)[2] ?? "record",
         targetId: String(record(result).id ?? ""),
         createdAt: new Date().toISOString(),
         metadata: {},

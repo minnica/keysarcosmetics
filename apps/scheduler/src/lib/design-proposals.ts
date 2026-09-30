@@ -1,10 +1,16 @@
-import type { DesignProposalClient } from "../../design/contracts";
+import type {
+  DesignDemoAccountOption,
+  DesignProposalClient,
+} from "../../design/contracts";
 
 const unavailable = async <T>(): Promise<T> => {
   throw new Error(
     "Esta propuesta sólo está disponible en el entorno funcional de diseño.",
   );
 };
+
+export const schedulerDesignDemoAccounts: readonly DesignDemoAccountOption[] =
+  [];
 
 export const schedulerDesignProposals: DesignProposalClient = {
   available: false,

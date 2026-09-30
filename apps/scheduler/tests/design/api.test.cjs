@@ -15,8 +15,10 @@ require.extensions[".ts"] = (module, filename) => {
 };
 const {
   createDesignState,
+  designDemoAccounts,
   designOrigin,
   designBootstrap,
+  designSessionToken,
 } = require("../../design/store.ts");
 const { handleDesignRequest } = require("../../design/api.ts");
 const { createSchedulerApiClient } = require("@cosmetics/api-client");
@@ -31,13 +33,94 @@ function session(scenario = "normal", role = "master") {
       url: new URL(path, designOrigin),
       body,
       headers: new Headers({
-        authorization: `Bearer design-token-${state.controls.role}`,
+        authorization: `Bearer ${designSessionToken(state.controls.accountId)}`,
         ...extraHeaders,
       }),
     });
   }
   return { state, request };
 }
+
+test("las tres cuentas demo conservan identidad, alcance y códigos personales", () => {
+  const { state, request } = session();
+  const expectations = [
+    {
+      email: "master@example.test",
+      accountId: "full-master",
+      code: "0000",
+      fullAccess: true,
+    },
+    {
+      email: "operations@example.test",
+      accountId: "full-operations",
+      code: "3333",
+      fullAccess: true,
+    },
+    {
+      email: "limited@example.test",
+      accountId: "limited-polanco",
+      code: "4444",
+      fullAccess: false,
+    },
+  ];
+
+  assert.equal(designDemoAccounts.length, 3);
+  for (const expected of expectations) {
+    const login = request("POST", "/api/auth/login", {
+      email: expected.email,
+      password: "demo",
+    });
+    assert.equal(login.status, 201);
+    assert.equal(login.body.data.token, designSessionToken(expected.accountId));
+    const bootstrap = request("GET", "/api/scheduler/bootstrap").body.data;
+    assert.equal(bootstrap.user.email, expected.email);
+    assert.equal(bootstrap.canManageAccess, expected.fullAccess);
+    assert.equal(
+      bootstrap.authorizedBranchIds.length,
+      expected.fullAccess ? state.catalog.branches.length : 1,
+    );
+    assert.equal(
+      request("GET", "/api/scheduler/administration/catalog").status,
+      expected.fullAccess ? 200 : 403,
+    );
+    assert.equal(
+      request("POST", "/api/scheduler/authorizations", {
+        secret: expected.code,
+        purpose: "CLIENT_RECORD_VIEW",
+        targetId: state.customers[0].id,
+      }).status,
+      201,
+    );
+  }
+});
+
+test("una sesión o código de otro usuario no autoriza movimientos", () => {
+  const { state, request } = session();
+  request("POST", "/api/auth/login", {
+    email: "operations@example.test",
+    password: "demo",
+  });
+  assert.equal(
+    request("POST", "/api/scheduler/authorizations", {
+      secret: "0000",
+      purpose: "CLIENT_RECORD_VIEW",
+      targetId: state.customers[0].id,
+    }).status,
+    403,
+  );
+  const previousToken = designSessionToken("full-operations");
+  request("POST", "/api/auth/login", {
+    email: "master@example.test",
+    password: "demo",
+  });
+  const response = handleDesignRequest(state, {
+    method: "GET",
+    url: new URL("/api/scheduler/bootstrap", designOrigin),
+    body: {},
+    headers: new Headers({ authorization: `Bearer ${previousToken}` }),
+  });
+  assert.equal(response.status, 401);
+});
 
 test("el cliente Axios real funciona con MSW sin servidor ni credenciales reales", async () => {
   const { state } = session();
@@ -343,7 +426,10 @@ test("las respuestas adicionales se relacionan con la cita por ID", () => {
   const appointmentId = state.appointments[0].id;
   const answers = [
     { definitionId: "design-field-sales-owner", value: "Renata Castillo" },
-    { definitionId: "design-field-attending-specialist", value: "Camila Torres" },
+    {
+      definitionId: "design-field-attending-specialist",
+      value: "Camila Torres",
+    },
   ];
   assert.equal(
     request(
@@ -374,9 +460,7 @@ test("la búsqueda avanzada combina agenda, servicios, cumpleaños, vendedor y c
       serviceProfileIds: ["class-rv4"],
       birthdayMonth: 11,
       sellerNames: ["Venta de empresa"],
-      customFields: [
-        { definitionId: "design-field-type", value: "Nuevo" },
-      ],
+      customFields: [{ definitionId: "design-field-type", value: "Nuevo" }],
       page: 1,
       pageSize: 25,
     },

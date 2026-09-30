@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Button, Input, Label } from "@cosmetics/ui";
+import { schedulerDesignDemoAccounts } from "@scheduler/design-proposals";
 import { schedulerApi, schedulerApiErrorMessage } from "@/lib/api";
 
 export default function LoginPage() {
@@ -81,6 +82,50 @@ export default function LoginPage() {
                 Accede con tu cuenta compartida de Keysar Cosmetics.
               </p>
               <div className="mt-9 space-y-5">
+                {schedulerDesignDemoAccounts.length > 0 ? (
+                  <section
+                    aria-labelledby="demo-accounts-title"
+                    className="rounded-2xl border border-[#d7b488]/25 bg-[#d7b488]/[0.07] p-3"
+                  >
+                    <div className="flex items-center justify-between gap-3 px-1">
+                      <h2
+                        id="demo-accounts-title"
+                        className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ead2b4]"
+                      >
+                        Usuarios de prueba
+                      </h2>
+                      <span className="text-[0.65rem] text-white/45">
+                        Clave: demo
+                      </span>
+                    </div>
+                    <div className="mt-2 grid gap-2">
+                      {schedulerDesignDemoAccounts.map((account) => (
+                        <button
+                          key={account.email}
+                          type="button"
+                          onClick={() => {
+                            setEmail(account.email);
+                            setPassword("demo");
+                            setError(null);
+                          }}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2 text-left transition hover:border-[#d7b488]/55 hover:bg-[#d7b488]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b488]"
+                        >
+                          <span>
+                            <span className="block text-xs font-medium text-white/90">
+                              {account.name}
+                            </span>
+                            <span className="mt-0.5 block text-[0.65rem] text-white/50">
+                              {account.access} · código {account.code}
+                            </span>
+                          </span>
+                          <span className="text-[0.62rem] uppercase tracking-[0.12em] text-[#d7b488]">
+                            Usar
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
                 <div className="space-y-2">
                   <Label
                     htmlFor="email"

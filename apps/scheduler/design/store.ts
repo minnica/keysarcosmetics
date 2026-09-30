@@ -34,10 +34,68 @@ import type {
 
 export const designOrigin = "https://scheduler-design.invalid";
 export type DesignRole = "master" | "specialist" | "read-only";
+export type DesignAccountId =
+  | "full-master"
+  | "full-operations"
+  | "limited-polanco"
+  | "read-only-legacy";
+export interface DesignDemoAccount {
+  id: DesignAccountId;
+  email: string;
+  password: string;
+  authorizationCode: string;
+  role: DesignRole;
+  name: string;
+  positionName: string;
+  accessLabel: string;
+}
+export const designDemoAccounts: readonly DesignDemoAccount[] = [
+  {
+    id: "full-master",
+    email: "master@example.test",
+    password: "demo",
+    authorizationCode: "0000",
+    role: "master",
+    name: "PO · Master demo",
+    positionName: "Administración general",
+    accessLabel: "Acceso total",
+  },
+  {
+    id: "full-operations",
+    email: "operations@example.test",
+    password: "demo",
+    authorizationCode: "3333",
+    role: "master",
+    name: "Alejandra Ruiz · Coordinación demo",
+    positionName: "Coordinación operativa",
+    accessLabel: "Acceso total",
+  },
+  {
+    id: "limited-polanco",
+    email: "limited@example.test",
+    password: "demo",
+    authorizationCode: "4444",
+    role: "specialist",
+    name: "Daniela Mora · Recepción demo",
+    positionName: "Recepción Polanco",
+    accessLabel: "Acceso limitado",
+  },
+] as const;
+const legacyReadOnlyAccount: DesignDemoAccount = {
+  id: "read-only-legacy",
+  email: "read-only@example.test",
+  password: "demo",
+  authorizationCode: "2222",
+  role: "read-only",
+  name: "Consulta demo",
+  positionName: "Solo consulta",
+  accessLabel: "Solo lectura",
+};
 export type DesignScenario = "normal" | "empty" | "slow" | "error" | "conflict";
 export type DesignRow = Record<string, unknown>;
 export interface DesignControls {
   role: DesignRole;
+  accountId?: DesignAccountId;
   scenario: DesignScenario;
   date: string;
 }
@@ -77,13 +135,35 @@ export function designInstant(date: string, minute: number): string {
   return value;
 }
 
+export function designAccountForControls(
+  controls: Pick<DesignControls, "role" | "accountId">,
+): DesignDemoAccount {
+  return (
+    designDemoAccounts.find((account) => account.id === controls.accountId) ??
+    designDemoAccounts.find((account) => account.role === controls.role) ??
+    (controls.role === "read-only" ? legacyReadOnlyAccount : undefined) ??
+    designDemoAccounts[0]!
+  );
+}
+
+export function designSessionToken(accountId: DesignAccountId): string {
+  return `design-token-${accountId}`;
+}
+
 export function createDesignState(
   controls: DesignControls = {
     role: "master",
+    accountId: "full-master",
     scenario: "normal",
     date: designToday(),
   },
 ) {
+  const selectedAccount = designAccountForControls(controls);
+  const normalizedControls = {
+    ...controls,
+    accountId: selectedAccount.id,
+    role: selectedAccount.role,
+  };
   const catalog: SchedulerOperationalCatalogDto = structuredClone(
     schedulerOperationalCatalogRv4Fixture as SchedulerOperationalCatalogDto,
   );
@@ -155,7 +235,12 @@ export function createDesignState(
     "Lucía Velasco Pérez",
     "Sofía Mendoza Lara",
   ];
-  const customerBirthDates = ["1988-09-12", "1993-05-21", "1985-11-03", "1990-09-30"];
+  const customerBirthDates = [
+    "1988-09-12",
+    "1993-05-21",
+    "1985-11-03",
+    "1990-09-30",
+  ];
   const customerTypes = ["VIP", "Frecuente", "Nuevo", "Frecuente"];
   const salesOwners = [
     "Renata Castillo",
@@ -163,75 +248,78 @@ export function createDesignState(
     "Venta de empresa",
     "Renata Castillo",
   ];
-  const customers: SchedulerCustomerDetailDto[] = customerNames.map((name, index) => {
-    const branch = catalog.branches[index % catalog.branches.length]!;
-    const professional = catalog.professionals[index % catalog.professionals.length]!;
-    return {
-    id: `design-customer-${index + 1}`,
-    displayName: name,
-    preferredName: null,
-    phone: `555000000${index + 1}`,
-    email: `cliente${index + 1}@example.test`,
-    source: sources[index % sources.length]!,
-    active: true,
-    version: 1,
-    aliases: [],
-    currentPortfolios: [
-      {
-        id: `design-portfolio-${index + 1}`,
-        branchId: branch.branchId,
-        branchName: branch.branchName,
-        employeeId: professional.employeeId,
-        ownerName: salesOwners[index]!,
-        effectiveFrom: "2026-01-01T00:00:00.000Z",
-        effectiveTo: null,
-      },
-    ],
-    notes: null,
-    profile: {
-      preferredLocale: "es-MX",
-      contactPreference: "WHATSAPP",
-      notes: null,
-      version: 1,
+  const customers: SchedulerCustomerDetailDto[] = customerNames.map(
+    (name, index) => {
+      const branch = catalog.branches[index % catalog.branches.length]!;
+      const professional =
+        catalog.professionals[index % catalog.professionals.length]!;
+      return {
+        id: `design-customer-${index + 1}`,
+        displayName: name,
+        preferredName: null,
+        phone: `555000000${index + 1}`,
+        email: `cliente${index + 1}@example.test`,
+        source: sources[index % sources.length]!,
+        active: true,
+        version: 1,
+        aliases: [],
+        currentPortfolios: [
+          {
+            id: `design-portfolio-${index + 1}`,
+            branchId: branch.branchId,
+            branchName: branch.branchName,
+            employeeId: professional.employeeId,
+            ownerName: salesOwners[index]!,
+            effectiveFrom: "2026-01-01T00:00:00.000Z",
+            effectiveTo: null,
+          },
+        ],
+        notes: null,
+        profile: {
+          preferredLocale: "es-MX",
+          contactPreference: "WHATSAPP",
+          notes: null,
+          version: 1,
+        },
+        emails: [],
+        customFields: [
+          {
+            definitionId: "design-field-birthday",
+            definitionVersion: 1,
+            key: "birthDate",
+            label: "Fecha de nacimiento",
+            type: "DATE",
+            value: customerBirthDates[index]!,
+          },
+          {
+            definitionId: "design-field-type",
+            definitionVersion: 1,
+            key: "customerType",
+            label: "Tipo de cliente",
+            type: "SELECT",
+            value: customerTypes[index]!,
+          },
+          {
+            definitionId: "design-field-sales-owner",
+            definitionVersion: 1,
+            key: "salesOwner",
+            label: "Vendedor responsable",
+            type: "SELECT",
+            value: salesOwners[index]!,
+          },
+          {
+            definitionId: "design-field-attending-specialist",
+            definitionVersion: 1,
+            key: "attendingSpecialist",
+            label: "Especialista que atendió",
+            type: "SELECT",
+            value: professional.name,
+          },
+        ],
+        mergeHistory: [],
+      };
     },
-    emails: [],
-    customFields: [
-      {
-        definitionId: "design-field-birthday",
-        definitionVersion: 1,
-        key: "birthDate",
-        label: "Fecha de nacimiento",
-        type: "DATE",
-        value: customerBirthDates[index]!,
-      },
-      {
-        definitionId: "design-field-type",
-        definitionVersion: 1,
-        key: "customerType",
-        label: "Tipo de cliente",
-        type: "SELECT",
-        value: customerTypes[index]!,
-      },
-      {
-        definitionId: "design-field-sales-owner",
-        definitionVersion: 1,
-        key: "salesOwner",
-        label: "Vendedor responsable",
-        type: "SELECT",
-        value: salesOwners[index]!,
-      },
-      {
-        definitionId: "design-field-attending-specialist",
-        definitionVersion: 1,
-        key: "attendingSpecialist",
-        label: "Especialista que atendió",
-        type: "SELECT",
-        value: professional.name,
-      },
-    ],
-    mergeHistory: [],
-  };
-  });
+  );
   const fields: SchedulerCustomerFieldDefinitionDto[] = [
     {
       id: "design-field-birthday",
@@ -288,16 +376,16 @@ export function createDesignState(
   ];
   const now = new Date().toISOString();
   const operationAgents = [
-    {
-      id: "design-agent-master",
-      externalId: "design-master",
-      name: "PO · Master demo",
-      role: "Master",
+    ...designDemoAccounts.map((account) => ({
+      id: `design-agent-${account.id}`,
+      externalId: `design-${account.id}`,
+      name: account.name,
+      role: account.positionName,
       source: "SCHEDULER" as const,
       active: true,
-      code: "0000",
+      code: account.authorizationCode,
       updatedAt: now,
-    },
+    })),
     ...schedulerAdministrationCandidatesFixture.employees.map(
       (employee, index) => ({
         id: `design-agent-${employee.id}`,
@@ -312,7 +400,7 @@ export function createDesignState(
     ),
   ];
   const state = {
-    controls: { ...controls },
+    controls: normalizedControls,
     catalog,
     customers,
     fields,
@@ -345,7 +433,12 @@ export function createDesignState(
     medicalRecords: {} as Record<string, DesignRow>,
     authorizations: new Map<
       string,
-      { role: DesignRole; purpose: string; targetId: string; expiresAt: number }
+      {
+        accountId: DesignAccountId;
+        purpose: string;
+        targetId: string;
+        expiresAt: number;
+      }
     >(),
     operationAgents,
     usedAuthorizationCodes: new Set(operationAgents.map((agent) => agent.code)),
@@ -372,8 +465,7 @@ export function createDesignState(
       const customerBranchId =
         customers[index]!.currentPortfolios[0]!.branchId ??
         catalog.branches[0]!.branchId;
-      const service =
-        index === 2 ? catalog.services[1]! : catalog.services[0]!;
+      const service = index === 2 ? catalog.services[1]! : catalog.services[0]!;
       const appointment = buildDesignAppointment(state, {
         branchId: customerBranchId,
         customerId: customers[index]!.id,
@@ -475,6 +567,7 @@ export function buildDesignAppointment(
 
 export function designBootstrap(state: DesignState): SchedulerBootstrapDto {
   const { role } = state.controls;
+  const account = designAccountForControls(state.controls);
   const master = role === "master";
   const professional = state.catalog.professionals[0]!;
   const branches = state.catalog.branches.filter(
@@ -482,17 +575,13 @@ export function designBootstrap(state: DesignState): SchedulerBootstrapDto {
   );
   return {
     user: {
-      id: `design-${role}`,
-      name: {
-        master: "PO · Master demo",
-        specialist: "Especialista demo",
-        "read-only": "Consulta demo",
-      }[role],
-      email: `${role}@example.test`,
+      id: `design-${account.id}`,
+      name: account.name,
+      email: account.email,
       role: master ? "SUPER_ADMIN" : "CAPTURISTA",
       employeeId: professional.employeeId,
-      positionId: `design-position-${role}`,
-      positionName: role,
+      positionId: `design-position-${account.id}`,
+      positionName: account.positionName,
     },
     canManageAccess: master,
     selfProfessionalOnly: role === "specialist",

@@ -17,6 +17,13 @@ export type DesignOperationPurpose =
 
 export type DesignOperationAgentSource = "SCHEDULER" | "POS_CRM";
 
+export interface DesignDemoAccountOption {
+  email: string;
+  name: string;
+  access: string;
+  code: string;
+}
+
 export interface DesignOperationAgent {
   id: string;
   externalId: string;
@@ -81,8 +88,7 @@ export interface DesignCustomerAgendaInsights {
   lastAppointmentAt: string | null;
 }
 
-export interface DesignCustomerAdvancedResult
-  extends SchedulerCustomerSummaryDto {
+export interface DesignCustomerAdvancedResult extends SchedulerCustomerSummaryDto {
   agenda: DesignCustomerAgendaInsights;
 }
 

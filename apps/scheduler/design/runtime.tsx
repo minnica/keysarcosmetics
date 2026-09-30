@@ -19,8 +19,11 @@ import {
 import { SchedulerSessionProvider } from "../src/lib/session";
 import {
   createDesignState,
+  designAccountForControls,
+  designDemoAccounts,
+  designSessionToken,
   designStore,
-  type DesignRole,
+  type DesignAccountId,
   type DesignScenario,
 } from "./store";
 
@@ -36,19 +39,20 @@ export function SchedulerRuntime({ children }: { children: React.ReactNode }) {
       await startDesignWorker();
       if (!active) return;
       const stored = localStorage.getItem("auth_token");
-      const storedRole = stored?.replace("design-token-", "");
-      if (
-        stored?.startsWith("design-token-") &&
-        ["master", "specialist", "read-only"].includes(storedRole ?? "")
-      ) {
-        designStore.state.controls.role = storedRole as DesignRole;
-      }
-      if (!stored?.startsWith("design-token-")) {
-        localStorage.setItem(
-          "auth_token",
-          `design-token-${designStore.state.controls.role}`,
-        );
-      }
+      const storedIdentity = stored?.replace("design-token-", "");
+      const storedAccount = designDemoAccounts.find(
+        (account) => account.id === storedIdentity,
+      );
+      const legacyAccount = designDemoAccounts.find(
+        (account) => account.role === storedIdentity,
+      );
+      const account =
+        storedAccount ??
+        legacyAccount ??
+        designAccountForControls(designStore.state.controls);
+      designStore.state.controls.accountId = account.id;
+      designStore.state.controls.role = account.role;
+      localStorage.setItem("auth_token", designSessionToken(account.id));
       setReady(true);
     }
     void initialize().catch((error: unknown) => {
@@ -64,10 +68,12 @@ export function SchedulerRuntime({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  function switchRole(role: DesignRole) {
-    designStore.state.controls.role = role;
+  function switchAccount(accountId: DesignAccountId) {
+    const account = designDemoAccounts.find((item) => item.id === accountId)!;
+    designStore.state.controls.accountId = account.id;
+    designStore.state.controls.role = account.role;
     designStore.state.authorizations.clear();
-    localStorage.setItem("auth_token", `design-token-${role}`);
+    localStorage.setItem("auth_token", designSessionToken(account.id));
     setRevision((value) => value + 1);
   }
   function reset(
@@ -131,21 +137,26 @@ export function SchedulerRuntime({ children }: { children: React.ReactNode }) {
             <div className="space-y-2">
               <Label htmlFor="design-role">Perfil de prueba</Label>
               <Select
-                value={controls.role}
-                onValueChange={(value) => switchRole(value as DesignRole)}
+                value={controls.accountId}
+                onValueChange={(value) =>
+                  switchAccount(value as DesignAccountId)
+                }
               >
                 <SelectTrigger id="design-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="master">Master</SelectItem>
-                  <SelectItem value="specialist">Especialista</SelectItem>
-                  <SelectItem value="read-only">Solo consulta</SelectItem>
+                  {designDemoAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} · {account.accessLabel}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-slate-500">
-                Códigos ficticios: master 0000, especialista 1111, consulta
-                2222.
+                Código personal ficticio:{" "}
+                {designAccountForControls(controls).authorizationCode}. Cambiar
+                de usuario invalida autorizaciones pendientes.
               </p>
             </div>
             <div className="space-y-2">
