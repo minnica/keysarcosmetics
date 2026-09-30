@@ -172,7 +172,12 @@ compra exige monto de venta mayor a cero; un apartado exige además un anticipo
 mayor a cero que no puede superar la venta. La especialista que atendió queda
 relacionada por persona, no sólo por cita.
 
-El cambio a **Atendida** no se ejecuta hasta completar la captura. Primero pide
+El cambio a **Atendida** sólo se habilita cuando el instante actual es igual o
+posterior a `endsAt`; la UI lo informa y el API de diseño vuelve a validar la
+misma regla con `409`, por lo que no depende únicamente del navegador. Al elegir
+**Atendida** se abre directamente la captura de cabina, especialista, compra y
+apartado; las preguntas y notas adicionales se ocultan y no se sobrescriben.
+El cambio no se ejecuta hasta completar la captura. Primero pide
 una autorización `APPOINTMENT_STATUS_CHANGE` y, cuando existe compra o apartado,
 una segunda autorización `PURCHASE_CAPTURE`. En la propuesta ambas mutaciones
 son secuenciales; el contrato productivo deberá persistir estado, atención,
@@ -187,16 +192,38 @@ especialista/facialista/cosmetólogo, y esa identidad debe tener habilitado
 de un vendedor— se rechaza. **Cambiar estados** se administra de forma separada.
 La bitácora guarda conteo y total, nunca el código personal.
 
-En **Reportes → Ventas** el modo diseño muestra el reporte de ventas por cabina.
-Rango de fechas, sucursal, cabina y búsqueda producen una sola población a nivel
-visitante; esa misma población alimenta indicadores, comparación por cabina,
-evolución diaria, tabla, PDF y Excel. El detalle conserva ID de cita, creación,
+Después de registrar el resultado financiero de todos los visitantes, cualquier
+corrección exige una autorización nueva `PURCHASE_CORRECTION`. El endpoint
+rechaza incluso una corrección de **No compró** sin ese propósito. Códigos master
+y códigos de especialistas/agentes a los que master habilite **Corregir compras
+registradas** pueden autorizarla; el token se consume como un movimiento distinto
+y queda auditado como `Corrección de compra por visitante`.
+
+En **Reportes → Compras de agenda o cabinas** el modo diseño muestra un dashboard
+independiente de **Ventas y pagos**. Puede seleccionar día, semana, mes o rango
+personalizado desde calendario, y combinar sucursal, cabina, status, resultado
+de compra, servicio, especialista, vendedor, monto mínimo/máximo y búsqueda.
+Todos esos criterios producen una sola población a nivel visitante; esa misma
+población alimenta indicadores, comparación por cabina, series por día/semana/mes,
+ranking de especialistas por sucursal, tabla, impresión, PDF y Excel. La analítica
+de servicios calcula `asistidas / citas del servicio` y `canceladas / citas del
+servicio`, mostrando los índices mayores y menores sin confundirlos con ventas.
+El detalle conserva ID de cita, creación,
 confirmación cuando existe historial, horario, sucursal, cabina/capacidad,
 cliente y visitante, servicios, vendedor, especialista, resultado, venta,
 anticipo, saldo, comentarios, estado, origen y última actualización. Excel crea
 `Resumen`, `Por cabina`, `Por día` y `Detalle` con fechas/importes tipados; PDF
-incluye resumen, desglose y detalle. Las librerías pesadas se cargan sólo al
+incluye resumen, desglose, ranking, servicios y detalle. La impresión, PDF y Excel
+usan únicamente el resultado ya filtrado. Las librerías pesadas se cargan sólo al
 solicitar una descarga.
+
+En **Reportes → Proyecciones** se selecciona el mes objetivo, una ventana de
+3/6/12 meses y una combinación de sucursales. La demo compara promedio histórico,
+último mes cerrado, venta real del mes objetivo y una proyección por sucursal.
+La estimación aplica al promedio la tendencia entre los dos últimos meses,
+limitada a ±30 %, y siempre muestra método y confianza; no se presenta como meta,
+venta confirmada ni pronóstico del POS. También permite imprimir o descargar PDF
+y Excel.
 
 El monto de la demo es un dato operativo propuesto, no un cobro ni una venta:
 POS conserva la autoridad financiera. La implementación real debe resolver el
@@ -237,6 +264,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`        | Leer o guardar respuestas relacionadas con una cita.                          |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`    | Guardar cabina, visitantes, especialistas y compra por persona.               |
 | `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`              | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
+| `POST`         | `/api/scheduler/design-proposals/reports/sales-projections`         | Comparar meses históricos y calcular la proyección demo por sucursal.         |
 | `GET/POST/PUT` | `/api/scheduler/design-proposals/status-definitions[/:id]`         | Consultar, crear y versionar status; la baja es sólo inactivación lógica.      |
 
 Estos endpoints no existen en el runtime productivo. El alias
@@ -290,12 +318,20 @@ Recorrido manual recomendado:
    Debe pedir autorización de estado y después un código con permiso **Registrar
    compras**; desactiva ese permiso y confirma que el mismo código deja de
    autorizar el monto.
-9. Abre Reportes → Ventas, combina fechas, sucursal, cabina y búsqueda. Confirma
-   que tarjetas, gráficas y tabla cambian juntas; descarga PDF y Excel y verifica
-   que los totales coincidan con el detalle visible.
+9. Abre Reportes → Compras de agenda o cabinas, combina periodo, sucursal,
+   cabina, status, servicio, especialista, vendedor y monto. Confirma que
+   tarjetas, series, ranking, analítica y tabla cambian juntas; imprime y descarga
+   PDF/Excel, verificando que sólo incluyan el detalle filtrado.
 10. En Administración → Colores de status agrega uno, edita nombre/color y
     después inactívalo. Despliega su historial: deben existir tres versiones,
     conservar la misma clave y aparecer tres movimientos sin mostrar el código.
+11. Intenta marcar una cita como Atendida antes de `endsAt`: debe rechazarse.
+    Después de terminar la sesión captura compra/apartado sin ver preguntas
+    adicionales; vuelve a editar el monto y confirma que solicita
+    **Corregir compras registradas** o el código master.
+12. Abre Reportes → Proyecciones, cambia de 3 a 6 meses y combina sucursales.
+    Confirma que histórico, comparativa, distribución y exportaciones usan el
+    mismo alcance y que la proyección se distingue de la venta real.
 
 ## Dónde trabajar
 

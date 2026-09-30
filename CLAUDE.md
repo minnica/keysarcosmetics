@@ -1680,6 +1680,8 @@ packages/ui/
 | Configuraciones scheduler       | `apps/scheduler/src/app/(dashboard)/configuraciones/page.tsx`      |
 | Movimientos scheduler           | `apps/scheduler/src/app/(dashboard)/movimientos/page.tsx`          |
 | Reportes scheduler              | `apps/scheduler/src/app/(dashboard)/reportes/`                     |
+| Compras de agenda/cabinas       | `apps/scheduler/src/app/(dashboard)/reportes/compras-cabinas/`     |
+| Proyecciones Scheduler          | `apps/scheduler/src/app/(dashboard)/reportes/proyecciones/`        |
 | Entrada de workspaces Scheduler | `apps/scheduler/src/components/api/SchedulerPageEntries.tsx`       |
 | Agenda Scheduler                | `apps/scheduler/src/components/api/ApiAgendaWorkspace.tsx`         |
 | Clientes Scheduler              | `apps/scheduler/src/components/api/ApiClientsWorkspace.tsx`        |
@@ -1730,6 +1732,13 @@ pnpm ci:build
 ```
 
 El scheduler usa `.next-dev` para `next dev` y `.next` para `next build`. Esta separación evita que una validación de producción sobrescriba los chunks que está sirviendo la instancia local en el puerto 3004.
+
+La demo de diseño agrega en Reportes los módulos **Compras de agenda o cabinas**
+y **Proyecciones** sin reemplazar el reporte canónico de Ventas y pagos. Las
+capturas de compra finalizadas requieren `PURCHASE_CORRECTION` para cualquier
+cambio posterior, y `ATTENDED` se rechaza antes de `endsAt` tanto en UI como en
+el API simulado. Estos contratos siguen confinados a `apps/scheduler/design` y
+no modifican backend, Prisma ni integración financiera con POS.
 
 ### CI, Prisma y smoke
 
