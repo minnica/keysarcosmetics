@@ -14,7 +14,8 @@ export type DesignOperationPurpose =
   | "SCHEDULE_BLOCK_UPDATE"
   | "SCHEDULE_BLOCK_DELETE"
   | "CUSTOMER_UPDATE"
-  | "PURCHASE_CAPTURE";
+  | "PURCHASE_CAPTURE"
+  | "PURCHASE_CORRECTION";
 
 export type DesignOperationAgentSource = "SCHEDULER" | "POS_CRM";
 
@@ -103,6 +104,13 @@ export interface DesignCabinSalesReportFilters {
   dateTo: string;
   branchIds: string[];
   cabinResourceId?: string;
+  status?: SchedulerAppointmentStatus;
+  purchaseKind?: Exclude<DesignPurchaseKind, null>;
+  serviceProfileId?: string;
+  specialistProfileId?: string;
+  sellerName?: string;
+  minSaleAmount?: number;
+  maxSaleAmount?: number;
   query?: string;
 }
 
@@ -121,6 +129,7 @@ export interface DesignCabinSalesReportRow {
   customerId: string;
   customerName: string;
   visitorName: string;
+  serviceProfileIds: string[];
   serviceNames: string[];
   sellerName: string;
   specialistProfileId: string;
@@ -147,6 +156,33 @@ export interface DesignCabinSalesReportBreakdown {
   balanceAmount: number;
 }
 
+export interface DesignCabinSalesSpecialistBreakdown
+  extends DesignCabinSalesReportBreakdown {
+  branchId: string;
+  branchName: string;
+  specialistProfileId: string;
+  specialistName: string;
+  conversionRate: number;
+}
+
+export interface DesignCabinServiceAnalytics {
+  serviceProfileId: string;
+  serviceName: string;
+  appointments: number;
+  attended: number;
+  canceled: number;
+  noShow: number;
+  attendanceRate: number;
+  cancellationRate: number;
+}
+
+export interface DesignCabinSalesFilterOptions {
+  cabins: Array<{ id: string; name: string }>;
+  services: Array<{ id: string; name: string }>;
+  specialists: Array<{ id: string; name: string }>;
+  sellers: string[];
+}
+
 export interface DesignCabinSalesReport {
   generatedAt: string;
   filters: DesignCabinSalesReportFilters;
@@ -163,7 +199,53 @@ export interface DesignCabinSalesReport {
   };
   byCabin: DesignCabinSalesReportBreakdown[];
   byDay: DesignCabinSalesReportBreakdown[];
+  byWeek: DesignCabinSalesReportBreakdown[];
+  byMonth: DesignCabinSalesReportBreakdown[];
+  bySpecialist: DesignCabinSalesSpecialistBreakdown[];
+  serviceAnalytics: DesignCabinServiceAnalytics[];
+  filterOptions: DesignCabinSalesFilterOptions;
   rows: DesignCabinSalesReportRow[];
+}
+
+export interface DesignSalesProjectionFilters {
+  targetMonth: string;
+  branchIds: string[];
+  lookbackMonths: number;
+}
+
+export interface DesignMonthlyProjectionPoint {
+  month: string;
+  label: string;
+  saleAmount: number;
+  depositAmount: number;
+  balanceAmount: number;
+  buyers: number;
+}
+
+export interface DesignBranchProjection {
+  branchId: string;
+  branchName: string;
+  historicalAverage: number;
+  previousMonth: number;
+  projectedAmount: number;
+  changePercent: number;
+}
+
+export interface DesignSalesProjectionReport {
+  generatedAt: string;
+  filters: DesignSalesProjectionFilters;
+  summary: {
+    historicalAverage: number;
+    previousMonth: number;
+    projectedAmount: number;
+    actualToDate: number;
+    changePercent: number;
+    monthsWithData: number;
+    confidenceLabel: "BAJA" | "MEDIA" | "ALTA";
+  };
+  historical: DesignMonthlyProjectionPoint[];
+  byBranch: DesignBranchProjection[];
+  methodology: string;
 }
 
 export interface DesignMovementRecord {
@@ -277,4 +359,7 @@ export interface DesignProposalClient {
   cabinSalesReport(
     input: DesignCabinSalesReportFilters,
   ): Promise<DesignCabinSalesReport>;
+  salesProjectionReport(
+    input: DesignSalesProjectionFilters,
+  ): Promise<DesignSalesProjectionReport>;
 }

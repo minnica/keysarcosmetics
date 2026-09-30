@@ -30,12 +30,16 @@ import type {
   DesignCabinSalesReportBreakdown,
   DesignCabinSalesReportFilters,
   DesignCabinSalesReportRow,
+  DesignCabinSalesSpecialistBreakdown,
+  DesignCabinServiceAnalytics,
   DesignCustomerAdvancedFilters,
   DesignCustomerAdvancedPage,
   DesignMovementRecord,
   DesignOperationAgent,
   DesignOperationPurpose,
   DesignPurchaseKind,
+  DesignSalesProjectionFilters,
+  DesignSalesProjectionReport,
   DesignStatusDefinition,
   DesignStatusDefinitionRevision,
 } from "./contracts";
@@ -206,6 +210,7 @@ function operationPurpose(value: unknown): DesignOperationPurpose {
     "SCHEDULE_BLOCK_DELETE",
     "CUSTOMER_UPDATE",
     "PURCHASE_CAPTURE",
+    "PURCHASE_CORRECTION",
   ];
   if (!purposes.includes(value as DesignOperationPurpose)) {
     fail(400, "Propósito de autorización no reconocido.");
@@ -621,6 +626,29 @@ function localDateKey(value: string, timezone: string) {
   }).format(new Date(value));
 }
 
+function monthKey(value: string) {
+  return value.slice(0, 7);
+}
+
+function shiftMonth(value: string, offset: number) {
+  const [year, month] = value.split("-").map(Number);
+  const date = new Date(year!, month! - 1 + offset, 1, 12, 0, 0);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function weekKey(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  const weekday = date.getDay() || 7;
+  date.setDate(date.getDate() - weekday + 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function roundRate(numerator: number, denominator: number) {
+  return denominator
+    ? Math.round((numerator / denominator) * 10_000) / 100
+    : 0;
+}
+
 function cabinSalesBreakdown(
   rowsToGroup: DesignCabinSalesReportRow[],
   keyForRow: (row: DesignCabinSalesReportRow) => string,
@@ -667,24 +695,35 @@ function buildCabinSalesReport(
   if (!input.dateFrom || !input.dateTo || input.dateFrom > input.dateTo) {
     fail(400, "Selecciona un rango de fechas válido.");
   }
+  if (
+    input.minSaleAmount !== undefined &&
+    input.maxSaleAmount !== undefined &&
+    input.minSaleAmount > input.maxSaleAmount
+  ) {
+    fail(400, "El monto mínimo no puede superar el monto máximo.");
+  }
   const query = textKey(input.query ?? "");
-  const reportRows: DesignCabinSalesReportRow[] = [];
-  for (const appointmentItem of visibleAppointments(state)) {
+  const baseAppointments = visibleAppointments(state).filter(
+    (appointmentItem) => {
+      const date = localDateKey(
+        appointmentItem.startsAt,
+        appointmentItem.timezone,
+      );
+      return (
+        branchIds.includes(appointmentItem.branchId) &&
+        date >= input.dateFrom &&
+        date <= input.dateTo
+      );
+    },
+  );
+  const rowCandidates: DesignCabinSalesReportRow[] = [];
+  const sellers = new Set<string>();
+  const cabinOptions = new Map<string, string>();
+  const serviceOptions = new Map<string, string>();
+  const specialistOptions = new Map<string, string>();
+  for (const appointmentItem of baseAppointments) {
     const visit = state.appointmentCabinVisits[appointmentItem.id];
-    const date = localDateKey(
-      appointmentItem.startsAt,
-      appointmentItem.timezone,
-    );
-    if (
-      !visit ||
-      !branchIds.includes(appointmentItem.branchId) ||
-      date < input.dateFrom ||
-      date > input.dateTo ||
-      (input.cabinResourceId &&
-        visit.cabinResourceId !== input.cabinResourceId)
-    ) {
-      continue;
-    }
+    if (!visit) continue;
     const customerItem = state.customers.find(
       (candidate) => candidate.id === appointmentItem.customerId,
     );
@@ -697,6 +736,11 @@ function buildCabinSalesReport(
         )?.ownerName ??
         "Sin asignar",
     );
+    sellers.add(sellerName);
+    cabinOptions.set(visit.cabinResourceId, visit.cabinName);
+    appointmentItem.services.forEach((service) =>
+      serviceOptions.set(service.serviceProfileId, service.serviceName),
+    );
     const confirmedAt =
       appointmentItem.stateHistory.find(
         (history) => history.toStatus === "CONFIRMED",
@@ -706,6 +750,7 @@ function buildCabinSalesReport(
         state.catalog.professionals.find(
           (professional) => professional.id === visitor.specialistProfileId,
         )?.name ?? "Sin especialista";
+      specialistOptions.set(visitor.specialistProfileId, specialistName);
       const purchaseKind =
         visitor.purchaseKind ??
         (visitor.purchased === true
@@ -741,6 +786,9 @@ function buildCabinSalesReport(
         customerId: appointmentItem.customerId,
         customerName: appointmentItem.customerName,
         visitorName: visitor.name,
+        serviceProfileIds: appointmentItem.services.map(
+          (service) => service.serviceProfileId,
+        ),
         serviceNames: appointmentItem.services.map(
           (service) => service.serviceName,
         ),
@@ -757,31 +805,156 @@ function buildCabinSalesReport(
         cancellationReason: appointmentItem.cancellationReason ?? "",
         updatedAt: appointmentItem.updatedAt,
       };
-      if (
-        query &&
-        ![
-          row.appointmentId,
-          row.customerName,
-          row.visitorName,
-          row.branchName,
-          row.cabinName,
-          row.serviceNames.join(" "),
-          row.sellerName,
-          row.specialistName,
-          row.notes,
-          row.status,
-          row.origin,
-        ].some((value) => textKey(value).includes(query))
-      ) {
-        continue;
-      }
-      reportRows.push(row);
+      rowCandidates.push(row);
     }
   }
+  const reportRows = rowCandidates.filter((row) => {
+    if (input.cabinResourceId && row.cabinResourceId !== input.cabinResourceId)
+      return false;
+    if (input.status && row.status !== input.status) return false;
+    if (input.purchaseKind && row.purchaseKind !== input.purchaseKind)
+      return false;
+    if (
+      input.serviceProfileId &&
+      !row.serviceProfileIds.includes(input.serviceProfileId)
+    )
+      return false;
+    if (
+      input.specialistProfileId &&
+      row.specialistProfileId !== input.specialistProfileId
+    )
+      return false;
+    if (input.sellerName && row.sellerName !== input.sellerName) return false;
+    if (
+      input.minSaleAmount !== undefined &&
+      row.saleAmount < input.minSaleAmount
+    )
+      return false;
+    if (
+      input.maxSaleAmount !== undefined &&
+      row.saleAmount > input.maxSaleAmount
+    )
+      return false;
+    return (
+      !query ||
+      [
+        row.appointmentId,
+        row.customerName,
+        row.visitorName,
+        row.branchName,
+        row.cabinName,
+        row.serviceNames.join(" "),
+        row.sellerName,
+        row.specialistName,
+        row.notes,
+        row.status,
+        row.origin,
+      ].some((value) => textKey(value).includes(query))
+    );
+  });
   const rowsSorted = reportRows.sort((left, right) =>
     right.appointmentStartsAt.localeCompare(left.appointmentStartsAt),
   );
   const buyers = rowsSorted.filter((row) => row.purchaseKind !== "NONE");
+  const rowAppointmentIds = new Set(rowsSorted.map((row) => row.appointmentId));
+  const salesOnlyFiltersActive = Boolean(
+    input.cabinResourceId ||
+      input.purchaseKind ||
+      input.specialistProfileId ||
+      input.sellerName ||
+      input.minSaleAmount !== undefined ||
+      input.maxSaleAmount !== undefined,
+  );
+  const analyticsAppointments = baseAppointments.filter((appointmentItem) => {
+    if (input.status && appointmentItem.status !== input.status) return false;
+    if (
+      input.serviceProfileId &&
+      !appointmentItem.services.some(
+        (service) => service.serviceProfileId === input.serviceProfileId,
+      )
+    )
+      return false;
+    if (salesOnlyFiltersActive && !rowAppointmentIds.has(appointmentItem.id))
+      return false;
+    if (!query) return true;
+    if (rowAppointmentIds.has(appointmentItem.id)) return true;
+    return [
+      appointmentItem.id,
+      appointmentItem.customerName,
+      appointmentItem.branchName,
+      appointmentItem.services.map((service) => service.serviceName).join(" "),
+      appointmentItem.notes ?? "",
+      appointmentItem.status,
+    ].some((value) => textKey(value).includes(query));
+  });
+  const serviceGroups = new Map<
+    string,
+    { name: string; appointments: Set<string>; statuses: SchedulerAppointmentStatus[] }
+  >();
+  analyticsAppointments.forEach((appointmentItem) => {
+    appointmentItem.services.forEach((service) => {
+      const group = serviceGroups.get(service.serviceProfileId) ?? {
+        name: service.serviceName,
+        appointments: new Set<string>(),
+        statuses: [],
+      };
+      if (!group.appointments.has(appointmentItem.id)) {
+        group.appointments.add(appointmentItem.id);
+        group.statuses.push(appointmentItem.status);
+      }
+      serviceGroups.set(service.serviceProfileId, group);
+    });
+  });
+  const serviceAnalytics: DesignCabinServiceAnalytics[] = [
+    ...serviceGroups.entries(),
+  ]
+    .map(([serviceProfileId, group]) => {
+      const appointments = group.appointments.size;
+      const attended = group.statuses.filter((status) => status === "ATTENDED").length;
+      const canceled = group.statuses.filter((status) => status === "CANCELED").length;
+      const noShow = group.statuses.filter((status) => status === "NO_SHOW").length;
+      return {
+        serviceProfileId,
+        serviceName: group.name,
+        appointments,
+        attended,
+        canceled,
+        noShow,
+        attendanceRate: roundRate(attended, appointments),
+        cancellationRate: roundRate(canceled, appointments),
+      };
+    })
+    .sort((left, right) => right.appointments - left.appointments);
+  const specialistGroups = new Map<string, DesignCabinSalesReportRow[]>();
+  rowsSorted.forEach((row) => {
+    const key = `${row.branchId}:${row.specialistProfileId}`;
+    specialistGroups.set(key, [...(specialistGroups.get(key) ?? []), row]);
+  });
+  const bySpecialist: DesignCabinSalesSpecialistBreakdown[] = [
+    ...specialistGroups.entries(),
+  ]
+    .map(([key, rows]) => {
+      const first = rows[0]!;
+      const specialistBuyers = rows.filter(
+        (row) => row.purchaseKind !== "NONE",
+      ).length;
+      return {
+        key,
+        label: `${first.specialistName} · ${first.branchName}`,
+        branchId: first.branchId,
+        branchName: first.branchName,
+        specialistProfileId: first.specialistProfileId,
+        specialistName: first.specialistName,
+        appointments: new Set(rows.map((row) => row.appointmentId)).size,
+        visitors: rows.length,
+        buyers: specialistBuyers,
+        saleAmount: rows.reduce((sum, row) => sum + row.saleAmount, 0),
+        depositAmount: rows.reduce((sum, row) => sum + row.depositAmount, 0),
+        balanceAmount: rows.reduce((sum, row) => sum + row.balanceAmount, 0),
+        conversionRate: roundRate(specialistBuyers, rows.length),
+      };
+    })
+    .sort((left, right) => right.saleAmount - left.saleAmount);
   return {
     generatedAt: new Date().toISOString(),
     filters: {
@@ -790,6 +963,21 @@ function buildCabinSalesReport(
       branchIds,
       ...(input.cabinResourceId
         ? { cabinResourceId: input.cabinResourceId }
+        : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.purchaseKind ? { purchaseKind: input.purchaseKind } : {}),
+      ...(input.serviceProfileId
+        ? { serviceProfileId: input.serviceProfileId }
+        : {}),
+      ...(input.specialistProfileId
+        ? { specialistProfileId: input.specialistProfileId }
+        : {}),
+      ...(input.sellerName ? { sellerName: input.sellerName } : {}),
+      ...(input.minSaleAmount !== undefined
+        ? { minSaleAmount: input.minSaleAmount }
+        : {}),
+      ...(input.maxSaleAmount !== undefined
+        ? { maxSaleAmount: input.maxSaleAmount }
         : {}),
       ...(input.query?.trim() ? { query: input.query.trim() } : {}),
     },
@@ -809,7 +997,7 @@ function buildCabinSalesReport(
         0,
       ),
       conversionRate: rowsSorted.length
-        ? Math.round((buyers.length / rowsSorted.length) * 10_000) / 100
+        ? roundRate(buyers.length, rowsSorted.length)
         : 0,
     },
     byCabin: cabinSalesBreakdown(
@@ -822,7 +1010,156 @@ function buildCabinSalesReport(
       (row) => localDateKey(row.appointmentStartsAt, "America/Mexico_City"),
       (row) => localDateKey(row.appointmentStartsAt, "America/Mexico_City"),
     ),
+    byWeek: cabinSalesBreakdown(
+      rowsSorted,
+      (row) =>
+        weekKey(localDateKey(row.appointmentStartsAt, "America/Mexico_City")),
+      (row) =>
+        `Semana del ${weekKey(localDateKey(row.appointmentStartsAt, "America/Mexico_City"))}`,
+    ),
+    byMonth: cabinSalesBreakdown(
+      rowsSorted,
+      (row) =>
+        monthKey(localDateKey(row.appointmentStartsAt, "America/Mexico_City")),
+      (row) =>
+        monthKey(localDateKey(row.appointmentStartsAt, "America/Mexico_City")),
+    ),
+    bySpecialist,
+    serviceAnalytics,
+    filterOptions: {
+      cabins: [...cabinOptions.entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((left, right) => left.name.localeCompare(right.name, "es-MX")),
+      services: [...serviceOptions.entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((left, right) => left.name.localeCompare(right.name, "es-MX")),
+      specialists: [...specialistOptions.entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((left, right) => left.name.localeCompare(right.name, "es-MX")),
+      sellers: [...sellers].sort((left, right) =>
+        left.localeCompare(right, "es-MX"),
+      ),
+    },
     rows: rowsSorted,
+  };
+}
+
+function buildSalesProjectionReport(
+  state: DesignState,
+  input: DesignSalesProjectionFilters,
+): DesignSalesProjectionReport {
+  if (!/^\d{4}-\d{2}$/.test(input.targetMonth)) {
+    fail(400, "Selecciona un mes objetivo válido.");
+  }
+  const lookbackMonths = [3, 6, 12].includes(input.lookbackMonths)
+    ? input.lookbackMonths
+    : 6;
+  const firstMonth = shiftMonth(input.targetMonth, -lookbackMonths);
+  const lastHistoricalMonth = shiftMonth(input.targetMonth, -1);
+  const base = buildCabinSalesReport(state, {
+    dateFrom: `${firstMonth}-01`,
+    dateTo: `${input.targetMonth}-31`,
+    branchIds: input.branchIds,
+  });
+  const months = Array.from({ length: lookbackMonths }, (_value, index) =>
+    shiftMonth(input.targetMonth, index - lookbackMonths),
+  );
+  const historical = months.map((month) => {
+    const rows = base.rows.filter(
+      (row) =>
+        monthKey(localDateKey(row.appointmentStartsAt, "America/Mexico_City")) ===
+        month,
+    );
+    return {
+      month,
+      label: month,
+      saleAmount: rows.reduce((sum, row) => sum + row.saleAmount, 0),
+      depositAmount: rows.reduce((sum, row) => sum + row.depositAmount, 0),
+      balanceAmount: rows.reduce((sum, row) => sum + row.balanceAmount, 0),
+      buyers: rows.filter((row) => row.purchaseKind !== "NONE").length,
+    };
+  });
+  const actualRows = base.rows.filter(
+    (row) =>
+      monthKey(localDateKey(row.appointmentStartsAt, "America/Mexico_City")) ===
+      input.targetMonth,
+  );
+  const historicalAverage =
+    historical.reduce((sum, item) => sum + item.saleAmount, 0) /
+    lookbackMonths;
+  const previousMonth =
+    historical.find((item) => item.month === lastHistoricalMonth)?.saleAmount ??
+    0;
+  const penultimateMonth =
+    historical.find(
+      (item) => item.month === shiftMonth(lastHistoricalMonth, -1),
+    )?.saleAmount ?? 0;
+  const trend = penultimateMonth
+    ? Math.max(-0.3, Math.min(0.3, previousMonth / penultimateMonth - 1))
+    : 0;
+  const projectedAmount = Math.round(historicalAverage * (1 + trend));
+  const monthsWithData = historical.filter((item) => item.saleAmount > 0).length;
+  const scopedBranches = state.catalog.branches.filter((branch) =>
+    base.filters.branchIds.includes(branch.branchId),
+  );
+  const byBranch = scopedBranches
+    .map((branch) => {
+      const branchHistory = historical.map((point) => {
+        const rows = base.rows.filter(
+          (row) =>
+            row.branchId === branch.branchId &&
+            monthKey(
+              localDateKey(row.appointmentStartsAt, "America/Mexico_City"),
+            ) === point.month,
+        );
+        return rows.reduce((sum, row) => sum + row.saleAmount, 0);
+      });
+      const branchAverage =
+        branchHistory.reduce((sum, amount) => sum + amount, 0) /
+        lookbackMonths;
+      const branchPrevious = branchHistory.at(-1) ?? 0;
+      const branchPenultimate = branchHistory.at(-2) ?? 0;
+      const branchTrend = branchPenultimate
+        ? Math.max(
+            -0.3,
+            Math.min(0.3, branchPrevious / branchPenultimate - 1),
+          )
+        : 0;
+      const branchProjected = Math.round(branchAverage * (1 + branchTrend));
+      return {
+        branchId: branch.branchId,
+        branchName: branch.branchName,
+        historicalAverage: Math.round(branchAverage),
+        previousMonth: branchPrevious,
+        projectedAmount: branchProjected,
+        changePercent: roundRate(
+          branchProjected - branchPrevious,
+          branchPrevious,
+        ),
+      };
+    })
+    .sort((left, right) => right.projectedAmount - left.projectedAmount);
+  return {
+    generatedAt: new Date().toISOString(),
+    filters: {
+      targetMonth: input.targetMonth,
+      branchIds: base.filters.branchIds,
+      lookbackMonths,
+    },
+    summary: {
+      historicalAverage: Math.round(historicalAverage),
+      previousMonth,
+      projectedAmount,
+      actualToDate: actualRows.reduce((sum, row) => sum + row.saleAmount, 0),
+      changePercent: roundRate(projectedAmount - previousMonth, previousMonth),
+      monthsWithData,
+      confidenceLabel:
+        monthsWithData >= 6 ? "ALTA" : monthsWithData >= 3 ? "MEDIA" : "BAJA",
+    },
+    historical,
+    byBranch,
+    methodology:
+      "Estimación demo: promedio de los meses seleccionados ajustado por la variación del último mes contra el anterior, limitada a ±30 %. No es una meta ni una venta confirmada.",
   };
 }
 
@@ -1202,9 +1539,55 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         ...(typeof body.cabinResourceId === "string" && body.cabinResourceId
           ? { cabinResourceId: body.cabinResourceId }
           : {}),
+        ...((SCHEDULER_APPOINTMENT_STATUSES as readonly string[]).includes(
+          String(body.status ?? ""),
+        )
+          ? { status: body.status as SchedulerAppointmentStatus }
+          : {}),
+        ...(["NONE", "FULL", "LAYAWAY"].includes(
+          String(body.purchaseKind ?? ""),
+        )
+          ? {
+              purchaseKind: body.purchaseKind as Exclude<
+                DesignPurchaseKind,
+                null
+              >,
+            }
+          : {}),
+        ...(typeof body.serviceProfileId === "string" &&
+        body.serviceProfileId
+          ? { serviceProfileId: body.serviceProfileId }
+          : {}),
+        ...(typeof body.specialistProfileId === "string" &&
+        body.specialistProfileId
+          ? { specialistProfileId: body.specialistProfileId }
+          : {}),
+        ...(typeof body.sellerName === "string" && body.sellerName
+          ? { sellerName: body.sellerName }
+          : {}),
+        ...(Number.isFinite(Number(body.minSaleAmount)) &&
+        body.minSaleAmount !== "" &&
+        body.minSaleAmount !== undefined
+          ? { minSaleAmount: Number(body.minSaleAmount) }
+          : {}),
+        ...(Number.isFinite(Number(body.maxSaleAmount)) &&
+        body.maxSaleAmount !== "" &&
+        body.maxSaleAmount !== undefined
+          ? { maxSaleAmount: Number(body.maxSaleAmount) }
+          : {}),
         ...(typeof body.query === "string" && body.query.trim()
           ? { query: body.query.trim() }
           : {}),
+      });
+    }
+    if (id === "reports" && action === "sales-projections") {
+      if (method !== "POST") fail(405, "Usa POST para las proyecciones.");
+      return buildSalesProjectionReport(state, {
+        targetMonth: String(body.targetMonth ?? ""),
+        branchIds: Array.isArray(body.branchIds)
+          ? body.branchIds.map(String)
+          : [],
+        lookbackMonths: Number(body.lookbackMonths) || 6,
       });
     }
     if (id === "customers" && action === "advanced-search") {
@@ -1352,7 +1735,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const expiresAt = Date.now() + 120_000;
       const purpose = operationPurpose(body.purpose);
       if (
-        purpose === "PURCHASE_CAPTURE" &&
+        (purpose === "PURCHASE_CAPTURE" ||
+          purpose === "PURCHASE_CORRECTION") &&
         agent.source !== "SCHEDULER" &&
         !/(especialista|facialista|cosmet[oó]log)/i.test(agent.role)
       ) {
@@ -1408,6 +1792,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     if (id === "appointments" && parts[5] === "cabin-visit") {
       const appointmentId = String(action ?? "");
       const appointmentItem = appointment(state, appointmentId);
+      const previousVisit = state.appointmentCabinVisits[appointmentId];
       if (method === "GET") {
         return state.appointmentCabinVisits[appointmentId] ?? null;
       }
@@ -1512,7 +1897,20 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           "Asigna un especialista diferente a cada visitante de la cabina.",
         );
       }
-      if (visitors.some((visitor) => visitor.purchased)) {
+      const previousCaptureFinalized = Boolean(
+        previousVisit?.visitors.length &&
+          previousVisit.visitors.every(
+            (visitor) =>
+              visitor.purchaseKind !== null || visitor.purchased !== null,
+          ),
+      );
+      const requiredPurpose: DesignOperationPurpose | null =
+        previousCaptureFinalized
+          ? "PURCHASE_CORRECTION"
+          : visitors.some((visitor) => visitor.purchased)
+            ? "PURCHASE_CAPTURE"
+            : null;
+      if (requiredPurpose) {
         const token = headers.get("x-design-operation-authorization") ?? "";
         const authorization = state.operationAuthorizations.get(token);
         const agent = authorization
@@ -1522,16 +1920,18 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           : undefined;
         if (
           !authorization ||
-          authorization.purpose !== "PURCHASE_CAPTURE" ||
+          authorization.purpose !== requiredPurpose ||
           (authorization.targetId &&
             authorization.targetId !== appointmentId) ||
           authorization.expiresAt < Date.now() ||
           !agent?.active ||
-          !agent.allowedPurposes.includes("PURCHASE_CAPTURE")
+          !agent.allowedPurposes.includes(requiredPurpose)
         ) {
           fail(
             403,
-            "Registrar montos requiere autorización de un especialista o agente con permiso de compra.",
+            previousCaptureFinalized
+              ? "Corregir una compra o apartado ya registrado requiere código autorizado o master."
+              : "Registrar montos requiere autorización de un especialista o agente con permiso de compra.",
           );
         }
       }
@@ -1648,6 +2048,15 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         !(SCHEDULER_APPOINTMENT_STATUSES as readonly string[]).includes(status)
       )
         fail(400, "Estado inválido.");
+      if (
+        status === "ATTENDED" &&
+        Date.now() < new Date(existing!.endsAt).getTime()
+      ) {
+        fail(
+          409,
+          "La cita sólo puede marcarse como atendida cuando termine el tiempo de la sesión.",
+        );
+      }
       const previous = existing!.status;
       existing!.status = status as SchedulerAppointmentStatus;
       existing!.version += 1;

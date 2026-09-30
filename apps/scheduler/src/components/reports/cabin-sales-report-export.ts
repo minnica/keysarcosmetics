@@ -61,6 +61,43 @@ async function exportXlsx(report: DesignCabinSalesReport) {
       "Saldo pendiente": item.balanceAmount,
     })),
   );
+  const periodSheet = (items: DesignCabinSalesReport["byWeek"]) =>
+    XLSX.utils.json_to_sheet(
+      items.map((item) => ({
+        Periodo: item.label,
+        Citas: item.appointments,
+        Visitantes: item.visitors,
+        Compradores: item.buyers,
+        "Monto vendido": item.saleAmount,
+        "Monto recibido": item.depositAmount,
+        "Saldo pendiente": item.balanceAmount,
+      })),
+    );
+  const specialists = XLSX.utils.json_to_sheet(
+    report.bySpecialist.map((item, index) => ({
+      Posición: index + 1,
+      Especialista: item.specialistName,
+      Sucursal: item.branchName,
+      Citas: item.appointments,
+      Visitantes: item.visitors,
+      Compradores: item.buyers,
+      "Conversión (%)": item.conversionRate,
+      "Monto vendido": item.saleAmount,
+      "Monto recibido": item.depositAmount,
+      "Saldo pendiente": item.balanceAmount,
+    })),
+  );
+  const services = XLSX.utils.json_to_sheet(
+    report.serviceAnalytics.map((item) => ({
+      Servicio: item.serviceName,
+      Citas: item.appointments,
+      Asistencias: item.attended,
+      Cancelaciones: item.canceled,
+      "No asistió": item.noShow,
+      "Índice asistencia (%)": item.attendanceRate,
+      "Índice cancelación (%)": item.cancellationRate,
+    })),
+  );
   const detail = XLSX.utils.json_to_sheet(
     report.rows.map((row) => ({
       "ID cita": row.appointmentId,
@@ -114,6 +151,10 @@ async function exportXlsx(report: DesignCabinSalesReport) {
   XLSX.utils.book_append_sheet(workbook, summary, "Resumen");
   XLSX.utils.book_append_sheet(workbook, byCabin, "Por cabina");
   XLSX.utils.book_append_sheet(workbook, byDay, "Por día");
+  XLSX.utils.book_append_sheet(workbook, periodSheet(report.byWeek), "Por semana");
+  XLSX.utils.book_append_sheet(workbook, periodSheet(report.byMonth), "Por mes");
+  XLSX.utils.book_append_sheet(workbook, specialists, "Especialistas");
+  XLSX.utils.book_append_sheet(workbook, services, "Servicios");
   XLSX.utils.book_append_sheet(workbook, detail, "Detalle");
   XLSX.writeFile(workbook, filename(report, "xlsx"), { compression: true });
 }
@@ -145,6 +186,39 @@ async function exportPdf(report: DesignCabinSalesReport) {
     ],
     theme: "grid",
     headStyles: { fillColor: [38, 54, 73] },
+  });
+  document.addPage("a4", "landscape");
+  document.setFontSize(14);
+  document.text("Ranking por especialista y analítica de servicios", 14, 16);
+  autoTable(document, {
+    startY: 22,
+    head: [["#", "Especialista", "Sucursal", "Compradores", "Conversión", "Vendido", "Recibido"]],
+    body: report.bySpecialist.map((item, index) => [
+      index + 1,
+      item.specialistName,
+      item.branchName,
+      item.buyers,
+      `${item.conversionRate}%`,
+      money.format(item.saleAmount),
+      money.format(item.depositAmount),
+    ]),
+    styles: { fontSize: 7 },
+    headStyles: { fillColor: [38, 54, 73] },
+  });
+  autoTable(document, {
+    startY: 90,
+    head: [["Servicio", "Citas", "Asistencias", "Cancelaciones", "No asistió", "% asistencia", "% cancelación"]],
+    body: report.serviceAnalytics.map((item) => [
+      item.serviceName,
+      item.appointments,
+      item.attended,
+      item.canceled,
+      item.noShow,
+      `${item.attendanceRate}%`,
+      `${item.cancellationRate}%`,
+    ]),
+    styles: { fontSize: 7 },
+    headStyles: { fillColor: [171, 132, 96] },
   });
   autoTable(document, {
     startY: 72,
@@ -199,6 +273,27 @@ async function exportPdf(report: DesignCabinSalesReport) {
     alternateRowStyles: { fillColor: [248, 245, 241] },
   });
   document.save(filename(report, "pdf"));
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+export function printCabinSalesReport(report: DesignCabinSalesReport) {
+  const target = window.open("", "_blank", "noopener,noreferrer");
+  if (!target) throw new Error("El navegador bloqueó la ventana de impresión.");
+  const rows = report.rows
+    .map(
+      (row) => `<tr><td>${escapeHtml(new Date(row.appointmentStartsAt).toLocaleString("es-MX"))}</td><td>${escapeHtml(row.branchName)}</td><td>${escapeHtml(row.cabinName)}</td><td>${escapeHtml(row.visitorName)}</td><td>${escapeHtml(row.serviceNames.join(", "))}</td><td>${escapeHtml(row.specialistName)}</td><td>${escapeHtml(purchaseLabel(row.purchaseKind))}</td><td>${escapeHtml(money.format(row.saleAmount))}</td><td>${escapeHtml(money.format(row.depositAmount))}</td><td>${escapeHtml(money.format(row.balanceAmount))}</td></tr>`,
+    )
+    .join("");
+  target.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Compras de agenda o cabinas</title><style>body{font:12px Arial;color:#263649;margin:24px}h1{font-size:22px}section{display:flex;gap:12px;margin:18px 0}.kpi{border:1px solid #ddd;border-radius:8px;padding:10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px;text-align:left}th{background:#f4f1ed}@media print{body{margin:10mm}}</style></head><body><h1>Compras de agenda o cabinas</h1><p>Periodo ${escapeHtml(report.filters.dateFrom)} — ${escapeHtml(report.filters.dateTo)} · ${report.rows.length} filas filtradas</p><section><div class="kpi">Vendido<br><strong>${escapeHtml(money.format(report.summary.saleAmount))}</strong></div><div class="kpi">Recibido<br><strong>${escapeHtml(money.format(report.summary.depositAmount))}</strong></div><div class="kpi">Saldo<br><strong>${escapeHtml(money.format(report.summary.balanceAmount))}</strong></div><div class="kpi">Conversión<br><strong>${report.summary.conversionRate}%</strong></div></section><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Cabina</th><th>Visitante</th><th>Servicio</th><th>Especialista</th><th>Resultado</th><th>Venta</th><th>Recibido</th><th>Saldo</th></tr></thead><tbody>${rows || '<tr><td colspan="10">Sin registros para los filtros seleccionados.</td></tr>'}</tbody></table><script>window.addEventListener('load',()=>window.print())</script></body></html>`);
+  target.document.close();
 }
 
 export async function exportCabinSalesReport(

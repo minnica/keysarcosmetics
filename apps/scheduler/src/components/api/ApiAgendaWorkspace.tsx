@@ -328,6 +328,8 @@ export function ApiAgendaWorkspace() {
   const [bookingDraft, setBookingDraft] = useState<BookingDraft | null>(null);
   const [attendanceStatusAppointmentId, setAttendanceStatusAppointmentId] =
     useState<string | null>(null);
+  const [finalizedPurchaseAppointmentIds, setFinalizedPurchaseAppointmentIds] =
+    useState<Set<string>>(() => new Set());
   const [bookingSaving, setBookingSaving] = useState(false);
   const [bookingIntentKey, setBookingIntentKey] = useState("");
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
@@ -1104,6 +1106,21 @@ export function ApiAgendaWorkspace() {
         schedulerDesignProposals.appointmentCabinVisit(appointment.id),
       ])
         .then(([answers, cabinVisit]) => {
+          setFinalizedPurchaseAppointmentIds((current) => {
+            const next = new Set(current);
+            if (
+              cabinVisit?.visitors.length &&
+              cabinVisit.visitors.every(
+                (visitor) =>
+                  visitor.purchaseKind !== null || visitor.purchased !== null,
+              )
+            ) {
+              next.add(appointment.id);
+            } else {
+              next.delete(appointment.id);
+            }
+            return next;
+          });
           setBookingDraft((current) =>
             current?.bookingId === appointment.id
               ? {
@@ -1371,14 +1388,19 @@ export function ApiAgendaWorkspace() {
     const completesAttendance = Boolean(
       editingId && attendanceStatusAppointmentId === editingId,
     );
+    const correctsFinalizedPurchase = Boolean(
+      editingId && finalizedPurchaseAppointmentIds.has(editingId),
+    );
     const continueWithPurchaseAuthorization = (
       appointmentGrant: DesignOperationGrant | null,
     ) => {
-      const requiresPurchaseAuthorization = bookingDraft.visitors.some(
-        (visitor) =>
-          visitor.purchaseKind === "FULL" ||
-          visitor.purchaseKind === "LAYAWAY",
-      );
+      const requiresPurchaseAuthorization =
+        correctsFinalizedPurchase ||
+        bookingDraft.visitors.some(
+          (visitor) =>
+            visitor.purchaseKind === "FULL" ||
+            visitor.purchaseKind === "LAYAWAY",
+        );
       if (
         bootstrap?.mockModeEnabled &&
         schedulerDesignProposals.available &&
@@ -1386,10 +1408,15 @@ export function ApiAgendaWorkspace() {
       ) {
         requestOperationAuthorization(
           {
-            title: "Autorizar registro de compras",
-            description:
-              "Ingresa el código de un especialista o agente con permiso para registrar montos. No se acepta un vendedor sin este permiso.",
-            purpose: "PURCHASE_CAPTURE",
+            title: correctsFinalizedPurchase
+              ? "Autorizar corrección de compra"
+              : "Autorizar registro de compras",
+            description: correctsFinalizedPurchase
+              ? "La venta, compra o apartado ya fue registrado. Ingresa un código con permiso de corrección o el código master."
+              : "Ingresa el código de un especialista o agente con permiso para registrar montos. No se acepta un vendedor sin este permiso.",
+            purpose: correctsFinalizedPurchase
+              ? "PURCHASE_CORRECTION"
+              : "PURCHASE_CAPTURE",
             targetType: "APPOINTMENT_PURCHASE",
             ...(editingId ? { targetId: editingId } : {}),
           },
@@ -1464,19 +1491,21 @@ export function ApiAgendaWorkspace() {
       );
       return;
     }
-    let additionalAnswers: DesignAppointmentAnswer[];
-    try {
-      additionalAnswers = additionalAnswersForDraft(
-        bookingDraft,
-        activeFieldDefinitions,
-      );
-    } catch (cause) {
-      toast.error(
-        cause instanceof Error
-          ? cause.message
-          : "Revisa las preguntas configurables.",
-      );
-      return;
+    let additionalAnswers: DesignAppointmentAnswer[] = [];
+    if (!appointmentDetailsLocked) {
+      try {
+        additionalAnswers = additionalAnswersForDraft(
+          bookingDraft,
+          activeFieldDefinitions,
+        );
+      } catch (cause) {
+        toast.error(
+          cause instanceof Error
+            ? cause.message
+            : "Revisa las preguntas configurables.",
+        );
+        return;
+      }
     }
     setBookingSaving(true);
     setConflict(null);
@@ -1610,10 +1639,12 @@ export function ApiAgendaWorkspace() {
         );
       }
       if (schedulerDesignProposals.available) {
-        await schedulerDesignProposals.saveAppointmentAnswers(
-          savedAppointment.id,
-          additionalAnswers,
-        );
+        if (!appointmentDetailsLocked) {
+          await schedulerDesignProposals.saveAppointmentAnswers(
+            savedAppointment.id,
+            additionalAnswers,
+          );
+        }
         await schedulerDesignProposals.saveAppointmentCabinVisit(
           savedAppointment.id,
           {
@@ -1680,7 +1711,10 @@ export function ApiAgendaWorkspace() {
             visitor.purchaseKind === "LAYAWAY",
         );
         await commitAuthorizedOperation(purchaseGrant, {
-          action: "Registro de compra por visitante",
+          action:
+            purchaseGrant.purpose === "PURCHASE_CORRECTION"
+              ? "Corrección de compra por visitante"
+              : "Registro de compra por visitante",
           targetType: "APPOINTMENT_PURCHASE",
           targetId: savedAppointment.id,
           metadata: {
@@ -1710,6 +1744,9 @@ export function ApiAgendaWorkspace() {
             ),
           },
         });
+        setFinalizedPurchaseAppointmentIds((current) =>
+          new Set(current).add(savedAppointment.id),
+        );
       }
       toast.success(
         appointmentDetailsLocked
@@ -1924,6 +1961,12 @@ export function ApiAgendaWorkspace() {
       return;
     }
     if (status === "attended" && schedulerDesignProposals.available) {
+      if (Date.now() < new Date(appointment.endsAt).getTime()) {
+        toast.error(
+          `Podrás marcar asistencia al terminar la sesión: ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(new Date(appointment.endsAt))}.`,
+        );
+        return;
+      }
       setAttendanceStatusAppointmentId(appointment.id);
       openEditBooking(booking);
       toast.info(
@@ -2422,6 +2465,9 @@ export function ApiAgendaWorkspace() {
           availabilityError={availability.error}
           availabilityLoading={availability.loading}
           additionalFieldDefinitions={activeFieldDefinitions}
+          hideAdditionalFields={
+            attendanceStatusAppointmentId === bookingDraft.bookingId
+          }
           appointmentDetailsLocked={Boolean(
             bookingDraft.bookingId &&
               (attendanceStatusAppointmentId === bookingDraft.bookingId ||

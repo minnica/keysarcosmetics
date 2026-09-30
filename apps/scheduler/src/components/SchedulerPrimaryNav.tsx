@@ -36,7 +36,12 @@ export type SchedulerNavArea =
   | "administration"
   | "settings"
   | "movements";
-export type SchedulerReportPage = "summary" | "reservations";
+export type SchedulerReportPage =
+  | "summary"
+  | "reservations"
+  | "sales"
+  | "cabin-sales"
+  | "projections";
 export type AdministrationSectionId =
   | "locals"
   | "professionals"
@@ -120,8 +125,9 @@ export function ReportsNavMenu({
   const { canAccess } = useSchedulerSession();
   const canViewSummary = canAccess("reports.summary");
   const canViewReservations = canAccess("reports.reservations");
+  const canViewSales = canAccess("reports.sales");
 
-  if (!canViewSummary && !canViewReservations) return null;
+  if (!canViewSummary && !canViewReservations && !canViewSales) return null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -177,6 +183,31 @@ export function ReportsNavMenu({
             <span>Reporte de reservas</span>
             {active === "reservations" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
           </Link>
+        ) : null}
+        {canViewSales ? (
+          <>
+            <Link
+              className={active === "sales" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              href="/reportes/ventas"
+              onClick={() => setOpen(false)}
+            >
+              <span>Ventas y pagos</span>
+            </Link>
+            <Link
+              className={active === "cabin-sales" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              href="/reportes/compras-cabinas"
+              onClick={() => setOpen(false)}
+            >
+              <span>Compras de agenda o cabinas</span>
+            </Link>
+            <Link
+              className={active === "projections" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              href="/reportes/proyecciones"
+              onClick={() => setOpen(false)}
+            >
+              <span>Proyecciones</span>
+            </Link>
+          </>
         ) : null}
       </PopoverContent>
     </Popover>

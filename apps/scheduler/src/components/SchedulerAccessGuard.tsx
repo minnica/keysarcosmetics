@@ -59,7 +59,11 @@ function getRequiredScreen(
       settingsSections[section ?? "company"] ?? "scheduler/settings/company"
     );
   }
-  if (pathname.startsWith("/reportes/ventas")) {
+  if (
+    pathname.startsWith("/reportes/ventas") ||
+    pathname.startsWith("/reportes/compras-cabinas") ||
+    pathname.startsWith("/reportes/proyecciones")
+  ) {
     return schedulerScreenKeyById["reports.sales"];
   }
   if (pathname.startsWith("/reportes/reservas")) {

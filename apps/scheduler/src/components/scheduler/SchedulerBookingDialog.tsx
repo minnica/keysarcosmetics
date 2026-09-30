@@ -88,6 +88,7 @@ interface SchedulerBookingDialogProps {
   specialistOptions?: Array<{ id: string; name: string }>;
   enableCabinVisitFlow?: boolean;
   appointmentDetailsLocked?: boolean;
+  hideAdditionalFields?: boolean;
 }
 
 export function SchedulerBookingDialog({
@@ -120,6 +121,7 @@ export function SchedulerBookingDialog({
   specialistOptions = [],
   enableCabinVisitFlow = false,
   appointmentDetailsLocked = false,
+  hideAdditionalFields = false,
 }: SchedulerBookingDialogProps) {
   const selectedService = services.find(
     (service) => service.id === draft.serviceId,
@@ -1091,6 +1093,7 @@ export function SchedulerBookingDialog({
                 </div>
               </div>
 
+              {!hideAdditionalFields ? (
               <div className="scheduler-modal-section overflow-hidden rounded-[24px] p-4 md:p-5">
                 <button
                   className="flex w-full items-center justify-between gap-4 rounded-[20px] border border-[rgba(236,209,200,0.9)] bg-white px-4 py-3 text-left transition hover:bg-[rgba(245,237,228,0.38)]"
@@ -1287,6 +1290,7 @@ export function SchedulerBookingDialog({
                   </div>
                 ) : null}
               </div>
+              ) : null}
             </div>
 
             <div className="scheduler-modal-footer flex flex-col gap-3 border-t border-[rgba(236,209,200,0.95)] px-4 py-4 sm:flex-row sm:justify-between md:px-6">

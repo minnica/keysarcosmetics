@@ -1,7 +1,12 @@
 "use client";
 
 import { Search } from "lucide-react";
-export type ReportsPage = "summary" | "reservations" | "sales";
+export type ReportsPage =
+  | "summary"
+  | "reservations"
+  | "sales"
+  | "cabin-sales"
+  | "projections";
 
 export function ReportsHeader({
   active,
@@ -27,6 +32,10 @@ export function ReportsHeader({
                 ? "Reservas"
                 : active === "sales"
                   ? "Ventas y pagos"
+                  : active === "cabin-sales"
+                    ? "Compras de agenda o cabinas"
+                    : active === "projections"
+                      ? "Proyecciones mensuales"
                   : "Resumen"}
             </p>
           </div>

@@ -468,6 +468,7 @@ function AuthorizationAgentsSettings() {
                 [
                   ["APPOINTMENT_STATUS_CHANGE", "Cambiar estados"],
                   ["PURCHASE_CAPTURE", "Registrar compras"],
+                  ["PURCHASE_CORRECTION", "Corregir compras registradas"],
                 ] as const
               ).map(([purpose, label]) => (
                 <label
@@ -478,7 +479,8 @@ function AuthorizationAgentsSettings() {
                     checked={agent.allowedPurposes.includes(purpose)}
                     className="h-4 w-4 accent-[#263649]"
                     disabled={
-                      purpose === "PURCHASE_CAPTURE" &&
+                      (purpose === "PURCHASE_CAPTURE" ||
+                        purpose === "PURCHASE_CORRECTION") &&
                       !agent.canAuthorizePurchases
                     }
                     onChange={(event) =>

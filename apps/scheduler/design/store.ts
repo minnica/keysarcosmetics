@@ -448,6 +448,7 @@ export function createDesignState(
         "SCHEDULE_BLOCK_DELETE",
         "CUSTOMER_UPDATE",
         "PURCHASE_CAPTURE",
+        "PURCHASE_CORRECTION",
       ] as DesignOperationPurpose[],
       updatedAt: now,
     })),
@@ -468,6 +469,7 @@ export function createDesignState(
           "APPOINTMENT_CANCEL",
           "CUSTOMER_UPDATE",
           "PURCHASE_CAPTURE",
+          "PURCHASE_CORRECTION",
         ] as DesignOperationPurpose[],
         updatedAt: now,
       }),
@@ -598,6 +600,150 @@ export function createDesignState(
         ],
         updatedAt: new Date().toISOString(),
       };
+    }
+
+    const monthKey = (monthsAgo: number, day: number) => {
+      const [year, month] = controls.date.split("-").map(Number);
+      const value = new Date(year!, month! - 1 - monthsAgo, day, 12, 0, 0);
+      return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+    };
+    const polancoCabin = catalog.resources.find(
+      (resource) => resource.id === "resource-rv4",
+    );
+    const mitikahHistoricalCabin = catalog.resources.find(
+      (resource) => resource.id === "resource-rv4-2-double",
+    );
+    const historicalTotals = [1350, 1600, 1900, 1750, 2300, 2650];
+    for (let index = 0; index < historicalTotals.length; index += 1) {
+      const monthsAgo = historicalTotals.length - index;
+      const date = monthKey(monthsAgo, 10);
+      const saleAmount = historicalTotals[index]!;
+      const attended = buildDesignAppointment(state, {
+        branchId: catalog.branches[0]!.branchId,
+        customerId: customers[0]!.id,
+        startsAt: designInstant(date, 11 * 60),
+        services: [
+          {
+            serviceProfileId: catalog.services[0]!.id,
+            professionalProfileIds: [
+              catalog.professionals[index % catalog.professionals.length]!.id,
+            ],
+            resourceIds: polancoCabin ? [polancoCabin.id] : [],
+          },
+        ],
+      });
+      attended.status = "ATTENDED";
+      attended.createdAt = designInstant(monthKey(monthsAgo, 3), 10 * 60);
+      attended.updatedAt = attended.endsAt;
+      attended.stateHistory = [
+        {
+          fromStatus: "RESERVED",
+          toStatus: "CONFIRMED",
+          reason: "Confirmación demo",
+          version: 2,
+          actorUserId: "design-full-operations",
+          createdAt: designInstant(monthKey(monthsAgo, 7), 10 * 60),
+        },
+      ];
+      state.appointments.push(attended);
+      if (polancoCabin) {
+        state.appointmentCabinVisits[attended.id] = {
+          appointmentId: attended.id,
+          cabinResourceId: polancoCabin.id,
+          cabinName: polancoCabin.name,
+          cabinCapacity: 1,
+          visitors: [
+            {
+              id: `historical-visitor-${index + 1}`,
+              customerId: attended.customerId,
+              name: attended.customerName,
+              specialistProfileId:
+                catalog.professionals[index % catalog.professionals.length]!.id,
+              purchased: true,
+              purchaseAmount: saleAmount,
+              purchaseKind: index % 3 === 1 ? "LAYAWAY" : "FULL",
+              saleAmount,
+              depositAmount: index % 3 === 1 ? Math.round(saleAmount * 0.3) : saleAmount,
+            },
+          ],
+          updatedAt: attended.updatedAt,
+        };
+      }
+
+      if (mitikahHistoricalCabin) {
+        const mitikahDate = monthKey(monthsAgo, 13);
+        const mitikahAppointment = buildDesignAppointment(state, {
+          branchId: catalog.branches[1]!.branchId,
+          customerId: customers[1]!.id,
+          startsAt: designInstant(mitikahDate, 13 * 60),
+          services: [
+            {
+              serviceProfileId: catalog.services[0]!.id,
+              professionalProfileIds: [catalog.professionals[1]!.id],
+              resourceIds: [mitikahHistoricalCabin.id],
+            },
+          ],
+        });
+        mitikahAppointment.status = "ATTENDED";
+        mitikahAppointment.createdAt = designInstant(
+          monthKey(monthsAgo, 4),
+          11 * 60,
+        );
+        mitikahAppointment.updatedAt = mitikahAppointment.endsAt;
+        state.appointments.push(mitikahAppointment);
+        const primarySale = 900 + index * 110;
+        const companionSale = 650 + index * 90;
+        state.appointmentCabinVisits[mitikahAppointment.id] = {
+          appointmentId: mitikahAppointment.id,
+          cabinResourceId: mitikahHistoricalCabin.id,
+          cabinName: mitikahHistoricalCabin.name,
+          cabinCapacity: 2,
+          visitors: [
+            {
+              id: `historical-mitikah-primary-${index + 1}`,
+              customerId: mitikahAppointment.customerId,
+              name: mitikahAppointment.customerName,
+              specialistProfileId: catalog.professionals[1]!.id,
+              purchased: true,
+              purchaseAmount: primarySale,
+              purchaseKind: "FULL",
+              saleAmount: primarySale,
+              depositAmount: primarySale,
+            },
+            {
+              id: `historical-mitikah-companion-${index + 1}`,
+              customerId: null,
+              name: `Visitante Mítikah ${index + 1}`,
+              specialistProfileId: catalog.professionals[2]!.id,
+              purchased: true,
+              purchaseAmount: companionSale,
+              purchaseKind: "LAYAWAY",
+              saleAmount: companionSale,
+              depositAmount: Math.round(companionSale * 0.4),
+            },
+          ],
+          updatedAt: mitikahAppointment.updatedAt,
+        };
+      }
+
+      const outcome = buildDesignAppointment(state, {
+        branchId: catalog.branches[index % 2]!.branchId,
+        customerId: customers[index % 2]!.id,
+        startsAt: designInstant(monthKey(monthsAgo, 18), 15 * 60),
+        services: [
+          {
+            serviceProfileId: catalog.services[index % 2]!.id,
+            professionalProfileIds: [catalog.professionals[index % 2]!.id],
+            resourceIds: [],
+          },
+        ],
+      });
+      outcome.status = index % 2 === 0 ? "CANCELED" : "NO_SHOW";
+      outcome.cancellationReason =
+        outcome.status === "CANCELED" ? "Cancelación demo histórica" : null;
+      outcome.createdAt = designInstant(monthKey(monthsAgo, 5), 9 * 60);
+      outcome.updatedAt = outcome.startsAt;
+      state.appointments.push(outcome);
     }
   }
   return state;

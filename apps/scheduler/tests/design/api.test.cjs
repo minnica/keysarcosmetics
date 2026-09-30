@@ -792,6 +792,130 @@ test("el reporte por cabina usa la misma población para métricas y detalle", (
   assert.equal(filtered.summary.balanceAmount, 1800);
 });
 
+test("los filtros combinables alimentan series, servicios y ranking de especialistas", () => {
+  const { state, request } = session();
+  const target = new Date(`${state.controls.date}T12:00:00`);
+  target.setMonth(target.getMonth() - 8);
+  const dateFrom = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-01`;
+  const report = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/cabin-sales",
+    {
+      dateFrom,
+      dateTo: state.controls.date,
+      branchIds: state.catalog.branches.map((branch) => branch.branchId),
+      status: "ATTENDED",
+      purchaseKind: "LAYAWAY",
+      serviceProfileId: "service-rv4",
+      specialistProfileId: "professional-rv4-2",
+      minSaleAmount: 1000,
+      maxSaleAmount: 3000,
+    },
+  );
+  assert.equal(report.status, 201);
+  assert.ok(report.body.data.rows.length >= 1);
+  assert.ok(
+    report.body.data.rows.every(
+      (row) =>
+        row.status === "ATTENDED" &&
+        row.purchaseKind === "LAYAWAY" &&
+        row.serviceProfileIds.includes("service-rv4") &&
+        row.specialistProfileId === "professional-rv4-2",
+    ),
+  );
+  assert.ok(report.body.data.byWeek.length >= 1);
+  assert.ok(report.body.data.byMonth.length >= 1);
+  assert.ok(report.body.data.bySpecialist.length >= 1);
+  assert.ok(
+    report.body.data.bySpecialist.every(
+      (item, index, values) =>
+        index === 0 || values[index - 1].saleAmount >= item.saleAmount,
+    ),
+  );
+  assert.ok(report.body.data.serviceAnalytics.length >= 1);
+  assert.ok(report.body.data.filterOptions.services.length >= 1);
+});
+
+test("las proyecciones separan histórico, venta real y estimación por sucursal", () => {
+  const { state, request } = session();
+  const report = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/sales-projections",
+    {
+      targetMonth: state.controls.date.slice(0, 7),
+      branchIds: state.catalog.branches.map((branch) => branch.branchId),
+      lookbackMonths: 6,
+    },
+  );
+  assert.equal(report.status, 201);
+  assert.equal(report.body.data.historical.length, 6);
+  assert.ok(report.body.data.summary.historicalAverage > 0);
+  assert.ok(report.body.data.summary.projectedAmount > 0);
+  assert.ok(report.body.data.byBranch.length >= 1);
+  assert.match(report.body.data.methodology, /Estimación demo/);
+});
+
+test("una compra registrada sólo admite corrección con propósito específico", () => {
+  const { state, request } = session();
+  const appointment = state.appointments.find(
+    (item) => item.status === "ATTENDED" && state.appointmentCabinVisits[item.id],
+  );
+  const visit = state.appointmentCabinVisits[appointment.id];
+  const input = {
+    cabinResourceId: visit.cabinResourceId,
+    cabinCapacity: visit.cabinCapacity,
+    visitors: visit.visitors.map((visitor) => ({
+      ...visitor,
+      saleAmount: Number(visitor.saleAmount ?? 0) + 50,
+      purchaseAmount: Number(visitor.saleAmount ?? 0) + 50,
+      depositAmount:
+        visitor.purchaseKind === "FULL"
+          ? Number(visitor.saleAmount ?? 0) + 50
+          : visitor.depositAmount,
+    })),
+  };
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/appointments/${appointment.id}/cabin-visit`,
+      input,
+    ).status,
+    403,
+  );
+  const grant = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code: "1111",
+      purpose: "PURCHASE_CORRECTION",
+      targetType: "APPOINTMENT_PURCHASE",
+      targetId: appointment.id,
+    },
+  ).body.data;
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/appointments/${appointment.id}/cabin-visit`,
+      input,
+      { "x-design-operation-authorization": grant.token },
+    ).status,
+    200,
+  );
+});
+
+test("no permite marcar asistencia antes de que termine la sesión", () => {
+  const { state, request } = session();
+  const appointment = state.appointments[0];
+  appointment.endsAt = "2999-01-01T00:00:00.000Z";
+  const result = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/status`,
+    { status: "ATTENDED", expectedVersion: appointment.version },
+  );
+  assert.equal(result.status, 409);
+  assert.match(result.body.message, /termine el tiempo/);
+});
+
 test("las respuestas adicionales se relacionan con la cita por ID", () => {
   const { state, request } = session();
   const appointmentId = state.appointments[0].id;

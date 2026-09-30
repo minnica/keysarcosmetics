@@ -37,6 +37,8 @@ import {
   Palette,
   SlidersHorizontal,
   Sparkles,
+  ShoppingBag,
+  TrendingUp,
   UsersRound,
   WalletCards,
   X,
@@ -101,6 +103,18 @@ const reportItems: NavigationItem[] = [
     label: "Ventas y pagos",
     href: "/reportes/ventas",
     icon: WalletCards,
+    screenId: "reports.sales",
+  },
+  {
+    label: "Compras de agenda o cabinas",
+    href: "/reportes/compras-cabinas",
+    icon: ShoppingBag,
+    screenId: "reports.sales",
+  },
+  {
+    label: "Proyecciones",
+    href: "/reportes/proyecciones",
+    icon: TrendingUp,
     screenId: "reports.sales",
   },
 ];

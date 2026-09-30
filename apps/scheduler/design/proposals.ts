@@ -2,6 +2,7 @@ import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
   DesignCabinSalesReport,
+  DesignSalesProjectionReport,
   DesignCustomerAdvancedPage,
   DesignDemoAccountOption,
   DesignMovementRecord,
@@ -122,6 +123,11 @@ export const schedulerDesignProposals: DesignProposalClient = {
   cabinSalesReport: (input) =>
     request<DesignCabinSalesReport>(
       "/api/scheduler/design-proposals/reports/cabin-sales",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  salesProjectionReport: (input) =>
+    request<DesignSalesProjectionReport>(
+      "/api/scheduler/design-proposals/reports/sales-projections",
       { method: "POST", body: JSON.stringify(input) },
     ),
 };

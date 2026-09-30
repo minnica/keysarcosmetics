@@ -16,8 +16,10 @@ import {
   BarChart3,
   Download,
   FileSpreadsheet,
+  Printer,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   ShoppingBag,
   TrendingUp,
   UsersRound,
@@ -31,6 +33,7 @@ import type {
 import { ReportsHeader } from "./ReportsHeader";
 import {
   exportCabinSalesReport,
+  printCabinSalesReport,
   type CabinSalesExportFormat,
 } from "./cabin-sales-report-export";
 
@@ -63,6 +66,28 @@ function dateInput(offsetDays = 0) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+type PeriodMode = "DAY" | "WEEK" | "MONTH" | "CUSTOM";
+type GroupMode = "DAY" | "WEEK" | "MONTH";
+
+function periodRange(mode: Exclude<PeriodMode, "CUSTOM">, anchor: string) {
+  const date = new Date(`${anchor}T12:00:00`);
+  const formatDate = (value: Date) =>
+    `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  if (mode === "DAY") return { from: anchor, to: anchor };
+  if (mode === "MONTH") {
+    return {
+      from: formatDate(new Date(date.getFullYear(), date.getMonth(), 1, 12)),
+      to: formatDate(new Date(date.getFullYear(), date.getMonth() + 1, 0, 12)),
+    };
+  }
+  const weekday = date.getDay() || 7;
+  const from = new Date(date);
+  from.setDate(from.getDate() - weekday + 1);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 6);
+  return { from: formatDate(from), to: formatDate(to) };
+}
+
 function purchaseLabel(kind: "NONE" | "FULL" | "LAYAWAY") {
   if (kind === "FULL") return "Liquidada";
   if (kind === "LAYAWAY") return "Apartado";
@@ -91,6 +116,16 @@ export function CabinSalesReportWorkspace({
   const [branchId, setBranchId] = useState(fixedBranch?.id ?? "ALL");
   const [cabinResourceId, setCabinResourceId] = useState("ALL");
   const [query, setQuery] = useState("");
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("CUSTOM");
+  const [anchorDate, setAnchorDate] = useState(() => dateInput());
+  const [groupMode, setGroupMode] = useState<GroupMode>("DAY");
+  const [status, setStatus] = useState("ALL");
+  const [purchaseKind, setPurchaseKind] = useState("ALL");
+  const [serviceProfileId, setServiceProfileId] = useState("ALL");
+  const [specialistProfileId, setSpecialistProfileId] = useState("ALL");
+  const [sellerName, setSellerName] = useState("ALL");
+  const [minSaleAmount, setMinSaleAmount] = useState("");
+  const [maxSaleAmount, setMaxSaleAmount] = useState("");
   const [applied, setApplied] = useState<DesignCabinSalesReportFilters>(() => ({
     dateFrom: dateInput(-30),
     dateTo: dateInput(),
@@ -126,13 +161,21 @@ export function CabinSalesReportWorkspace({
     };
   }, [applied]);
 
-  const cabinOptions = report?.byCabin ?? [];
+  const cabinOptions = report?.filterOptions.cabins ?? [];
   const maxCabinSale = Math.max(
     1,
     ...(report?.byCabin.map((item) => item.saleAmount) ?? [1]),
   );
+  const periodSeries = useMemo(() => {
+    if (!report) return [];
+    return groupMode === "MONTH"
+      ? report.byMonth
+      : groupMode === "WEEK"
+        ? report.byWeek
+        : report.byDay;
+  }, [groupMode, report]);
   const trendPoints = useMemo(() => {
-    const values = report?.byDay ?? [];
+    const values = periodSeries;
     if (!values.length) return "";
     const max = Math.max(1, ...values.map((item) => item.saleAmount));
     return values
@@ -142,11 +185,41 @@ export function CabinSalesReportWorkspace({
         return `${x},${y}`;
       })
       .join(" ");
-  }, [report?.byDay]);
+  }, [periodSeries]);
+  const attendanceRanking = useMemo(
+    () =>
+      [...(report?.serviceAnalytics ?? [])].sort(
+        (left, right) => right.attendanceRate - left.attendanceRate,
+      ),
+    [report?.serviceAnalytics],
+  );
+  const cancellationRanking = useMemo(
+    () =>
+      [...(report?.serviceAnalytics ?? [])].sort(
+        (left, right) => right.cancellationRate - left.cancellationRate,
+      ),
+    [report?.serviceAnalytics],
+  );
+
+  function setPreset(mode: PeriodMode, nextAnchor = anchorDate) {
+    setPeriodMode(mode);
+    if (mode === "CUSTOM") return;
+    const range = periodRange(mode, nextAnchor);
+    setDateFrom(range.from);
+    setDateTo(range.to);
+  }
 
   function applyFilters() {
     if (!dateFrom || !dateTo || dateFrom > dateTo) {
       toast.error("Selecciona un rango de fechas válido.");
+      return;
+    }
+    if (
+      minSaleAmount !== "" &&
+      maxSaleAmount !== "" &&
+      Number(minSaleAmount) > Number(maxSaleAmount)
+    ) {
+      toast.error("La venta mínima no puede superar la venta máxima.");
       return;
     }
     setApplied({
@@ -158,8 +231,39 @@ export function CabinSalesReportWorkspace({
           ? branches.map((branch) => branch.id)
           : [branchId],
       ...(cabinResourceId !== "ALL" ? { cabinResourceId } : {}),
+      ...(status !== "ALL"
+        ? {
+            status: status as NonNullable<
+              DesignCabinSalesReportFilters["status"]
+            >,
+          }
+        : {}),
+      ...(purchaseKind !== "ALL"
+        ? {
+            purchaseKind: purchaseKind as NonNullable<
+              DesignCabinSalesReportFilters["purchaseKind"]
+            >,
+          }
+        : {}),
+      ...(serviceProfileId !== "ALL" ? { serviceProfileId } : {}),
+      ...(specialistProfileId !== "ALL" ? { specialistProfileId } : {}),
+      ...(sellerName !== "ALL" ? { sellerName } : {}),
+      ...(minSaleAmount !== "" ? { minSaleAmount: Number(minSaleAmount) } : {}),
+      ...(maxSaleAmount !== "" ? { maxSaleAmount: Number(maxSaleAmount) } : {}),
       ...(query.trim() ? { query: query.trim() } : {}),
     });
+  }
+
+  function printReport() {
+    if (!report) return;
+    try {
+      printCabinSalesReport(report);
+      toast.success("Vista de impresión generada con el conjunto filtrado.");
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : "No fue posible imprimir.",
+      );
+    }
   }
 
   async function download(format: CabinSalesExportFormat) {
@@ -218,7 +322,7 @@ export function CabinSalesReportWorkspace({
 
   return (
     <div className="report-workspace min-h-screen bg-[#f4f1ed] text-[#263649]">
-      <ReportsHeader active="sales" userName={userName} />
+      <ReportsHeader active="cabin-sales" userName={userName} />
       <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -234,6 +338,14 @@ export function CabinSalesReportWorkspace({
           </div>
           {canExport ? (
             <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={!report}
+                onClick={printReport}
+                variant="outline"
+              >
+                <Printer className="mr-2 h-4 w-4" />
+                Imprimir
+              </Button>
               <Button
                 disabled={!report || Boolean(exporting)}
                 onClick={() => void download("xlsx")}
@@ -254,6 +366,58 @@ export function CabinSalesReportWorkspace({
         </div>
 
         <section className="reservation-control-panel">
+          <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <Label>Periodo</Label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {(["DAY", "WEEK", "MONTH", "CUSTOM"] as PeriodMode[]).map(
+                  (mode) => (
+                    <Button
+                      key={mode}
+                      onClick={() => setPreset(mode)}
+                      size="sm"
+                      variant={periodMode === mode ? "default" : "outline"}
+                    >
+                      {mode === "DAY"
+                        ? "Día"
+                        : mode === "WEEK"
+                          ? "Semana"
+                          : mode === "MONTH"
+                            ? "Mes"
+                            : "Personalizado"}
+                    </Button>
+                  ),
+                )}
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="cabin-sales-anchor">Fecha de referencia</Label>
+                <Input
+                  id="cabin-sales-anchor"
+                  className="mt-1.5"
+                  type="date"
+                  value={anchorDate}
+                  onChange={(event) => {
+                    setAnchorDate(event.target.value);
+                    if (periodMode !== "CUSTOM")
+                      setPreset(periodMode, event.target.value);
+                  }}
+                />
+              </div>
+              <div>
+                <Label>Agrupar evolución</Label>
+                <Select value={groupMode} onValueChange={(value) => setGroupMode(value as GroupMode)}>
+                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DAY">Por día</SelectItem>
+                    <SelectItem value="WEEK">Por semana</SelectItem>
+                    <SelectItem value="MONTH">Por mes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
             <div>
               <Label htmlFor="cabin-sales-from">Desde</Label>
@@ -263,6 +427,7 @@ export function CabinSalesReportWorkspace({
                 type="date"
                 value={dateFrom}
                 onChange={(event) => setDateFrom(event.target.value)}
+                onFocus={() => setPeriodMode("CUSTOM")}
               />
             </div>
             <div>
@@ -273,6 +438,7 @@ export function CabinSalesReportWorkspace({
                 type="date"
                 value={dateTo}
                 onChange={(event) => setDateTo(event.target.value)}
+                onFocus={() => setPeriodMode("CUSTOM")}
               />
             </div>
             <div>
@@ -315,8 +481,8 @@ export function CabinSalesReportWorkspace({
                 <SelectContent>
                   <SelectItem value="ALL">Todas las cabinas</SelectItem>
                   {cabinOptions.map((cabin) => (
-                    <SelectItem key={cabin.key} value={cabin.key}>
-                      {cabin.label}
+                    <SelectItem key={cabin.id} value={cabin.id}>
+                      {cabin.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -345,6 +511,21 @@ export function CabinSalesReportWorkspace({
               </Button>
             </div>
           </div>
+          <details className="mt-5 rounded-2xl border border-slate-200 bg-white/70 p-4">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtros avanzados combinables
+            </summary>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div><Label>Status</Label><Select value={status} onValueChange={setStatus}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem>{Object.entries(statusLabels).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Resultado de compra</Label><Select value={purchaseKind} onValueChange={setPurchaseKind}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem><SelectItem value="FULL">Liquidada</SelectItem><SelectItem value="LAYAWAY">Apartado</SelectItem><SelectItem value="NONE">No compró</SelectItem></SelectContent></Select></div>
+              <div><Label>Servicio</Label><Select value={serviceProfileId} onValueChange={setServiceProfileId}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem>{report?.filterOptions.services.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Especialista</Label><Select value={specialistProfileId} onValueChange={setSpecialistProfileId}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem>{report?.filterOptions.specialists.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Vendedor asignado</Label><Select value={sellerName} onValueChange={setSellerName}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem>{report?.filterOptions.sellers.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label htmlFor="cabin-sales-min">Venta mínima</Label><Input id="cabin-sales-min" className="mt-1.5" min="0" inputMode="decimal" type="number" value={minSaleAmount} onChange={(event) => setMinSaleAmount(event.target.value)} /></div>
+              <div><Label htmlFor="cabin-sales-max">Venta máxima</Label><Input id="cabin-sales-max" className="mt-1.5" min="0" inputMode="decimal" type="number" value={maxSaleAmount} onChange={(event) => setMaxSaleAmount(event.target.value)} /></div>
+            </div>
+          </details>
         </section>
 
         {error ? (
@@ -431,9 +612,11 @@ export function CabinSalesReportWorkspace({
               <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <p className="label-caps">Evolución</p>
-                  <h2 className="mt-1 text-xl font-semibold">Venta diaria</h2>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    Venta por {groupMode === "DAY" ? "día" : groupMode === "WEEK" ? "semana" : "mes"}
+                  </h2>
                 </div>
-                {report.byDay.length ? (
+                {periodSeries.length ? (
                   <div>
                     <svg
                       aria-label="Gráfica de monto vendido por día"
@@ -452,7 +635,7 @@ export function CabinSalesReportWorkspace({
                       />
                       {trendPoints.split(" ").map((point, index) => {
                         const [x, y] = point.split(",");
-                        const item = report.byDay[index]!;
+                        const item = periodSeries[index]!;
                         return (
                           <circle key={item.key} cx={x} cy={y} fill="#263649" r="2.2">
                             <title>{`${item.label}: ${money.format(item.saleAmount)}`}</title>
@@ -461,13 +644,49 @@ export function CabinSalesReportWorkspace({
                       })}
                     </svg>
                     <div className="flex justify-between gap-3 text-xs text-slate-400">
-                      <span>{report.byDay[0]?.label}</span>
-                      <span>{report.byDay.at(-1)?.label}</span>
+                      <span>{periodSeries[0]?.label}</span>
+                      <span>{periodSeries.at(-1)?.label}</span>
                     </div>
                   </div>
                 ) : (
                   <p className="text-sm text-slate-500">Sin evolución para el filtro actual.</p>
                 )}
+              </article>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+              <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-5">
+                  <p className="label-caps">Desempeño comercial</p>
+                  <h2 className="mt-1 text-xl font-semibold">Top de especialistas por sucursal</h2>
+                  <p className="mt-1 text-xs text-slate-400">Ordenado de mayor a menor monto vendido dentro de los filtros activos.</p>
+                </div>
+                <div className="space-y-3">
+                  {report.bySpecialist.map((item, index) => (
+                    <div className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 rounded-2xl border border-slate-100 p-3" key={item.key}>
+                      <span className="number-display text-lg text-[#9a7658]">{index + 1}</span>
+                      <div><p className="font-medium">{item.specialistName}</p><p className="text-xs text-slate-400">{item.branchName} · {item.buyers} compradores · {item.conversionRate}% conversión</p></div>
+                      <div className="text-right"><p className="font-semibold">{money.format(item.saleAmount)}</p><p className="text-xs text-slate-400">{money.format(item.depositAmount)} recibido</p></div>
+                    </div>
+                  ))}
+                  {!report.bySpecialist.length ? <p className="text-sm text-slate-500">Sin ventas para construir el ranking.</p> : null}
+                </div>
+              </article>
+
+              <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-5"><p className="label-caps">Comportamiento de agenda</p><h2 className="mt-1 text-xl font-semibold">Asistencia y cancelación por servicio</h2><p className="mt-1 text-xs text-slate-400">Índice = citas con el resultado ÷ citas del servicio en la población filtrada.</p></div>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Mayor asistencia</p>
+                    {attendanceRanking.map((item) => <div className="mt-3" key={`attendance-${item.serviceProfileId}`}><div className="flex justify-between gap-2 text-sm"><span>{item.serviceName}</span><strong>{item.attendanceRate}%</strong></div><div className="mt-1 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-emerald-500" style={{ width: `${item.attendanceRate}%` }} /></div></div>)}
+                    {attendanceRanking.length ? <p className="mt-4 text-xs text-slate-400">Menor: {attendanceRanking.at(-1)!.serviceName} · {attendanceRanking.at(-1)!.attendanceRate}%</p> : null}
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-rose-700">Mayor cancelación</p>
+                    {cancellationRanking.map((item) => <div className="mt-3" key={`cancel-${item.serviceProfileId}`}><div className="flex justify-between gap-2 text-sm"><span>{item.serviceName}</span><strong>{item.cancellationRate}%</strong></div><div className="mt-1 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-rose-400" style={{ width: `${item.cancellationRate}%` }} /></div></div>)}
+                    {cancellationRanking.length ? <p className="mt-4 text-xs text-slate-400">Menor: {cancellationRanking.at(-1)!.serviceName} · {cancellationRanking.at(-1)!.cancellationRate}%</p> : null}
+                  </div>
+                </div>
               </article>
             </section>
 
