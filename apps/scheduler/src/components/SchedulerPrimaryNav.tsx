@@ -156,7 +156,7 @@ export function ReportsNavMenu({
       <PopoverContent
         align="start"
         sideOffset={10}
-        className="w-64 overflow-hidden rounded-[20px] border-white/10 bg-[#1c2835] p-2 text-white shadow-[0_24px_70px_rgba(7,12,20,0.36)]"
+        className="scheduler-nav-popover w-64 overflow-hidden rounded-[20px] p-2 shadow-[0_24px_70px_rgba(7,12,20,0.36)]"
       >
         {canViewSummary ? (
           <Link
@@ -244,7 +244,7 @@ export function AdministrationNavMenu({
       <PopoverContent
         align="start"
         sideOffset={10}
-        className="w-[19rem] overflow-hidden rounded-[22px] border-white/10 bg-[#1c2835] p-2 text-white shadow-[0_24px_70px_rgba(7,12,20,0.36)]"
+        className="scheduler-nav-popover w-[19rem] overflow-hidden rounded-[22px] p-2 shadow-[0_24px_70px_rgba(7,12,20,0.36)]"
       >
         {visibleGroups.map((group, groupIndex) => (
           <div key={group.label} className={groupIndex > 0 ? "mt-2 border-t border-white/10 pt-2" : ""}>
@@ -295,7 +295,7 @@ export function ClientsNavMenu() {
           <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={10} className="w-64 rounded-[20px] border-white/10 bg-[#1c2835] p-2 text-white">
+      <PopoverContent align="start" sideOffset={10} className="scheduler-nav-popover w-64 rounded-[20px] p-2">
         {clientNavigationItems.map(({ label, href, icon: Icon }) => (
           <Link
             key={href}
@@ -341,7 +341,7 @@ export function SettingsNavMenu() {
       <PopoverContent
         align="start"
         sideOffset={10}
-        className="max-h-[min(70vh,34rem)] w-72 overflow-y-auto rounded-[20px] border-white/10 bg-[#1c2835] p-2 text-white"
+        className="scheduler-nav-popover max-h-[min(70vh,34rem)] w-72 overflow-y-auto rounded-[20px] p-2"
       >
         {visibleItems.map(([section, label]) => (
           <Link

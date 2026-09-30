@@ -90,7 +90,9 @@ El prototipo usa ahora un menú superior persistente. Conserva las rutas de
 Agenda, Clientes, Reportes, Administración y Configuraciones, y agrega
 `/movimientos` para revisar la actividad por agente. El sidebar histórico ya no
 se monta; en pantallas estrechas la navegación superior puede desplazarse de
-forma horizontal sin reducir el área del calendario.
+forma horizontal sin reducir el área del calendario. Los desplegables usan un
+fondo antracita y texto claro fijados por estilos propios del Scheduler para
+mantener contraste aunque el tema compartido de `Popover` cambie.
 
 Agenda ajusta todas las filas del horario al alto disponible de la ventana. No
 requiere desplazamiento vertical interno en la vista diaria o semanal; si se

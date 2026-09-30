@@ -3330,6 +3330,12 @@
     background: rgba(195, 165, 131, 0.3);
   }
 
+  .scheduler-nav-popover {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    background: #1c2835 !important;
+    color: white !important;
+  }
+
   .scheduler-module-link > a,
   .scheduler-module-link-active > a {
     display: inline-flex;
@@ -3360,7 +3366,13 @@
   }
 
   .scheduler-nav-menu-item {
-    @apply text-white/65 hover:bg-white/5 hover:text-white;
+    color: rgba(255, 255, 255, 0.76);
+  }
+
+  .scheduler-nav-menu-item:hover,
+  .scheduler-nav-menu-item:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
   }
 
   .scheduler-nav-menu-item-active {
