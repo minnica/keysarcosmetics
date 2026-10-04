@@ -12,6 +12,7 @@ import { toast } from "@cosmetics/ui";
 import { RestoredReportsWorkspace } from "@/components/reports/RestoredReportsWorkspace";
 import { CabinSalesReportWorkspace } from "@/components/reports/CabinSalesReportWorkspace";
 import { SalesProjectionsWorkspace } from "@/components/reports/SalesProjectionsWorkspace";
+import { AppointmentJournalReportWorkspace } from "@/components/reports/AppointmentJournalReportWorkspace";
 import { schedulerApi } from "@/lib/api";
 import {
   exportSchedulerReport,
@@ -64,7 +65,7 @@ export function ApiReportsWorkspace({
   view = "summary",
   fixedBranchId,
 }: {
-  view?: SchedulerReportView | "cabin-sales" | "projections";
+  view?: SchedulerReportView | "cabin-sales" | "projections" | "appointment-journal";
   fixedBranchId?: string;
 }) {
   if (view === "cabin-sales") {
@@ -86,10 +87,28 @@ export function ApiReportsWorkspace({
       <CanonicalReportsWorkspace view="sales" />
     );
   }
+  if (view === "appointment-journal") {
+    return schedulerDesignProposals.available ? (
+      <DesignAppointmentJournalReport />
+    ) : (
+      <CanonicalReportsWorkspace view="history" />
+    );
+  }
   return (
     <CanonicalReportsWorkspace
       view={view}
       {...(fixedBranchId ? { fixedBranchId } : {})}
+    />
+  );
+}
+
+function DesignAppointmentJournalReport() {
+  const { bootstrap, canAccess } = useSchedulerSession();
+  return (
+    <AppointmentJournalReportWorkspace
+      branches={bootstrap?.authorizedBranches ?? []}
+      userName={bootstrap?.user.name ?? "Keysar"}
+      canExport={canAccess("reports.reservations", "EXPORT")}
     />
   );
 }

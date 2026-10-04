@@ -66,6 +66,9 @@ interface SchedulerBookingCardProps {
   onPurchaseDecision: (booking: Booking, purchased: boolean) => void;
   onOpenDetail: (booking: Booking, view: "payment" | "record") => void;
   onOpenClientHistory: (booking: Booking) => void;
+  onOpenSellerComment: (booking: Booking) => void;
+  onOpenPostSaleComment: (booking: Booking) => void;
+  onOpenReschedule: (booking: Booking) => void;
   onRequestFinancialAccess: (booking: Booking) => void;
   onRevokeFinancialAccess: (booking: Booking) => void;
   onUpdatePaymentHistory: (
@@ -76,6 +79,8 @@ interface SchedulerBookingCardProps {
   onDeletePaymentHistory: (paymentBookingId: string) => void;
   canWrite?: boolean;
   enableCabinVisitFlow?: boolean;
+  showSellerComments?: boolean;
+  showPostSaleComments?: boolean;
   financialHistoryReadOnly?: boolean;
   destructiveActionLabel?: string;
 }
@@ -106,12 +111,17 @@ export function SchedulerBookingCard({
   onPurchaseDecision,
   onOpenDetail,
   onOpenClientHistory,
+  onOpenSellerComment,
+  onOpenPostSaleComment,
+  onOpenReschedule,
   onRequestFinancialAccess,
   onRevokeFinancialAccess,
   onUpdatePaymentHistory,
   onDeletePaymentHistory,
   canWrite = true,
   enableCabinVisitFlow = false,
+  showSellerComments = false,
+  showPostSaleComments = false,
   financialHistoryReadOnly = false,
   destructiveActionLabel = "Cancelar reserva",
 }: SchedulerBookingCardProps) {
@@ -651,6 +661,26 @@ export function SchedulerBookingCard({
       ) : null}
 
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[rgba(236,209,200,0.88)] pt-3">
+        {canWrite && booking.status === "attended" && showSellerComments ? (
+          <button
+            className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
+            onClick={() => onOpenSellerComment(booking)}
+            type="button"
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            <span className="text-[0.86rem] font-medium">Comentario</span>
+          </button>
+        ) : null}
+        {canWrite && booking.status === "attended" && showPostSaleComments ? (
+          <button
+            className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
+            onClick={() => onOpenPostSaleComment(booking)}
+            type="button"
+          >
+            <History className="h-3.5 w-3.5" />
+            <span className="text-[0.86rem] font-medium">Postventa</span>
+          </button>
+        ) : null}
         {canWrite && canCaptureCabinVisit ? (
           <button
             className="mr-auto flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
@@ -663,6 +693,14 @@ export function SchedulerBookingCard({
         ) : null}
         {!isCompleted && canWrite ? (
           <div className="mr-auto flex items-center gap-2">
+            <button
+              className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
+              onClick={() => onOpenReschedule(booking)}
+              type="button"
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              <span className="text-[0.86rem] font-medium">Reagendar</span>
+            </button>
             <button
               aria-label={`${destructiveActionLabel} de ${booking.customerName}`}
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(236,209,200,0.95)] bg-white text-rose-500 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"

@@ -148,6 +148,7 @@ export interface BookingDraft {
   additionalAnswers: Record<string, string | boolean>;
   cabinResourceId: string;
   cabinCapacity: number;
+  rememberSpecialist: boolean;
   visitors: BookingVisitorDraft[];
 }
 
@@ -407,6 +408,7 @@ export function createDraft(
     additionalAnswers: {},
     cabinResourceId: "",
     cabinCapacity: 1,
+    rememberSpecialist: false,
     visitors: [
       {
         id: "visitor-primary",
@@ -450,6 +452,7 @@ export function createDraftFromBooking(
     additionalAnswers: {},
     cabinResourceId: "",
     cabinCapacity: 1,
+    rememberSpecialist: false,
     visitors: [
       {
         id: "visitor-primary",

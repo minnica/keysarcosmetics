@@ -69,6 +69,9 @@ function getRequiredScreen(
   if (pathname.startsWith("/reportes/reservas")) {
     return schedulerScreenKeyById["reports.reservations"];
   }
+  if (pathname.startsWith("/reportes/seguimiento-citas")) {
+    return schedulerScreenKeyById["reports.reservations"];
+  }
   if (pathname.startsWith("/reportes"))
     return schedulerScreenKeyById["reports.summary"];
   if (pathname === "/") return schedulerScreenKeyById.agenda;

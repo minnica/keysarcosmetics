@@ -955,6 +955,38 @@ export function SchedulerBookingDialog({
                                 ))}
                               </SelectContent>
                             </Select>
+                            {index === 0 && !appointmentDetailsLocked && !isEditing ? (
+                              <button
+                                aria-checked={draft.rememberSpecialist}
+                                className="flex w-full items-center justify-between gap-3 rounded-xl border border-[rgba(236,209,200,0.9)] bg-[#fbf7f2] px-3 py-2 text-left text-xs text-slate-600"
+                                onClick={() =>
+                                  patchDraft({
+                                    rememberSpecialist:
+                                      !draft.rememberSpecialist,
+                                  })
+                                }
+                                role="switch"
+                                type="button"
+                              >
+                                <span>Fijar para futuras citas</span>
+                                <span
+                                  aria-hidden="true"
+                                  className={`relative h-5 w-9 rounded-full transition ${
+                                    draft.rememberSpecialist
+                                      ? "bg-[#263649]"
+                                      : "bg-slate-300"
+                                  }`}
+                                >
+                                  <span
+                                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${
+                                      draft.rememberSpecialist
+                                        ? "left-[18px]"
+                                        : "left-0.5"
+                                    }`}
+                                  />
+                                </span>
+                              </button>
+                            ) : null}
                           </div>
                           <div className="space-y-2">
                             <label className="scheduler-modal-label">

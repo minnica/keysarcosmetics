@@ -93,6 +93,9 @@ interface SchedulerAgendaGridProps {
   onPurchaseDecision: (booking: Booking, purchased: boolean) => void;
   onOpenBookingDetail: (booking: Booking, view: "payment" | "record") => void;
   onOpenClientHistory: (booking: Booking) => void;
+  onOpenSellerComment: (booking: Booking) => void;
+  onOpenPostSaleComment: (booking: Booking) => void;
+  onOpenReschedule: (booking: Booking) => void;
   financialAccessByClient: Record<string, SchedulerFinancialProfile>;
   financialAuditEvents: SchedulerFinancialAuditEvent[];
   onRequestFinancialAccess: (booking: Booking) => void;
@@ -109,6 +112,8 @@ interface SchedulerAgendaGridProps {
   ) => void;
   canWrite?: boolean;
   enableCabinVisitFlow?: boolean;
+  showSellerComments?: boolean;
+  showPostSaleComments?: boolean;
   financialHistoryReadOnly?: boolean;
   clientAccountsByClient?: Record<string, ClientPurchaseAccount>;
   paymentHistoryByClient?: Record<string, ClientPaymentHistoryEntry[]>;
@@ -218,6 +223,9 @@ export function SchedulerAgendaGrid({
   onPurchaseDecision,
   onOpenBookingDetail,
   onOpenClientHistory,
+  onOpenSellerComment,
+  onOpenPostSaleComment,
+  onOpenReschedule,
   financialAccessByClient,
   financialAuditEvents,
   onRequestFinancialAccess,
@@ -226,6 +234,8 @@ export function SchedulerAgendaGrid({
   onDeletePaymentHistory,
   canWrite = true,
   enableCabinVisitFlow = false,
+  showSellerComments = false,
+  showPostSaleComments = false,
   financialHistoryReadOnly = false,
   clientAccountsByClient = {},
   paymentHistoryByClient = {},
@@ -791,6 +801,9 @@ export function SchedulerAgendaGrid({
                           onEdit={onEditBooking}
                           onOpenDetail={onOpenBookingDetail}
                           onOpenClientHistory={onOpenClientHistory}
+                          onOpenSellerComment={onOpenSellerComment}
+                          onOpenPostSaleComment={onOpenPostSaleComment}
+                          onOpenReschedule={onOpenReschedule}
                           onStatusChange={onUpdateBookingStatus}
                           onPurchaseDecision={onPurchaseDecision}
                           onRequestFinancialAccess={onRequestFinancialAccess}
@@ -810,6 +823,8 @@ export function SchedulerAgendaGrid({
                           onDeletePaymentHistory={(paymentBookingId) =>
                             onDeletePaymentHistory(booking, paymentBookingId)
                           }
+                          showSellerComments={showSellerComments}
+                          showPostSaleComments={showPostSaleComments}
                           canWrite={canWrite}
                           financialHistoryReadOnly={financialHistoryReadOnly}
                         />
@@ -1114,6 +1129,9 @@ export function SchedulerAgendaGrid({
                           onEdit={onEditBooking}
                           onOpenDetail={onOpenBookingDetail}
                           onOpenClientHistory={onOpenClientHistory}
+                          onOpenSellerComment={onOpenSellerComment}
+                          onOpenPostSaleComment={onOpenPostSaleComment}
+                          onOpenReschedule={onOpenReschedule}
                           onStatusChange={onUpdateBookingStatus}
                           onPurchaseDecision={onPurchaseDecision}
                           onRequestFinancialAccess={onRequestFinancialAccess}
@@ -1133,6 +1151,8 @@ export function SchedulerAgendaGrid({
                           onDeletePaymentHistory={(paymentBookingId) =>
                             onDeletePaymentHistory(booking, paymentBookingId)
                           }
+                          showSellerComments={showSellerComments}
+                          showPostSaleComments={showPostSaleComments}
                           canWrite={canWrite}
                           financialHistoryReadOnly={financialHistoryReadOnly}
                         />

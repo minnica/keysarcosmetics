@@ -25,9 +25,11 @@ export function SchedulerTopNavigation() {
   const pathname = usePathname();
   const { bootstrap, logout } = useSchedulerSession();
   const area = activeArea(pathname);
-  const reportPage: SchedulerReportPage = pathname.startsWith("/reportes/reservas")
-    ? "reservations"
-    : "summary";
+  const reportPage: SchedulerReportPage = pathname.startsWith("/reportes/seguimiento-citas")
+    ? "appointment-journal"
+    : pathname.startsWith("/reportes/reservas")
+      ? "reservations"
+      : "summary";
 
   return (
     <header className="scheduler-top-navigation sticky top-0 z-50 border-b border-white/10 bg-[linear-gradient(90deg,#172230_0%,#1d2937_100%)] text-white shadow-[0_14px_34px_rgba(8,14,24,0.2)]">

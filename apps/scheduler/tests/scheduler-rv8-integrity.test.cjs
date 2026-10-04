@@ -98,6 +98,7 @@ test("keeps the complete RV0 route inventory mounted", () => {
     "app/(dashboard)/reportes/reservas/servicios-por-local/[branchId]/page.tsx",
     "app/(dashboard)/reportes/reservas/servicios-por-local/opatra-mexico/page.tsx",
     "app/(dashboard)/reportes/reservas/servicios/page.tsx",
+    "app/(dashboard)/reportes/seguimiento-citas/page.tsx",
     "app/(dashboard)/reportes/ventas/page.tsx",
   ]);
 });

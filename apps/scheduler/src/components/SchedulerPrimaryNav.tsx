@@ -41,7 +41,8 @@ export type SchedulerReportPage =
   | "reservations"
   | "sales"
   | "cabin-sales"
-  | "projections";
+  | "projections"
+  | "appointment-journal";
 export type AdministrationSectionId =
   | "locals"
   | "professionals"
@@ -174,14 +175,23 @@ export function ReportsNavMenu({
           </Link>
         ) : null}
         {canViewReservations ? (
-          <Link
-            className={active === "reservations" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
-            href="/reportes/reservas"
-            onClick={() => setOpen(false)}
-          >
-            <span>Reporte de reservas</span>
-            {active === "reservations" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
-          </Link>
+          <>
+            <Link
+              className={active === "reservations" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              href="/reportes/reservas"
+              onClick={() => setOpen(false)}
+            >
+              <span>Reporte de reservas</span>
+              {active === "reservations" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
+            </Link>
+            <Link
+              className={active === "appointment-journal" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              href="/reportes/seguimiento-citas"
+              onClick={() => setOpen(false)}
+            >
+              <span>Seguimiento y comentarios</span>
+            </Link>
+          </>
         ) : null}
         {canViewSales ? (
           <>

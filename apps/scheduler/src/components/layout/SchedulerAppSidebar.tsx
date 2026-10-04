@@ -117,6 +117,12 @@ const reportItems: NavigationItem[] = [
     icon: TrendingUp,
     screenId: "reports.sales",
   },
+  {
+    label: "Seguimiento y comentarios",
+    href: "/reportes/seguimiento-citas",
+    icon: MessageCircle,
+    screenId: "reports.reservations",
+  },
 ];
 
 const administrationItems: NavigationItem[] = [

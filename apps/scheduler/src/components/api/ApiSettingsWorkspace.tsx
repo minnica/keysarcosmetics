@@ -437,7 +437,7 @@ function AuthorizationAgentsSettings() {
           <p className="settings-description">
             La identidad proviene de Scheduler o del CRM/POS. Asigna un código
             ficticio único y define si puede cambiar estados o registrar
-            compras; no se crean vendedores paralelos.
+            compras o comentarios; no se crean vendedores paralelos.
           </p>
         </div>
         <Badge variant="outline">Sin códigos visibles</Badge>
@@ -469,6 +469,8 @@ function AuthorizationAgentsSettings() {
                   ["APPOINTMENT_STATUS_CHANGE", "Cambiar estados"],
                   ["PURCHASE_CAPTURE", "Registrar compras"],
                   ["PURCHASE_CORRECTION", "Corregir compras registradas"],
+                  ["APPOINTMENT_COMMENT_CREATE", "Comentarios de cita"],
+                  ["POST_SALE_COMMENT_CREATE", "Comentarios postventa"],
                 ] as const
               ).map(([purpose, label]) => (
                 <label

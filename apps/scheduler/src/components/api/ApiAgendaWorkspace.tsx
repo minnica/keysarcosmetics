@@ -70,6 +70,8 @@ import {
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import type {
   DesignAppointmentAnswer,
+  DesignAppointmentJournalEntry,
+  DesignAppointmentJournalKind,
   DesignOperationGrant,
   DesignOperationPurpose,
 } from "../../../design/contracts";
@@ -96,6 +98,15 @@ import { SchedulerFinancialAccessDialog } from "@/components/scheduler/Scheduler
 import { SchedulerClientHistoryDialog } from "@/components/scheduler/SchedulerClientHistoryDialog";
 import { SchedulerCustomerRecordDialog } from "@/components/scheduler/SchedulerCustomerRecordDialog";
 import { SchedulerOperationAuthorizationDialog } from "@/components/scheduler/SchedulerOperationAuthorizationDialog";
+import {
+  SchedulerAppointmentJournalDialog,
+  type AppointmentJournalCategoryOption,
+} from "@/components/scheduler/SchedulerAppointmentJournalDialog";
+import {
+  getSchedulerSettingValue,
+  resolveSchedulerSettingDocumentForScope,
+  schedulerSettingDefinitions,
+} from "@/lib/scheduler-settings-presentation";
 import {
   createBlockDraft,
   createBlockDraftFromBlock,
@@ -143,6 +154,11 @@ interface OperationPrompt {
   purpose: DesignOperationPurpose;
   targetType: string;
   targetId?: string;
+}
+
+interface AppointmentJournalRequest {
+  booking: Booking;
+  kind: Exclude<DesignAppointmentJournalKind, "CANCELLATION_REASON">;
 }
 
 const createStatuses: BookingStatus[] = ["pending", "reserved", "confirmed"];
@@ -217,6 +233,23 @@ function historyStatus(value: string): BookingStatus {
     CANCELED: "canceled",
   };
   return mapping[value.toUpperCase()] ?? "reserved";
+}
+
+function journalCategoryOptions(value: unknown): AppointmentJournalCategoryOption[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const source = item as Record<string, unknown>;
+    const label = String(source["name"] ?? "").trim();
+    if (!label) return [];
+    return [
+      {
+        id: String(source["id"] ?? `post-sale-category-${index + 1}`),
+        label,
+        version: Number(source["version"] ?? 1) || 1,
+      },
+    ];
+  });
 }
 
 function financialSummary(
@@ -369,11 +402,19 @@ export function ApiAgendaWorkspace() {
   const [operationAuthorizing, setOperationAuthorizing] = useState(false);
   const [operationAuthorizationError, setOperationAuthorizationError] =
     useState<string | null>(null);
+  const [journalRequest, setJournalRequest] =
+    useState<AppointmentJournalRequest | null>(null);
+  const [journalEntries, setJournalEntries] = useState<
+    DesignAppointmentJournalEntry[]
+  >([]);
+  const [journalLoading, setJournalLoading] = useState(false);
+  const [journalSaving, setJournalSaving] = useState(false);
   const pendingOperationRef = useRef<
     ((grant: DesignOperationGrant | null) => Promise<void>) | null
   >(null);
   const sidebarBookingTimerRef = useRef<number | null>(null);
   const createdCustomerByIntentRef = useRef<Record<string, string>>({});
+  const preferredSpecialistLoadedForRef = useRef<string | null>(null);
   const sensitiveTimersRef = useRef<Record<string, number>>({});
 
   const catalog = useSchedulerQuery(
@@ -476,6 +517,109 @@ export function ApiAgendaWorkspace() {
         })),
     [branchProfile?.id, catalog.data?.professionals],
   );
+  const agendaSettings = useSchedulerQuery(
+    () =>
+      schedulerApi.resolvedSetting("agenda", {
+        commerceId: selectedCommerce,
+        ...(branchProfile?.id ? { branchProfileId: branchProfile.id } : {}),
+      }),
+    [selectedCommerce, branchProfile?.id],
+    {
+      queryKey: "agenda:follow-up-settings",
+      branchId: selectedBranch,
+      enabled: Boolean(selectedCommerce),
+    },
+  );
+  const effectiveAgendaSettings = useMemo(
+    () =>
+      agendaSettings.data
+        ? resolveSchedulerSettingDocumentForScope(
+            agendaSettings.data,
+            "USER",
+            schedulerSettingDefinitions.agenda.defaults,
+          )
+        : schedulerSettingDefinitions.agenda.defaults,
+    [agendaSettings.data],
+  );
+  const showSellerComments = Boolean(
+    getSchedulerSettingValue(effectiveAgendaSettings, "showSellerComments"),
+  );
+  const showPostSaleComments = Boolean(
+    getSchedulerSettingValue(effectiveAgendaSettings, "showPostSaleComments"),
+  );
+  const postSaleCategories = useMemo(
+    () =>
+      journalCategoryOptions(
+        getSchedulerSettingValue(
+          effectiveAgendaSettings,
+          "postSaleCategories",
+        ),
+      ),
+    [effectiveAgendaSettings],
+  );
+  const cancellationReasonOptions = useMemo(
+    () =>
+      journalCategoryOptions(
+        getSchedulerSettingValue(
+          effectiveAgendaSettings,
+          "cancellationReasons",
+        ),
+      ),
+    [effectiveAgendaSettings],
+  );
+  const rescheduleReasonOptions = useMemo(
+    () =>
+      journalCategoryOptions(
+        getSchedulerSettingValue(
+          effectiveAgendaSettings,
+          "rescheduleReasons",
+        ),
+      ),
+    [effectiveAgendaSettings],
+  );
+  useEffect(() => {
+    const customerId = bookingDraft?.clientId;
+    if (
+      !customerId ||
+      bookingDraft.bookingId ||
+      preferredSpecialistLoadedForRef.current === customerId ||
+      !schedulerDesignProposals.available
+    ) {
+      return;
+    }
+    preferredSpecialistLoadedForRef.current = customerId;
+    void schedulerDesignProposals
+      .customerSpecialistPreference(customerId)
+      .then((preference) => {
+        if (
+          !preference ||
+          !specialistOptions.some(
+            (specialist) => specialist.id === preference.specialistProfileId,
+          )
+        ) {
+          return;
+        }
+        setBookingDraft((current) =>
+          current && current.clientId === customerId
+            ? {
+                ...current,
+                rememberSpecialist: true,
+                visitors: current.visitors.map((visitor, index) =>
+                  index === 0
+                    ? {
+                        ...visitor,
+                        specialistProfileId: preference.specialistProfileId,
+                      }
+                    : visitor,
+                ),
+              }
+            : current,
+        );
+      })
+      .catch(() => {
+        preferredSpecialistLoadedForRef.current = null;
+      });
+  }, [bookingDraft?.bookingId, bookingDraft?.clientId, specialistOptions]);
   const viewBranchIds = useMemo(
     () =>
       branches
@@ -988,6 +1132,7 @@ export function ApiAgendaWorkspace() {
     date = selectedDate,
   ) {
     if (!canWrite) return;
+    preferredSpecialistLoadedForRef.current = null;
     const availableColumns = visibleColumns.length
       ? visibleColumns
       : visualColumns;
@@ -1040,6 +1185,7 @@ export function ApiAgendaWorkspace() {
       ...nextDraft,
       cabinResourceId: defaultCabin?.id ?? "",
       cabinCapacity: defaultCabin?.capacity ?? 1,
+      rememberSpecialist: false,
       visitors: Array.from(
         { length: defaultCabin?.capacity ?? 1 },
         (_value, index) => ({
@@ -1110,6 +1256,7 @@ export function ApiAgendaWorkspace() {
       additionalAnswers: {},
       cabinResourceId: appointmentCabin?.id ?? "",
       cabinCapacity: appointmentCabin?.capacity ?? 1,
+      rememberSpecialist: false,
       visitors: Array.from(
         { length: appointmentCabin?.capacity ?? 1 },
         (_value, index) => ({
@@ -1340,6 +1487,112 @@ export function ApiAgendaWorkspace() {
       token: grant.token,
       ...input,
     });
+  }
+
+  async function openAppointmentJournal(
+    booking: Booking,
+    kind: AppointmentJournalRequest["kind"],
+  ) {
+    const appointmentId = bookingSourceId(booking);
+    setJournalRequest({ booking, kind });
+    setJournalEntries([]);
+    setJournalLoading(true);
+    try {
+      setJournalEntries(
+        await schedulerDesignProposals.appointmentJournal(appointmentId),
+      );
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible cargar el historial de la cita.",
+      );
+    } finally {
+      setJournalLoading(false);
+    }
+  }
+
+  function saveAppointmentJournal(input: {
+    comment: string;
+    category?: AppointmentJournalCategoryOption;
+    tentativeDate?: string;
+  }) {
+    if (!journalRequest) return;
+    const appointmentId = bookingSourceId(journalRequest.booking);
+    const purpose: DesignOperationPurpose =
+      journalRequest.kind === "SELLER_COMMENT"
+        ? "APPOINTMENT_COMMENT_CREATE"
+        : journalRequest.kind === "POST_SALE_COMMENT"
+          ? "POST_SALE_COMMENT_CREATE"
+          : "APPOINTMENT_MOVE";
+    requestOperationAuthorization(
+      {
+        title:
+          journalRequest.kind === "RESCHEDULE_REASON"
+            ? "Autorizar solicitud de reagenda"
+            : "Autorizar comentario de cita",
+        description:
+          "El código identifica a la persona que realiza el registro y se consume en este movimiento.",
+        purpose,
+        targetType: "APPOINTMENT_JOURNAL",
+        targetId: appointmentId,
+      },
+      async (grant) => {
+        if (!grant) return;
+        setJournalSaving(true);
+        try {
+          await schedulerDesignProposals.addAppointmentJournalEntry(
+            appointmentId,
+            {
+              kind: journalRequest.kind,
+              comment: input.comment,
+              ...(input.category
+                ? {
+                    categoryId: input.category.id,
+                    categoryLabel: input.category.label,
+                    categoryVersion: input.category.version,
+                  }
+                : {}),
+              ...(input.tentativeDate
+                ? { tentativeDate: input.tentativeDate }
+                : {}),
+              authorizationToken: grant.token,
+            },
+          );
+          await commitAuthorizedOperation(grant, {
+            action:
+              journalRequest.kind === "SELLER_COMMENT"
+                ? "Comentario de vendedor"
+                : journalRequest.kind === "POST_SALE_COMMENT"
+                  ? "Comentario postventa"
+                  : "Solicitud de reagenda",
+            targetType: "APPOINTMENT_JOURNAL",
+            targetId: appointmentId,
+            metadata: {
+              kind: journalRequest.kind,
+              ...(input.category
+                ? { categoryLabel: input.category.label }
+                : {}),
+              ...(input.tentativeDate
+                ? { tentativeDate: input.tentativeDate }
+                : {}),
+            },
+          });
+          setJournalEntries(
+            await schedulerDesignProposals.appointmentJournal(appointmentId),
+          );
+          toast.success("Seguimiento guardado en el historial de la cita.");
+        } catch (cause) {
+          toast.error(
+            cause instanceof Error
+              ? cause.message
+              : "No fue posible guardar el seguimiento.",
+          );
+        } finally {
+          setJournalSaving(false);
+        }
+      },
+    );
   }
 
   function requestSaveBooking(options: SaveBookingOptions = {}) {
@@ -1711,6 +1964,14 @@ export function ApiAgendaWorkspace() {
           },
           purchaseGrant?.token,
         );
+        if (!existing) {
+          await schedulerDesignProposals.saveCustomerSpecialistPreference(
+            customerId,
+            bookingDraft.rememberSpecialist
+              ? bookingDraft.visitors[0]?.specialistProfileId ?? null
+              : null,
+          );
+        }
       }
       if (completesAttendance) {
         savedAppointment = await schedulerApi.changeAppointmentStatus(
@@ -2072,6 +2333,16 @@ export function ApiAgendaWorkspace() {
             }),
           {
             onSuccess: async () => {
+              if (grant && schedulerDesignProposals.available) {
+                await schedulerDesignProposals.addAppointmentJournalEntry(
+                  appointment.id,
+                  {
+                    kind: "CANCELLATION_REASON",
+                    comment: cancelReason.trim(),
+                    authorizationToken: grant.token,
+                  },
+                );
+              }
               await commitAuthorizedOperation(grant, {
                 action: "Cancelación de cita",
                 targetType: "APPOINTMENT",
@@ -2444,6 +2715,15 @@ export function ApiAgendaWorkspace() {
                   onOpenClientHistory={(booking) =>
                     openSensitive(booking, "history")
                   }
+                  onOpenSellerComment={(booking) =>
+                    void openAppointmentJournal(booking, "SELLER_COMMENT")
+                  }
+                  onOpenPostSaleComment={(booking) =>
+                    void openAppointmentJournal(booking, "POST_SALE_COMMENT")
+                  }
+                  onOpenReschedule={(booking) =>
+                    void openAppointmentJournal(booking, "RESCHEDULE_REASON")
+                  }
                   onOpenNewBooking={openNewBooking}
                   onOpenSlotAction={(professionalId, startTime) =>
                     setEmptySlotAction({ professionalId, startTime })
@@ -2466,6 +2746,8 @@ export function ApiAgendaWorkspace() {
                   paymentHistoryByClient={paymentHistoryByClient}
                   slotMinutes={agendaSlotMinutes}
                   statusColors={statusColors}
+                  showSellerComments={showSellerComments}
+                  showPostSaleComments={showPostSaleComments}
                   visibleBlocks={visibleBlocks}
                   visibleBookings={visibleBookings}
                   visibleProfessionals={visibleColumns}
@@ -2548,6 +2830,7 @@ export function ApiAgendaWorkspace() {
             setBookingDialogOpen(open);
             if (!open) {
               setBookingDraft(null);
+              preferredSpecialistLoadedForRef.current = null;
               setAttendanceStatusAppointmentId(null);
               setClientSearchInput("");
               setCustomerRegistrationReview(null);
@@ -2771,6 +3054,20 @@ export function ApiAgendaWorkspace() {
             >
               Motivo
             </label>
+            {cancellationReasonOptions.length ? (
+              <div className="flex flex-wrap gap-2">
+                {cancellationReasonOptions.map((reason) => (
+                  <button
+                    className="rounded-full border border-[#e6d8ca] bg-[#fbf7f2] px-3 py-1.5 text-xs text-[#72583f] transition hover:bg-[#f3e8dc]"
+                    key={reason.id}
+                    onClick={() => setCancelReason(reason.label)}
+                    type="button"
+                  >
+                    {reason.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <Textarea
               id="cancel-appointment-reason"
               onChange={(event) => setCancelReason(event.target.value)}
@@ -2792,6 +3089,28 @@ export function ApiAgendaWorkspace() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {journalRequest ? (
+        <SchedulerAppointmentJournalDialog
+          categories={
+            journalRequest.kind === "RESCHEDULE_REASON"
+              ? rescheduleReasonOptions
+              : postSaleCategories
+          }
+          customerName={journalRequest.booking.customerName}
+          entries={journalEntries}
+          kind={journalRequest.kind}
+          loading={journalLoading}
+          onOpenChange={(open) => {
+            if (!open) {
+              setJournalRequest(null);
+              setJournalEntries([]);
+            }
+          }}
+          onSubmit={saveAppointmentJournal}
+          open
+          saving={journalSaving}
+        />
+      ) : null}
       <SchedulerOperationAuthorizationDialog
         description={
           operationPrompt?.description ??
