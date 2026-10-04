@@ -99,6 +99,17 @@ const statusTransitions: Record<BookingStatus, BookingStatus[]> = {
   canceled: [],
 };
 
+const statusCorrectionOrder: BookingStatus[] = [
+  "pending",
+  "reserved",
+  "confirmed",
+  "arrived",
+  "waiting",
+  "attended",
+  "no-show",
+  "canceled",
+];
+
 export function SchedulerBookingCard({
   booking,
   commerceName,
@@ -133,12 +144,18 @@ export function SchedulerBookingCard({
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editingAmount, setEditingAmount] = useState("");
   const [editingTentativeAmount, setEditingTentativeAmount] = useState("");
+  const [statusCorrectionOpen, setStatusCorrectionOpen] = useState(false);
   const statusMeta = bookingStatuses[booking.status];
   const service = getServiceByName(booking.serviceName);
   const hasPayment =
     typeof booking.purchaseAmount === "number" && booking.purchaseAmount > 0;
   const availableStatusTransitions = statusTransitions[booking.status].filter(
     (status) => !visibleStatuses || visibleStatuses.has(status),
+  );
+  const availableStatusCorrections = statusCorrectionOrder.filter(
+    (status) =>
+      status !== booking.status &&
+      (!visibleStatuses || visibleStatuses.has(status)),
   );
   const isCompleted =
     Boolean(booking.serviceRecords?.length) ||
@@ -627,29 +644,84 @@ export function SchedulerBookingCard({
           />
           <span className="font-medium">{statusMeta.label}</span>
         </div>
-        {isCompleted || !canWrite ? (
+        {!canWrite ? (
           <div className="ml-auto inline-flex items-center gap-1.5 text-[0.82rem] font-medium text-slate-600">
             <LockKeyhole className="h-3.5 w-3.5" />
-            {isCompleted ? "Registro finalizado" : "Sólo lectura"}
+            Sólo lectura
           </div>
         ) : (
-          availableStatusTransitions.map((status) => (
-            <button
-              key={status}
-              aria-label={`Cambiar estado a ${bookingStatuses[status].label}`}
-              aria-pressed={status === booking.status}
-              className={cn(
-                "h-5 w-5 rounded-full border border-white transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2",
-                status === booking.status
-                  ? "ring-2 ring-offset-2 ring-[rgba(195,165,131,0.5)]"
-                  : "",
-              )}
-              style={{ backgroundColor: statusColors[status] }}
-              onClick={() => onStatusChange(booking.id, status)}
-              title={bookingStatuses[status].label}
-              type="button"
-            />
-          ))
+          <>
+            {isCompleted ? (
+              <div className="inline-flex items-center gap-1.5 text-[0.78rem] font-medium text-slate-500">
+                <LockKeyhole className="h-3.5 w-3.5" />
+                Registro finalizado
+              </div>
+            ) : (
+              availableStatusTransitions.map((status) => (
+                <button
+                  key={status}
+                  aria-label={`Cambiar estado a ${bookingStatuses[status].label}`}
+                  aria-pressed={status === booking.status}
+                  className={cn(
+                    "h-5 w-5 rounded-full border border-white transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2",
+                    status === booking.status
+                      ? "ring-2 ring-offset-2 ring-[rgba(195,165,131,0.5)]"
+                      : "",
+                  )}
+                  style={{ backgroundColor: statusColors[status] }}
+                  onClick={() => onStatusChange(booking.id, status)}
+                  title={bookingStatuses[status].label}
+                  type="button"
+                />
+              ))
+            )}
+            <Dialog
+              open={statusCorrectionOpen}
+              onOpenChange={setStatusCorrectionOpen}
+            >
+              <DialogTrigger asChild>
+                <button
+                  className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[rgba(236,209,200,0.95)] bg-white px-2.5 text-[0.76rem] font-semibold text-[var(--scheduler-ink-strong)] hover:bg-[#fbf8f4]"
+                  type="button"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Corregir status
+                </button>
+              </DialogTrigger>
+              <DialogContent className="scheduler-modal-shell max-w-[460px] rounded-2xl border-0 bg-white p-0 shadow-[0_20px_60px_rgba(15,23,42,0.2)]">
+                <DialogHeader className="border-b border-[rgba(236,209,200,0.88)] px-5 py-4 text-left">
+                  <DialogTitle className="text-[1.2rem] text-[var(--scheduler-ink-strong)]">
+                    Corregir status de la cita
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 px-5 pb-5">
+                  <p className="text-sm leading-5 text-slate-600">
+                    El status anterior permanecerá en el historial. Para aplicar
+                    la corrección se solicitará un código personal autorizado.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {availableStatusCorrections.map((status) => (
+                      <button
+                        key={status}
+                        className="flex min-h-11 items-center gap-2.5 rounded-xl border border-slate-200 px-3 text-left text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                        onClick={() => {
+                          setStatusCorrectionOpen(false);
+                          onStatusChange(booking.id, status);
+                        }}
+                        type="button"
+                      >
+                        <span
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: statusColors[status] }}
+                        />
+                        {bookingStatuses[status].label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
         )}
       </div>
 

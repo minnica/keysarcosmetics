@@ -301,6 +301,16 @@ nunca guarda el código. Los clientes registrados sólo se editan después de
 abrir el expediente con autorización; master dispone además de edición directa
 en el entorno de diseño.
 
+La ficha de cualquier cita muestra **Corregir status**, incluso cuando el
+registro ya está finalizado. Permite elegir otro status visible si hubo un error
+de captura, pero siempre solicita un código con permiso
+`APPOINTMENT_STATUS_CHANGE`. El endpoint de diseño rechaza el cambio directo sin
+ese token. La corrección agrega una nueva transición `fromStatus → toStatus`,
+incrementa la versión y conserva intacto el historial anterior; el commit de la
+autorización registra actor y movimiento sin almacenar el código. Las reglas de
+negocio siguen vigentes: llegada/asistencia requieren atención completa y
+asistencia no puede registrarse antes de terminar la sesión.
+
 En **Administración → Colores de status** la demo sustituye la paleta fija por
 un catálogo versionado. Master puede agregar un status personalizado, editar
 nombre/color o marcar cualquier definición como inactiva mediante autorización
@@ -453,7 +463,9 @@ Recorrido manual recomendado:
     Marca otra como Llegó: el color no debe cambiar hasta capturar representante,
     compra/apartado y especialistas sin ver preguntas
     adicionales; vuelve a editar el monto y confirma que solicita
-    **Corregir compras registradas** o el código master.
+    **Corregir compras registradas** o el código master. Después usa **Corregir
+    status** sobre una cita finalizada, ingresa un código autorizado y confirma
+    que el historial conserve el status anterior y agregue la nueva transición.
 12. Abre Reportes → Proyecciones, cambia de 3 a 6 meses y combina sucursales.
     Confirma que histórico, comparativa, distribución y exportaciones usan el
     mismo alcance y que la proyección se distingue de la venta real.

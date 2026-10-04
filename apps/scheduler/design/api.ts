@@ -261,6 +261,31 @@ function operationPurpose(value: unknown): DesignOperationPurpose {
   }
   return value as DesignOperationPurpose;
 }
+
+function requireOperationAuthorization(
+  state: DesignState,
+  token: unknown,
+  purpose: DesignOperationPurpose,
+  targetId: string,
+) {
+  const authorization = state.operationAuthorizations.get(String(token ?? ""));
+  const agent = authorization
+    ? state.operationAgents.find(
+        (candidate) => candidate.id === authorization.agentId,
+      )
+    : undefined;
+  if (
+    !authorization ||
+    authorization.purpose !== purpose ||
+    (authorization.targetId && authorization.targetId !== targetId) ||
+    authorization.expiresAt < Date.now() ||
+    !agent?.active ||
+    !agent.allowedPurposes.includes(purpose)
+  ) {
+    fail(403, "Este movimiento requiere un código personal autorizado.");
+  }
+  return agent;
+}
 function authorizeRequest(state: DesignState, request: DesignRequest) {
   const path = request.url.pathname;
   if (path === "/api/auth/login") return;
@@ -2691,6 +2716,14 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     const existing = id ? appointment(state, id) : undefined;
     if (existing) versionGuard(existing, body);
     if (action === "cancel" || action === "status") {
+      if (action === "status") {
+        requireOperationAuthorization(
+          state,
+          body.authorizationToken,
+          "APPOINTMENT_STATUS_CHANGE",
+          existing!.id,
+        );
+      }
       const status = action === "cancel" ? "CANCELED" : String(body.status);
       if (
         !(SCHEDULER_APPOINTMENT_STATUSES as readonly string[]).includes(status)

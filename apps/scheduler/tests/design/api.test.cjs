@@ -41,6 +41,26 @@ function session(scenario = "normal", role = "master") {
   return { state, request };
 }
 
+function operationToken(
+  request,
+  purpose,
+  targetId,
+  code = "0000",
+) {
+  const response = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code,
+      purpose,
+      targetType: "APPOINTMENT",
+      targetId,
+    },
+  );
+  assert.equal(response.status, 201);
+  return response.body.data.token;
+}
+
 test("las tres cuentas demo conservan identidad, alcance y códigos personales", () => {
   const { state, request } = session();
   const expectations = [
@@ -1125,10 +1145,26 @@ test("no permite marcar asistencia antes de que termine la sesión", () => {
   const { state, request } = session();
   const appointment = state.appointments[0];
   appointment.endsAt = "2999-01-01T00:00:00.000Z";
-  const result = request(
+  const withoutAuthorization = request(
     "POST",
     `/api/scheduler/appointments/${appointment.id}/status`,
     { status: "ATTENDED", expectedVersion: appointment.version },
+  );
+  assert.equal(withoutAuthorization.status, 403);
+  assert.match(withoutAuthorization.body.message, /código personal/);
+  const authorizationToken = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointment.id,
+  );
+  const result = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/status`,
+    {
+      status: "ATTENDED",
+      expectedVersion: appointment.version,
+      authorizationToken,
+    },
   );
   assert.equal(result.status, 409);
   assert.match(result.body.message, /termine el tiempo/);
@@ -1150,17 +1186,35 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
   const representative = state.operationAgents.find((agent) => agent.active);
   appointment.endsAt = "2000-01-01T00:00:00.000Z";
 
+  const attendedToken = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointment.id,
+  );
   const incomplete = request(
     "POST",
     `/api/scheduler/appointments/${appointment.id}/status`,
-    { status: "ATTENDED", expectedVersion: appointment.version },
+    {
+      status: "ATTENDED",
+      expectedVersion: appointment.version,
+      authorizationToken: attendedToken,
+    },
   );
   assert.equal(incomplete.status, 409);
   assert.match(incomplete.body.message, /Completa para cada visitante/);
+  const arrivalToken = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointment.id,
+  );
   const arrivalIncomplete = request(
     "POST",
     `/api/scheduler/appointments/${appointment.id}/status`,
-    { status: "ARRIVED", expectedVersion: appointment.version },
+    {
+      status: "ARRIVED",
+      expectedVersion: appointment.version,
+      authorizationToken: arrivalToken,
+    },
   );
   assert.equal(arrivalIncomplete.status, 409);
   assert.match(arrivalIncomplete.body.message, /Completa la atención/);
@@ -1190,24 +1244,71 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
   assert.equal(capture.status, 200);
   assert.equal(capture.body.data.visitors[0].settlementStatus, "NOT_APPLICABLE");
 
+  const completedArrivalToken = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointment.id,
+  );
   const arrivalCompleted = request(
     "POST",
     `/api/scheduler/appointments/${appointment.id}/status`,
-    { status: "ARRIVED", expectedVersion: appointment.version },
+    {
+      status: "ARRIVED",
+      expectedVersion: appointment.version,
+      authorizationToken: completedArrivalToken,
+    },
   );
   assert.equal(arrivalCompleted.status, 201);
   assert.equal(arrivalCompleted.body.data.status, "ARRIVED");
 
+  const completedAttendanceToken = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointment.id,
+  );
   const completed = request(
     "POST",
     `/api/scheduler/appointments/${appointment.id}/status`,
     {
       status: "ATTENDED",
       expectedVersion: arrivalCompleted.body.data.version,
+      authorizationToken: completedAttendanceToken,
     },
   );
   assert.equal(completed.status, 201);
   assert.equal(completed.body.data.status, "ATTENDED");
+});
+
+test("permite corregir un status con código sin borrar el historial anterior", () => {
+  const { state, request } = session();
+  const appointment = state.appointments.find(
+    (candidate) => candidate.status === "ATTENDED",
+  );
+  const previousHistoryLength = appointment.stateHistory.length;
+  const authorizationToken = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointment.id,
+  );
+  const corrected = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/status`,
+    {
+      status: "CONFIRMED",
+      expectedVersion: appointment.version,
+      authorizationToken,
+      reason: "Corrección autorizada por captura equivocada",
+    },
+  );
+
+  assert.equal(corrected.status, 201);
+  assert.equal(corrected.body.data.status, "CONFIRMED");
+  assert.equal(
+    corrected.body.data.stateHistory.length,
+    previousHistoryLength + 1,
+  );
+  assert.equal(corrected.body.data.stateHistory.at(-1).fromStatus, "ATTENDED");
+  assert.equal(corrected.body.data.stateHistory.at(-1).toStatus, "CONFIRMED");
 });
 
 test("liga cada sucursal POS o independiente con sus cabinas y su modelo de renta", () => {

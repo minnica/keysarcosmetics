@@ -2119,6 +2119,9 @@ export function ApiAgendaWorkspace() {
             status:
               attendanceTargetStatus === "arrived" ? "ARRIVED" : "ATTENDED",
             expectedVersion: savedAppointment.version,
+            ...(grant && schedulerDesignProposals.available
+              ? { authorizationToken: grant.token }
+              : {}),
           },
         );
       }
@@ -2433,6 +2436,9 @@ export function ApiAgendaWorkspace() {
             schedulerApi.changeAppointmentStatus(appointment.id, {
               status: schedulerBookingToCanonicalStatus[status],
               expectedVersion: appointment.version,
+              ...(grant && schedulerDesignProposals.available
+                ? { authorizationToken: grant.token }
+                : {}),
             }),
           {
             onSuccess: async () => {
