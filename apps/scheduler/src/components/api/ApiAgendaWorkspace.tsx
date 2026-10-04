@@ -49,6 +49,7 @@ import {
   type SchedulerOperatingHours,
 } from "@/lib/scheduler-agenda-presentation";
 import {
+  buildSchedulerAppointmentMoveServices,
   buildSchedulerAgendaRange,
   loadAllSchedulerAppointments,
   schedulerLocalDateKey,
@@ -95,7 +96,10 @@ import {
   SchedulerSidebar,
   type SchedulerDisplayMode,
 } from "@/components/scheduler/SchedulerSidebar";
-import { SchedulerAgendaGrid } from "@/components/scheduler/SchedulerAgendaGrid";
+import {
+  SchedulerAgendaGrid,
+  type SchedulerBookingMoveTarget,
+} from "@/components/scheduler/SchedulerAgendaGrid";
 import { SchedulerAgendaList } from "@/components/scheduler/SchedulerAgendaList";
 import { SchedulerBookingDialog } from "@/components/scheduler/SchedulerBookingDialog";
 import { SchedulerBlockDialog } from "@/components/scheduler/SchedulerBlockDialog";
@@ -169,29 +173,14 @@ interface AppointmentJournalRequest {
 }
 
 const createStatuses: BookingStatus[] = ["pending", "reserved", "confirmed"];
+const movableAppointmentStatuses = new Set<SchedulerAppointmentDto["status"]>([
+  "PENDING",
+  "RESERVED",
+  "CONFIRMED",
+]);
 
 function bookingSourceId(booking: Booking): string {
   return booking.sourceId ?? booking.id;
-}
-
-function appointmentWriteServices(
-  appointment: SchedulerAppointmentDto,
-  startsAt: string,
-) {
-  const offset =
-    new Date(startsAt).getTime() - new Date(appointment.startsAt).getTime();
-  return appointment.services.map((service) => ({
-    serviceProfileId: service.serviceProfileId,
-    professionalProfileIds: service.professionals.map(
-      (professional) => professional.professionalProfileId,
-    ),
-    resourceIds: service.resources.map((resource) => resource.resourceId),
-    startsAt: new Date(
-      new Date(service.startsAt).getTime() + offset,
-    ).toISOString(),
-    capacityUnits: service.capacityUnits,
-    membershipId: service.membership?.membershipId ?? null,
-  }));
 }
 
 function slotLocalTime(
@@ -2017,7 +2006,10 @@ export function ApiAgendaWorkspace() {
             .join("\n") || null;
         const servicesInput =
           existing.services.length > 1
-            ? appointmentWriteServices(existing.canonical, startsAt)
+            ? buildSchedulerAppointmentMoveServices(
+                existing.canonical,
+                startsAt,
+              )
             : [
                 {
                   serviceProfileId: bookingDraft.serviceId,
@@ -2408,6 +2400,89 @@ export function ApiAgendaWorkspace() {
       },
     );
     setBlockSaving(false);
+  }
+
+  function moveBookingByDrag(
+    booking: Booking,
+    target: SchedulerBookingMoveTarget,
+  ) {
+    const appointment = presentation?.appointments.find(
+      (item) => item.id === bookingSourceId(booking),
+    );
+    if (!appointment || !canWrite) return;
+    if (!movableAppointmentStatuses.has(appointment.status)) {
+      toast.error(
+        "Sólo puedes arrastrar citas pendientes, reservadas o confirmadas.",
+      );
+      return;
+    }
+    if (target.professionalId !== booking.professionalId) {
+      toast.error(
+        "Arrastra la cita dentro de su misma cabina o especialista para conservar la asignación.",
+      );
+      return;
+    }
+    const targetDate = schedulerLocalDateKey(target.date);
+    const startsAt = schedulerLocalDateTimeToInstant(
+      targetDate,
+      target.startTime,
+      appointment.timezone,
+    );
+    if (!startsAt) {
+      toast.error(
+        "La hora elegida no existe en la zona horaria de la sucursal.",
+      );
+      return;
+    }
+    if (startsAt === appointment.startsAt) {
+      toast.info("La cita ya se encuentra en ese horario.");
+      return;
+    }
+
+    requestOperationAuthorization(
+      {
+        title: "Autorizar cambio de horario",
+        description: `Mover ${appointment.customerName} de ${booking.start} a ${target.startTime}. El servidor validará horario, cabina y especialistas antes de guardar.`,
+        purpose: "APPOINTMENT_MOVE",
+        targetType: "APPOINTMENT",
+        targetId: appointment.id,
+      },
+      async (grant) => {
+        await runSchedulerMutation(
+          () =>
+            schedulerApi.moveAppointment(appointment.id, {
+              startsAt,
+              services: buildSchedulerAppointmentMoveServices(
+                appointment.canonical,
+                startsAt,
+              ),
+              expectedVersion: appointment.version,
+            }),
+          {
+            onSuccess: async () => {
+              await commitAuthorizedOperation(grant, {
+                action: "Cambio de horario por arrastre",
+                targetType: "APPOINTMENT",
+                targetId: appointment.id,
+                metadata: {
+                  branchId: appointment.branchId,
+                  previousStartsAt: appointment.startsAt,
+                  startsAt,
+                  source: "DRAG_DROP",
+                },
+              });
+              await appointmentContexts.reload();
+              toast.success(
+                `Cita movida al ${targetDate} a las ${target.startTime}.`,
+              );
+            },
+            onError: toast.error,
+            onConflict: setConflict,
+            invalidate: ["agenda"],
+          },
+        );
+      },
+    );
   }
 
   function changeStatus(bookingId: string, status: BookingStatus) {
@@ -2915,6 +2990,7 @@ export function ApiAgendaWorkspace() {
                   onDeletePaymentHistory={noop}
                   onEditBlock={editBlock}
                   onEditBooking={openEditBooking}
+                  onMoveBooking={moveBookingByDrag}
                   onOpenBookingDetail={(booking) =>
                     openSensitive(booking, "record")
                   }

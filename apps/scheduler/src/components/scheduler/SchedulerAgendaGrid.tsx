@@ -6,6 +6,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   Badge,
@@ -88,6 +90,7 @@ interface SchedulerAgendaGridProps {
   onCreateBlock: (professionalId: string, startTime: string) => void;
   onEditBlock: (block: AvailabilityBlock) => void;
   onEditBooking: (booking: Booking) => void;
+  onMoveBooking: (booking: Booking, target: SchedulerBookingMoveTarget) => void;
   onDeleteBooking: (bookingId: string) => void;
   onUpdateBookingStatus: (bookingId: string, status: BookingStatus) => void;
   onPurchaseDecision: (booking: Booking, purchased: boolean) => void;
@@ -122,6 +125,12 @@ interface SchedulerAgendaGridProps {
   visibleStatuses?: ReadonlySet<BookingStatus> | undefined;
 }
 
+export interface SchedulerBookingMoveTarget {
+  date: Date;
+  professionalId: string;
+  startTime: string;
+}
+
 interface DayOverlayBooking {
   booking: Booking;
   style: CSSProperties;
@@ -153,6 +162,16 @@ const compactAgendaMediaQuery = [
 const denseAgendaMediaQuery = "(min-width: 1024px) and (max-height: 780px)";
 const ultraDenseAgendaMediaQuery =
   "(min-width: 1024px) and (max-height: 680px)";
+const movableBookingStatuses = new Set<BookingStatus>([
+  "pending",
+  "reserved",
+  "confirmed",
+]);
+
+function bookingMoveTargetKey(target: SchedulerBookingMoveTarget) {
+  return `${target.date.getFullYear()}-${target.date.getMonth()}-${target.date.getDate()}:${target.startTime}:${target.professionalId}`;
+}
+
 function useAgendaLayoutMetrics(): SchedulerAgendaLayoutMetrics {
   const [layout, setLayout] = useState<SchedulerAgendaLayoutMetrics>(
     schedulerComfortableLayout,
@@ -228,6 +247,7 @@ export function SchedulerAgendaGrid({
   onCreateBlock,
   onEditBlock,
   onEditBooking,
+  onMoveBooking,
   onDeleteBooking,
   onUpdateBookingStatus,
   onPurchaseDecision,
@@ -255,7 +275,10 @@ export function SchedulerAgendaGrid({
 }: SchedulerAgendaGridProps) {
   const baseAgendaLayout = useAgendaLayoutMetrics();
   const gridViewportRef = useRef<HTMLDivElement>(null);
+  const suppressBookingClickRef = useRef(false);
   const [gridViewportHeight, setGridViewportHeight] = useState(0);
+  const [draggingBooking, setDraggingBooking] = useState<Booking | null>(null);
+  const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
   const dayCalendarRange = useMemo(
     () =>
       getSchedulerCalendarRange(
@@ -536,6 +559,68 @@ export function SchedulerAgendaGrid({
     currentTimeMinutes >= dayBaseMinutes &&
     currentTimeMinutes <= dayClosingMinutes;
 
+  function startBookingDrag(
+    event: DragEvent<HTMLButtonElement>,
+    booking: Booking,
+  ) {
+    if (!canWrite || !movableBookingStatuses.has(booking.status)) {
+      event.preventDefault();
+      return;
+    }
+    suppressBookingClickRef.current = true;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", booking.id);
+    setDraggingBooking(booking);
+    setDragTargetKey(null);
+  }
+
+  function finishBookingDrag() {
+    setDraggingBooking(null);
+    setDragTargetKey(null);
+    window.setTimeout(() => {
+      suppressBookingClickRef.current = false;
+    }, 0);
+  }
+
+  function targetAcceptsBooking(target: SchedulerBookingMoveTarget) {
+    return Boolean(
+      canWrite &&
+      draggingBooking &&
+      draggingBooking.professionalId === target.professionalId,
+    );
+  }
+
+  function handleBookingDragOver(
+    event: DragEvent<HTMLDivElement>,
+    target: SchedulerBookingMoveTarget,
+  ) {
+    if (!targetAcceptsBooking(target)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const nextTargetKey = bookingMoveTargetKey(target);
+    setDragTargetKey((current) =>
+      current === nextTargetKey ? current : nextTargetKey,
+    );
+  }
+
+  function handleBookingDrop(
+    event: DragEvent<HTMLDivElement>,
+    target: SchedulerBookingMoveTarget,
+  ) {
+    if (!draggingBooking || !targetAcceptsBooking(target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const booking = draggingBooking;
+    finishBookingDrag();
+    onMoveBooking(booking, target);
+  }
+
+  function suppressClickAfterDrag(event: ReactMouseEvent<HTMLButtonElement>) {
+    if (!suppressBookingClickRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   return (
     <TooltipProvider delayDuration={220}>
       <Card className="scheduler-agenda-card flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
@@ -621,6 +706,12 @@ export function SchedulerAgendaGrid({
                       const isOccupied = occupiedDaySlots.has(
                         `${slot}-${professional.id}`,
                       );
+                      const moveTarget: SchedulerBookingMoveTarget = {
+                        date: selectedDate,
+                        professionalId: professional.id,
+                        startTime: slot,
+                      };
+                      const moveTargetKey = bookingMoveTargetKey(moveTarget);
 
                       return (
                         <div
@@ -630,7 +721,19 @@ export function SchedulerAgendaGrid({
                             isOccupied
                               ? "scheduler-body-cell-occupied"
                               : "scheduler-body-cell-interactive",
+                            dragTargetKey === moveTargetKey &&
+                              "scheduler-body-cell-drop-target",
                           )}
+                          onDragLeave={() => {
+                            if (dragTargetKey === moveTargetKey)
+                              setDragTargetKey(null);
+                          }}
+                          onDragOver={(event) =>
+                            handleBookingDragOver(event, moveTarget)
+                          }
+                          onDrop={(event) =>
+                            handleBookingDrop(event, moveTarget)
+                          }
                         >
                           {isOccupied || !canWrite ? null : (
                             <button
@@ -683,8 +786,26 @@ export function SchedulerAgendaGrid({
                         <TooltipTrigger asChild>
                           <DialogTrigger asChild>
                             <button
-                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}`}
-                              className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
+                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}. Puedes arrastrarla a otra hora.`}
+                              className={cn(
+                                "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
+                                canWrite &&
+                                  movableBookingStatuses.has(booking.status)
+                                  ? "scheduler-appointment-draggable"
+                                  : "",
+                                draggingBooking?.id === booking.id
+                                  ? "scheduler-appointment-dragging"
+                                  : "",
+                              )}
+                              draggable={
+                                canWrite &&
+                                movableBookingStatuses.has(booking.status)
+                              }
+                              onClickCapture={suppressClickAfterDrag}
+                              onDragEnd={finishBookingDrag}
+                              onDragStart={(event) =>
+                                startBookingDrag(event, booking)
+                              }
                               style={{
                                 ...style,
                                 backgroundColor: statusTokens.surface,
@@ -984,22 +1105,50 @@ export function SchedulerAgendaGrid({
                 {weekTimeSlots.map((slot) => (
                   <div key={`week-${slot}`} className="contents">
                     <div className="scheduler-time-cell">{slot}</div>
-                    {weekDays.map((day) => (
-                      <div
-                        key={`${slot}-${day.toISOString()}`}
-                        className={cn(
-                          "scheduler-body-cell",
-                          isOutsideSchedulerOperatingHours(
-                            commerceOperatingHours,
-                            day,
-                            slot,
-                            addMinutesToTime(slot, slotMinutes),
-                          )
-                            ? "scheduler-body-cell-commerce-closed"
-                            : "",
-                        )}
-                      />
-                    ))}
+                    {weekDays.map((day) => {
+                      const outsideOperatingHours =
+                        isOutsideSchedulerOperatingHours(
+                          commerceOperatingHours,
+                          day,
+                          slot,
+                          addMinutesToTime(slot, slotMinutes),
+                        );
+                      const moveTarget: SchedulerBookingMoveTarget = {
+                        date: day,
+                        professionalId:
+                          draggingBooking?.professionalId ??
+                          visibleProfessionals[0]?.id ??
+                          "",
+                        startTime: slot,
+                      };
+                      const moveTargetKey = bookingMoveTargetKey(moveTarget);
+                      return (
+                        <div
+                          key={`${slot}-${day.toISOString()}`}
+                          className={cn(
+                            "scheduler-body-cell",
+                            outsideOperatingHours
+                              ? "scheduler-body-cell-commerce-closed"
+                              : "",
+                            !outsideOperatingHours &&
+                              dragTargetKey === moveTargetKey &&
+                              "scheduler-body-cell-drop-target",
+                          )}
+                          onDragLeave={() => {
+                            if (dragTargetKey === moveTargetKey)
+                              setDragTargetKey(null);
+                          }}
+                          onDragOver={(event) => {
+                            if (!outsideOperatingHours)
+                              handleBookingDragOver(event, moveTarget);
+                          }}
+                          onDrop={(event) => {
+                            if (!outsideOperatingHours)
+                              handleBookingDrop(event, moveTarget);
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                 ))}
 
@@ -1032,8 +1181,26 @@ export function SchedulerAgendaGrid({
                         <TooltipTrigger asChild>
                           <DialogTrigger asChild>
                             <button
-                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}`}
-                              className="scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5"
+                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}. Puedes arrastrarla a otro día u hora.`}
+                              className={cn(
+                                "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
+                                canWrite &&
+                                  movableBookingStatuses.has(booking.status)
+                                  ? "scheduler-appointment-draggable"
+                                  : "",
+                                draggingBooking?.id === booking.id
+                                  ? "scheduler-appointment-dragging"
+                                  : "",
+                              )}
+                              draggable={
+                                canWrite &&
+                                movableBookingStatuses.has(booking.status)
+                              }
+                              onClickCapture={suppressClickAfterDrag}
+                              onDragEnd={finishBookingDrag}
+                              onDragStart={(event) =>
+                                startBookingDrag(event, booking)
+                              }
                               style={{
                                 ...style,
                                 ...horizontalStyle,

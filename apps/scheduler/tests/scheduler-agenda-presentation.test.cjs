@@ -52,6 +52,7 @@ test("extends the visible agenda slots when operating hours grow", () => {
   assert.equal(extended.at(-1), "19:30");
 });
 const {
+  buildSchedulerAppointmentMoveServices,
   buildSchedulerAgendaRange,
   loadAllSchedulerAppointments,
   schedulerLocalDateTimeToInstant,
@@ -128,6 +129,49 @@ const appointment = (overrides = {}) => ({
   createdAt: "2026-09-01T15:00:00.000Z",
   updatedAt: "2026-09-06T15:00:00.000Z",
   ...overrides,
+});
+
+test("moves every service by the same offset without changing assignments", () => {
+  const secondService = service({
+    id: "appointment-service-2",
+    serviceProfileId: "service-2",
+    startsAt: "2026-09-07T05:30:00.000Z",
+    professionals: [
+      {
+        professionalProfileId: "professional-2",
+        name: "Camila Torres",
+        role: "PRIMARY",
+      },
+    ],
+    resources: [
+      { resourceId: "resource-2", name: "Cabina 2", units: 1, exclusive: true },
+    ],
+    membership: null,
+    capacityUnits: 2,
+  });
+  const moved = buildSchedulerAppointmentMoveServices(
+    appointment({ services: [service(), secondService] }),
+    "2026-09-08T04:30:00.000Z",
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(moved)), [
+    {
+      serviceProfileId: "service-1",
+      professionalProfileIds: ["professional-1"],
+      resourceIds: ["resource-1"],
+      startsAt: "2026-09-08T04:30:00.000Z",
+      capacityUnits: 1,
+      membershipId: "membership-1",
+    },
+    {
+      serviceProfileId: "service-2",
+      professionalProfileIds: ["professional-2"],
+      resourceIds: ["resource-2"],
+      startsAt: "2026-09-08T05:30:00.000Z",
+      capacityUnits: 2,
+      membershipId: null,
+    },
+  ]);
 });
 
 test("converts instants with the branch timezone across midnight", () => {

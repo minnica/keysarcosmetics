@@ -121,6 +121,24 @@ configuran intervalos muy cortos, las tarjetas reducen su altura y el detalle
 completo permanece disponible al colocar el cursor sobre la cita. El tooltip
 muestra cliente, horario, servicio, especialista, estado, contacto y notas.
 
+Las citas **Pendiente**, **Reservada** o **Confirmada** se pueden mover con el
+mouse. En vista diaria se arrastran verticalmente a otra franja de la misma
+cabina o especialista; en vista semanal también se pueden soltar en otro día.
+La celda destino se resalta antes de soltar. El movimiento conserva duración,
+servicios, capacidad, membresía, cabina y especialistas: todos los servicios se
+desplazan por el mismo intervalo, sin reasignar participantes. Para cambiar de
+cabina o especialista se mantiene el formulario **Editar**, que también es la
+alternativa accesible cuando no se usa arrastre.
+
+Soltar una cita solicita un código con permiso `APPOINTMENT_MOVE`. El servidor
+vuelve a validar versión, horario de sucursal, descansos, bloqueos, cabina,
+especialistas y solapamientos; si existe conflicto, la cita permanece en su
+horario original. Llegadas, citas atendidas, canceladas o no asistidas no son
+arrastrables. El movimiento exitoso agrega la acción **Cambio de horario por
+arrastre** a la bitácora sin guardar el código personal. No se propone un endpoint
+nuevo: se reutiliza `POST /api/scheduler/appointments/:id/move` y el contrato de
+autorización existente.
+
 La selección de sucursales de Agenda admite **Todas**, **Disponibles en la
 fecha** o una combinación manual. Cada sucursal conserva su consulta, zona
 horaria y perfil canónico; las columnas se identifican con el nombre de la
@@ -477,7 +495,13 @@ Recorrido manual recomendado:
    cuentas, o `1111`/`2222`/`5555` de los especialistas POS/CRM ficticios; debe rechazarse
    sin revelar a quién pertenece.
 3. Crea o modifica una cita con un código válido y confirma que el calendario
-   cabe en la ventana y que el hover muestra el detalle.
+   cabe en la ventana y que el hover muestra el detalle. Arrastra una cita
+   confirmada a otra hora dentro de su misma columna, autoriza el cambio y
+   comprueba que conserva duración, cabina, especialistas y servicios. En vista
+   semanal muévela a otro día; después intenta soltarla sobre un horario ocupado
+   y confirma que permanece en el horario anterior. Una cita atendida no debe
+   mostrar cursor de arrastre y **Editar** debe seguir permitiendo el cambio por
+   teclado.
 4. Selecciona Todas, Disponibles y una combinación manual de sucursales; comprueba
    el nombre de local en cada columna, alterna el ajuste y abre la impresión diaria.
 5. En Clientes combina cancelación, servicio, cumpleaños, vendedor y un campo
@@ -624,12 +648,14 @@ cancelación, conflictos, duplicados y autorizaciones. Los chunks del build norm
 no contienen el runtime de diseño. Lint conserva tres avisos de `<img>` que ya
 existían en la rama base.
 
-El 4 de octubre de 2026 se repitieron TypeScript, lint, las 78 pruebas y
+El 4 de octubre de 2026 se repitieron TypeScript, lint, las 79 pruebas y
 `build:design` después de incorporar autorizaciones por puesto, copia masiva de
-horarios y paginación del detalle de ventas. La cobertura separa el permiso para
-**Llegó** del permiso para registrar una compra, verifica el rechazo cruzado,
-conserva el override master, comprueba que una ampliación de horario extienda las
-franjas visibles de Agenda y valida las vistas de 20/40/60/todas las filas.
+horarios, paginación del detalle de ventas y movimiento de citas por arrastre.
+La cobertura separa el permiso para **Llegó** del permiso para registrar una
+compra, verifica el rechazo cruzado, conserva el override master, comprueba que
+una ampliación de horario extienda las franjas visibles de Agenda, valida las
+vistas de 20/40/60/todas las filas y confirma que una cita multiservicio mueve
+todas sus líneas por el mismo intervalo sin reasignar cabinas o especialistas.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

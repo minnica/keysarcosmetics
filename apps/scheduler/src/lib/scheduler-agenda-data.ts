@@ -2,6 +2,7 @@ import type {
   SchedulerAppointmentDto,
   SchedulerAppointmentListRequest,
   SchedulerAppointmentPageDto,
+  SchedulerAppointmentServiceWriteDto,
 } from "@cosmetics/types";
 
 export interface SchedulerAgendaRange {
@@ -74,6 +75,26 @@ export async function loadAllSchedulerAppointments(
     ),
   );
   return [first, ...remaining].flatMap((page) => page.items);
+}
+
+export function buildSchedulerAppointmentMoveServices(
+  appointment: SchedulerAppointmentDto,
+  startsAt: string,
+): SchedulerAppointmentServiceWriteDto[] {
+  const offset =
+    new Date(startsAt).getTime() - new Date(appointment.startsAt).getTime();
+  return appointment.services.map((service) => ({
+    serviceProfileId: service.serviceProfileId,
+    professionalProfileIds: service.professionals.map(
+      (professional) => professional.professionalProfileId,
+    ),
+    resourceIds: service.resources.map((resource) => resource.resourceId),
+    startsAt: new Date(
+      new Date(service.startsAt).getTime() + offset,
+    ).toISOString(),
+    capacityUnits: service.capacityUnits,
+    membershipId: service.membership?.membershipId ?? null,
+  }));
 }
 
 function formatterParts(value: Date, timezone: string) {
