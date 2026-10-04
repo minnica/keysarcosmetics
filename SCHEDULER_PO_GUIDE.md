@@ -133,7 +133,8 @@ automáticamente las columnas cuando conservan un ancho legible; si no caben,
 mantiene el desplazamiento horizontal dentro de la cuadrícula. El panel ofrece
 los modos **Cabinas**, **Especialistas** y **Ambos**. Las cabinas se distinguen
 por un encabezado compacto sin avatar redundante, capacidad y acento café; los
-especialistas usan avatar, su propia etiqueta y acento azul. Ninguna columna se
+especialistas usan el mismo encabezado compacto sin avatar, su propia etiqueta y
+acento azul. Ninguna columna se
 reduce por debajo del mínimo operativo: seis o más columnas conservan nombres y
 sucursal legibles, con desplazamiento horizontal cuando el monitor no alcanza.
 El botón de impresión cambia a día, ajusta columnas y abre la

@@ -63,7 +63,6 @@ import {
   type SchedulerOperatingHours,
 } from "@/lib/scheduler-agenda-presentation";
 import { SchedulerBookingCard } from "./SchedulerBookingCard";
-import { SchedulerAvatar } from "./SchedulerAvatar";
 import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
 import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
 import type { DesignAppointmentContext } from "../../../design/contracts";
@@ -577,15 +576,6 @@ export function SchedulerAgendaGrid({
                         : "scheduler-column-header-professional",
                     )}
                   >
-                    {professional.kind !== "RESOURCE" ? (
-                      <SchedulerAvatar
-                        accent={professional.accent}
-                        avatar={professional.avatar}
-                        name={professional.name}
-                        shortName={professional.shortName}
-                        size="header"
-                      />
-                    ) : null}
                     <div className="min-w-0">
                       <span
                         className={cn(

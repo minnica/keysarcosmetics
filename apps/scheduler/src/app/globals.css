@@ -312,7 +312,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.45rem;
+    gap: 0.35rem;
     border-bottom: 1px solid rgba(236, 209, 200, 0.72);
     border-right: 1px solid rgba(236, 209, 200, 0.72);
     background: linear-gradient(180deg, #fffbf7 0%, #f8f2eb 100%);
@@ -321,18 +321,17 @@
     backdrop-filter: blur(10px);
   }
 
-  .scheduler-column-header-resource {
-    gap: 0.35rem;
-    box-shadow: inset 0 3px 0 rgba(173, 139, 103, 0.72);
-  }
-
-  .scheduler-column-header-resource > div {
+  .scheduler-column-header > div {
     width: 100%;
   }
 
-  .scheduler-column-header-resource .scheduler-professional-name {
+  .scheduler-column-header .scheduler-professional-name {
     margin-top: 0.4rem;
     font-size: 0.82rem;
+  }
+
+  .scheduler-column-header-resource {
+    box-shadow: inset 0 3px 0 rgba(173, 139, 103, 0.72);
   }
 
   .scheduler-column-header-professional {
