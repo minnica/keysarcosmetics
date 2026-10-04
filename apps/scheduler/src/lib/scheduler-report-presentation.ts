@@ -23,6 +23,17 @@ export type SchedulerReportBundle = Partial<
   Record<SchedulerReportKey, SchedulerReportDatasetDto>
 >;
 
+export type SchedulerReportPageSize = 20 | 40 | 60 | "ALL";
+
+export interface SchedulerReportPage<T> {
+  rows: T[];
+  page: number;
+  totalPages: number;
+  from: number;
+  to: number;
+  total: number;
+}
+
 export interface SchedulerReportViewDefinition {
   eyebrow: string;
   title: string;
@@ -207,6 +218,29 @@ export function mergeSchedulerReportPages(
     rows,
     page: 1,
     pageSize: rows.length,
+  };
+}
+
+export function paginateSchedulerReportRows<T>(
+  rows: T[],
+  requestedPage: number,
+  pageSize: SchedulerReportPageSize,
+): SchedulerReportPage<T> {
+  const total = rows.length;
+  const totalPages =
+    pageSize === "ALL" ? 1 : Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, requestedPage), totalPages);
+  const offset = pageSize === "ALL" ? 0 : (page - 1) * pageSize;
+  const visibleRows =
+    pageSize === "ALL" ? rows : rows.slice(offset, offset + pageSize);
+
+  return {
+    rows: visibleRows,
+    page,
+    totalPages,
+    from: total === 0 ? 0 : offset + 1,
+    to: total === 0 ? 0 : offset + visibleRows.length,
+    total,
   };
 }
 

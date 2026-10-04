@@ -281,8 +281,9 @@ total al especialista original; el detalle conserva por separado quién atendió
 quién es propietario de la venta y el estado `OPEN`/`PAID` de la liquidación.
 
 En **Reportes → Compras de agenda o cabinas** el modo diseño muestra un dashboard
-independiente de **Ventas y pagos**. Puede seleccionar día, semana, mes o rango
-personalizado desde calendario, y combinar sucursal, cabina, status, resultado
+independiente de **Ventas y pagos**. Al entrar selecciona automáticamente el día
+en curso; después puede elegir día, semana, mes o rango personalizado desde
+calendario, y combinar sucursal, cabina, status, resultado
 de compra, servicio, especialista, vendedor, monto mínimo/máximo y búsqueda.
 Todos esos criterios producen una sola población a nivel visitante; esa misma
 población alimenta indicadores, consolidado por sucursal, comparación por cabina,
@@ -299,9 +300,13 @@ representante de la cita, origen del representante y próxima cita (o la leyenda
 **No cuenta con una próxima cita**), anticipo, saldo, especialista que atendió, propietario de la venta, estado/fecha
 de liquidación, comentarios, estado, origen y última actualización. Excel crea
 `Resumen`, `Por sucursal`, `Por cabina`, `Por día` y `Detalle` con fechas/importes tipados; PDF
-incluye resumen, desglose, ranking, servicios y detalle. La impresión, PDF y Excel
-usan únicamente el resultado ya filtrado. Las librerías pesadas se cargan sólo al
-solicitar una descarga.
+incluye resumen, desglose, ranking, servicios y detalle. La tabla permite mostrar
+20, 40, 60 o todas las filas filtradas y paginar sin cambiar la población del
+reporte. La impresión, PDF y Excel usan únicamente el periodo y los filtros
+aplicados —nunca sólo la página visible—; si hay cambios pendientes, esas acciones
+permanecen bloqueadas hasta pulsar **Aplicar**. Los tres accesos también aparecen
+en el encabezado del detalle para permanecer visibles junto a la población que
+exportan. Las librerías pesadas se cargan sólo al solicitar una descarga.
 
 En **Reportes → Proyecciones** se selecciona el mes objetivo, una ventana de
 3/6/12 meses y una combinación de sucursales. La demo compara promedio histórico,
@@ -500,8 +505,12 @@ Recorrido manual recomendado:
 9. Abre Reportes → Compras de agenda o cabinas, combina periodo, sucursal,
    cabina, status, servicio, especialista, vendedor y monto. Confirma que
    tarjetas, series, ranking, analítica y tabla cambian juntas; imprime y descarga
-   PDF/Excel, verificando que sólo incluyan el detalle filtrado, representante y
-   próxima cita. El indicador **Sin próxima cita** debe usar esa misma población.
+   PDF/Excel, verificando que sólo incluyan el periodo y detalle filtrados,
+   representante y próxima cita. Cambia la vista entre 20, 40, 60 y todas las
+   filas: la página visible debe cambiar, pero las exportaciones deben conservar
+   toda la población filtrada. Al abrir el reporte de nuevo, el periodo inicial
+   debe ser el día en curso. El indicador **Sin próxima cita** debe usar esa misma
+   población.
 10. En Administración → Colores de status agrega uno, edita nombre/color y
     después inactívalo. Despliega su historial: deben existir tres versiones,
     conservar la misma clave y aparecer tres movimientos sin mostrar el código.
@@ -615,11 +624,12 @@ cancelación, conflictos, duplicados y autorizaciones. Los chunks del build norm
 no contienen el runtime de diseño. Lint conserva tres avisos de `<img>` que ya
 existían en la rama base.
 
-El 3 de octubre de 2026 se repitieron TypeScript, lint, las 77 pruebas y
-`build:design` después de incorporar autorizaciones por puesto y copia masiva de
-horarios. La cobertura separa el permiso para **Llegó** del permiso para
-registrar una compra, verifica el rechazo cruzado, conserva el override master y
-comprueba que una ampliación de horario extienda las franjas visibles de Agenda.
+El 4 de octubre de 2026 se repitieron TypeScript, lint, las 78 pruebas y
+`build:design` después de incorporar autorizaciones por puesto, copia masiva de
+horarios y paginación del detalle de ventas. La cobertura separa el permiso para
+**Llegó** del permiso para registrar una compra, verifica el rechazo cruzado,
+conserva el override master, comprueba que una ampliación de horario extienda las
+franjas visibles de Agenda y valida las vistas de 20/40/60/todas las filas.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

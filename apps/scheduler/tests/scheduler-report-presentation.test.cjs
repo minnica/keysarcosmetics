@@ -21,6 +21,7 @@ vm.runInNewContext(outputText, { exports: exported, Map, Set, Number });
 const {
   groupReportRows,
   mergeSchedulerReportPages,
+  paginateSchedulerReportRows,
   reportMetricCards,
   reportTrend,
   schedulerReportViews,
@@ -89,6 +90,32 @@ test("merges every report page without replacing canonical summary metadata", ()
   assert.equal(merged.summary.Citas, 2);
   assert.equal(merged.page, 1);
   assert.equal(merged.pageSize, 2);
+});
+
+test("paginates report detail at 20, 40, 60 or every filtered row", () => {
+  const rows = Array.from({ length: 73 }, (_, index) => ({ id: index + 1 }));
+  const first = paginateSchedulerReportRows(rows, 1, 20);
+  assert.equal(first.rows.length, 20);
+  assert.equal(first.from, 1);
+  assert.equal(first.to, 20);
+  assert.equal(first.totalPages, 4);
+
+  const second = paginateSchedulerReportRows(rows, 2, 40);
+  assert.equal(second.rows.length, 33);
+  assert.equal(second.from, 41);
+  assert.equal(second.to, 73);
+  assert.equal(second.totalPages, 2);
+
+  const clamped = paginateSchedulerReportRows(rows, 99, 60);
+  assert.equal(clamped.page, 2);
+  assert.equal(clamped.from, 61);
+  assert.equal(clamped.to, 73);
+
+  const all = paginateSchedulerReportRows(rows, 3, "ALL");
+  assert.equal(all.page, 1);
+  assert.equal(all.rows.length, 73);
+  assert.equal(all.from, 1);
+  assert.equal(all.to, 73);
 });
 
 test("groups charts from real rows and keeps chronological trends", () => {

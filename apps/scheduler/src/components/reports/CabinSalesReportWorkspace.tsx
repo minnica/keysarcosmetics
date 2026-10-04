@@ -15,6 +15,8 @@ import {
 import {
   BarChart3,
   CalendarX2,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileSpreadsheet,
   Printer,
@@ -37,6 +39,10 @@ import {
   printCabinSalesReport,
   type CabinSalesExportFormat,
 } from "./cabin-sales-report-export";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "../../lib/scheduler-report-presentation";
 
 interface BranchItem {
   id: string;
@@ -106,18 +112,68 @@ const statusLabels: Record<string, string> = {
   CANCELED: "Cancelada",
 };
 
+interface ReportExportActionsProps {
+  canExport: boolean;
+  disabled: boolean;
+  exporting: CabinSalesExportFormat | null;
+  onDownload: (format: CabinSalesExportFormat) => void;
+  onPrint: () => void;
+  compact?: boolean;
+}
+
+function ReportExportActions({
+  canExport,
+  disabled,
+  exporting,
+  onDownload,
+  onPrint,
+  compact = false,
+}: ReportExportActionsProps) {
+  if (!canExport) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        disabled={disabled || Boolean(exporting)}
+        onClick={onPrint}
+        size={compact ? "sm" : "default"}
+        variant="outline"
+      >
+        <Printer className="mr-2 h-4 w-4" />
+        Imprimir
+      </Button>
+      <Button
+        disabled={disabled || Boolean(exporting)}
+        onClick={() => onDownload("xlsx")}
+        size={compact ? "sm" : "default"}
+        variant="outline"
+      >
+        <FileSpreadsheet className="mr-2 h-4 w-4" />
+        {exporting === "xlsx" ? "Generando…" : "Excel"}
+      </Button>
+      <Button
+        disabled={disabled || Boolean(exporting)}
+        onClick={() => onDownload("pdf")}
+        size={compact ? "sm" : "default"}
+      >
+        <Download className="mr-2 h-4 w-4" />
+        {exporting === "pdf" ? "Generando…" : "PDF"}
+      </Button>
+    </div>
+  );
+}
+
 export function CabinSalesReportWorkspace({
   branches,
   fixedBranch,
   userName,
   canExport,
 }: CabinSalesReportWorkspaceProps) {
-  const [dateFrom, setDateFrom] = useState(() => dateInput(-30));
+  const [dateFrom, setDateFrom] = useState(() => dateInput());
   const [dateTo, setDateTo] = useState(() => dateInput());
   const [branchId, setBranchId] = useState(fixedBranch?.id ?? "ALL");
   const [cabinResourceId, setCabinResourceId] = useState("ALL");
   const [query, setQuery] = useState("");
-  const [periodMode, setPeriodMode] = useState<PeriodMode>("CUSTOM");
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("DAY");
   const [anchorDate, setAnchorDate] = useState(() => dateInput());
   const [groupMode, setGroupMode] = useState<GroupMode>("DAY");
   const [status, setStatus] = useState("ALL");
@@ -128,7 +184,7 @@ export function CabinSalesReportWorkspace({
   const [minSaleAmount, setMinSaleAmount] = useState("");
   const [maxSaleAmount, setMaxSaleAmount] = useState("");
   const [applied, setApplied] = useState<DesignCabinSalesReportFilters>(() => ({
-    dateFrom: dateInput(-30),
+    dateFrom: dateInput(),
     dateTo: dateInput(),
     branchIds: fixedBranch ? [fixedBranch.id] : branches.map((branch) => branch.id),
   }));
@@ -136,6 +192,60 @@ export function CabinSalesReportWorkspace({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<CabinSalesExportFormat | null>(null);
+  const [detailPageSize, setDetailPageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const [detailPage, setDetailPage] = useState(1);
+
+  const draftFilters = useMemo<DesignCabinSalesReportFilters>(
+    () => ({
+      dateFrom,
+      dateTo,
+      branchIds: fixedBranch
+        ? [fixedBranch.id]
+        : branchId === "ALL"
+          ? branches.map((branch) => branch.id)
+          : [branchId],
+      ...(cabinResourceId !== "ALL" ? { cabinResourceId } : {}),
+      ...(status !== "ALL"
+        ? {
+            status: status as NonNullable<
+              DesignCabinSalesReportFilters["status"]
+            >,
+          }
+        : {}),
+      ...(purchaseKind !== "ALL"
+        ? {
+            purchaseKind: purchaseKind as NonNullable<
+              DesignCabinSalesReportFilters["purchaseKind"]
+            >,
+          }
+        : {}),
+      ...(serviceProfileId !== "ALL" ? { serviceProfileId } : {}),
+      ...(specialistProfileId !== "ALL" ? { specialistProfileId } : {}),
+      ...(sellerName !== "ALL" ? { sellerName } : {}),
+      ...(minSaleAmount !== "" ? { minSaleAmount: Number(minSaleAmount) } : {}),
+      ...(maxSaleAmount !== "" ? { maxSaleAmount: Number(maxSaleAmount) } : {}),
+      ...(query.trim() ? { query: query.trim() } : {}),
+    }),
+    [
+      branchId,
+      branches,
+      cabinResourceId,
+      dateFrom,
+      dateTo,
+      fixedBranch,
+      maxSaleAmount,
+      minSaleAmount,
+      purchaseKind,
+      query,
+      sellerName,
+      serviceProfileId,
+      specialistProfileId,
+      status,
+    ],
+  );
+  const filtersAreApplied =
+    JSON.stringify(draftFilters) === JSON.stringify(applied);
 
   useEffect(() => {
     let active = true;
@@ -205,6 +315,16 @@ export function CabinSalesReportWorkspace({
       ),
     [report?.serviceAnalytics],
   );
+  const detailPagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        report?.rows ?? [],
+        detailPage,
+        detailPageSize,
+      ),
+    [detailPage, detailPageSize, report?.rows],
+  );
+  const reportActionsDisabled = !report || loading || !filtersAreApplied;
 
   function setPreset(mode: PeriodMode, nextAnchor = anchorDate) {
     setPeriodMode(mode);
@@ -227,40 +347,18 @@ export function CabinSalesReportWorkspace({
       toast.error("La venta mínima no puede superar la venta máxima.");
       return;
     }
-    setApplied({
-      dateFrom,
-      dateTo,
-      branchIds: fixedBranch
-        ? [fixedBranch.id]
-        : branchId === "ALL"
-          ? branches.map((branch) => branch.id)
-          : [branchId],
-      ...(cabinResourceId !== "ALL" ? { cabinResourceId } : {}),
-      ...(status !== "ALL"
-        ? {
-            status: status as NonNullable<
-              DesignCabinSalesReportFilters["status"]
-            >,
-          }
-        : {}),
-      ...(purchaseKind !== "ALL"
-        ? {
-            purchaseKind: purchaseKind as NonNullable<
-              DesignCabinSalesReportFilters["purchaseKind"]
-            >,
-          }
-        : {}),
-      ...(serviceProfileId !== "ALL" ? { serviceProfileId } : {}),
-      ...(specialistProfileId !== "ALL" ? { specialistProfileId } : {}),
-      ...(sellerName !== "ALL" ? { sellerName } : {}),
-      ...(minSaleAmount !== "" ? { minSaleAmount: Number(minSaleAmount) } : {}),
-      ...(maxSaleAmount !== "" ? { maxSaleAmount: Number(maxSaleAmount) } : {}),
-      ...(query.trim() ? { query: query.trim() } : {}),
-    });
+    setDetailPage(1);
+    if (!filtersAreApplied) {
+      setLoading(true);
+      setApplied(draftFilters);
+    }
   }
 
   function printReport() {
-    if (!report) return;
+    if (!report || reportActionsDisabled) {
+      toast.error("Aplica los filtros antes de imprimir el periodo seleccionado.");
+      return;
+    }
     try {
       printCabinSalesReport(report);
       toast.success("Vista de impresión generada con el conjunto filtrado.");
@@ -272,7 +370,10 @@ export function CabinSalesReportWorkspace({
   }
 
   async function download(format: CabinSalesExportFormat) {
-    if (!report) return;
+    if (!report || reportActionsDisabled) {
+      toast.error("Aplica los filtros antes de descargar el periodo seleccionado.");
+      return;
+    }
     setExporting(format);
     try {
       await exportCabinSalesReport(report, format);
@@ -347,33 +448,13 @@ export function CabinSalesReportWorkspace({
               la venta canónica del POS.
             </p>
           </div>
-          {canExport ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                disabled={!report}
-                onClick={printReport}
-                variant="outline"
-              >
-                <Printer className="mr-2 h-4 w-4" />
-                Imprimir
-              </Button>
-              <Button
-                disabled={!report || Boolean(exporting)}
-                onClick={() => void download("xlsx")}
-                variant="outline"
-              >
-                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                {exporting === "xlsx" ? "Generando…" : "Excel"}
-              </Button>
-              <Button
-                disabled={!report || Boolean(exporting)}
-                onClick={() => void download("pdf")}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {exporting === "pdf" ? "Generando…" : "PDF"}
-              </Button>
-            </div>
-          ) : null}
+          <ReportExportActions
+            canExport={canExport}
+            disabled={reportActionsDisabled}
+            exporting={exporting}
+            onDownload={(format) => void download(format)}
+            onPrint={printReport}
+          />
         </div>
 
         <section className="reservation-control-panel">
@@ -738,14 +819,66 @@ export function CabinSalesReportWorkspace({
             </section>
 
             <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-              <div className="flex flex-col gap-2 border-b border-slate-100 p-5 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-4 border-b border-slate-100 p-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <p className="label-caps">Detalle auditable</p>
                   <h2 className="mt-1 text-xl font-semibold">Citas, visitantes y venta</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Periodo aplicado: <strong>{report.filters.dateFrom}</strong> a{" "}
+                    <strong>{report.filters.dateTo}</strong>
+                  </p>
                 </div>
-                <p className="text-xs text-slate-400">
-                  {report.rows.length} filas · generado {dateTime.format(new Date(report.generatedAt))}
-                </p>
+                <div className="flex flex-col items-start gap-3 lg:items-end">
+                  <ReportExportActions
+                    canExport={canExport}
+                    compact
+                    disabled={reportActionsDisabled}
+                    exporting={exporting}
+                    onDownload={(format) => void download(format)}
+                    onPrint={printReport}
+                  />
+                  <p className="text-xs text-slate-400">
+                    {report.rows.length} filas · generado {dateTime.format(new Date(report.generatedAt))}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 border-b border-slate-100 bg-[#fbfaf8] px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">
+                    {filtersAreApplied
+                      ? `Las exportaciones incluirán las ${report.rows.length} filas del periodo aplicado.`
+                      : "Hay filtros pendientes. Pulsa Aplicar para actualizar la tabla y habilitar las exportaciones."}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    La vista de filas no limita el contenido de PDF, Excel o impresión.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="cabin-sales-page-size" className="whitespace-nowrap text-xs">
+                    Filas por vista
+                  </Label>
+                  <Select
+                    value={String(detailPageSize)}
+                    onValueChange={(value) => {
+                      setDetailPageSize(
+                        value === "ALL"
+                          ? "ALL"
+                          : (Number(value) as Exclude<SchedulerReportPageSize, "ALL">),
+                      );
+                      setDetailPage(1);
+                    }}
+                  >
+                    <SelectTrigger id="cabin-sales-page-size" className="h-9 w-[110px] bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="40">40</SelectItem>
+                      <SelectItem value="60">60</SelectItem>
+                      <SelectItem value="ALL">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-[2250px] w-full text-left text-sm">
@@ -768,7 +901,7 @@ export function CabinSalesReportWorkspace({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {report.rows.map((row) => (
+                    {detailPagination.rows.map((row) => (
                       <tr key={`${row.appointmentId}:${row.visitorId}`} className="align-top hover:bg-[#fbfaf8]">
                         <td className="px-4 py-4">
                           <p className="font-medium">{dateTime.format(new Date(row.appointmentStartsAt))}</p>
@@ -810,6 +943,46 @@ export function CabinSalesReportWorkspace({
                     ) : null}
                   </tbody>
                 </table>
+              </div>
+              <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-slate-500">
+                  Mostrando {detailPagination.from}–{detailPagination.to} de{" "}
+                  {detailPagination.total} filas filtradas
+                </p>
+                {detailPageSize !== "ALL" ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      aria-label="Página anterior"
+                      disabled={detailPagination.page <= 1}
+                      onClick={() => setDetailPage(Math.max(1, detailPagination.page - 1))}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <ChevronLeft className="mr-1 h-4 w-4" />
+                      Anterior
+                    </Button>
+                    <span className="min-w-[92px] text-center text-xs font-medium text-slate-500">
+                      Página {detailPagination.page} de {detailPagination.totalPages}
+                    </span>
+                    <Button
+                      aria-label="Página siguiente"
+                      disabled={detailPagination.page >= detailPagination.totalPages}
+                      onClick={() =>
+                        setDetailPage(
+                          Math.min(
+                            detailPagination.totalPages,
+                            detailPagination.page + 1,
+                          ),
+                        )
+                      }
+                      size="sm"
+                      variant="outline"
+                    >
+                      Siguiente
+                      <ChevronRight className="ml-1 h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </section>
           </>
