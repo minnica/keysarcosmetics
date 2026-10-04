@@ -21,6 +21,7 @@ import {
   designId,
   designInstant,
   designSessionToken,
+  synchronizeAppointmentCabinVisitAssignment,
   type DesignRow,
   type DesignState,
 } from "./store";
@@ -1058,6 +1059,8 @@ function buildCabinSalesReport(
       ...(input.query?.trim() ? { query: input.query.trim() } : {}),
     },
     summary: {
+      branches: new Set(rowsSorted.map((row) => row.branchId)).size,
+      cabins: new Set(rowsSorted.map((row) => row.cabinResourceId)).size,
       appointments: new Set(rowsSorted.map((row) => row.appointmentId)).size,
       visitors: rowsSorted.length,
       buyers: buyers.length,
@@ -1081,6 +1084,11 @@ function buildCabinSalesReport(
           .map((row) => row.appointmentId),
       ).size,
     },
+    byBranch: cabinSalesBreakdown(
+      rowsSorted,
+      (row) => row.branchId,
+      (row) => row.branchName,
+    ),
     byCabin: cabinSalesBreakdown(
       rowsSorted,
       (row) => row.cabinResourceId,
@@ -2454,6 +2462,42 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         visitors,
         updatedAt: captureTime,
       };
+      const synchronizedAppointment: SchedulerAppointmentDto = {
+        ...appointmentItem,
+        services: appointmentItem.services.map((service) => ({
+          ...service,
+          professionals: [...service.professionals],
+          resources: [...service.resources],
+        })),
+      };
+      synchronizeAppointmentCabinVisitAssignment(
+        state,
+        synchronizedAppointment,
+        result,
+      );
+      const cabinBusy = state.appointments.some(
+        (candidate) =>
+          candidate.id !== appointmentId &&
+          candidate.branchId === appointmentItem.branchId &&
+          !["CANCELED", "NO_SHOW"].includes(candidate.status) &&
+          candidate.services.some(
+            (service) =>
+              intervalsOverlap(
+                synchronizedAppointment.startsAt,
+                synchronizedAppointment.endsAt,
+                service.occupiesFrom,
+                service.occupiesUntil,
+              ) &&
+              service.resources.some(
+                (resource) => resource.resourceId === cabin.id,
+              ),
+          ),
+      );
+      if (cabinBusy) {
+        fail(409, "La cabina ya está ocupada en ese horario.", "RESOURCE_BUSY");
+      }
+      checkAppointmentAvailability(state, synchronizedAppointment, appointmentId);
+      appointmentItem.services = synchronizedAppointment.services;
       state.appointmentCabinVisits[appointmentId] = result;
       return result;
     }

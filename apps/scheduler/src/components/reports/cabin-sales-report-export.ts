@@ -33,6 +33,8 @@ async function exportXlsx(report: DesignCabinSalesReport) {
     ["Fuente", "Datos ficticios del entorno de diseño"],
     [],
     ["Indicador", "Valor"],
+    ["Sucursales", report.summary.branches],
+    ["Cabinas", report.summary.cabins],
     ["Citas", report.summary.appointments],
     ["Visitantes", report.summary.visitors],
     ["Compradores", report.summary.buyers],
@@ -46,6 +48,17 @@ async function exportXlsx(report: DesignCabinSalesReport) {
   ]);
   summary["!cols"] = [{ wch: 24 }, { wch: 22 }, { wch: 14 }];
 
+  const byBranch = XLSX.utils.json_to_sheet(
+    report.byBranch.map((item) => ({
+      Sucursal: item.label,
+      Citas: item.appointments,
+      Visitantes: item.visitors,
+      Compradores: item.buyers,
+      "Monto vendido": item.saleAmount,
+      "Monto recibido": item.depositAmount,
+      "Saldo pendiente": item.balanceAmount,
+    })),
+  );
   const byCabin = XLSX.utils.json_to_sheet(
     report.byCabin.map((item) => ({
       Cabina: item.label,
@@ -165,6 +178,7 @@ async function exportXlsx(report: DesignCabinSalesReport) {
     { wch: 20 },
   ];
   XLSX.utils.book_append_sheet(workbook, summary, "Resumen");
+  XLSX.utils.book_append_sheet(workbook, byBranch, "Por sucursal");
   XLSX.utils.book_append_sheet(workbook, byCabin, "Por cabina");
   XLSX.utils.book_append_sheet(workbook, byDay, "Por día");
   XLSX.utils.book_append_sheet(workbook, periodSheet(report.byWeek), "Por semana");
@@ -194,6 +208,7 @@ async function exportPdf(report: DesignCabinSalesReport) {
     startY: 30,
     head: [["Indicador", "Valor"]],
     body: [
+      ["Sucursales / cabinas", `${report.summary.branches} / ${report.summary.cabins}`],
       ["Citas / visitantes", `${report.summary.appointments} / ${report.summary.visitors}`],
       ["Compradores / conversión", `${report.summary.buyers} / ${report.summary.conversionRate}%`],
       ["Monto vendido", money.format(report.summary.saleAmount)],
@@ -203,6 +218,39 @@ async function exportPdf(report: DesignCabinSalesReport) {
     ],
     theme: "grid",
     headStyles: { fillColor: [38, 54, 73] },
+  });
+  document.addPage("a4", "landscape");
+  document.setFontSize(14);
+  document.text("Consolidado por sucursal y cabina", 14, 16);
+  autoTable(document, {
+    startY: 22,
+    head: [["Sucursal", "Citas", "Visitantes", "Compradores", "Vendido", "Recibido", "Saldo"]],
+    body: report.byBranch.map((item) => [
+      item.label,
+      item.appointments,
+      item.visitors,
+      item.buyers,
+      money.format(item.saleAmount),
+      money.format(item.depositAmount),
+      money.format(item.balanceAmount),
+    ]),
+    styles: { fontSize: 7 },
+    headStyles: { fillColor: [38, 54, 73] },
+  });
+  autoTable(document, {
+    startY: 86,
+    head: [["Cabina", "Citas", "Visitantes", "Compradores", "Vendido", "Recibido", "Saldo"]],
+    body: report.byCabin.map((item) => [
+      item.label,
+      item.appointments,
+      item.visitors,
+      item.buyers,
+      money.format(item.saleAmount),
+      money.format(item.depositAmount),
+      money.format(item.balanceAmount),
+    ]),
+    styles: { fontSize: 7 },
+    headStyles: { fillColor: [171, 132, 96] },
   });
   document.addPage("a4", "landscape");
   document.setFontSize(14);
@@ -233,21 +281,6 @@ async function exportPdf(report: DesignCabinSalesReport) {
       item.noShow,
       `${item.attendanceRate}%`,
       `${item.cancellationRate}%`,
-    ]),
-    styles: { fontSize: 7 },
-    headStyles: { fillColor: [171, 132, 96] },
-  });
-  autoTable(document, {
-    startY: 72,
-    head: [["Cabina", "Citas", "Visitantes", "Compradores", "Vendido", "Recibido", "Saldo"]],
-    body: report.byCabin.map((item) => [
-      item.label,
-      item.appointments,
-      item.visitors,
-      item.buyers,
-      money.format(item.saleAmount),
-      money.format(item.depositAmount),
-      money.format(item.balanceAmount),
     ]),
     styles: { fontSize: 7 },
     headStyles: { fillColor: [171, 132, 96] },

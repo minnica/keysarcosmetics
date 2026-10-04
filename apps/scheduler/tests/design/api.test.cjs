@@ -627,6 +627,21 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
   assert.equal(saved.body.data.visitors.length, 2);
   assert.equal(saved.body.data.visitors[0].purchaseAmount, 1750);
   assert.equal(saved.body.data.representativeId, representative.id);
+  const synchronizedService = state.appointments.find(
+    (item) => item.id === appointmentId,
+  ).services[0];
+  assert.deepEqual(
+    synchronizedService.professionals.map(
+      (professional) => professional.professionalProfileId,
+    ),
+    specialists.map((specialist) => specialist.id),
+  );
+  assert.ok(
+    synchronizedService.resources.some(
+      (resource) => resource.resourceId === cabin.id,
+    ),
+  );
+  assert.equal(synchronizedService.capacityUnits, cabin.capacity);
   const contexts = request(
     "POST",
     "/api/scheduler/design-proposals/appointments/contexts",
@@ -668,6 +683,94 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
   assert.equal(committed.status, 201);
   assert.equal(committed.body.data.actor, "Renata Castillo");
   assert.ok(!JSON.stringify(committed.body.data).includes("1111"));
+});
+
+test("la atención de cabina rechaza traslapes de especialista y cabina", () => {
+  const { state, request } = session();
+  const target = state.appointments[0];
+  const blocker = state.appointments[1];
+  const branch = state.catalog.branches.find(
+    (candidate) => candidate.branchId === target.branchId,
+  );
+  const cabin = state.catalog.resources.find(
+    (resource) =>
+      resource.active &&
+      resource.kind === "ROOM" &&
+      resource.capacity === 1 &&
+      resource.branchProfileId === branch.id,
+  );
+  const [specialist, alternateSpecialist] = state.catalog.professionals;
+  const representative = state.operationAgents.find((agent) => agent.active);
+  const targetService = target.services[0];
+  blocker.branchId = target.branchId;
+  blocker.branchProfileId = target.branchProfileId;
+  blocker.timezone = target.timezone;
+  blocker.startsAt = target.startsAt;
+  blocker.endsAt = target.endsAt;
+  blocker.services[0] = {
+    ...blocker.services[0],
+    startsAt: targetService.startsAt,
+    endsAt: targetService.endsAt,
+    occupiesFrom: targetService.occupiesFrom,
+    occupiesUntil: targetService.occupiesUntil,
+    professionals: [
+      {
+        professionalProfileId: specialist.id,
+        name: specialist.name,
+        role: "PRIMARY",
+      },
+    ],
+    resources: [],
+  };
+  const input = {
+    cabinResourceId: cabin.id,
+    cabinCapacity: 1,
+    representativeId: representative.id,
+    visitors: [
+      {
+        id: "visitor-primary",
+        customerId: target.customerId,
+        name: target.customerName,
+        specialistProfileId: specialist.id,
+        purchased: false,
+        purchaseAmount: null,
+        purchaseKind: "NONE",
+        saleAmount: null,
+        depositAmount: null,
+      },
+    ],
+  };
+
+  const professionalBusy = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${target.id}/cabin-visit`,
+    input,
+  );
+  assert.equal(professionalBusy.status, 409);
+  assert.equal(professionalBusy.body.code, "PROFESSIONAL_BUSY");
+
+  blocker.services[0].professionals = [
+    {
+      professionalProfileId: alternateSpecialist.id,
+      name: alternateSpecialist.name,
+      role: "PRIMARY",
+    },
+  ];
+  blocker.services[0].resources = [
+    {
+      resourceId: cabin.id,
+      name: cabin.name,
+      units: 1,
+      exclusive: true,
+    },
+  ];
+  const cabinBusy = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${target.id}/cabin-visit`,
+    input,
+  );
+  assert.equal(cabinBusy.status, 409);
+  assert.equal(cabinBusy.body.code, "RESOURCE_BUSY");
 });
 
 test("un código activo sin permiso de compra no puede registrar montos", () => {
@@ -884,6 +987,10 @@ test("el reporte por cabina usa la misma población para métricas y detalle", (
   assert.equal(report.body.data.summary.depositAmount, 2450);
   assert.equal(report.body.data.summary.balanceAmount, 1800);
   assert.equal(report.body.data.summary.conversionRate, 100);
+  assert.equal(report.body.data.summary.branches, 1);
+  assert.equal(report.body.data.summary.cabins, 1);
+  assert.equal(report.body.data.byBranch[0].saleAmount, 4250);
+  assert.equal(report.body.data.byBranch[0].appointments, 1);
   assert.equal(report.body.data.byCabin[0].saleAmount, 4250);
 
   const filtered = request(

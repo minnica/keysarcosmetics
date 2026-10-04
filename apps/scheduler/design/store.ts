@@ -813,10 +813,59 @@ export function createDesignState(
       state.appointments.push(outcome);
     }
   }
+  Object.values(state.appointmentCabinVisits).forEach((visit) => {
+    const appointment = state.appointments.find(
+      (candidate) => candidate.id === visit.appointmentId,
+    );
+    if (appointment) {
+      synchronizeAppointmentCabinVisitAssignment(state, appointment, visit);
+    }
+  });
   return state;
 }
 export type DesignState = ReturnType<typeof createDesignState>;
 export const designStore = { state: createDesignState() };
+
+export function synchronizeAppointmentCabinVisitAssignment(
+  state: Pick<DesignState, "catalog">,
+  appointment: SchedulerAppointmentDto,
+  visit: DesignAppointmentCabinVisit,
+) {
+  const service = appointment.services[0];
+  if (!service) return appointment;
+
+  const specialistIds = [
+    ...new Set(visit.visitors.map((visitor) => visitor.specialistProfileId)),
+  ];
+  service.professionals = specialistIds.map((professionalProfileId, index) => ({
+    professionalProfileId,
+    name:
+      state.catalog.professionals.find(
+        (professional) => professional.id === professionalProfileId,
+      )?.name ?? "Especialista demo",
+    role: index === 0 ? ("PRIMARY" as const) : ("SUPPORT" as const),
+  }));
+
+  const cabin = state.catalog.resources.find(
+    (resource) => resource.id === visit.cabinResourceId,
+  );
+  service.resources = [
+    ...service.resources.filter((assignedResource) => {
+      const resource = state.catalog.resources.find(
+        (candidate) => candidate.id === assignedResource.resourceId,
+      );
+      return resource?.kind !== "ROOM";
+    }),
+    {
+      resourceId: visit.cabinResourceId,
+      name: cabin?.name ?? visit.cabinName,
+      units: 1,
+      exclusive: true,
+    },
+  ];
+  service.capacityUnits = visit.cabinCapacity;
+  return appointment;
+}
 
 export function buildDesignAppointment(
   state: Pick<DesignState, "catalog" | "customers">,

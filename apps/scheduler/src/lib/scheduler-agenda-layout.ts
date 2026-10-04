@@ -23,7 +23,7 @@ export function shouldFitSchedulerAgendaColumns(
 
   const horizontalChrome = sidebarVisible ? 448 : 112;
   const availableWidth = Math.max(280, viewportWidth - horizontalChrome);
-  const minimumReadableColumnWidth = viewportWidth < 768 ? 210 : 168;
+  const minimumReadableColumnWidth = viewportWidth < 768 ? 220 : 224;
 
   return availableWidth / columnCount >= minimumReadableColumnWidth;
 }

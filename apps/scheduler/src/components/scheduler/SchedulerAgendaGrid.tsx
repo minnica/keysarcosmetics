@@ -325,13 +325,21 @@ export function SchedulerAgendaGrid({
     return () => observer.disconnect();
   }, [activeCalendarRange, currentView]);
   const professionalCount = Math.max(visibleProfessionals.length, 1);
+  const readableColumnWidth = Math.max(
+    agendaLayout.minColumnWidth,
+    visibleProfessionals.every(
+      (professional) => professional.kind === "RESOURCE",
+    )
+      ? 200
+      : 220,
+  );
   const dayGridMinWidth =
     agendaLayout.timeColumnWidth +
-    professionalCount * agendaLayout.minColumnWidth;
+    professionalCount * readableColumnWidth;
   const dayGridStyle: CSSProperties & Record<string, string> = {
     gridTemplateColumns: columnsFitted
       ? `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(0, 1fr))`
-      : `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(${agendaLayout.minColumnWidth}px, 1fr))`,
+      : `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(${readableColumnWidth}px, 1fr))`,
     minWidth: columnsFitted ? "100%" : `${dayGridMinWidth}px`,
     width: "100%",
     "--scheduler-grid-header-height": `${agendaLayout.headerOffset}px`,
@@ -569,13 +577,15 @@ export function SchedulerAgendaGrid({
                         : "scheduler-column-header-professional",
                     )}
                   >
-                    <SchedulerAvatar
-                      accent={professional.accent}
-                      avatar={professional.avatar}
-                      name={professional.name}
-                      shortName={professional.shortName}
-                      size="header"
-                    />
+                    {professional.kind !== "RESOURCE" ? (
+                      <SchedulerAvatar
+                        accent={professional.accent}
+                        avatar={professional.avatar}
+                        name={professional.name}
+                        shortName={professional.shortName}
+                        size="header"
+                      />
+                    ) : null}
                     <div className="min-w-0">
                       <span
                         className={cn(
@@ -599,10 +609,16 @@ export function SchedulerAgendaGrid({
                           ? ` · ${professional.capacity}p`
                           : ""}
                       </span>
-                      <p className="scheduler-professional-name truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800">
+                      <p
+                        className="scheduler-professional-name truncate text-[0.88rem] font-semibold tracking-[-0.02em] text-slate-800"
+                        title={professional.name}
+                      >
                         {professional.name}
                       </p>
-                      <p className="scheduler-professional-status text-[0.66rem] uppercase tracking-[0.16em] text-slate-400">
+                      <p
+                        className="scheduler-professional-status truncate text-[0.66rem] uppercase tracking-[0.16em] text-slate-400"
+                        title={professional.branchName ?? "Sucursal"}
+                      >
                         {professional.branchName ?? "Sucursal"}
                       </p>
                     </div>

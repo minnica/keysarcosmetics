@@ -317,6 +317,8 @@ export interface DesignCabinSalesReport {
   generatedAt: string;
   filters: DesignCabinSalesReportFilters;
   summary: {
+    branches: number;
+    cabins: number;
     appointments: number;
     visitors: number;
     buyers: number;
@@ -328,6 +330,7 @@ export interface DesignCabinSalesReport {
     conversionRate: number;
     appointmentsWithoutNextVisit: number;
   };
+  byBranch: DesignCabinSalesReportBreakdown[];
   byCabin: DesignCabinSalesReportBreakdown[];
   byDay: DesignCabinSalesReportBreakdown[];
   byWeek: DesignCabinSalesReportBreakdown[];

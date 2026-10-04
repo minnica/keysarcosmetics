@@ -163,6 +163,10 @@ export function CabinSalesReportWorkspace({
   }, [applied]);
 
   const cabinOptions = report?.filterOptions.cabins ?? [];
+  const maxBranchSale = Math.max(
+    1,
+    ...(report?.byBranch.map((item) => item.saleAmount) ?? [1]),
+  );
   const maxCabinSale = Math.max(
     1,
     ...(report?.byCabin.map((item) => item.saleAmount) ?? [1]),
@@ -582,7 +586,43 @@ export function CabinSalesReportWorkspace({
               })}
             </section>
 
-            <section className="grid gap-6 xl:grid-cols-2">
+            <section className="grid gap-6 xl:grid-cols-3">
+              <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-5">
+                  <p className="label-caps">Consolidado</p>
+                  <h2 className="mt-1 text-xl font-semibold">Totales por sucursal</h2>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {report.summary.branches} sucursales · {report.summary.cabins} cabinas en el filtro
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  {report.byBranch.length ? (
+                    report.byBranch.map((item) => (
+                      <div key={item.key}>
+                        <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
+                          <span className="font-medium">{item.label}</span>
+                          <span>{money.format(item.saleAmount)}</span>
+                        </div>
+                        <div className="h-3 overflow-hidden rounded-full bg-[#e8edf1]">
+                          <div
+                            className="h-full rounded-full bg-[linear-gradient(90deg,#263649,#71859a)]"
+                            style={{
+                              width: `${Math.max(4, (item.saleAmount / maxBranchSale) * 100)}%`,
+                            }}
+                            title={`${item.appointments} citas; ${money.format(item.depositAmount)} recibido`}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {item.appointments} citas · {item.visitors} visitantes · {money.format(item.depositAmount)} recibido
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">Sin sucursales para el filtro actual.</p>
+                  )}
+                </div>
+              </article>
+
               <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-5">
                   <p className="label-caps">Comparativo</p>

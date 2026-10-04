@@ -322,7 +322,17 @@
   }
 
   .scheduler-column-header-resource {
+    gap: 0.35rem;
     box-shadow: inset 0 3px 0 rgba(173, 139, 103, 0.72);
+  }
+
+  .scheduler-column-header-resource > div {
+    width: 100%;
+  }
+
+  .scheduler-column-header-resource .scheduler-professional-name {
+    margin-top: 0.4rem;
+    font-size: 0.82rem;
   }
 
   .scheduler-column-header-professional {

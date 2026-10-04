@@ -263,6 +263,7 @@ test("filters agenda columns explicitly by cabins or specialists", () => {
 test("fits readable agenda columns automatically to the monitor width", () => {
   assert.equal(shouldFitSchedulerAgendaColumns(1920, 6, true), true);
   assert.equal(shouldFitSchedulerAgendaColumns(1366, 6, true), false);
+  assert.equal(shouldFitSchedulerAgendaColumns(1366, 6, false), false);
   assert.equal(shouldFitSchedulerAgendaColumns(390, 1, false), true);
   assert.equal(shouldFitSchedulerAgendaColumns(390, 2, false), false);
 });
