@@ -207,6 +207,50 @@ function publicOperationAgent(
   };
 }
 
+const COMPANY_PORTFOLIO_NAME = "Cartera de la empresa";
+const SALES_OWNER_FIELD_ID = "design-field-sales-owner";
+
+function isPortfolioRepresentative(
+  agent: DesignState["operationAgents"][number],
+) {
+  return (
+    agent.active &&
+    (agent.source === "POS_CRM" ||
+      /(vendedor|representante|facialista|especialista)/i.test(agent.role))
+  );
+}
+
+function syncPortfolioRepresentativeOptions(state: DesignState) {
+  const definition = state.fields.find(
+    (field) => field.id === SALES_OWNER_FIELD_ID,
+  );
+  if (!definition) return;
+  definition.options = [
+    ...new Set(
+      state.operationAgents
+        .filter(isPortfolioRepresentative)
+        .map((agent) => agent.name),
+    ),
+    COMPANY_PORTFOLIO_NAME,
+  ];
+}
+
+function appointmentPortfolioOwner(
+  state: DesignState,
+  appointmentItem: SchedulerAppointmentDto,
+) {
+  const snapshot = state.appointmentPortfolioSnapshots[appointmentItem.id];
+  if (snapshot) return snapshot.ownerName;
+  const customerItem = state.customers.find(
+    (candidate) => candidate.id === appointmentItem.customerId,
+  );
+  return (
+    customerItem?.currentPortfolios.find(
+      (portfolio) => portfolio.branchId === appointmentItem.branchId,
+    )?.ownerName ?? COMPANY_PORTFOLIO_NAME
+  );
+}
+
 function ensureWorkingRules(
   state: DesignState,
   branchProfileId: string,
@@ -713,9 +757,7 @@ function weekKey(value: string) {
 }
 
 function roundRate(numerator: number, denominator: number) {
-  return denominator
-    ? Math.round((numerator / denominator) * 10_000) / 100
-    : 0;
+  return denominator ? Math.round((numerator / denominator) * 10_000) / 100 : 0;
 }
 
 function cabinSalesBreakdown(
@@ -758,8 +800,9 @@ function buildCabinSalesReport(
   input: DesignCabinSalesReportFilters,
 ): DesignCabinSalesReport {
   const authorized = designBootstrap(state).authorizedBranchIds;
-  const branchIds = (input.branchIds.length ? input.branchIds : authorized)
-    .filter((branchId, index, values) => values.indexOf(branchId) === index);
+  const branchIds = (
+    input.branchIds.length ? input.branchIds : authorized
+  ).filter((branchId, index, values) => values.indexOf(branchId) === index);
   branchIds.forEach((branchId) => inScope(state, branchId));
   if (!input.dateFrom || !input.dateTo || input.dateFrom > input.dateTo) {
     fail(400, "Selecciona un rango de fechas válido.");
@@ -793,18 +836,7 @@ function buildCabinSalesReport(
   for (const appointmentItem of baseAppointments) {
     const visit = state.appointmentCabinVisits[appointmentItem.id];
     if (!visit) continue;
-    const customerItem = state.customers.find(
-      (candidate) => candidate.id === appointmentItem.customerId,
-    );
-    const sellerName = String(
-      customerItem?.customFields.find(
-        (field) => field.definitionId === "design-field-sales-owner",
-      )?.value ??
-        customerItem?.currentPortfolios.find(
-          (portfolio) => portfolio.branchId === appointmentItem.branchId,
-        )?.ownerName ??
-        "Sin asignar",
-    );
+    const sellerName = appointmentPortfolioOwner(state, appointmentItem);
     sellers.add(sellerName);
     cabinOptions.set(visit.cabinResourceId, visit.cabinName);
     appointmentItem.services.forEach((service) =>
@@ -819,7 +851,9 @@ function buildCabinSalesReport(
         (candidate) =>
           candidate.id !== appointmentItem.id &&
           candidate.customerId === appointmentItem.customerId &&
-          designBootstrap(state).authorizedBranchIds.includes(candidate.branchId) &&
+          designBootstrap(state).authorizedBranchIds.includes(
+            candidate.branchId,
+          ) &&
           candidate.startsAt > appointmentItem.startsAt &&
           !["CANCELED", "NO_SHOW"].includes(candidate.status),
       )
@@ -892,7 +926,11 @@ function buildCabinSalesReport(
           purchaseKind === "NONE" ? "No aplica" : reportSpecialistName,
         settlementStatus:
           visitor.settlementStatus ??
-          (purchaseKind === "LAYAWAY" ? "OPEN" : purchaseKind === "FULL" ? "PAID" : "NOT_APPLICABLE"),
+          (purchaseKind === "LAYAWAY"
+            ? "OPEN"
+            : purchaseKind === "FULL"
+              ? "PAID"
+              : "NOT_APPLICABLE"),
         settledAt: visitor.settledAt ?? null,
         purchaseKind,
         saleAmount,
@@ -961,11 +999,11 @@ function buildCabinSalesReport(
   const rowAppointmentIds = new Set(rowsSorted.map((row) => row.appointmentId));
   const salesOnlyFiltersActive = Boolean(
     input.cabinResourceId ||
-      input.purchaseKind ||
-      input.specialistProfileId ||
-      input.sellerName ||
-      input.minSaleAmount !== undefined ||
-      input.maxSaleAmount !== undefined,
+    input.purchaseKind ||
+    input.specialistProfileId ||
+    input.sellerName ||
+    input.minSaleAmount !== undefined ||
+    input.maxSaleAmount !== undefined,
   );
   const analyticsAppointments = baseAppointments.filter((appointmentItem) => {
     if (input.status && appointmentItem.status !== input.status) return false;
@@ -991,7 +1029,11 @@ function buildCabinSalesReport(
   });
   const serviceGroups = new Map<
     string,
-    { name: string; appointments: Set<string>; statuses: SchedulerAppointmentStatus[] }
+    {
+      name: string;
+      appointments: Set<string>;
+      statuses: SchedulerAppointmentStatus[];
+    }
   >();
   analyticsAppointments.forEach((appointmentItem) => {
     appointmentItem.services.forEach((service) => {
@@ -1012,9 +1054,15 @@ function buildCabinSalesReport(
   ]
     .map(([serviceProfileId, group]) => {
       const appointments = group.appointments.size;
-      const attended = group.statuses.filter((status) => status === "ATTENDED").length;
-      const canceled = group.statuses.filter((status) => status === "CANCELED").length;
-      const noShow = group.statuses.filter((status) => status === "NO_SHOW").length;
+      const attended = group.statuses.filter(
+        (status) => status === "ATTENDED",
+      ).length;
+      const canceled = group.statuses.filter(
+        (status) => status === "CANCELED",
+      ).length;
+      const noShow = group.statuses.filter(
+        (status) => status === "NO_SHOW",
+      ).length;
       return {
         serviceProfileId,
         serviceName: group.name,
@@ -1181,8 +1229,9 @@ function buildSalesProjectionReport(
   const historical = months.map((month) => {
     const rows = base.rows.filter(
       (row) =>
-        monthKey(localDateKey(row.appointmentStartsAt, "America/Mexico_City")) ===
-        month,
+        monthKey(
+          localDateKey(row.appointmentStartsAt, "America/Mexico_City"),
+        ) === month,
     );
     return {
       month,
@@ -1199,8 +1248,7 @@ function buildSalesProjectionReport(
       input.targetMonth,
   );
   const historicalAverage =
-    historical.reduce((sum, item) => sum + item.saleAmount, 0) /
-    lookbackMonths;
+    historical.reduce((sum, item) => sum + item.saleAmount, 0) / lookbackMonths;
   const previousMonth =
     historical.find((item) => item.month === lastHistoricalMonth)?.saleAmount ??
     0;
@@ -1212,7 +1260,9 @@ function buildSalesProjectionReport(
     ? Math.max(-0.3, Math.min(0.3, previousMonth / penultimateMonth - 1))
     : 0;
   const projectedAmount = Math.round(historicalAverage * (1 + trend));
-  const monthsWithData = historical.filter((item) => item.saleAmount > 0).length;
+  const monthsWithData = historical.filter(
+    (item) => item.saleAmount > 0,
+  ).length;
   const scopedBranches = state.catalog.branches.filter((branch) =>
     base.filters.branchIds.includes(branch.branchId),
   );
@@ -1229,15 +1279,11 @@ function buildSalesProjectionReport(
         return rows.reduce((sum, row) => sum + row.saleAmount, 0);
       });
       const branchAverage =
-        branchHistory.reduce((sum, amount) => sum + amount, 0) /
-        lookbackMonths;
+        branchHistory.reduce((sum, amount) => sum + amount, 0) / lookbackMonths;
       const branchPrevious = branchHistory.at(-1) ?? 0;
       const branchPenultimate = branchHistory.at(-2) ?? 0;
       const branchTrend = branchPenultimate
-        ? Math.max(
-            -0.3,
-            Math.min(0.3, branchPrevious / branchPenultimate - 1),
-          )
+        ? Math.max(-0.3, Math.min(0.3, branchPrevious / branchPenultimate - 1))
         : 0;
       const branchProjected = Math.round(branchAverage * (1 + branchTrend));
       return {
@@ -1281,9 +1327,11 @@ function buildAppointmentJournalReport(
   state: DesignState,
   input: DesignAppointmentJournalFilters,
 ): DesignAppointmentJournalReport {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dateFrom) ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(input.dateTo) ||
-      input.dateFrom > input.dateTo) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.dateFrom) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.dateTo) ||
+    input.dateFrom > input.dateTo
+  ) {
     fail(400, "Selecciona un periodo válido para el reporte de seguimiento.");
   }
   const allowedBranches = new Set(designBootstrap(state).authorizedBranchIds);
@@ -1299,7 +1347,8 @@ function buildAppointmentJournalReport(
         date >= input.dateFrom &&
         date <= input.dateTo &&
         allowedBranches.has(entry.branchId) &&
-        (requestedBranches.size === 0 || requestedBranches.has(entry.branchId)) &&
+        (requestedBranches.size === 0 ||
+          requestedBranches.has(entry.branchId)) &&
         (kinds.size === 0 || kinds.has(entry.kind)) &&
         (!query ||
           [
@@ -1319,10 +1368,16 @@ function buildAppointmentJournalReport(
     summary: {
       appointments: new Set(rows.map((entry) => entry.appointmentId)).size,
       entries: rows.length,
-      sellerComments: rows.filter((entry) => entry.kind === "SELLER_COMMENT").length,
-      postSaleComments: rows.filter((entry) => entry.kind === "POST_SALE_COMMENT").length,
-      cancellations: rows.filter((entry) => entry.kind === "CANCELLATION_REASON").length,
-      reschedules: rows.filter((entry) => entry.kind === "RESCHEDULE_REASON").length,
+      sellerComments: rows.filter((entry) => entry.kind === "SELLER_COMMENT")
+        .length,
+      postSaleComments: rows.filter(
+        (entry) => entry.kind === "POST_SALE_COMMENT",
+      ).length,
+      cancellations: rows.filter(
+        (entry) => entry.kind === "CANCELLATION_REASON",
+      ).length,
+      reschedules: rows.filter((entry) => entry.kind === "RESCHEDULE_REASON")
+        .length,
     },
     rows,
   };
@@ -1606,7 +1661,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       } else {
         branchName = String(body.branchName ?? "").trim();
         if (branchName.length < 2 || branchName.length > 80) {
-          fail(400, "El nombre de la sucursal debe tener de 2 a 80 caracteres.");
+          fail(
+            400,
+            "El nombre de la sucursal debe tener de 2 a 80 caracteres.",
+          );
         }
         if (
           state.catalog.branches.some(
@@ -1620,7 +1678,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         const branchMonthlyAmount = Number(body.branchMonthlyAmount);
         const cabinMonthlyAmount = Number(body.cabinMonthlyAmount);
         if (!(branchMonthlyAmount > 0) || !(cabinMonthlyAmount > 0)) {
-          fail(400, "Captura la renta mensual de la sucursal y de cada cabina.");
+          fail(
+            400,
+            "Captura la renta mensual de la sucursal y de cada cabina.",
+          );
         }
         if (cabinMonthlyAmount >= branchMonthlyAmount) {
           fail(
@@ -1807,8 +1868,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const existing = action
         ? state.statusDefinitions.find(
             (definition) =>
-              definition.id === action &&
-              definition.commerceId === commerceId,
+              definition.id === action && definition.commerceId === commerceId,
           )
         : undefined;
       if (method === "PUT" && !existing) {
@@ -1831,8 +1891,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       if (existing) {
         const openRevision = state.statusDefinitionHistory.find(
           (revision) =>
-            revision.id === existing.id &&
-            revision.effectiveTo === null,
+            revision.id === existing.id && revision.effectiveTo === null,
         );
         if (openRevision) openRevision.effectiveTo = updatedAt;
         existing.label = label;
@@ -1953,8 +2012,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               >,
             }
           : {}),
-        ...(typeof body.serviceProfileId === "string" &&
-        body.serviceProfileId
+        ...(typeof body.serviceProfileId === "string" && body.serviceProfileId
           ? { serviceProfileId: body.serviceProfileId }
           : {}),
         ...(typeof body.specialistProfileId === "string" &&
@@ -2118,6 +2176,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         ] as DesignOperationPurpose[],
         updatedAt,
       };
+      const wasActive = existing?.active ?? false;
+      const previousSource = existing?.source;
+      const previousExternalId = existing?.externalId;
       next.externalId = String(body.externalId ?? next.externalId);
       next.name = String(body.name ?? next.name).trim();
       next.role = String(body.role ?? next.role).trim();
@@ -2134,6 +2195,36 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         next.code = code;
       }
       if (!existing) state.operationAgents.push(next);
+      if (
+        existing &&
+        wasActive &&
+        previousSource === "POS_CRM" &&
+        body.active === false
+      ) {
+        for (const customerItem of state.customers) {
+          let transferred = false;
+          customerItem.currentPortfolios = customerItem.currentPortfolios.map(
+            (portfolio) => {
+              if (portfolio.employeeId !== previousExternalId) return portfolio;
+              transferred = true;
+              return {
+                ...portfolio,
+                employeeId: null,
+                ownerName: COMPANY_PORTFOLIO_NAME,
+                effectiveFrom: updatedAt,
+              };
+            },
+          );
+          if (transferred) {
+            const ownerField = customerItem.customFields.find(
+              (field) => field.definitionId === SALES_OWNER_FIELD_ID,
+            );
+            if (ownerField) ownerField.value = COMPANY_PORTFOLIO_NAME;
+            customerItem.version += 1;
+          }
+        }
+      }
+      syncPortfolioRepresentativeOptions(state);
       return publicOperationAgent(next);
     }
     if (id === "operation-authorizations") {
@@ -2188,8 +2279,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const expiresAt = Date.now() + 120_000;
       const purpose = operationPurpose(body.purpose);
       if (
-        (purpose === "PURCHASE_CAPTURE" ||
-          purpose === "PURCHASE_CORRECTION") &&
+        (purpose === "PURCHASE_CAPTURE" || purpose === "PURCHASE_CORRECTION") &&
         agent.source !== "SCHEDULER" &&
         !/(especialista|facialista|cosmet[oó]log)/i.test(agent.role)
       ) {
@@ -2235,18 +2325,40 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         appointmentIds.map((appointmentId) => {
           const appointmentItem = appointment(state, appointmentId);
           const visit = state.appointmentCabinVisits[appointmentId];
-          const customerItem = state.customers.find(
-            (candidate) => candidate.id === appointmentItem.customerId,
+          const portfolioSellerName = appointmentPortfolioOwner(
+            state,
+            appointmentItem,
           );
-          const portfolioSellerName = String(
-            customerItem?.customFields.find(
-              (field) => field.definitionId === "design-field-sales-owner",
-            )?.value ??
-              customerItem?.currentPortfolios.find(
-                (portfolio) => portfolio.branchId === appointmentItem.branchId,
-              )?.ownerName ??
-              "",
-          ).trim();
+          const commercialVisitors =
+            visit?.visitors.filter(
+              (visitor) =>
+                (visitor.purchaseKind === "FULL" ||
+                  visitor.purchaseKind === "LAYAWAY") &&
+                Number(visitor.saleAmount ?? visitor.purchaseAmount ?? 0) > 0,
+            ) ?? [];
+          const purchaseKind: DesignPurchaseKind | null =
+            commercialVisitors.some(
+              (visitor) => visitor.purchaseKind === "LAYAWAY",
+            )
+              ? "LAYAWAY"
+              : commercialVisitors.length
+                ? "FULL"
+                : null;
+          const saleAmount = commercialVisitors.reduce(
+            (sum, visitor) =>
+              sum + Number(visitor.saleAmount ?? visitor.purchaseAmount ?? 0),
+            0,
+          );
+          const depositAmount = commercialVisitors.reduce(
+            (sum, visitor) =>
+              sum +
+              Number(
+                visitor.purchaseKind === "FULL"
+                  ? (visitor.saleAmount ?? visitor.purchaseAmount ?? 0)
+                  : (visitor.depositAmount ?? 0),
+              ),
+            0,
+          );
           const nextAppointment = visibleAppointments(state)
             .filter(
               (candidate) =>
@@ -2258,7 +2370,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                 candidate.startsAt > appointmentItem.startsAt &&
                 !["CANCELED", "NO_SHOW"].includes(candidate.status),
             )
-            .sort((left, right) => left.startsAt.localeCompare(right.startsAt))[0];
+            .sort((left, right) =>
+              left.startsAt.localeCompare(right.startsAt),
+            )[0];
           const context: DesignAppointmentContext = {
             appointmentId,
             representativeId: visit?.representativeId ?? null,
@@ -2266,6 +2380,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             representativeRole: visit?.representativeRole ?? null,
             representativeSource: visit?.representativeSource ?? null,
             portfolioSellerName: portfolioSellerName || null,
+            hasPurchase: commercialVisitors.length > 0,
+            purchaseKind,
+            saleAmount,
+            depositAmount,
             nextAppointmentId: nextAppointment?.id ?? null,
             nextAppointmentAt: nextAppointment?.startsAt ?? null,
           };
@@ -2316,10 +2434,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       ) {
         fail(400, "Selecciona una cabina activa de la sucursal de la cita.");
       }
-      if (
-        previousVisit &&
-        previousVisit.cabinResourceId !== cabin.id
-      ) {
+      if (previousVisit && previousVisit.cabinResourceId !== cabin.id) {
         fail(
           409,
           "La cabina y su capacidad ya fueron configuradas para esta cita y no pueden modificarse durante la atención.",
@@ -2329,7 +2444,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         state.operationAgents.find(
           (agent) =>
             agent.id === String(body.representativeId ?? "") && agent.active,
-        ) ?? fail(400, "Selecciona al vendedor o representante que atendió la cita.");
+        ) ??
+        fail(
+          400,
+          "Selecciona al vendedor o representante que atendió la cita.",
+        );
       const visitorRows = rows(body.visitors);
       if (visitorRows.length !== cabin.capacity) {
         fail(
@@ -2363,7 +2482,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               : visitor.purchased === false
                 ? "NONE"
                 : null;
-        const purchased = purchaseKind === null ? null : purchaseKind !== "NONE";
+        const purchased =
+          purchaseKind === null ? null : purchaseKind !== "NONE";
         const saleAmount = purchased
           ? Number(visitor.saleAmount ?? visitor.purchaseAmount)
           : null;
@@ -2373,10 +2493,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             : purchaseKind === "LAYAWAY"
               ? Number(visitor.depositAmount)
               : null;
-        if (
-          purchased &&
-          (!Number.isFinite(saleAmount) || saleAmount! <= 0)
-        ) {
+        if (purchased && (!Number.isFinite(saleAmount) || saleAmount! <= 0)) {
           fail(400, `Captura un monto de venta mayor a cero para ${name}.`);
         }
         if (
@@ -2391,13 +2508,14 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           );
         }
         const previousVisitor = previousVisit?.visitors.find(
-          (candidate) => candidate.id === String(visitor.id ?? `visitor-${index + 1}`),
+          (candidate) =>
+            candidate.id === String(visitor.id ?? `visitor-${index + 1}`),
         );
         const saleOwnerSpecialistProfileId =
           purchaseKind === "NONE"
             ? null
-            : previousVisitor?.saleOwnerSpecialistProfileId ??
-              specialistProfileId;
+            : (previousVisitor?.saleOwnerSpecialistProfileId ??
+              specialistProfileId);
         const settlementStatus: DesignSaleSettlementStatus =
           purchaseKind === "NONE"
             ? "NOT_APPLICABLE"
@@ -2407,7 +2525,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         const settledAt =
           settlementStatus === "PAID"
             ? previousVisitor?.settlementStatus === "PAID"
-              ? previousVisitor.settledAt ?? captureTime
+              ? (previousVisitor.settledAt ?? captureTime)
               : captureTime
             : null;
         return {
@@ -2439,10 +2557,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       }
       const previousCaptureFinalized = Boolean(
         previousVisit?.visitors.length &&
-          previousVisit.visitors.every(
-            (visitor) =>
-              visitor.purchaseKind !== null || visitor.purchased !== null,
-          ),
+        previousVisit.visitors.every(
+          (visitor) =>
+            visitor.purchaseKind !== null || visitor.purchased !== null,
+        ),
       );
       const requiredPurpose: DesignOperationPurpose | null =
         previousCaptureFinalized
@@ -2521,7 +2639,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       if (cabinBusy) {
         fail(409, "La cabina ya está ocupada en ese horario.", "RESOURCE_BUSY");
       }
-      checkAppointmentAvailability(state, synchronizedAppointment, appointmentId);
+      checkAppointmentAvailability(
+        state,
+        synchronizedAppointment,
+        appointmentId,
+      );
       appointmentItem.services = synchronizedAppointment.services;
       state.appointmentCabinVisits[appointmentId] = result;
       return result;
@@ -2553,7 +2675,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         (kind === "SELLER_COMMENT" || kind === "POST_SALE_COMMENT") &&
         appointmentItem.status !== "ATTENDED"
       ) {
-        fail(409, "Los comentarios se habilitan después de registrar la asistencia.");
+        fail(
+          409,
+          "Los comentarios se habilitan después de registrar la asistencia.",
+        );
       }
       const comment = String(body.comment ?? "").trim();
       if (comment.length < 3 || comment.length > 2_000) {
@@ -2611,7 +2736,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         customerName: appointmentItem.customerName,
         branchId: appointmentItem.branchId,
         branchName: appointmentItem.branchName,
-        serviceNames: appointmentItem.services.map((service) => service.serviceName),
+        serviceNames: appointmentItem.services.map(
+          (service) => service.serviceName,
+        ),
         appointmentStartsAt: appointmentItem.startsAt,
         appointmentStatus: appointmentItem.status,
         createdAt: new Date().toISOString(),
@@ -2742,18 +2869,18 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         const cabinVisit = state.appointmentCabinVisits[existing!.id];
         const purchaseCaptureComplete = Boolean(
           cabinVisit &&
-            cabinVisit.visitors.length === cabinVisit.cabinCapacity &&
-            cabinVisit.visitors.every(
-              (visitor) =>
-                visitor.purchaseKind !== null &&
-                visitor.purchased !== null &&
-                (visitor.purchaseKind === "NONE" ||
-                  (Number(visitor.saleAmount) > 0 &&
-                    (visitor.purchaseKind === "FULL" ||
-                      (Number(visitor.depositAmount) > 0 &&
-                        Number(visitor.depositAmount) <=
-                          Number(visitor.saleAmount))))),
-            ),
+          cabinVisit.visitors.length === cabinVisit.cabinCapacity &&
+          cabinVisit.visitors.every(
+            (visitor) =>
+              visitor.purchaseKind !== null &&
+              visitor.purchased !== null &&
+              (visitor.purchaseKind === "NONE" ||
+                (Number(visitor.saleAmount) > 0 &&
+                  (visitor.purchaseKind === "FULL" ||
+                    (Number(visitor.depositAmount) > 0 &&
+                      Number(visitor.depositAmount) <=
+                        Number(visitor.saleAmount))))),
+          ),
         );
         if (!purchaseCaptureComplete) {
           fail(
@@ -2800,7 +2927,19 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     if (action === "move" && existing) item.status = existing.status;
     checkAppointmentAvailability(state, item, existing?.id);
     if (existing) Object.assign(existing, item);
-    else state.appointments.push(item);
+    else {
+      state.appointments.push(item);
+      const customerItem = state.customers.find(
+        (candidate) => candidate.id === item.customerId,
+      );
+      const portfolio = customerItem?.currentPortfolios.find(
+        (candidate) => candidate.branchId === item.branchId,
+      );
+      state.appointmentPortfolioSnapshots[item.id] = {
+        employeeId: portfolio?.employeeId ?? null,
+        ownerName: portfolio?.ownerName ?? COMPANY_PORTFOLIO_NAME,
+      };
+    }
     return item;
   }
   if (resource === "blocks") {
@@ -2989,12 +3128,13 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         );
       const existing = id ? customer(state, id) : undefined;
       if (existing) versionGuard(existing, body);
+      const submittedCustomFields = rows(input.customFields);
       for (const definition of state.fields.filter((field) => field.active)) {
-        const value = rows(input.customFields).find(
+        const value = submittedCustomFields.find(
           (field) => field.definitionId === definition.id,
         )?.value;
         const missing = value === undefined || value === null || value === "";
-        if (missing && definition.required)
+        if (missing && definition.required && !existing)
           fail(400, `Completa el campo ${definition.label}.`);
         if (missing) continue;
         if (
@@ -3018,6 +3158,66 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const profile = state.catalog.branches.find(
         (branch) => branch.branchId === input.branchId,
       )!;
+      const requestedPortfolioOwner = String(
+        submittedCustomFields.find(
+          (field) => field.definitionId === SALES_OWNER_FIELD_ID,
+        )?.value ??
+          existing?.currentPortfolios.find(
+            (portfolio) => portfolio.branchId === input.branchId,
+          )?.ownerName ??
+          "",
+      ).trim();
+      const portfolioAgent = state.operationAgents.find(
+        (agent) =>
+          isPortfolioRepresentative(agent) &&
+          agent.name === requestedPortfolioOwner,
+      );
+      if (
+        requestedPortfolioOwner !== COMPANY_PORTFOLIO_NAME &&
+        !portfolioAgent
+      ) {
+        fail(400, "Selecciona un representante de cartera activo.");
+      }
+      const portfolioOwnerName = portfolioAgent?.name ?? COMPANY_PORTFOLIO_NAME;
+      const portfolioEmployeeId = portfolioAgent?.externalId ?? null;
+      const currentPortfolios = existing
+        ? existing.currentPortfolios.map((portfolio) =>
+            portfolio.branchId === input.branchId
+              ? {
+                  ...portfolio,
+                  employeeId: portfolioEmployeeId,
+                  ownerName: portfolioOwnerName,
+                  effectiveFrom: new Date().toISOString(),
+                }
+              : portfolio,
+          )
+        : [
+            {
+              id: designId("design-portfolio"),
+              branchId: input.branchId,
+              branchName: profile.branchName,
+              employeeId: portfolioEmployeeId,
+              ownerName: portfolioOwnerName,
+              effectiveFrom: new Date().toISOString(),
+              effectiveTo: null,
+            },
+          ];
+      if (
+        existing &&
+        !currentPortfolios.some(
+          (portfolio) => portfolio.branchId === input.branchId,
+        )
+      ) {
+        currentPortfolios.push({
+          id: designId("design-portfolio"),
+          branchId: input.branchId,
+          branchName: profile.branchName,
+          employeeId: portfolioEmployeeId,
+          ownerName: portfolioOwnerName,
+          effectiveFrom: new Date().toISOString(),
+          effectiveTo: null,
+        });
+      }
       const item = {
         id: id ?? designId("design-customer"),
         displayName: input.displayName,
@@ -3029,17 +3229,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         active: input.active ?? true,
         version: (existing?.version ?? 0) + 1,
         aliases: existing?.aliases ?? [],
-        currentPortfolios: existing?.currentPortfolios ?? [
-          {
-            id: designId("design-portfolio"),
-            branchId: input.branchId,
-            branchName: profile.branchName,
-            employeeId: state.catalog.professionals[0]!.employeeId,
-            ownerName: state.catalog.professionals[0]!.name,
-            effectiveFrom: new Date().toISOString(),
-            effectiveTo: null,
-          },
-        ],
+        currentPortfolios,
         notes: input.notes ?? null,
         profile: {
           preferredLocale: input.profile?.preferredLocale ?? "es-MX",
@@ -3049,19 +3239,21 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         },
         emails: existing?.emails ?? [],
         mergeHistory: existing?.mergeHistory ?? [],
-        customFields: rows(input.customFields).map((field) => {
-          const definition =
-            state.fields.find((entry) => entry.id === field.definitionId) ??
-            fail(400, "Campo no encontrado.");
-          return {
-            definitionId: definition.id,
-            definitionVersion: definition.version,
-            key: definition.key,
-            label: definition.label,
-            type: definition.type,
-            value: field.value,
-          };
-        }),
+        customFields: submittedCustomFields.length
+          ? submittedCustomFields.map((field) => {
+              const definition =
+                state.fields.find((entry) => entry.id === field.definitionId) ??
+                fail(400, "Campo no encontrado.");
+              return {
+                definitionId: definition.id,
+                definitionVersion: definition.version,
+                key: definition.key,
+                label: definition.label,
+                type: definition.type,
+                value: field.value,
+              };
+            })
+          : (existing?.customFields ?? []),
       };
       if (existing) Object.assign(existing, item);
       else state.customers.push(item);

@@ -274,7 +274,7 @@ export function createDesignState(
   const salesOwners = [
     "Renata Castillo",
     "Camila Torres",
-    "Venta de empresa",
+    "Cartera de la empresa",
     "Renata Castillo",
   ];
   const customers: SchedulerCustomerDetailDto[] = customerNames.map(
@@ -282,6 +282,9 @@ export function createDesignState(
       const branch = catalog.branches[index % catalog.branches.length]!;
       const professional =
         catalog.professionals[index % catalog.professionals.length]!;
+      const portfolioOwner = catalog.professionals.find(
+        (candidate) => candidate.name === salesOwners[index],
+      );
       return {
         id: `design-customer-${index + 1}`,
         displayName: name,
@@ -297,7 +300,7 @@ export function createDesignState(
             id: `design-portfolio-${index + 1}`,
             branchId: branch.branchId,
             branchName: branch.branchName,
-            employeeId: professional.employeeId,
+            employeeId: portfolioOwner?.employeeId ?? null,
             ownerName: salesOwners[index]!,
             effectiveFrom: "2026-01-01T00:00:00.000Z",
             effectiveTo: null,
@@ -336,14 +339,6 @@ export function createDesignState(
             type: "SELECT",
             value: salesOwners[index]!,
           },
-          {
-            definitionId: "design-field-attending-specialist",
-            definitionVersion: 1,
-            key: "attendingSpecialist",
-            label: "Especialista que atendió",
-            type: "SELECT",
-            value: professional.name,
-          },
         ],
         mergeHistory: [],
       };
@@ -380,23 +375,15 @@ export function createDesignState(
       id: "design-field-sales-owner",
       commerceId: catalog.commerces[0]!.id,
       key: "salesOwner",
-      label: "Vendedor responsable",
+      label: "Representante de cartera",
       type: "SELECT",
-      options: ["Renata Castillo", "Camila Torres", "Venta de empresa"],
-      required: false,
-      active: true,
-      version: 1,
-      effectiveFrom: "2026-01-01T00:00:00.000Z",
-      effectiveTo: null,
-    },
-    {
-      id: "design-field-attending-specialist",
-      commerceId: catalog.commerces[0]!.id,
-      key: "attendingSpecialist",
-      label: "Especialista que atendió",
-      type: "SELECT",
-      options: catalog.professionals.map((professional) => professional.name),
-      required: false,
+      options: [
+        ...schedulerAdministrationCandidatesFixture.employees
+          .filter((employee) => employee.active)
+          .map((employee) => employee.name),
+        "Cartera de la empresa",
+      ],
+      required: true,
       active: true,
       version: 1,
       effectiveFrom: "2026-01-01T00:00:00.000Z",
@@ -569,6 +556,10 @@ export function createDesignState(
       { role: DesignRole; expiresAt: number }
     >(),
     appointmentAnswers: {} as Record<string, DesignAppointmentAnswer[]>,
+    appointmentPortfolioSnapshots: {} as Record<
+      string,
+      { employeeId: string | null; ownerName: string }
+    >,
     appointmentCabinVisits: {} as Record<string, DesignAppointmentCabinVisit>,
     appointmentJournal: [] as DesignAppointmentJournalEntry[],
     customerSpecialistPreferences: {} as Record<
@@ -602,6 +593,13 @@ export function createDesignState(
         index
       ] as SchedulerAppointmentDto["status"];
       state.appointments.push(appointment);
+      const portfolio = customers[index]!.currentPortfolios.find(
+        (candidate) => candidate.branchId === appointment.branchId,
+      );
+      state.appointmentPortfolioSnapshots[appointment.id] = {
+        employeeId: portfolio?.employeeId ?? null,
+        ownerName: portfolio?.ownerName ?? "Cartera de la empresa",
+      };
     }
     const attendedAppointment = state.appointments[1];
     const mitikahCabin = catalog.resources.find(
@@ -716,7 +714,8 @@ export function createDesignState(
               purchaseAmount: saleAmount,
               purchaseKind: index % 3 === 1 ? "LAYAWAY" : "FULL",
               saleAmount,
-              depositAmount: index % 3 === 1 ? Math.round(saleAmount * 0.3) : saleAmount,
+              depositAmount:
+                index % 3 === 1 ? Math.round(saleAmount * 0.3) : saleAmount,
               saleOwnerSpecialistProfileId:
                 catalog.professionals[index % catalog.professionals.length]!.id,
               settlementStatus: index % 3 === 1 ? "OPEN" : "PAID",
@@ -821,6 +820,19 @@ export function createDesignState(
       synchronizeAppointmentCabinVisitAssignment(state, appointment, visit);
     }
   });
+  for (const appointment of state.appointments) {
+    if (state.appointmentPortfolioSnapshots[appointment.id]) continue;
+    const customer = state.customers.find(
+      (candidate) => candidate.id === appointment.customerId,
+    );
+    const portfolio = customer?.currentPortfolios.find(
+      (candidate) => candidate.branchId === appointment.branchId,
+    );
+    state.appointmentPortfolioSnapshots[appointment.id] = {
+      employeeId: portfolio?.employeeId ?? null,
+      ownerName: portfolio?.ownerName ?? "Cartera de la empresa",
+    };
+  }
   return state;
 }
 export type DesignState = ReturnType<typeof createDesignState>;

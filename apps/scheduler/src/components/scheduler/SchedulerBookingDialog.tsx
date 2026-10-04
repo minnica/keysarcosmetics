@@ -195,6 +195,12 @@ export function SchedulerBookingDialog({
   const selectedCabin = cabinOptions.find(
     (cabin) => cabin.id === draft.cabinResourceId,
   );
+  const portfolioOwnerDefinition = additionalFieldDefinitions.find(
+    (definition) => definition.id === "design-field-sales-owner",
+  );
+  const appointmentFieldDefinitions = additionalFieldDefinitions.filter(
+    (definition) => definition.id !== "design-field-sales-owner",
+  );
   const cabinVisitValid =
     !enableCabinVisitFlow ||
     Boolean(
@@ -777,6 +783,57 @@ export function SchedulerBookingDialog({
                             }
                           />
                         </div>
+                        {portfolioOwnerDefinition ? (
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="scheduler-modal-label">
+                              Representante de cartera *
+                            </label>
+                            <Select
+                              value={
+                                typeof draft.additionalAnswers[
+                                  portfolioOwnerDefinition.id
+                                ] === "string"
+                                  ? String(
+                                      draft.additionalAnswers[
+                                        portfolioOwnerDefinition.id
+                                      ],
+                                    )
+                                  : ""
+                              }
+                              onValueChange={(value) =>
+                                patchDraft({
+                                  additionalAnswers: {
+                                    ...draft.additionalAnswers,
+                                    [portfolioOwnerDefinition.id]: value,
+                                  },
+                                })
+                              }
+                            >
+                              <SelectTrigger className="scheduler-modal-select-trigger">
+                                <SelectValue placeholder="Selecciona vendedor, representante o cartera de empresa" />
+                              </SelectTrigger>
+                              <SelectContent className="scheduler-modal-select-content max-h-[320px]">
+                                {(portfolioOwnerDefinition.options ?? []).map(
+                                  (option) => (
+                                    <SelectItem
+                                      className="scheduler-modal-select-item"
+                                      key={option}
+                                      value={option}
+                                    >
+                                      {option}
+                                    </SelectItem>
+                                  ),
+                                )}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs leading-5 text-slate-500">
+                              Define la cartera vigente del cliente. Si el
+                              representante del POS se inactiva, las nuevas
+                              citas usarán la cartera de la empresa sin alterar
+                              el historial.
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
@@ -868,8 +925,9 @@ export function SchedulerBookingDialog({
                             </p>
                           </div>
                           <p className="mt-1 text-sm text-slate-500">
-                            La capacidad define cuántos visitantes y
-                            especialistas debes registrar.
+                            {appointmentDetailsLocked
+                              ? "Registra quién atendió a cada visitante y el resultado comercial de la atención."
+                              : "La capacidad define cuántos visitantes y especialistas asignados requiere la reserva."}
                           </p>
                           {appointmentDetailsLocked ? (
                             <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
@@ -891,7 +949,9 @@ export function SchedulerBookingDialog({
                       </div>
                       <div className="grid gap-3 lg:grid-cols-2">
                         <div className="space-y-2">
-                          <label className="scheduler-modal-label">Cabina configurada</label>
+                          <label className="scheduler-modal-label">
+                            Cabina configurada
+                          </label>
                           <Select
                             disabled={isEditing || appointmentDetailsLocked}
                             value={draft.cabinResourceId}
@@ -917,8 +977,8 @@ export function SchedulerBookingDialog({
                           </Select>
                           {isEditing ? (
                             <p className="text-xs leading-5 text-slate-500">
-                              La cabina y su capacidad son de sólo lectura porque
-                              ya fueron configuradas para esta cita.
+                              La cabina y su capacidad son de sólo lectura
+                              porque ya fueron configuradas para esta cita.
                             </p>
                           ) : null}
                         </div>
@@ -933,7 +993,7 @@ export function SchedulerBookingDialog({
                             }
                           >
                             <SelectTrigger className="scheduler-modal-select-trigger">
-                              <SelectValue placeholder="Selecciona quién atendió" />
+                              <SelectValue placeholder="Selecciona un representante" />
                             </SelectTrigger>
                             <SelectContent className="scheduler-modal-select-content max-h-[320px]">
                               {representativeOptions.map((representative) => (
@@ -942,7 +1002,8 @@ export function SchedulerBookingDialog({
                                   key={representative.id}
                                   value={representative.id}
                                 >
-                                  {representative.name} · {representative.role} ·{" "}
+                                  {representative.name} · {representative.role}{" "}
+                                  ·{" "}
                                   {representative.source === "POS_CRM"
                                     ? "POS"
                                     : "Agenda"}
@@ -958,11 +1019,19 @@ export function SchedulerBookingDialog({
                       </div>
                       {draft.visitors.map((visitor, index) => (
                         <div
-                          className="grid gap-3 rounded-2xl border border-white bg-white/85 p-3 md:grid-cols-2 2xl:grid-cols-10"
+                          className={cn(
+                            "grid gap-4 rounded-2xl border border-white bg-white/85 p-4 md:grid-cols-2",
+                            appointmentDetailsLocked && "2xl:grid-cols-10",
+                          )}
                           key={visitor.id}
                         >
-                          <div className="space-y-2 2xl:col-span-2">
-                            <label className="scheduler-modal-label">
+                          <div
+                            className={cn(
+                              "space-y-2",
+                              appointmentDetailsLocked && "2xl:col-span-2",
+                            )}
+                          >
+                            <label className="scheduler-modal-label flex min-h-10 items-end">
                               {index === 0
                                 ? "Cliente principal"
                                 : `Visitante ${index + 1}`}
@@ -981,9 +1050,16 @@ export function SchedulerBookingDialog({
                               }
                             />
                           </div>
-                          <div className="space-y-2 2xl:col-span-2">
-                            <label className="scheduler-modal-label">
-                              Especialista que atendió
+                          <div
+                            className={cn(
+                              "space-y-2",
+                              appointmentDetailsLocked && "2xl:col-span-2",
+                            )}
+                          >
+                            <label className="scheduler-modal-label flex min-h-10 items-end">
+                              {appointmentDetailsLocked
+                                ? "Especialista que atendió"
+                                : "Especialista asignada"}
                             </label>
                             <Select
                               value={visitor.specialistProfileId}
@@ -1008,7 +1084,9 @@ export function SchedulerBookingDialog({
                                 ))}
                               </SelectContent>
                             </Select>
-                            {index === 0 && !appointmentDetailsLocked && !isEditing ? (
+                            {index === 0 &&
+                            !appointmentDetailsLocked &&
+                            !isEditing ? (
                               <button
                                 aria-checked={draft.rememberSpecialist}
                                 className="flex w-full items-center justify-between gap-3 rounded-xl border border-[rgba(236,209,200,0.9)] bg-[#fbf7f2] px-3 py-2 text-left text-xs text-slate-600"
@@ -1041,105 +1119,114 @@ export function SchedulerBookingDialog({
                               </button>
                             ) : null}
                           </div>
-                          <div className="space-y-2 2xl:col-span-2">
-                            <label className="scheduler-modal-label">
-                              Resultado de venta
-                            </label>
-                            <Select
-                              value={visitor.purchaseKind ?? "PENDING"}
-                              onValueChange={(value) =>
-                                patchVisitor(index, {
-                                  purchaseKind:
-                                    value === "PENDING"
-                                      ? null
-                                      : (value as "NONE" | "FULL" | "LAYAWAY"),
-                                  purchased:
-                                    value === "PENDING"
-                                      ? null
-                                      : value !== "NONE",
-                                  ...(value === "NONE" || value === "PENDING"
-                                    ? {
-                                        purchaseAmount: "",
-                                        saleAmount: "",
-                                        depositAmount: "",
-                                      }
-                                    : value === "FULL"
-                                      ? { depositAmount: "" }
-                                      : {}),
-                                })
-                              }
-                            >
-                              <SelectTrigger className="scheduler-modal-select-trigger">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="scheduler-modal-select-content">
-                                <SelectItem
-                                  disabled={appointmentDetailsLocked}
-                                  value="PENDING"
+                          {appointmentDetailsLocked ? (
+                            <>
+                              <div className="space-y-2 2xl:col-span-2">
+                                <label className="scheduler-modal-label flex min-h-10 items-end">
+                                  Resultado de venta
+                                </label>
+                                <Select
+                                  value={visitor.purchaseKind ?? "PENDING"}
+                                  onValueChange={(value) =>
+                                    patchVisitor(index, {
+                                      purchaseKind:
+                                        value === "PENDING"
+                                          ? null
+                                          : (value as
+                                              | "NONE"
+                                              | "FULL"
+                                              | "LAYAWAY"),
+                                      purchased:
+                                        value === "PENDING"
+                                          ? null
+                                          : value !== "NONE",
+                                      ...(value === "NONE" ||
+                                      value === "PENDING"
+                                        ? {
+                                            purchaseAmount: "",
+                                            saleAmount: "",
+                                            depositAmount: "",
+                                          }
+                                        : value === "FULL"
+                                          ? { depositAmount: "" }
+                                          : {}),
+                                    })
+                                  }
                                 >
-                                  {appointmentDetailsLocked
-                                    ? "Pendiente · obligatorio completar"
-                                    : "Pendiente"}
-                                </SelectItem>
-                                <SelectItem value="NONE">No compró</SelectItem>
-                                <SelectItem value="FULL">
-                                  Compra liquidada
-                                </SelectItem>
-                                <SelectItem value="LAYAWAY">Apartado</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2 2xl:col-span-2">
-                            <label className="scheduler-modal-label">
-                              Monto de venta
-                            </label>
-                            <div className="relative">
-                              <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
-                              <Input
-                                className="scheduler-modal-input pl-10"
-                                disabled={
-                                  visitor.purchaseKind !== "FULL" &&
-                                  visitor.purchaseKind !== "LAYAWAY"
-                                }
-                                inputMode="decimal"
-                                min="0"
-                                onChange={(event) =>
-                                  patchVisitor(index, {
-                                    saleAmount: event.target.value,
-                                    purchaseAmount: event.target.value,
-                                  })
-                                }
-                                placeholder="$0.00"
-                                step="0.01"
-                                type="number"
-                                value={visitor.saleAmount}
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2 2xl:col-span-2">
-                            <label className="scheduler-modal-label">
-                              Monto apartado
-                            </label>
-                            <div className="relative">
-                              <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
-                              <Input
-                                className="scheduler-modal-input pl-10"
-                                disabled={visitor.purchaseKind !== "LAYAWAY"}
-                                inputMode="decimal"
-                                max={visitor.saleAmount || undefined}
-                                min="0"
-                                onChange={(event) =>
-                                  patchVisitor(index, {
-                                    depositAmount: event.target.value,
-                                  })
-                                }
-                                placeholder="$0.00"
-                                step="0.01"
-                                type="number"
-                                value={visitor.depositAmount}
-                              />
-                            </div>
-                          </div>
+                                  <SelectTrigger className="scheduler-modal-select-trigger">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="scheduler-modal-select-content">
+                                    <SelectItem disabled value="PENDING">
+                                      Pendiente
+                                    </SelectItem>
+                                    <SelectItem value="NONE">
+                                      No compró
+                                    </SelectItem>
+                                    <SelectItem value="FULL">
+                                      Compra liquidada
+                                    </SelectItem>
+                                    <SelectItem value="LAYAWAY">
+                                      Apartado
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-2 2xl:col-span-2">
+                                <label className="scheduler-modal-label flex min-h-10 items-end">
+                                  Monto de venta
+                                </label>
+                                <div className="relative">
+                                  <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
+                                  <Input
+                                    className="scheduler-modal-input pl-10"
+                                    disabled={
+                                      visitor.purchaseKind !== "FULL" &&
+                                      visitor.purchaseKind !== "LAYAWAY"
+                                    }
+                                    inputMode="decimal"
+                                    min="0"
+                                    onChange={(event) =>
+                                      patchVisitor(index, {
+                                        saleAmount: event.target.value,
+                                        purchaseAmount: event.target.value,
+                                      })
+                                    }
+                                    placeholder="$0.00"
+                                    step="0.01"
+                                    type="number"
+                                    value={visitor.saleAmount}
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-2 2xl:col-span-2">
+                                <label className="scheduler-modal-label flex min-h-10 items-end">
+                                  Monto apartado
+                                </label>
+                                <div className="relative">
+                                  <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
+                                  <Input
+                                    className="scheduler-modal-input pl-10"
+                                    disabled={
+                                      visitor.purchaseKind !== "LAYAWAY"
+                                    }
+                                    inputMode="decimal"
+                                    max={visitor.saleAmount || undefined}
+                                    min="0"
+                                    onChange={(event) =>
+                                      patchVisitor(index, {
+                                        depositAmount: event.target.value,
+                                      })
+                                    }
+                                    placeholder="$0.00"
+                                    step="0.01"
+                                    type="number"
+                                    value={visitor.depositAmount}
+                                  />
+                                </div>
+                              </div>
+                            </>
+                          ) : null}
                           {visitor.purchaseKind === "LAYAWAY" ? (
                             <p className="rounded-xl border border-[#e6d8ca] bg-[#fbf7f2] px-3 py-2 text-sm text-[#795f45] md:col-span-2 2xl:col-span-10">
                               El total de esta venta queda asignado a{" "}
@@ -1161,10 +1248,9 @@ export function SchedulerBookingDialog({
                           className="text-sm font-medium text-amber-800"
                           role="status"
                         >
-                          Completa el representante, cada visitante y
-                          especialista, e indica obligatoriamente si compró o
-                          no. Para compra captura el total; si es apartado, el
-                          anticipo debe ser mayor a cero y no superar la venta.
+                          {appointmentDetailsLocked
+                            ? "Completa el representante, cada visitante y especialista, e indica obligatoriamente si compró o no. Para compra captura el total; si es apartado, el anticipo debe ser mayor a cero y no superar la venta."
+                            : "Completa la cabina, el representante, los visitantes y las especialistas asignadas antes de guardar la reserva."}
                         </p>
                       ) : null}
                     </div>
@@ -1206,202 +1292,214 @@ export function SchedulerBookingDialog({
               </div>
 
               {!hideAdditionalFields ? (
-              <div className="scheduler-modal-section overflow-hidden rounded-[24px] p-4 md:p-5">
-                <button
-                  className="flex w-full items-center justify-between gap-4 rounded-[20px] border border-[rgba(236,209,200,0.9)] bg-white px-4 py-3 text-left transition hover:bg-[rgba(245,237,228,0.38)]"
-                  onClick={() => setIsAdditionalInfoOpen((current) => !current)}
-                  type="button"
-                >
-                  <div className="min-w-0">
-                    <p className="label-caps">Detalle</p>
-                    <h3 className="mt-1 text-[1.18rem] font-semibold tracking-[-0.03em] text-[var(--scheduler-ink-strong)]">
-                      Informacion adicional
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Sparkles className="h-5 w-5 text-[var(--scheduler-accent)]" />
-                    {isAdditionalInfoOpen ? (
-                      <ChevronUp className="h-5 w-5 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="h-5 w-5 text-slate-400" />
-                    )}
-                  </div>
-                </button>
-
-                {isAdditionalInfoOpen ? (
-                  <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr]">
-                    {additionalFieldDefinitions.length ? (
-                      <div className="grid gap-4 rounded-[20px] border border-[rgba(236,209,200,0.9)] bg-white/80 p-4 lg:col-span-2 md:grid-cols-2">
-                        <div className="md:col-span-2">
-                          <p className="scheduler-modal-label">
-                            Preguntas configurables
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            Estas respuestas se vinculan por ID a la cita y, si
-                            das de alta un cliente, también a su expediente.
-                          </p>
-                        </div>
-                        {additionalFieldDefinitions.map((definition) => {
-                          const value = draft.additionalAnswers[definition.id];
-                          const updateValue = (next: string | boolean) =>
-                            patchDraft({
-                              additionalAnswers: {
-                                ...draft.additionalAnswers,
-                                [definition.id]: next,
-                              },
-                            });
-                          return (
-                            <div className="space-y-2" key={definition.id}>
-                              <label
-                                className="scheduler-modal-label"
-                                htmlFor={`booking-question-${definition.id}`}
-                              >
-                                {definition.label}
-                                {definition.required ? " *" : ""}
-                              </label>
-                              {definition.type === "SELECT" ? (
-                                <Select
-                                  value={typeof value === "string" ? value : ""}
-                                  onValueChange={updateValue}
-                                >
-                                  <SelectTrigger
-                                    id={`booking-question-${definition.id}`}
-                                    className="scheduler-modal-select-trigger"
-                                  >
-                                    <SelectValue placeholder="Selecciona una opción" />
-                                  </SelectTrigger>
-                                  <SelectContent className="scheduler-modal-select-content">
-                                    {(definition.options ?? []).map(
-                                      (option) => (
-                                        <SelectItem
-                                          key={option}
-                                          className="scheduler-modal-select-item"
-                                          value={option}
-                                        >
-                                          {option}
-                                        </SelectItem>
-                                      ),
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                              ) : definition.type === "BOOLEAN" ? (
-                                <label className="flex h-14 items-center gap-3 rounded-[22px] border border-[rgba(236,209,200,0.95)] bg-white px-4 text-sm text-slate-700">
-                                  <input
-                                    checked={value === true}
-                                    className="h-4 w-4 accent-[var(--scheduler-accent)]"
-                                    id={`booking-question-${definition.id}`}
-                                    onChange={(event) =>
-                                      updateValue(event.target.checked)
-                                    }
-                                    type="checkbox"
-                                  />
-                                  Sí
-                                </label>
-                              ) : (
-                                <Input
-                                  className="scheduler-modal-input"
-                                  id={`booking-question-${definition.id}`}
-                                  inputMode={
-                                    definition.type === "NUMBER"
-                                      ? "decimal"
-                                      : undefined
-                                  }
-                                  onChange={(event) =>
-                                    updateValue(event.target.value)
-                                  }
-                                  type={
-                                    definition.type === "DATE"
-                                      ? "date"
-                                      : definition.type === "NUMBER"
-                                        ? "number"
-                                        : "text"
-                                  }
-                                  value={typeof value === "string" ? value : ""}
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                    {showCommercialFields ? (
-                      <div className="space-y-2">
-                        <label className="scheduler-modal-label">Precio</label>
-                        <Input
-                          className="scheduler-modal-input"
-                          placeholder="$0"
-                          value={
-                            selectedService
-                              ? formatMoney(selectedService.price)
-                              : ""
-                          }
-                          readOnly
-                        />
-                      </div>
-                    ) : null}
-                    {showCommercialFields ? (
-                      <div className="space-y-2">
-                        <label className="scheduler-modal-label">Pagado</label>
-                        <div className="flex h-14 items-center gap-6 rounded-[22px] border border-[rgba(236,209,200,0.95)] bg-white px-4">
-                          <label className="flex items-center gap-2 text-base text-[var(--scheduler-ink-strong)]">
-                            <input
-                              checked={draft.paymentLabel !== "No pagado"}
-                              className="h-4 w-4 accent-[var(--scheduler-accent)]"
-                              name="paid"
-                              type="radio"
-                              onChange={() =>
-                                patchDraft({ paymentLabel: "Reserva pagada" })
-                              }
-                            />
-                            Si
-                          </label>
-                          <label className="flex items-center gap-2 text-base text-[var(--scheduler-ink-strong)]">
-                            <input
-                              checked={draft.paymentLabel === "No pagado"}
-                              className="h-4 w-4 accent-[var(--scheduler-accent)]"
-                              name="paid"
-                              type="radio"
-                              onChange={() =>
-                                patchDraft({ paymentLabel: "No pagado" })
-                              }
-                            />
-                            No
-                          </label>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="space-y-2 lg:col-span-2">
-                      <label className="scheduler-modal-label">
-                        {showInternalNote
-                          ? "Notas compartidas con el cliente"
-                          : "Notas de la cita"}
-                      </label>
-                      <Textarea
-                        className="scheduler-modal-textarea min-h-32"
-                        disabled={appointmentDetailsLocked}
-                        value={draft.notes}
-                        onChange={(event) =>
-                          patchDraft({ notes: event.target.value })
-                        }
-                      />
+                <div className="scheduler-modal-section overflow-hidden rounded-[24px] p-4 md:p-5">
+                  <button
+                    className="flex w-full items-center justify-between gap-4 rounded-[20px] border border-[rgba(236,209,200,0.9)] bg-white px-4 py-3 text-left transition hover:bg-[rgba(245,237,228,0.38)]"
+                    onClick={() =>
+                      setIsAdditionalInfoOpen((current) => !current)
+                    }
+                    type="button"
+                  >
+                    <div className="min-w-0">
+                      <p className="label-caps">Detalle</p>
+                      <h3 className="mt-1 text-[1.18rem] font-semibold tracking-[-0.03em] text-[var(--scheduler-ink-strong)]">
+                        Informacion adicional
+                      </h3>
                     </div>
-                    {showInternalNote ? (
+                    <div className="flex items-center gap-3">
+                      <Sparkles className="h-5 w-5 text-[var(--scheduler-accent)]" />
+                      {isAdditionalInfoOpen ? (
+                        <ChevronUp className="h-5 w-5 text-slate-400" />
+                      ) : (
+                        <ChevronDown className="h-5 w-5 text-slate-400" />
+                      )}
+                    </div>
+                  </button>
+
+                  {isAdditionalInfoOpen ? (
+                    <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr]">
+                      {appointmentFieldDefinitions.length ? (
+                        <div className="grid gap-4 rounded-[20px] border border-[rgba(236,209,200,0.9)] bg-white/80 p-4 lg:col-span-2 md:grid-cols-2">
+                          <div className="md:col-span-2">
+                            <p className="scheduler-modal-label">
+                              Preguntas configurables
+                            </p>
+                            <p className="mt-1 text-sm text-slate-500">
+                              Estas respuestas se vinculan por ID a la cita y,
+                              si das de alta un cliente, también a su
+                              expediente.
+                            </p>
+                          </div>
+                          {appointmentFieldDefinitions.map((definition) => {
+                            const value =
+                              draft.additionalAnswers[definition.id];
+                            const updateValue = (next: string | boolean) =>
+                              patchDraft({
+                                additionalAnswers: {
+                                  ...draft.additionalAnswers,
+                                  [definition.id]: next,
+                                },
+                              });
+                            return (
+                              <div className="space-y-2" key={definition.id}>
+                                <label
+                                  className="scheduler-modal-label"
+                                  htmlFor={`booking-question-${definition.id}`}
+                                >
+                                  {definition.label}
+                                  {definition.required ? " *" : ""}
+                                </label>
+                                {definition.type === "SELECT" ? (
+                                  <Select
+                                    value={
+                                      typeof value === "string" ? value : ""
+                                    }
+                                    onValueChange={updateValue}
+                                  >
+                                    <SelectTrigger
+                                      id={`booking-question-${definition.id}`}
+                                      className="scheduler-modal-select-trigger"
+                                    >
+                                      <SelectValue placeholder="Selecciona una opción" />
+                                    </SelectTrigger>
+                                    <SelectContent className="scheduler-modal-select-content">
+                                      {(definition.options ?? []).map(
+                                        (option) => (
+                                          <SelectItem
+                                            key={option}
+                                            className="scheduler-modal-select-item"
+                                            value={option}
+                                          >
+                                            {option}
+                                          </SelectItem>
+                                        ),
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                ) : definition.type === "BOOLEAN" ? (
+                                  <label className="flex h-14 items-center gap-3 rounded-[22px] border border-[rgba(236,209,200,0.95)] bg-white px-4 text-sm text-slate-700">
+                                    <input
+                                      checked={value === true}
+                                      className="h-4 w-4 accent-[var(--scheduler-accent)]"
+                                      id={`booking-question-${definition.id}`}
+                                      onChange={(event) =>
+                                        updateValue(event.target.checked)
+                                      }
+                                      type="checkbox"
+                                    />
+                                    Sí
+                                  </label>
+                                ) : (
+                                  <Input
+                                    className="scheduler-modal-input"
+                                    id={`booking-question-${definition.id}`}
+                                    inputMode={
+                                      definition.type === "NUMBER"
+                                        ? "decimal"
+                                        : undefined
+                                    }
+                                    onChange={(event) =>
+                                      updateValue(event.target.value)
+                                    }
+                                    type={
+                                      definition.type === "DATE"
+                                        ? "date"
+                                        : definition.type === "NUMBER"
+                                          ? "number"
+                                          : "text"
+                                    }
+                                    value={
+                                      typeof value === "string" ? value : ""
+                                    }
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {showCommercialFields ? (
+                        <div className="space-y-2">
+                          <label className="scheduler-modal-label">
+                            Precio
+                          </label>
+                          <Input
+                            className="scheduler-modal-input"
+                            placeholder="$0"
+                            value={
+                              selectedService
+                                ? formatMoney(selectedService.price)
+                                : ""
+                            }
+                            readOnly
+                          />
+                        </div>
+                      ) : null}
+                      {showCommercialFields ? (
+                        <div className="space-y-2">
+                          <label className="scheduler-modal-label">
+                            Pagado
+                          </label>
+                          <div className="flex h-14 items-center gap-6 rounded-[22px] border border-[rgba(236,209,200,0.95)] bg-white px-4">
+                            <label className="flex items-center gap-2 text-base text-[var(--scheduler-ink-strong)]">
+                              <input
+                                checked={draft.paymentLabel !== "No pagado"}
+                                className="h-4 w-4 accent-[var(--scheduler-accent)]"
+                                name="paid"
+                                type="radio"
+                                onChange={() =>
+                                  patchDraft({ paymentLabel: "Reserva pagada" })
+                                }
+                              />
+                              Si
+                            </label>
+                            <label className="flex items-center gap-2 text-base text-[var(--scheduler-ink-strong)]">
+                              <input
+                                checked={draft.paymentLabel === "No pagado"}
+                                className="h-4 w-4 accent-[var(--scheduler-accent)]"
+                                name="paid"
+                                type="radio"
+                                onChange={() =>
+                                  patchDraft({ paymentLabel: "No pagado" })
+                                }
+                              />
+                              No
+                            </label>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="space-y-2 lg:col-span-2">
                         <label className="scheduler-modal-label">
-                          Nota interna
+                          {showInternalNote
+                            ? "Notas compartidas con el cliente"
+                            : "Notas de la cita"}
                         </label>
                         <Textarea
                           className="scheduler-modal-textarea min-h-32"
-                          value={draft.internalNote}
+                          disabled={appointmentDetailsLocked}
+                          value={draft.notes}
                           onChange={(event) =>
-                            patchDraft({ internalNote: event.target.value })
+                            patchDraft({ notes: event.target.value })
                           }
                         />
                       </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                      {showInternalNote ? (
+                        <div className="space-y-2 lg:col-span-2">
+                          <label className="scheduler-modal-label">
+                            Nota interna
+                          </label>
+                          <Textarea
+                            className="scheduler-modal-textarea min-h-32"
+                            value={draft.internalNote}
+                            onChange={(event) =>
+                              patchDraft({ internalNote: event.target.value })
+                            }
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
 

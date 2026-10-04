@@ -41,12 +41,7 @@ function session(scenario = "normal", role = "master") {
   return { state, request };
 }
 
-function operationToken(
-  request,
-  purpose,
-  targetId,
-  code = "0000",
-) {
+function operationToken(request, purpose, targetId, code = "0000") {
   const response = request(
     "POST",
     "/api/scheduler/design-proposals/operation-authorizations",
@@ -231,6 +226,12 @@ test("el cliente Axios real funciona con MSW sin servidor ni credenciales reales
       branchId: input.branchId,
       displayName: "Cliente de prueba",
       phone: "5550000099",
+      customFields: [
+        {
+          definitionId: "design-field-sales-owner",
+          value: "Renata Castillo",
+        },
+      ],
     });
     assert.equal(
       (await client.searchCustomers({ query: "Cliente de prueba" })).items[0]
@@ -586,6 +587,116 @@ test("los códigos de agente son únicos y cada movimiento consume una autorizac
   );
 });
 
+test("la baja POS transfiere la cartera vigente y conserva el representante histórico de las citas", () => {
+  const { state, request } = session();
+  const seller = state.operationAgents.find(
+    (agent) => agent.source === "POS_CRM" && agent.name === "Renata Castillo",
+  );
+  const customer = state.customers.find((candidate) =>
+    candidate.currentPortfolios.some(
+      (portfolio) => portfolio.employeeId === seller.externalId,
+    ),
+  );
+  const historicalAppointment = state.appointments.find(
+    (appointment) => appointment.customerId === customer.id,
+  );
+  const historicalOwner = request(
+    "POST",
+    "/api/scheduler/design-proposals/appointments/contexts",
+    { appointmentIds: [historicalAppointment.id] },
+  ).body.data[historicalAppointment.id].portfolioSellerName;
+  assert.equal(historicalOwner, seller.name);
+
+  const deactivated = request(
+    "PUT",
+    `/api/scheduler/design-proposals/authorization-agents/${seller.id}`,
+    {
+      externalId: seller.externalId,
+      name: seller.name,
+      role: seller.role,
+      source: seller.source,
+      active: false,
+      allowedPurposes: seller.allowedPurposes,
+    },
+  );
+  assert.equal(deactivated.status, 200);
+  assert.equal(
+    customer.currentPortfolios.find(
+      (portfolio) => portfolio.branchId === historicalAppointment.branchId,
+    ).ownerName,
+    "Cartera de la empresa",
+  );
+  assert.equal(
+    customer.customFields.find(
+      (field) => field.definitionId === "design-field-sales-owner",
+    ).value,
+    "Cartera de la empresa",
+  );
+  assert.ok(
+    !state.fields
+      .find((field) => field.id === "design-field-sales-owner")
+      .options.includes(seller.name),
+  );
+  assert.equal(
+    request("POST", "/api/scheduler/design-proposals/appointments/contexts", {
+      appointmentIds: [historicalAppointment.id],
+    }).body.data[historicalAppointment.id].portfolioSellerName,
+    historicalOwner,
+  );
+
+  const nextAppointment = request("POST", "/api/scheduler/appointments", {
+    branchId: historicalAppointment.branchId,
+    customerId: customer.id,
+    startsAt: new Date(
+      new Date(historicalAppointment.startsAt).getTime() + 7 * 86_400_000,
+    ).toISOString(),
+    status: "RESERVED",
+    services: historicalAppointment.services.map((service) => ({
+      serviceProfileId: service.serviceProfileId,
+      professionalProfileIds: service.professionals.map(
+        (professional) => professional.professionalProfileId,
+      ),
+      resourceIds: [],
+    })),
+  });
+  assert.equal(nextAppointment.status, 201);
+  assert.equal(
+    request("POST", "/api/scheduler/design-proposals/appointments/contexts", {
+      appointmentIds: [nextAppointment.body.data.id],
+    }).body.data[nextAppointment.body.data.id].portfolioSellerName,
+    "Cartera de la empresa",
+  );
+
+  assert.equal(
+    request("POST", "/api/scheduler/clients", {
+      branchId: historicalAppointment.branchId,
+      displayName: "Cliente sin representante",
+    }).status,
+    400,
+  );
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/authorization-agents/${seller.id}`,
+      {
+        externalId: seller.externalId,
+        name: seller.name,
+        role: seller.role,
+        source: seller.source,
+        active: true,
+        allowedPurposes: seller.allowedPurposes,
+      },
+    ).status,
+    200,
+  );
+  assert.equal(
+    customer.currentPortfolios.find(
+      (portfolio) => portfolio.branchId === historicalAppointment.branchId,
+    ).ownerName,
+    "Cartera de la empresa",
+  );
+});
+
 test("la cabina exige un visitante y especialista por lugar y autoriza cada monto", () => {
   const { state, request } = session();
   const appointmentId = state.appointments[0].id;
@@ -672,6 +783,9 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
     contexts.body.data[appointmentId].representativeName,
     representative.name,
   );
+  assert.equal(contexts.body.data[appointmentId].hasPurchase, true);
+  assert.equal(contexts.body.data[appointmentId].purchaseKind, "FULL");
+  assert.equal(contexts.body.data[appointmentId].saleAmount, 1750);
   assert.ok("nextAppointmentAt" in contexts.body.data[appointmentId]);
 
   const anotherCabin = state.catalog.resources.find(
@@ -961,7 +1075,10 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
     { "x-design-operation-authorization": correctionGrant.token },
   );
   assert.equal(settled.status, 200);
-  assert.equal(settled.body.data.visitors[0].specialistProfileId, settlementSpecialist.id);
+  assert.equal(
+    settled.body.data.visitors[0].specialistProfileId,
+    settlementSpecialist.id,
+  );
   assert.equal(
     settled.body.data.visitors[0].saleOwnerSpecialistProfileId,
     specialist.id,
@@ -1095,7 +1212,8 @@ test("las proyecciones separan histórico, venta real y estimación por sucursal
 test("una compra registrada sólo admite corrección con propósito específico", () => {
   const { state, request } = session();
   const appointment = state.appointments.find(
-    (item) => item.status === "ATTENDED" && state.appointmentCabinVisits[item.id],
+    (item) =>
+      item.status === "ATTENDED" && state.appointmentCabinVisits[item.id],
   );
   const visit = state.appointmentCabinVisits[appointment.id];
   const input = {
@@ -1242,7 +1360,10 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
     },
   );
   assert.equal(capture.status, 200);
-  assert.equal(capture.body.data.visitors[0].settlementStatus, "NOT_APPLICABLE");
+  assert.equal(
+    capture.body.data.visitors[0].settlementStatus,
+    "NOT_APPLICABLE",
+  );
 
   const completedArrivalToken = operationToken(
     request,
@@ -1482,7 +1603,7 @@ test("la búsqueda avanzada combina agenda, servicios, cumpleaños, vendedor y c
       appointmentStatuses: ["CANCELED"],
       serviceProfileIds: ["class-rv4"],
       birthdayMonth: 11,
-      sellerNames: ["Venta de empresa"],
+      sellerNames: ["Cartera de la empresa"],
       customFields: [{ definitionId: "design-field-type", value: "Nuevo" }],
       page: 1,
       pageSize: 25,

@@ -68,8 +68,7 @@ export interface DesignStatusDefinition {
   updatedAt: string;
 }
 
-export interface DesignStatusDefinitionRevision
-  extends DesignStatusDefinition {
+export interface DesignStatusDefinitionRevision extends DesignStatusDefinition {
   effectiveFrom: string;
   effectiveTo: string | null;
 }
@@ -79,9 +78,7 @@ export interface DesignStatusCatalog {
   revisions: DesignStatusDefinitionRevision[];
 }
 
-export type DesignBranchCommercialMode =
-  | "POS_LINKED"
-  | "SCHEDULER_STANDALONE";
+export type DesignBranchCommercialMode = "POS_LINKED" | "SCHEDULER_STANDALONE";
 
 export interface DesignBranchCommercialModel {
   id: string;
@@ -114,10 +111,7 @@ export interface DesignBranchCommercialModelInput {
 }
 
 export type DesignPurchaseKind = "NONE" | "FULL" | "LAYAWAY" | null;
-export type DesignSaleSettlementStatus =
-  | "NOT_APPLICABLE"
-  | "OPEN"
-  | "PAID";
+export type DesignSaleSettlementStatus = "NOT_APPLICABLE" | "OPEN" | "PAID";
 
 export interface DesignCabinVisitPerson {
   id: string;
@@ -159,6 +153,10 @@ export interface DesignAppointmentContext {
   representativeRole: string | null;
   representativeSource: DesignOperationAgentSource | null;
   portfolioSellerName: string | null;
+  hasPurchase: boolean;
+  purchaseKind: DesignPurchaseKind | null;
+  saleAmount: number;
+  depositAmount: number;
   nextAppointmentId: string | null;
   nextAppointmentAt: string | null;
 }
@@ -286,8 +284,7 @@ export interface DesignCabinSalesReportBreakdown {
   balanceAmount: number;
 }
 
-export interface DesignCabinSalesSpecialistBreakdown
-  extends DesignCabinSalesReportBreakdown {
+export interface DesignCabinSalesSpecialistBreakdown extends DesignCabinSalesReportBreakdown {
   branchId: string;
   branchName: string;
   specialistProfileId: string;

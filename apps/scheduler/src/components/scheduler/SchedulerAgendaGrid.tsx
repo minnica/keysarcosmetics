@@ -333,8 +333,7 @@ export function SchedulerAgendaGrid({
       : 220,
   );
   const dayGridMinWidth =
-    agendaLayout.timeColumnWidth +
-    professionalCount * readableColumnWidth;
+    agendaLayout.timeColumnWidth + professionalCount * readableColumnWidth;
   const dayGridStyle: CSSProperties & Record<string, string> = {
     gridTemplateColumns: columnsFitted
       ? `${agendaLayout.timeColumnWidth}px repeat(${professionalCount}, minmax(0, 1fr))`
@@ -704,6 +703,10 @@ export function SchedulerAgendaGrid({
                                   className="scheduler-appointment-status-badge max-w-[68%]"
                                   color={statusColor}
                                   compact
+                                  hasPurchase={
+                                    booking.purchased === true &&
+                                    (booking.purchaseAmount ?? 0) > 0
+                                  }
                                   status={booking.status}
                                 />
                               </div>
@@ -743,6 +746,10 @@ export function SchedulerAgendaGrid({
                               <SchedulerStatusBadge
                                 color={statusColor}
                                 compact
+                                hasPurchase={
+                                  booking.purchased === true &&
+                                  (booking.purchaseAmount ?? 0) > 0
+                                }
                                 status={booking.status}
                               />
                             </dd>
@@ -1046,6 +1053,10 @@ export function SchedulerAgendaGrid({
                                   className="scheduler-appointment-status-badge max-w-[68%]"
                                   color={statusColor}
                                   compact
+                                  hasPurchase={
+                                    booking.purchased === true &&
+                                    (booking.purchaseAmount ?? 0) > 0
+                                  }
                                   status={booking.status}
                                 />
                               </div>
@@ -1085,6 +1096,10 @@ export function SchedulerAgendaGrid({
                               <SchedulerStatusBadge
                                 color={statusColor}
                                 compact
+                                hasPurchase={
+                                  booking.purchased === true &&
+                                  (booking.purchaseAmount ?? 0) > 0
+                                }
                                 status={booking.status}
                               />
                             </dd>

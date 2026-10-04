@@ -114,6 +114,7 @@ import {
   createBlockDraft,
   createBlockDraftFromBlock,
   createDraft,
+  formatMoney,
   type BlockDraft,
   type BookingDraft,
   type ClientPaymentHistoryEntry,
@@ -238,7 +239,9 @@ function historyStatus(value: string): BookingStatus {
   return mapping[value.toUpperCase()] ?? "reserved";
 }
 
-function journalCategoryOptions(value: unknown): AppointmentJournalCategoryOption[] {
+function journalCategoryOptions(
+  value: unknown,
+): AppointmentJournalCategoryOption[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
@@ -515,9 +518,7 @@ export function ApiAgendaWorkspace() {
           )
           .map(
             (definition) =>
-              schedulerCanonicalToBookingStatus[
-                definition.canonicalStatus!
-              ],
+              schedulerCanonicalToBookingStatus[definition.canonicalStatus!],
           ),
       ),
     [statusDefinitions.data?.items],
@@ -626,10 +627,7 @@ export function ApiAgendaWorkspace() {
   const postSaleCategories = useMemo(
     () =>
       journalCategoryOptions(
-        getSchedulerSettingValue(
-          effectiveAgendaSettings,
-          "postSaleCategories",
-        ),
+        getSchedulerSettingValue(effectiveAgendaSettings, "postSaleCategories"),
       ),
     [effectiveAgendaSettings],
   );
@@ -646,10 +644,7 @@ export function ApiAgendaWorkspace() {
   const rescheduleReasonOptions = useMemo(
     () =>
       journalCategoryOptions(
-        getSchedulerSettingValue(
-          effectiveAgendaSettings,
-          "rescheduleReasons",
-        ),
+        getSchedulerSettingValue(effectiveAgendaSettings, "rescheduleReasons"),
       ),
     [effectiveAgendaSettings],
   );
@@ -848,6 +843,10 @@ export function ApiAgendaWorkspace() {
               representativeRole: null,
               representativeSource: null,
               portfolioSellerName: null,
+              hasPurchase: false,
+              purchaseKind: null,
+              saleAmount: 0,
+              depositAmount: 0,
               nextAppointmentId: null,
               nextAppointmentAt: null,
             } satisfies DesignAppointmentContext),
@@ -883,10 +882,28 @@ export function ApiAgendaWorkspace() {
     }
     return next;
   }, [administrationCatalog.data?.statusColors, selectedCommerce]);
-  const allBookings = useMemo(
-    () => (presentation ? buildSchedulerVisualBookings(presentation) : []),
-    [presentation],
-  );
+  const allBookings = useMemo(() => {
+    const contexts = appointmentContexts.data ?? {};
+    return (presentation ? buildSchedulerVisualBookings(presentation) : []).map(
+      (booking) => {
+        const context = contexts[bookingSourceId(booking)];
+        if (!context?.hasPurchase) return booking;
+        return {
+          ...booking,
+          purchased: true,
+          purchaseType:
+            context.purchaseKind === "LAYAWAY"
+              ? ("layaway" as const)
+              : ("cash" as const),
+          purchaseAmount: context.saleAmount,
+          paymentLabel:
+            context.purchaseKind === "LAYAWAY"
+              ? `Apartado · ${formatMoney(context.depositAmount)} de ${formatMoney(context.saleAmount)}`
+              : `Compra · ${formatMoney(context.saleAmount)}`,
+        };
+      },
+    );
+  }, [appointmentContexts.data, presentation]);
   const allBlocks = useMemo(
     () =>
       catalog.data
@@ -1536,13 +1553,18 @@ export function ApiAgendaWorkspace() {
   function additionalAnswersForDraft(
     draft: BookingDraft,
     definitions: SchedulerCustomerFieldDefinitionDto[],
+    requireCustomerFields: boolean,
   ): DesignAppointmentAnswer[] {
     return definitions.flatMap((definition) => {
       const rawValue = draft.additionalAnswers[definition.id];
       const empty =
         definition.type !== "BOOLEAN" &&
         (rawValue === undefined || String(rawValue).trim() === "");
-      if (empty && definition.required) {
+      if (
+        empty &&
+        definition.required &&
+        (definition.id !== "design-field-sales-owner" || requireCustomerFields)
+      ) {
         throw new Error(`Completa la pregunta ${definition.label}.`);
       }
       if (empty) return [];
@@ -1737,10 +1759,10 @@ export function ApiAgendaWorkspace() {
       : null;
     const requiresAttendanceOutcome = Boolean(
       existingAppointment &&
-        (attendanceStatusAppointmentId === existingAppointment.id ||
-          !["PENDING", "RESERVED", "CONFIRMED"].includes(
-            existingAppointment.status,
-          )),
+      (attendanceStatusAppointmentId === existingAppointment.id ||
+        !["PENDING", "RESERVED", "CONFIRMED"].includes(
+          existingAppointment.status,
+        )),
     );
     const selectedCabin = cabinOptions.find(
       (cabin) => cabin.id === bookingDraft.cabinResourceId,
@@ -1800,10 +1822,10 @@ export function ApiAgendaWorkspace() {
     }
     const capturesOnlyAttendance = Boolean(
       existingAppointment &&
-        (attendanceStatusAppointmentId === existingAppointment.id ||
-          !["PENDING", "RESERVED", "CONFIRMED"].includes(
-            existingAppointment.status,
-          )),
+      (attendanceStatusAppointmentId === existingAppointment.id ||
+        !["PENDING", "RESERVED", "CONFIRMED"].includes(
+          existingAppointment.status,
+        )),
     );
     const completesAttendanceCapture = Boolean(
       editingId && attendanceStatusAppointmentId === editingId,
@@ -1858,13 +1880,13 @@ export function ApiAgendaWorkspace() {
             ? "Autorizar llegada y atención"
             : "Autorizar asistencia"
           : editingId
-          ? "Autorizar cambio de cita"
-          : "Autorizar nueva reserva",
+            ? "Autorizar cambio de cita"
+            : "Autorizar nueva reserva",
         description: completesAttendanceCapture
           ? "Confirma quién registra la llegada o asistencia. El estado sólo cambiará después de guardar atención, representante y compra."
           : editingId
-          ? "Confirma quién realiza el cambio. El código autoriza sólo este movimiento."
-          : "Confirma quién registra la reserva. El código autoriza sólo este movimiento.",
+            ? "Confirma quién realiza el cambio. El código autoriza sólo este movimiento."
+            : "Confirma quién registra la reserva. El código autoriza sólo este movimiento.",
         purpose: completesAttendanceCapture
           ? "APPOINTMENT_STATUS_CHANGE"
           : editingId
@@ -1894,8 +1916,8 @@ export function ApiAgendaWorkspace() {
       : null;
     const appointmentDetailsLocked = Boolean(
       existing &&
-        (attendanceStatusAppointmentId === existing.id ||
-          !["PENDING", "RESERVED", "CONFIRMED"].includes(existing.status)),
+      (attendanceStatusAppointmentId === existing.id ||
+        !["PENDING", "RESERVED", "CONFIRMED"].includes(existing.status)),
     );
     const completesAttendanceCapture = Boolean(
       existing && attendanceStatusAppointmentId === existing.id,
@@ -1916,9 +1938,15 @@ export function ApiAgendaWorkspace() {
     let additionalAnswers: DesignAppointmentAnswer[] = [];
     if (!appointmentDetailsLocked) {
       try {
+        const createsCustomer = !(
+          options.customer?.id ??
+          bookingDraft.clientId ??
+          createdCustomerByIntentRef.current[bookingIntentKey]
+        );
         additionalAnswers = additionalAnswersForDraft(
           bookingDraft,
           activeFieldDefinitions,
+          createsCustomer,
         );
       } catch (cause) {
         toast.error(
@@ -2107,7 +2135,7 @@ export function ApiAgendaWorkspace() {
           await schedulerDesignProposals.saveCustomerSpecialistPreference(
             customerId,
             bookingDraft.rememberSpecialist
-              ? bookingDraft.visitors[0]?.specialistProfileId ?? null
+              ? (bookingDraft.visitors[0]?.specialistProfileId ?? null)
               : null,
           );
         }
@@ -2399,7 +2427,10 @@ export function ApiAgendaWorkspace() {
       setCancelWithoutNextAppointment(false);
       return;
     }
-    if (status === "attended" && Date.now() < new Date(appointment.endsAt).getTime()) {
+    if (
+      status === "attended" &&
+      Date.now() < new Date(appointment.endsAt).getTime()
+    ) {
       toast.error(
         `Podrás marcar asistencia al terminar la sesión: ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(new Date(appointment.endsAt))}.`,
       );
@@ -2412,9 +2443,7 @@ export function ApiAgendaWorkspace() {
           !["ARRIVED", "WAITING"].includes(appointment.status)));
     if (requiresAttentionCapture) {
       setAttendanceStatusAppointmentId(appointment.id);
-      setAttendanceTargetStatus(
-        status === "arrived" ? "arrived" : "attended",
-      );
+      setAttendanceTargetStatus(status === "arrived" ? "arrived" : "attended");
       openEditBooking(booking);
       toast.info(
         "El color no cambiará hasta guardar representante, especialistas y compra o no compra de cada visitante.",
@@ -2521,8 +2550,7 @@ export function ApiAgendaWorkspace() {
                 metadata: {
                   branchId: selectedBranch,
                   reason: cancelReason.trim(),
-                  nextAppointment:
-                    cancelTentativeDate || "SIN_PROXIMA_CITA",
+                  nextAppointment: cancelTentativeDate || "SIN_PROXIMA_CITA",
                 },
               });
               await appointmentContexts.reload();
@@ -2929,9 +2957,7 @@ export function ApiAgendaWorkspace() {
                   visibleBookings={visibleBookings}
                   visibleProfessionals={visibleColumns}
                   visibleStatuses={
-                    statusDefinitions.data
-                      ? visibleBookingStatuses
-                      : undefined
+                    statusDefinitions.data ? visibleBookingStatuses : undefined
                   }
                   weekBookings={weekBookings}
                   weekBlocks={weekBlocks}
@@ -2969,12 +2995,12 @@ export function ApiAgendaWorkspace() {
           }
           appointmentDetailsLocked={Boolean(
             bookingDraft.bookingId &&
-              (attendanceStatusAppointmentId === bookingDraft.bookingId ||
-                !["PENDING", "RESERVED", "CONFIRMED"].includes(
-                  presentation?.appointments.find(
-                    (appointment) => appointment.id === bookingDraft.bookingId,
-                  )?.status ?? "",
-                )),
+            (attendanceStatusAppointmentId === bookingDraft.bookingId ||
+              !["PENDING", "RESERVED", "CONFIRMED"].includes(
+                presentation?.appointments.find(
+                  (appointment) => appointment.id === bookingDraft.bookingId,
+                )?.status ?? "",
+              )),
           )}
           availableStartTimes={availableStartTimes}
           cabinOptions={cabinOptions}
@@ -3300,9 +3326,7 @@ export function ApiAgendaWorkspace() {
               <span
                 aria-hidden="true"
                 className={`relative h-6 w-11 rounded-full transition ${
-                  cancelWithoutNextAppointment
-                    ? "bg-[#263649]"
-                    : "bg-slate-300"
+                  cancelWithoutNextAppointment ? "bg-[#263649]" : "bg-slate-300"
                 }`}
               >
                 <span

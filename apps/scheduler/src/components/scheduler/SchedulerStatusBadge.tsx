@@ -10,6 +10,7 @@ interface SchedulerStatusBadgeProps {
   color: string;
   className?: string;
   compact?: boolean;
+  hasPurchase?: boolean;
 }
 
 export function SchedulerStatusBadge({
@@ -17,6 +18,7 @@ export function SchedulerStatusBadge({
   color,
   className,
   compact = false,
+  hasPurchase = false,
 }: SchedulerStatusBadgeProps) {
   const tokens = getSchedulerStatusColorTokens(color);
 
@@ -44,6 +46,18 @@ export function SchedulerStatusBadge({
         style={{ backgroundColor: tokens.accent }}
       />
       <span className="truncate">{bookingStatuses[status].label}</span>
+      {hasPurchase ? (
+        <span
+          aria-label="Venta o apartado registrado"
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center rounded-full bg-[#263649] font-bold leading-none text-white",
+            compact ? "h-3.5 w-3.5 text-[0.5rem]" : "h-5 w-5 text-[0.68rem]",
+          )}
+          title="Venta o apartado registrado"
+        >
+          $
+        </span>
+      ) : null}
     </span>
   );
 }

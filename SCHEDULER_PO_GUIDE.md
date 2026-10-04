@@ -340,6 +340,30 @@ al `professionalProfileId`, se propone automáticamente en la siguiente reserva
 y puede retirarse sin reescribir citas anteriores. La preferencia nunca sustituye
 la captura final de quién atendió.
 
+El alta de reserva muestra **Especialista asignada** y no solicita resultado de
+venta, montos ni "quién atendió". Esos campos aparecen únicamente al registrar
+la llegada/asistencia. Las filas de atención mantienen alturas y columnas
+uniformes para alinear cliente, especialista, resultado, venta y apartado.
+Cuando una atención tiene compra liquidada o apartado con monto, todas sus
+proyecciones en Agenda muestran un distintivo `$` junto al status; una captura
+explícita de **No compró** no muestra el distintivo.
+
+### Cartera POS y snapshot por cita
+
+Crear un cliente exige **Representante de cartera**. Las opciones proceden de
+agentes vigentes del POS/CRM o del alta local permitida para Agenda, además de
+**Cartera de la empresa**. El campo legado "Especialista que atendió" ya no
+forma parte del expediente ni del alta: la atención real pertenece a cada cita.
+
+Al inactivar un representante `POS_CRM`, la demo traslada inmediatamente sus
+carteras vigentes a **Cartera de la empresa** y lo retira de nuevas altas.
+Reactivarlo vuelve a habilitarlo para asignaciones futuras, pero no restaura
+clientes anteriores. Cada cita guarda un snapshot del representante de cartera
+al momento de su creación; por eso el cambio se refleja en reservas nuevas y
+en el expediente vigente, sin reescribir citas ni reportes históricos. En
+producción esta operación debe seguir siendo transaccional y auditable en el
+POS, tal como `CustomerPortfolioAssignment` y `PosPortfolioTransferEvent`.
+
 Al cambiar una cita a `ARRIVED`, la demo abre la captura obligatoria y mantiene
 el status anterior hasta guardar representante, especialistas y resultado de
 compra. Al cambiar después a `ATTENDED`, mantiene además el bloqueo hasta que
@@ -376,23 +400,23 @@ almacenan ni se exportan.
 
 Contratos propuestos, exclusivos de `apps/scheduler/design`:
 
-| Método         | Ruta                                                              | Uso propuesto                                                                 |
-| -------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `GET/POST/PUT` | `/api/scheduler/design-proposals/authorization-agents[/:id]`      | Consultar identidades externas y asignar un código ficticio único.            |
-| `POST`         | `/api/scheduler/design-proposals/operation-authorizations`        | Resolver el agente por código y emitir un token de un solo movimiento.        |
-| `POST`         | `/api/scheduler/design-proposals/operation-authorizations/commit` | Consumir el token y agregar la bitácora redactada.                            |
-| `GET`          | `/api/scheduler/design-proposals/movements`                       | Consultar la bitácora por agente.                                             |
-| `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`       | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
-| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`        | Leer o guardar respuestas relacionadas con una cita.                          |
-| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`    | Guardar cabina bloqueada, representante, visitantes, especialistas y compra.  |
-| `POST`         | `/api/scheduler/design-proposals/appointments/contexts`           | Resolver por lote representante, vendedor de cartera y próxima cita.          |
-| `GET/POST`     | `/api/scheduler/design-proposals/appointments/:id/journal`        | Consultar o agregar comentarios, postventa y motivos append-only.             |
-| `GET/PUT`      | `/api/scheduler/design-proposals/customers/:id/specialist-preference` | Proponer o retirar la especialista fija de futuras citas.                  |
-| `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`              | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
-| `POST`         | `/api/scheduler/design-proposals/reports/appointment-journal`      | Exportar seguimiento y comentarios desde una población filtrada única.        |
-| `POST`         | `/api/scheduler/design-proposals/reports/sales-projections`         | Comparar meses históricos y calcular la proyección demo por sucursal.         |
-| `GET/POST/PUT` | `/api/scheduler/design-proposals/status-definitions[/:id]`         | Consultar, crear y versionar status; la baja es sólo inactivación lógica.      |
-| `GET/POST`     | `/api/scheduler/design-proposals/branch-commercial-models`        | Vincular sucursal POS o independiente, renta propuesta y cabinas contratadas.  |
+| Método         | Ruta                                                                  | Uso propuesto                                                                 |
+| -------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET/POST/PUT` | `/api/scheduler/design-proposals/authorization-agents[/:id]`          | Consultar identidades externas y asignar un código ficticio único.            |
+| `POST`         | `/api/scheduler/design-proposals/operation-authorizations`            | Resolver el agente por código y emitir un token de un solo movimiento.        |
+| `POST`         | `/api/scheduler/design-proposals/operation-authorizations/commit`     | Consumir el token y agregar la bitácora redactada.                            |
+| `GET`          | `/api/scheduler/design-proposals/movements`                           | Consultar la bitácora por agente.                                             |
+| `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`           | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
+| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`            | Leer o guardar respuestas relacionadas con una cita.                          |
+| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`        | Guardar cabina bloqueada, representante, visitantes, especialistas y compra.  |
+| `POST`         | `/api/scheduler/design-proposals/appointments/contexts`               | Resolver por lote representante, snapshot de cartera, compra y próxima cita.  |
+| `GET/POST`     | `/api/scheduler/design-proposals/appointments/:id/journal`            | Consultar o agregar comentarios, postventa y motivos append-only.             |
+| `GET/PUT`      | `/api/scheduler/design-proposals/customers/:id/specialist-preference` | Proponer o retirar la especialista fija de futuras citas.                     |
+| `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`                 | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
+| `POST`         | `/api/scheduler/design-proposals/reports/appointment-journal`         | Exportar seguimiento y comentarios desde una población filtrada única.        |
+| `POST`         | `/api/scheduler/design-proposals/reports/sales-projections`           | Comparar meses históricos y calcular la proyección demo por sucursal.         |
+| `GET/POST/PUT` | `/api/scheduler/design-proposals/status-definitions[/:id]`            | Consultar, crear y versionar status; la baja es sólo inactivación lógica.     |
+| `GET/POST`     | `/api/scheduler/design-proposals/branch-commercial-models`            | Vincular sucursal POS o independiente, renta propuesta y cabinas contratadas. |
 
 Estos endpoints no existen en el runtime productivo. El alias
 `@scheduler/design-proposals` selecciona el cliente MSW sólo con
@@ -491,6 +515,14 @@ Recorrido manual recomendado:
     próxima cita**. Confirma que una cita atendida no muestre Reagendar. Finalmente abre Reportes → Seguimiento y comentarios,
     filtra sólo comentarios y descarga Excel/PDF; los nombres históricos de las
     categorías deben conservarse aunque su configuración haya cambiado.
+16. Crea un cliente y confirma que **Representante de cartera** sea obligatorio
+    y que no aparezca "Especialista que atendió". Crea una reserva y verifica
+    que sólo solicite especialista asignada; registra después una compra o
+    apartado desde asistencia y confirma el `$` junto al status. Inactiva al
+    representante POS: sus clientes deben pasar a **Cartera de la empresa**,
+    una cita nueva debe usar esa cartera y las citas anteriores conservar el
+    nombre histórico. Revisa también que las tarjetas oscuras de Reportes
+    mantengan iconos y texto blancos en escritorio y móvil.
 
 ## Dónde trabajar
 
