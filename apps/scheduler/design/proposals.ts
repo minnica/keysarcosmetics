@@ -1,6 +1,7 @@
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignAppointmentContext,
   DesignAppointmentJournalEntry,
   DesignAppointmentJournalReport,
   DesignBranchCommercialModel,
@@ -117,6 +118,11 @@ export const schedulerDesignProposals: DesignProposalClient = {
   appointmentCabinVisit: (appointmentId) =>
     request<DesignAppointmentCabinVisit | null>(
       `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+    ),
+  appointmentContexts: (appointmentIds) =>
+    request<Record<string, DesignAppointmentContext>>(
+      "/api/scheduler/design-proposals/appointments/contexts",
+      { method: "POST", body: JSON.stringify({ appointmentIds }) },
     ),
   saveAppointmentCabinVisit: (appointmentId, input, authorizationToken) =>
     request<DesignAppointmentCabinVisit>(

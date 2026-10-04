@@ -27,6 +27,7 @@ import {
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignAppointmentContext,
   DesignAppointmentJournalEntry,
   DesignAppointmentJournalFilters,
   DesignAppointmentJournalKind,
@@ -787,6 +788,16 @@ function buildCabinSalesReport(
       appointmentItem.stateHistory.find(
         (history) => history.toStatus === "CONFIRMED",
       )?.createdAt ?? null;
+    const nextAppointment = visibleAppointments(state)
+      .filter(
+        (candidate) =>
+          candidate.id !== appointmentItem.id &&
+          candidate.customerId === appointmentItem.customerId &&
+          designBootstrap(state).authorizedBranchIds.includes(candidate.branchId) &&
+          candidate.startsAt > appointmentItem.startsAt &&
+          !["CANCELED", "NO_SHOW"].includes(candidate.status),
+      )
+      .sort((left, right) => left.startsAt.localeCompare(right.startsAt))[0];
     for (const visitor of visit.visitors) {
       const attendingSpecialistName =
         state.catalog.professionals.find(
@@ -841,6 +852,9 @@ function buildCabinSalesReport(
           (service) => service.serviceName,
         ),
         sellerName,
+        representativeName: visit.representativeName,
+        representativeSource: visit.representativeSource,
+        nextAppointmentAt: nextAppointment?.startsAt ?? null,
         specialistProfileId: reportSpecialistProfileId,
         specialistName: reportSpecialistName,
         attendingSpecialistProfileId: visitor.specialistProfileId,
@@ -904,6 +918,7 @@ function buildCabinSalesReport(
         row.cabinName,
         row.serviceNames.join(" "),
         row.sellerName,
+        row.representativeName,
         row.specialistName,
         row.attendingSpecialistName,
         row.saleOwnerSpecialistName,
@@ -1060,6 +1075,11 @@ function buildCabinSalesReport(
       conversionRate: rowsSorted.length
         ? roundRate(buyers.length, rowsSorted.length)
         : 0,
+      appointmentsWithoutNextVisit: new Set(
+        rowsSorted
+          .filter((row) => row.nextAppointmentAt === null)
+          .map((row) => row.appointmentId),
+      ).size,
     },
     byCabin: cabinSalesBreakdown(
       rowsSorted,
@@ -1785,6 +1805,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         existing.label = label;
         existing.color = color;
         existing.active = body.active !== false;
+        existing.visibleInAgenda = body.visibleInAgenda !== false;
         existing.version += 1;
         existing.updatedAt = updatedAt;
         definition = existing;
@@ -1813,6 +1834,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           label,
           color,
           active: body.active !== false,
+          visibleInAgenda: body.visibleInAgenda !== false,
           system: false,
           version: 1,
           createdAt: updatedAt,
@@ -2169,6 +2191,55 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       };
     }
     if (id === "movements") return state.movements;
+    if (id === "appointments" && action === "contexts") {
+      if (method !== "POST") {
+        fail(405, "Usa POST para consultar el contexto de las citas.");
+      }
+      const appointmentIds = Array.isArray(body.appointmentIds)
+        ? body.appointmentIds.map(String)
+        : [];
+      return Object.fromEntries(
+        appointmentIds.map((appointmentId) => {
+          const appointmentItem = appointment(state, appointmentId);
+          const visit = state.appointmentCabinVisits[appointmentId];
+          const customerItem = state.customers.find(
+            (candidate) => candidate.id === appointmentItem.customerId,
+          );
+          const portfolioSellerName = String(
+            customerItem?.customFields.find(
+              (field) => field.definitionId === "design-field-sales-owner",
+            )?.value ??
+              customerItem?.currentPortfolios.find(
+                (portfolio) => portfolio.branchId === appointmentItem.branchId,
+              )?.ownerName ??
+              "",
+          ).trim();
+          const nextAppointment = visibleAppointments(state)
+            .filter(
+              (candidate) =>
+                candidate.id !== appointmentItem.id &&
+                candidate.customerId === appointmentItem.customerId &&
+                designBootstrap(state).authorizedBranchIds.includes(
+                  candidate.branchId,
+                ) &&
+                candidate.startsAt > appointmentItem.startsAt &&
+                !["CANCELED", "NO_SHOW"].includes(candidate.status),
+            )
+            .sort((left, right) => left.startsAt.localeCompare(right.startsAt))[0];
+          const context: DesignAppointmentContext = {
+            appointmentId,
+            representativeId: visit?.representativeId ?? null,
+            representativeName: visit?.representativeName ?? null,
+            representativeRole: visit?.representativeRole ?? null,
+            representativeSource: visit?.representativeSource ?? null,
+            portfolioSellerName: portfolioSellerName || null,
+            nextAppointmentId: nextAppointment?.id ?? null,
+            nextAppointmentAt: nextAppointment?.startsAt ?? null,
+          };
+          return [appointmentId, context];
+        }),
+      );
+    }
     if (id === "appointments" && parts[5] === "answers") {
       const appointmentId = String(action ?? "");
       appointment(state, appointmentId);
@@ -2212,6 +2283,20 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       ) {
         fail(400, "Selecciona una cabina activa de la sucursal de la cita.");
       }
+      if (
+        previousVisit &&
+        previousVisit.cabinResourceId !== cabin.id
+      ) {
+        fail(
+          409,
+          "La cabina y su capacidad ya fueron configuradas para esta cita y no pueden modificarse durante la atención.",
+        );
+      }
+      const representative =
+        state.operationAgents.find(
+          (agent) =>
+            agent.id === String(body.representativeId ?? "") && agent.active,
+        ) ?? fail(400, "Selecciona al vendedor o representante que atendió la cita.");
       const visitorRows = rows(body.visitors);
       if (visitorRows.length !== cabin.capacity) {
         fail(
@@ -2362,6 +2447,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         cabinResourceId: cabin.id,
         cabinName: cabin.name,
         cabinCapacity: cabin.capacity,
+        representativeId: representative.id,
+        representativeName: representative.name,
+        representativeRole: representative.role,
+        representativeSource: representative.source,
         visitors,
         updatedAt: captureTime,
       };
@@ -2572,7 +2661,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           "La cita sólo puede marcarse como atendida cuando termine el tiempo de la sesión.",
         );
       }
-      if (status === "ATTENDED") {
+      if (status === "ARRIVED" || status === "ATTENDED") {
         const cabinVisit = state.appointmentCabinVisits[existing!.id];
         const purchaseCaptureComplete = Boolean(
           cabinVisit &&
@@ -2592,7 +2681,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         if (!purchaseCaptureComplete) {
           fail(
             409,
-            "Completa para cada visitante si compró, el monto, el apartado y el especialista antes de marcar la cita como atendida.",
+            status === "ARRIVED"
+              ? "Completa la atención, compra, representante y especialistas antes de marcar que el cliente llegó."
+              : "Completa para cada visitante si compró, el monto, el apartado y el especialista antes de marcar la cita como atendida.",
           );
         }
       }

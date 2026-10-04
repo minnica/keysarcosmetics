@@ -66,6 +66,7 @@ import { SchedulerBookingCard } from "./SchedulerBookingCard";
 import { SchedulerAvatar } from "./SchedulerAvatar";
 import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
 import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
+import type { DesignAppointmentContext } from "../../../design/contracts";
 
 interface SchedulerAgendaGridProps {
   currentView: SchedulerView;
@@ -118,6 +119,8 @@ interface SchedulerAgendaGridProps {
   clientAccountsByClient?: Record<string, ClientPurchaseAccount>;
   paymentHistoryByClient?: Record<string, ClientPaymentHistoryEntry[]>;
   columnsFitted?: boolean;
+  appointmentContexts?: Record<string, DesignAppointmentContext>;
+  visibleStatuses?: ReadonlySet<BookingStatus> | undefined;
 }
 
 interface DayOverlayBooking {
@@ -134,6 +137,14 @@ interface SlotActionOverlay {
   professionalId: string;
   startTime: string;
   style: CSSProperties;
+}
+
+function nextAppointmentLabel(context?: DesignAppointmentContext) {
+  if (!context?.nextAppointmentAt) return "No cuenta con una próxima cita";
+  return new Intl.DateTimeFormat("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(context.nextAppointmentAt));
 }
 
 const compactAgendaMediaQuery = [
@@ -240,6 +251,8 @@ export function SchedulerAgendaGrid({
   clientAccountsByClient = {},
   paymentHistoryByClient = {},
   columnsFitted = false,
+  appointmentContexts = {},
+  visibleStatuses,
 }: SchedulerAgendaGridProps) {
   const baseAgendaLayout = useAgendaLayoutMetrics();
   const gridViewportRef = useRef<HTMLDivElement>(null);
@@ -733,6 +746,22 @@ export function SchedulerAgendaGrid({
                                 booking.customerEmail ||
                                 "Sin contacto"}
                             </dd>
+                            <dt>Representante</dt>
+                            <dd>
+                              {appointmentContexts[booking.id]
+                                ?.representativeName ?? "Por registrar"}
+                            </dd>
+                            <dt>Vendedor cartera</dt>
+                            <dd>
+                              {appointmentContexts[booking.id]
+                                ?.portfolioSellerName ?? "Sin asignar"}
+                            </dd>
+                            <dt>Próxima cita</dt>
+                            <dd>
+                              {nextAppointmentLabel(
+                                appointmentContexts[booking.id],
+                              )}
+                            </dd>
                           </dl>
                           {booking.notes ? (
                             <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
@@ -749,6 +778,7 @@ export function SchedulerAgendaGrid({
                         }}
                       >
                         <SchedulerBookingCard
+                          appointmentContext={appointmentContexts[booking.id]}
                           booking={booking}
                           commerceName={commerceName}
                           enableCabinVisitFlow={enableCabinVisitFlow}
@@ -827,6 +857,7 @@ export function SchedulerAgendaGrid({
                           showPostSaleComments={showPostSaleComments}
                           canWrite={canWrite}
                           financialHistoryReadOnly={financialHistoryReadOnly}
+                          visibleStatuses={visibleStatuses}
                         />
                       </DialogContent>
                     </Dialog>
@@ -1057,6 +1088,22 @@ export function SchedulerAgendaGrid({
                                 booking.customerEmail ||
                                 "Sin contacto"}
                             </dd>
+                            <dt>Representante</dt>
+                            <dd>
+                              {appointmentContexts[booking.id]
+                                ?.representativeName ?? "Por registrar"}
+                            </dd>
+                            <dt>Vendedor cartera</dt>
+                            <dd>
+                              {appointmentContexts[booking.id]
+                                ?.portfolioSellerName ?? "Sin asignar"}
+                            </dd>
+                            <dt>Próxima cita</dt>
+                            <dd>
+                              {nextAppointmentLabel(
+                                appointmentContexts[booking.id],
+                              )}
+                            </dd>
                           </dl>
                           {booking.notes ? (
                             <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
@@ -1073,6 +1120,7 @@ export function SchedulerAgendaGrid({
                         }}
                       >
                         <SchedulerBookingCard
+                          appointmentContext={appointmentContexts[booking.id]}
                           booking={booking}
                           commerceName={commerceName}
                           enableCabinVisitFlow={enableCabinVisitFlow}
@@ -1155,6 +1203,7 @@ export function SchedulerAgendaGrid({
                           showPostSaleComments={showPostSaleComments}
                           canWrite={canWrite}
                           financialHistoryReadOnly={financialHistoryReadOnly}
+                          visibleStatuses={visibleStatuses}
                         />
                       </DialogContent>
                     </Dialog>

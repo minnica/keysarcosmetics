@@ -52,6 +52,7 @@ import {
 import { schedulerApi } from "@/lib/api";
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import type {
+  DesignBranchCommercialModel,
   DesignOperationAgent,
   DesignOperationPurpose,
 } from "../../../design/contracts";
@@ -343,7 +344,12 @@ function SettingsHeader({ section }: { section: string }) {
 
 function AuthorizationAgentsSettings() {
   const [agents, setAgents] = useState<DesignOperationAgent[]>([]);
+  const [commercialModels, setCommercialModels] = useState<
+    DesignBranchCommercialModel[]
+  >([]);
   const [codes, setCodes] = useState<Record<string, string>>({});
+  const [localRepresentativeName, setLocalRepresentativeName] = useState("");
+  const [localRepresentativeCode, setLocalRepresentativeCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -351,7 +357,12 @@ function AuthorizationAgentsSettings() {
     if (!schedulerDesignProposals.available) return;
     setLoading(true);
     try {
-      setAgents(await schedulerDesignProposals.listAuthorizationAgents());
+      const [nextAgents, nextModels] = await Promise.all([
+        schedulerDesignProposals.listAuthorizationAgents(),
+        schedulerDesignProposals.listBranchCommercialModels(),
+      ]);
+      setAgents(nextAgents);
+      setCommercialModels(nextModels);
     } catch (cause) {
       toast.error(
         cause instanceof Error
@@ -426,6 +437,47 @@ function AuthorizationAgentsSettings() {
     }
   }
 
+  async function createLocalRepresentative() {
+    const name = localRepresentativeName.trim();
+    if (name.length < 2) {
+      toast.error("Captura el nombre del representante local.");
+      return;
+    }
+    if (!/^\d{4,12}$/.test(localRepresentativeCode)) {
+      toast.error("El código debe contener de 4 a 12 dígitos.");
+      return;
+    }
+    setSavingId("new-local-representative");
+    try {
+      await schedulerDesignProposals.saveAuthorizationAgent({
+        externalId: `scheduler-local-${crypto.randomUUID()}`,
+        name,
+        role: "Vendedor local",
+        source: "SCHEDULER",
+        active: true,
+        code: localRepresentativeCode,
+        allowedPurposes: [
+          "APPOINTMENT_CREATE",
+          "APPOINTMENT_UPDATE",
+          "APPOINTMENT_STATUS_CHANGE",
+          "APPOINTMENT_COMMENT_CREATE",
+        ],
+      });
+      setLocalRepresentativeName("");
+      setLocalRepresentativeCode("");
+      toast.success("Representante local disponible para nuevas citas.");
+      await load();
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible crear el representante local.",
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   if (!schedulerDesignProposals.available) return null;
 
   return (
@@ -437,11 +489,64 @@ function AuthorizationAgentsSettings() {
           <p className="settings-description">
             La identidad proviene de Scheduler o del CRM/POS. Asigna un código
             ficticio único y define si puede cambiar estados o registrar
-            compras o comentarios; no se crean vendedores paralelos.
+            compras o comentarios. Las altas locales sólo se habilitan cuando
+            existe una sucursal de Agenda independiente.
           </p>
         </div>
         <Badge variant="outline">Sin códigos visibles</Badge>
       </div>
+      {commercialModels.some(
+        (model) => model.mode === "SCHEDULER_STANDALONE",
+      ) ? (
+        <div className="mx-5 mb-5 rounded-2xl border border-[#e7ddd3] bg-[#faf8f5] p-4 sm:mx-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[#263649]">
+                Alta de representante para Agenda independiente
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Las sucursales ligadas al POS reciben vendedores del CRM. Esta
+                alta sólo cubre sucursales en modalidad Scheduler independiente.
+              </p>
+            </div>
+            <div className="grid flex-1 gap-3 sm:grid-cols-[1fr_180px_auto]">
+              <Input
+                aria-label="Nombre del representante local"
+                onChange={(event) =>
+                  setLocalRepresentativeName(event.target.value)
+                }
+                placeholder="Nombre completo"
+                value={localRepresentativeName}
+              />
+              <Input
+                aria-label="Código del representante local"
+                autoComplete="off"
+                inputMode="numeric"
+                maxLength={12}
+                onChange={(event) =>
+                  setLocalRepresentativeCode(
+                    event.target.value.replace(/\D/g, ""),
+                  )
+                }
+                placeholder="Código personal"
+                type="password"
+                value={localRepresentativeCode}
+              />
+              <Button
+                disabled={
+                  localRepresentativeName.trim().length < 2 ||
+                  localRepresentativeCode.length < 4 ||
+                  savingId === "new-local-representative"
+                }
+                onClick={() => void createLocalRepresentative()}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Dar de alta
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="divide-y divide-[#eee6df]">
         {loading ? (
           <p className="p-6 text-sm text-slate-500">Cargando agentes…</p>

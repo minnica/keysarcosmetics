@@ -86,6 +86,12 @@ interface SchedulerBookingDialogProps {
   additionalFieldDefinitions?: SchedulerCustomerFieldDefinitionDto[];
   cabinOptions?: Array<{ id: string; name: string; capacity: number }>;
   specialistOptions?: Array<{ id: string; name: string }>;
+  representativeOptions?: Array<{
+    id: string;
+    name: string;
+    role: string;
+    source: "SCHEDULER" | "POS_CRM";
+  }>;
   enableCabinVisitFlow?: boolean;
   appointmentDetailsLocked?: boolean;
   hideAdditionalFields?: boolean;
@@ -119,6 +125,7 @@ export function SchedulerBookingDialog({
   additionalFieldDefinitions = [],
   cabinOptions = [],
   specialistOptions = [],
+  representativeOptions = [],
   enableCabinVisitFlow = false,
   appointmentDetailsLocked = false,
   hideAdditionalFields = false,
@@ -192,6 +199,7 @@ export function SchedulerBookingDialog({
     !enableCabinVisitFlow ||
     Boolean(
       selectedCabin &&
+      Boolean(draft.representativeId) &&
       draft.visitors.length === selectedCabin.capacity &&
       draft.visitors.every(
         (visitor, index) =>
@@ -881,34 +889,79 @@ export function SchedulerBookingDialog({
                           </span>
                         ) : null}
                       </div>
-                      <Select
-                        value={draft.cabinResourceId}
-                        onValueChange={selectCabin}
-                      >
-                        <SelectTrigger className="scheduler-modal-select-trigger">
-                          <SelectValue placeholder="Selecciona una cabina" />
-                        </SelectTrigger>
-                        <SelectContent className="scheduler-modal-select-content max-h-[320px]">
-                          {cabinOptions.map((cabin) => (
-                            <SelectItem
-                              key={cabin.id}
-                              className="scheduler-modal-select-item"
-                              value={cabin.id}
-                            >
-                              {cabin.name} ·{" "}
-                              {cabin.capacity === 1
-                                ? "Individual"
-                                : `${cabin.capacity} personas`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="scheduler-modal-label">Cabina configurada</label>
+                          <Select
+                            disabled={isEditing || appointmentDetailsLocked}
+                            value={draft.cabinResourceId}
+                            onValueChange={selectCabin}
+                          >
+                            <SelectTrigger className="scheduler-modal-select-trigger">
+                              <SelectValue placeholder="Selecciona una cabina" />
+                            </SelectTrigger>
+                            <SelectContent className="scheduler-modal-select-content max-h-[320px]">
+                              {cabinOptions.map((cabin) => (
+                                <SelectItem
+                                  key={cabin.id}
+                                  className="scheduler-modal-select-item"
+                                  value={cabin.id}
+                                >
+                                  {cabin.name} ·{" "}
+                                  {cabin.capacity === 1
+                                    ? "Individual"
+                                    : `${cabin.capacity} personas`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {isEditing ? (
+                            <p className="text-xs leading-5 text-slate-500">
+                              La cabina y su capacidad son de sólo lectura porque
+                              ya fueron configuradas para esta cita.
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="space-y-2">
+                          <label className="scheduler-modal-label">
+                            Vendedor o representante de esta cita
+                          </label>
+                          <Select
+                            value={draft.representativeId}
+                            onValueChange={(representativeId) =>
+                              patchDraft({ representativeId })
+                            }
+                          >
+                            <SelectTrigger className="scheduler-modal-select-trigger">
+                              <SelectValue placeholder="Selecciona quién atendió" />
+                            </SelectTrigger>
+                            <SelectContent className="scheduler-modal-select-content max-h-[320px]">
+                              {representativeOptions.map((representative) => (
+                                <SelectItem
+                                  className="scheduler-modal-select-item"
+                                  key={representative.id}
+                                  value={representative.id}
+                                >
+                                  {representative.name} · {representative.role} ·{" "}
+                                  {representative.source === "POS_CRM"
+                                    ? "POS"
+                                    : "Agenda"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs leading-5 text-slate-500">
+                            Puede cambiar en cada cita y no modifica al vendedor
+                            de cartera del cliente.
+                          </p>
+                        </div>
+                      </div>
                       {draft.visitors.map((visitor, index) => (
                         <div
-                          className="grid gap-3 rounded-2xl border border-white bg-white/85 p-3 md:grid-cols-2 xl:grid-cols-5"
+                          className="grid gap-3 rounded-2xl border border-white bg-white/85 p-3 md:grid-cols-2 2xl:grid-cols-10"
                           key={visitor.id}
                         >
-                          <div className="space-y-2">
+                          <div className="space-y-2 2xl:col-span-2">
                             <label className="scheduler-modal-label">
                               {index === 0
                                 ? "Cliente principal"
@@ -928,7 +981,7 @@ export function SchedulerBookingDialog({
                               }
                             />
                           </div>
-                          <div className="space-y-2">
+                          <div className="space-y-2 2xl:col-span-2">
                             <label className="scheduler-modal-label">
                               Especialista que atendió
                             </label>
@@ -988,7 +1041,7 @@ export function SchedulerBookingDialog({
                               </button>
                             ) : null}
                           </div>
-                          <div className="space-y-2">
+                          <div className="space-y-2 2xl:col-span-2">
                             <label className="scheduler-modal-label">
                               Resultado de venta
                             </label>
@@ -1036,7 +1089,7 @@ export function SchedulerBookingDialog({
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="space-y-2">
+                          <div className="space-y-2 2xl:col-span-2">
                             <label className="scheduler-modal-label">
                               Monto de venta
                             </label>
@@ -1063,7 +1116,7 @@ export function SchedulerBookingDialog({
                               />
                             </div>
                           </div>
-                          <div className="space-y-2">
+                          <div className="space-y-2 2xl:col-span-2">
                             <label className="scheduler-modal-label">
                               Monto apartado
                             </label>
@@ -1088,7 +1141,7 @@ export function SchedulerBookingDialog({
                             </div>
                           </div>
                           {visitor.purchaseKind === "LAYAWAY" ? (
-                            <p className="rounded-xl border border-[#e6d8ca] bg-[#fbf7f2] px-3 py-2 text-sm text-[#795f45] md:col-span-2 xl:col-span-5">
+                            <p className="rounded-xl border border-[#e6d8ca] bg-[#fbf7f2] px-3 py-2 text-sm text-[#795f45] md:col-span-2 2xl:col-span-10">
                               El total de esta venta queda asignado a{" "}
                               <strong>
                                 {specialistOptions.find(
@@ -1108,10 +1161,10 @@ export function SchedulerBookingDialog({
                           className="text-sm font-medium text-amber-800"
                           role="status"
                         >
-                          Completa cada visitante y especialista, e indica
-                          obligatoriamente si compró o no. Para compra captura
-                          el total; si es apartado, el anticipo debe ser mayor a
-                          cero y no superar la venta.
+                          Completa el representante, cada visitante y
+                          especialista, e indica obligatoriamente si compró o
+                          no. Para compra captura el total; si es apartado, el
+                          anticipo debe ser mayor a cero y no superar la venta.
                         </p>
                       ) : null}
                     </div>

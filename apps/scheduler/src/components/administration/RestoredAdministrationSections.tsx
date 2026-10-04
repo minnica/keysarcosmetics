@@ -1127,6 +1127,7 @@ interface StatusDefinitionDraft {
   label: string;
   color: string;
   active: boolean;
+  visibleInAgenda: boolean;
   version?: number;
 }
 
@@ -1163,7 +1164,12 @@ function DesignStatusColorsSection() {
 
   function openCreate() {
     setSecret("");
-    setDraft({ label: "", color: "#9a7658", active: true });
+    setDraft({
+      label: "",
+      color: "#9a7658",
+      active: true,
+      visibleInAgenda: true,
+    });
   }
 
   function openEdit(definition: DesignStatusDefinition) {
@@ -1173,6 +1179,7 @@ function DesignStatusColorsSection() {
       label: definition.label,
       color: definition.color,
       active: definition.active,
+      visibleInAgenda: definition.visibleInAgenda,
       version: definition.version,
     });
   }
@@ -1194,6 +1201,7 @@ function DesignStatusColorsSection() {
         label: draft.label.trim(),
         color: draft.color,
         active: draft.active,
+        visibleInAgenda: draft.visibleInAgenda,
         ...(draft.version !== undefined
           ? { expectedVersion: draft.version }
           : {}),
@@ -1303,6 +1311,17 @@ function DesignStatusColorsSection() {
                           <Badge variant="outline">
                             {definition.system ? "Canónico" : "Personalizado"}
                           </Badge>
+                          <Badge
+                            variant={
+                              definition.visibleInAgenda
+                                ? "default"
+                                : "secondary"
+                            }
+                          >
+                            {definition.visibleInAgenda
+                              ? "Visible en agenda"
+                              : "Oculto en agenda"}
+                          </Badge>
                         </div>
                         <p className="mt-1 font-mono text-xs text-slate-400">
                           {definition.key} · {definition.color.toUpperCase()} · v{definition.version}
@@ -1333,6 +1352,11 @@ function DesignStatusColorsSection() {
                             <span>{revision.label}</span>
                             <span className="font-mono">{revision.color.toUpperCase()}</span>
                             <span>{revision.active ? "Activo" : "Inactivo"}</span>
+                            <span>
+                              {revision.visibleInAgenda
+                                ? "Visible en agenda"
+                                : "Oculto en agenda"}
+                            </span>
                             <span className="ml-auto text-slate-400">
                               {statusRevisionDate(revision.effectiveFrom)}
                               {revision.effectiveTo
@@ -1425,6 +1449,45 @@ function DesignStatusColorsSection() {
                     <SelectItem value="INACTIVE">Inactivo</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-[#f8f5f1] p-4">
+                <button
+                  aria-checked={draft.visibleInAgenda}
+                  className="flex w-full items-center justify-between gap-4 text-left"
+                  onClick={() =>
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            visibleInAgenda: !current.visibleInAgenda,
+                          }
+                        : current,
+                    )
+                  }
+                  role="switch"
+                  type="button"
+                >
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-700">
+                      Mostrar en la agenda
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500">
+                      Ocultarlo no borra citas, métricas ni versiones históricas.
+                    </span>
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+                      draft.visibleInAgenda ? "bg-[#263649]" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${
+                        draft.visibleInAgenda ? "left-6" : "left-1"
+                      }`}
+                    />
+                  </span>
+                </button>
               </div>
               <div>
                 <Label htmlFor="status-catalog-secret">Código personal</Label>

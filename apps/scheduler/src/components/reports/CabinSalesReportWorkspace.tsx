@@ -14,6 +14,7 @@ import {
 } from "@cosmetics/ui";
 import {
   BarChart3,
+  CalendarX2,
   Download,
   FileSpreadsheet,
   Printer,
@@ -317,6 +318,12 @@ export function CabinSalesReportWorkspace({
           detail: `${number.format(report.summary.appointments)} citas`,
           icon: BarChart3,
         },
+        {
+          label: "Sin próxima cita",
+          value: number.format(report.summary.appointmentsWithoutNextVisit),
+          detail: "Oportunidades de seguimiento",
+          icon: CalendarX2,
+        },
       ]
     : [];
 
@@ -542,7 +549,7 @@ export function CabinSalesReportWorkspace({
         {report && !loading ? (
           <>
             <section
-              className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+              className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6"
               aria-label="Indicadores de ventas por cabina"
             >
               {cards.map((card, index) => {
@@ -701,7 +708,7 @@ export function CabinSalesReportWorkspace({
                 </p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-[1900px] w-full text-left text-sm">
+                <table className="min-w-[2250px] w-full text-left text-sm">
                   <thead className="bg-[#f8f5f1] text-xs uppercase tracking-[0.08em] text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Cita / fechas</th>
@@ -709,6 +716,8 @@ export function CabinSalesReportWorkspace({
                       <th className="px-4 py-3">Cliente / visitante</th>
                       <th className="px-4 py-3">Servicios</th>
                       <th className="px-4 py-3">Vendedor</th>
+                      <th className="px-4 py-3">Representante de cita</th>
+                      <th className="px-4 py-3">Próxima cita</th>
                       <th className="px-4 py-3">Atendió / venta asignada</th>
                       <th className="px-4 py-3">Resultado</th>
                       <th className="px-4 py-3 text-right">Venta</th>
@@ -731,6 +740,8 @@ export function CabinSalesReportWorkspace({
                         <td className="px-4 py-4"><p className="font-medium">{row.customerName}</p><p className="text-slate-500">{row.visitorName}</p></td>
                         <td className="px-4 py-4">{row.serviceNames.join(", ")}</td>
                         <td className="px-4 py-4">{row.sellerName}</td>
+                        <td className="px-4 py-4"><p className="font-medium">{row.representativeName}</p><p className="text-xs text-slate-400">{row.representativeSource === "POS_CRM" ? "Sincronizado con POS" : "Alta local de Agenda"}</p></td>
+                        <td className="px-4 py-4">{row.nextAppointmentAt ? dateTime.format(new Date(row.nextAppointmentAt)) : <span className="font-medium text-amber-700">No cuenta con una próxima cita</span>}</td>
                         <td className="px-4 py-4">
                           <p className="font-medium">{row.attendingSpecialistName}</p>
                           <p className="mt-1 text-xs text-slate-400">
@@ -755,7 +766,7 @@ export function CabinSalesReportWorkspace({
                       </tr>
                     ))}
                     {!report.rows.length ? (
-                      <tr><td className="px-4 py-10 text-center text-slate-500" colSpan={12}>No hay atenciones de cabina que coincidan con los filtros.</td></tr>
+                      <tr><td className="px-4 py-10 text-center text-slate-500" colSpan={14}>No hay atenciones de cabina que coincidan con los filtros.</td></tr>
                     ) : null}
                   </tbody>
                 </table>

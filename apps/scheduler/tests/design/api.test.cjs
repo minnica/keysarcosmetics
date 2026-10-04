@@ -387,6 +387,7 @@ test("el catálogo de status agrega, versiona e inactiva sin reescribir citas", 
       label: "Reprogramación solicitada",
       color: "#8b6fa7",
       active: true,
+      visibleInAgenda: true,
       authorizationToken: authorize(),
     },
   );
@@ -403,6 +404,7 @@ test("el catálogo de status agrega, versiona e inactiva sin reescribir citas", 
       label: "Reprogramación pendiente",
       color: "#76558f",
       active: true,
+      visibleInAgenda: false,
       expectedVersion: 1,
       authorizationToken: authorize(),
     },
@@ -419,6 +421,7 @@ test("el catálogo de status agrega, versiona e inactiva sin reescribir citas", 
       label: "Reprogramación pendiente",
       color: "#76558f",
       active: false,
+      visibleInAgenda: false,
       expectedVersion: 2,
       authorizationToken: authorize(),
     },
@@ -443,6 +446,7 @@ test("el catálogo de status agrega, versiona e inactiva sin reescribir citas", 
       version: revision.version,
       label: revision.label,
       active: revision.active,
+      visibleInAgenda: revision.visibleInAgenda,
       current: revision.effectiveTo === null,
     })),
     [
@@ -450,18 +454,21 @@ test("el catálogo de status agrega, versiona e inactiva sin reescribir citas", 
         version: 1,
         label: "Reprogramación solicitada",
         active: true,
+        visibleInAgenda: true,
         current: false,
       },
       {
         version: 2,
         label: "Reprogramación pendiente",
         active: true,
+        visibleInAgenda: false,
         current: false,
       },
       {
         version: 3,
         label: "Reprogramación pendiente",
         active: false,
+        visibleInAgenda: false,
         current: true,
       },
     ],
@@ -477,6 +484,7 @@ test("el catálogo de status agrega, versiona e inactiva sin reescribir citas", 
       label: confirmed.label,
       color: "#315f52",
       active: true,
+      visibleInAgenda: true,
       expectedVersion: confirmed.version,
       authorizationToken: authorize(),
     },
@@ -565,9 +573,11 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
     (resource) => resource.id === "resource-rv4-double",
   );
   const specialists = state.catalog.professionals.slice(0, 2);
+  const representative = state.operationAgents.find((agent) => agent.active);
   const input = {
     cabinResourceId: cabin.id,
     cabinCapacity: cabin.capacity,
+    representativeId: representative.id,
     visitors: [
       {
         id: "visitor-primary",
@@ -616,6 +626,33 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
   assert.equal(saved.body.data.cabinCapacity, 2);
   assert.equal(saved.body.data.visitors.length, 2);
   assert.equal(saved.body.data.visitors[0].purchaseAmount, 1750);
+  assert.equal(saved.body.data.representativeId, representative.id);
+  const contexts = request(
+    "POST",
+    "/api/scheduler/design-proposals/appointments/contexts",
+    { appointmentIds: [appointmentId] },
+  );
+  assert.equal(contexts.status, 201);
+  assert.equal(
+    contexts.body.data[appointmentId].representativeName,
+    representative.name,
+  );
+  assert.ok("nextAppointmentAt" in contexts.body.data[appointmentId]);
+
+  const anotherCabin = state.catalog.resources.find(
+    (resource) =>
+      resource.kind === "ROOM" &&
+      resource.branchProfileId === cabin.branchProfileId &&
+      resource.id !== cabin.id,
+  );
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
+      { ...input, cabinResourceId: anotherCabin.id },
+    ).status,
+    409,
+  );
 
   const committed = request(
     "POST",
@@ -692,6 +729,7 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
       resource.branchProfileId === branch.id && resource.capacity === 1,
   );
   const specialist = state.catalog.professionals[0];
+  const representative = state.operationAgents.find((agent) => agent.active);
   const grant = request(
     "POST",
     "/api/scheduler/design-proposals/operation-authorizations",
@@ -708,6 +746,7 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
     {
       cabinResourceId: cabin.id,
       cabinCapacity: 1,
+      representativeId: representative.id,
       visitors: [
         {
           id: "visitor-primary",
@@ -732,6 +771,7 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
     {
       cabinResourceId: cabin.id,
       cabinCapacity: 1,
+      representativeId: representative.id,
       visitors: [
         {
           id: "visitor-primary",
@@ -780,6 +820,7 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
     {
       cabinResourceId: cabin.id,
       cabinCapacity: 1,
+      representativeId: representative.id,
       visitors: [
         {
           id: "visitor-primary",
@@ -933,6 +974,7 @@ test("una compra registrada sólo admite corrección con propósito específico"
   const input = {
     cabinResourceId: visit.cabinResourceId,
     cabinCapacity: visit.cabinCapacity,
+    representativeId: visit.representativeId,
     visitors: visit.visitors.map((visitor) => ({
       ...visitor,
       saleAmount: Number(visitor.saleAmount ?? 0) + 50,
@@ -998,6 +1040,7 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
   const specialist = state.catalog.professionals.find((candidate) =>
     candidate.branchProfileIds.includes(branch.id),
   );
+  const representative = state.operationAgents.find((agent) => agent.active);
   appointment.endsAt = "2000-01-01T00:00:00.000Z";
 
   const incomplete = request(
@@ -1007,6 +1050,13 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
   );
   assert.equal(incomplete.status, 409);
   assert.match(incomplete.body.message, /Completa para cada visitante/);
+  const arrivalIncomplete = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/status`,
+    { status: "ARRIVED", expectedVersion: appointment.version },
+  );
+  assert.equal(arrivalIncomplete.status, 409);
+  assert.match(arrivalIncomplete.body.message, /Completa la atención/);
 
   const capture = request(
     "PUT",
@@ -1014,6 +1064,7 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
     {
       cabinResourceId: cabin.id,
       cabinCapacity: 1,
+      representativeId: representative.id,
       visitors: [
         {
           id: "visitor-primary",
@@ -1032,10 +1083,21 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
   assert.equal(capture.status, 200);
   assert.equal(capture.body.data.visitors[0].settlementStatus, "NOT_APPLICABLE");
 
+  const arrivalCompleted = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/status`,
+    { status: "ARRIVED", expectedVersion: appointment.version },
+  );
+  assert.equal(arrivalCompleted.status, 201);
+  assert.equal(arrivalCompleted.body.data.status, "ARRIVED");
+
   const completed = request(
     "POST",
     `/api/scheduler/appointments/${appointment.id}/status`,
-    { status: "ATTENDED", expectedVersion: appointment.version },
+    {
+      status: "ATTENDED",
+      expectedVersion: arrivalCompleted.body.data.version,
+    },
   );
   assert.equal(completed.status, 201);
   assert.equal(completed.body.data.status, "ATTENDED");

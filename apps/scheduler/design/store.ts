@@ -419,6 +419,7 @@ export function createDesignState(
         label: designStatusLabels[status],
         color: configuredColor,
         active: true,
+        visibleInAgenda: true,
         system: true,
         version: 1,
         createdAt: now,
@@ -612,6 +613,10 @@ export function createDesignState(
         cabinResourceId: mitikahCabin.id,
         cabinName: mitikahCabin.name,
         cabinCapacity: mitikahCabin.capacity,
+        representativeId: operationAgents[0]!.id,
+        representativeName: operationAgents[0]!.name,
+        representativeRole: operationAgents[0]!.role,
+        representativeSource: operationAgents[0]!.source,
         visitors: [
           {
             id: "design-visitor-primary",
@@ -696,6 +701,10 @@ export function createDesignState(
           cabinResourceId: polancoCabin.id,
           cabinName: polancoCabin.name,
           cabinCapacity: 1,
+          representativeId: operationAgents[0]!.id,
+          representativeName: operationAgents[0]!.name,
+          representativeRole: operationAgents[0]!.role,
+          representativeSource: operationAgents[0]!.source,
           visitors: [
             {
               id: `historical-visitor-${index + 1}`,
@@ -746,6 +755,10 @@ export function createDesignState(
           cabinResourceId: mitikahHistoricalCabin.id,
           cabinName: mitikahHistoricalCabin.name,
           cabinCapacity: 2,
+          representativeId: operationAgents[1]!.id,
+          representativeName: operationAgents[1]!.name,
+          representativeRole: operationAgents[1]!.role,
+          representativeSource: operationAgents[1]!.source,
           visitors: [
             {
               id: `historical-mitikah-primary-${index + 1}`,

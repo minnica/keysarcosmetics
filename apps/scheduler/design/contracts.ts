@@ -61,6 +61,7 @@ export interface DesignStatusDefinition {
   label: string;
   color: string;
   active: boolean;
+  visibleInAgenda: boolean;
   system: boolean;
   version: number;
   createdAt: string;
@@ -143,8 +144,23 @@ export interface DesignAppointmentCabinVisit {
   cabinResourceId: string;
   cabinName: string;
   cabinCapacity: number;
+  representativeId: string;
+  representativeName: string;
+  representativeRole: string;
+  representativeSource: DesignOperationAgentSource;
   visitors: DesignCabinVisitPerson[];
   updatedAt: string;
+}
+
+export interface DesignAppointmentContext {
+  appointmentId: string;
+  representativeId: string | null;
+  representativeName: string | null;
+  representativeRole: string | null;
+  representativeSource: DesignOperationAgentSource | null;
+  portfolioSellerName: string | null;
+  nextAppointmentId: string | null;
+  nextAppointmentAt: string | null;
 }
 
 export type DesignAppointmentJournalKind =
@@ -237,6 +253,9 @@ export interface DesignCabinSalesReportRow {
   serviceProfileIds: string[];
   serviceNames: string[];
   sellerName: string;
+  representativeName: string;
+  representativeSource: DesignOperationAgentSource;
+  nextAppointmentAt: string | null;
   specialistProfileId: string;
   specialistName: string;
   attendingSpecialistProfileId: string;
@@ -307,6 +326,7 @@ export interface DesignCabinSalesReport {
     depositAmount: number;
     balanceAmount: number;
     conversionRate: number;
+    appointmentsWithoutNextVisit: number;
   };
   byCabin: DesignCabinSalesReportBreakdown[];
   byDay: DesignCabinSalesReportBreakdown[];
@@ -449,6 +469,7 @@ export interface DesignProposalClient {
     label: string;
     color: string;
     active: boolean;
+    visibleInAgenda: boolean;
     expectedVersion?: number;
     authorizationToken: string;
   }): Promise<DesignStatusDefinition>;
@@ -463,11 +484,15 @@ export interface DesignProposalClient {
   appointmentCabinVisit(
     appointmentId: string,
   ): Promise<DesignAppointmentCabinVisit | null>;
+  appointmentContexts(
+    appointmentIds: string[],
+  ): Promise<Record<string, DesignAppointmentContext>>;
   saveAppointmentCabinVisit(
     appointmentId: string,
     input: {
       cabinResourceId: string;
       cabinCapacity: number;
+      representativeId: string;
       visitors: DesignCabinVisitPersonInput[];
     },
     authorizationToken?: string,

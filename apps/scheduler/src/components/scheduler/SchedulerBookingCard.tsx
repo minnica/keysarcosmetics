@@ -44,6 +44,7 @@ import {
   type SchedulerFinancialAuditEvent,
   type SchedulerFinancialProfile,
 } from "@/lib/scheduler-access";
+import type { DesignAppointmentContext } from "../../../design/contracts";
 import {
   formatMoney,
   getServiceByName,
@@ -83,6 +84,8 @@ interface SchedulerBookingCardProps {
   showPostSaleComments?: boolean;
   financialHistoryReadOnly?: boolean;
   destructiveActionLabel?: string;
+  appointmentContext?: DesignAppointmentContext | undefined;
+  visibleStatuses?: ReadonlySet<BookingStatus> | undefined;
 }
 
 const statusTransitions: Record<BookingStatus, BookingStatus[]> = {
@@ -124,6 +127,8 @@ export function SchedulerBookingCard({
   showPostSaleComments = false,
   financialHistoryReadOnly = false,
   destructiveActionLabel = "Cancelar reserva",
+  appointmentContext,
+  visibleStatuses,
 }: SchedulerBookingCardProps) {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editingAmount, setEditingAmount] = useState("");
@@ -132,10 +137,12 @@ export function SchedulerBookingCard({
   const service = getServiceByName(booking.serviceName);
   const hasPayment =
     typeof booking.purchaseAmount === "number" && booking.purchaseAmount > 0;
-  const availableStatusTransitions = statusTransitions[booking.status];
+  const availableStatusTransitions = statusTransitions[booking.status].filter(
+    (status) => !visibleStatuses || visibleStatuses.has(status),
+  );
   const isCompleted =
     Boolean(booking.serviceRecords?.length) ||
-    availableStatusTransitions.length === 0;
+    statusTransitions[booking.status].length === 0;
   const canEditBooking = ["pending", "reserved", "confirmed"].includes(
     booking.status,
   );
@@ -145,6 +152,11 @@ export function SchedulerBookingCard({
   const canManagePaymentHistory =
     !financialHistoryReadOnly &&
     canManageSchedulerPaymentHistory(financialProfile);
+  const canShowReschedule =
+    canWrite &&
+    booking.status !== "attended" &&
+    booking.status !== "canceled" &&
+    (!isCompleted || booking.status === "no-show");
 
   return (
     <div className="space-y-3 text-[12px] text-slate-700">
@@ -184,6 +196,37 @@ export function SchedulerBookingCard({
             <span className="font-semibold text-[var(--scheduler-ink-strong)]">
               {commerceName}
             </span>
+          </p>
+        </div>
+
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[rgba(236,209,200,0.95)] bg-white text-slate-500">
+            <UserRoundCheck className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0 text-[0.9rem] text-slate-700">
+            <p>
+              Representante de la cita:{" "}
+              <span className="font-semibold text-[var(--scheduler-ink-strong)]">
+                {appointmentContext?.representativeName ?? "Por registrar"}
+              </span>
+            </p>
+            <p className="mt-1 text-[0.78rem] text-slate-500">
+              Vendedor de cartera: {appointmentContext?.portfolioSellerName ?? "Sin asignar"}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[rgba(236,209,200,0.95)] bg-white text-slate-500">
+            <CalendarClock className="h-3.5 w-3.5" />
+          </div>
+          <p className="text-[0.9rem] text-slate-700">
+            {appointmentContext?.nextAppointmentAt
+              ? `Próxima cita: ${new Intl.DateTimeFormat("es-MX", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }).format(new Date(appointmentContext.nextAppointmentAt))}`
+              : "No cuenta con una próxima cita"}
           </p>
         </div>
 
@@ -691,16 +734,18 @@ export function SchedulerBookingCard({
             <span className="text-[0.9rem] font-medium">Atención y compra</span>
           </button>
         ) : null}
+        {canShowReschedule ? (
+          <button
+            className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
+            onClick={() => onOpenReschedule(booking)}
+            type="button"
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            <span className="text-[0.86rem] font-medium">Reagendar</span>
+          </button>
+        ) : null}
         {!isCompleted && canWrite ? (
           <div className="mr-auto flex items-center gap-2">
-            <button
-              className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
-              onClick={() => onOpenReschedule(booking)}
-              type="button"
-            >
-              <CalendarClock className="h-3.5 w-3.5" />
-              <span className="text-[0.86rem] font-medium">Reagendar</span>
-            </button>
             <button
               aria-label={`${destructiveActionLabel} de ${booking.customerName}`}
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(236,209,200,0.95)] bg-white text-rose-500 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
