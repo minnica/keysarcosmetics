@@ -156,7 +156,12 @@ o vendedores.
 
 En **Configuraciones → Códigos personales** master asigna códigos ficticios a
 identidades que provienen de Scheduler o del catálogo externo POS/CRM. No se
-crean vendedores paralelos. Los códigos tienen de 4 a 12 dígitos, son únicos y
+crean vendedores paralelos para sucursales vinculadas: sus representantes se
+sincronizan desde POS/CRM. Cuando existe al menos una sucursal **Solo Agenda**,
+la misma pantalla habilita el alta de un representante local de Scheduler con
+nombre y código personal; queda identificado como origen `SCHEDULER` y puede
+seleccionarse por cita sin cambiar al vendedor de cartera. Los códigos tienen de
+4 a 12 dígitos, son únicos y
 un valor utilizado no se puede reasignar posteriormente durante la sesión. La
 pantalla nunca muestra el valor guardado.
 
@@ -183,12 +188,17 @@ La reserva y el selector de columnas sólo ofrecen cabinas activas de la sucursa
 elegida; un especialista continúa siendo una persona canónica y nunca sustituye
 a una cabina.
 
-Al crear o editar una reserva en modo diseño, seleccionar una cabina abre una
+Al crear una reserva en modo diseño, seleccionar una cabina abre una
 fila por cada lugar disponible. La primera corresponde al cliente principal y
 las demás permiten capturar visitantes. Cada persona exige nombre y un
 especialista diferente; así, una cabina doble muestra dos clientes/visitantes y
 dos especialistas, y una triple muestra tres. Por persona se registra compra
-pendiente mientras se agenda. Al cambiar la cita a **Atendida**, el mismo
+pendiente mientras se agenda. El formulario separa al **representante de esta
+cita** del vendedor de cartera: puede variar entre citas y conserva origen
+POS/CRM o alta local de Agenda. Al editar, la cabina y su capacidad son de sólo
+lectura; el servidor rechaza cambiar el recurso después de la primera
+configuración. Al cambiar la cita a **Llegó** o, cuando corresponda,
+**Atendida**, el mismo
 diálogo exige elegir **No compró**, **Compra liquidada** o **Apartado**. Una
 compra exige monto de venta mayor a cero; un apartado exige además un anticipo
 mayor a cero que no puede superar la venta. La especialista que atendió queda
@@ -197,13 +207,14 @@ relacionada por persona, no sólo por cita.
 El cambio a **Atendida** sólo se habilita cuando el instante actual es igual o
 posterior a `endsAt`; la UI lo informa y el API de diseño vuelve a validar la
 misma regla con `409`, por lo que no depende únicamente del navegador. Al elegir
-**Atendida** se abre directamente la captura de cabina, especialista, compra y
-apartado; las preguntas y notas adicionales se ocultan y no se sobrescriben.
-El cambio no se ejecuta hasta que cada visitante tenga especialista y una
+**Llegó** se abre directamente la captura de representante, especialista, compra
+y apartado; las preguntas y notas adicionales se ocultan y no se sobrescriben.
+El color y el status no cambian hasta que cada visitante tenga especialista, el
+representante esté seleccionado y exista una
 decisión explícita de **No compró**, **Compra liquidada** o **Apartado**. Compra y
 apartado exigen total válido, y apartado exige además anticipo. El botón queda
-bloqueado mientras falte un dato y el endpoint de status rechaza `ATTENDED` con
-`409` si no existe una captura final completa, incluso si se invoca fuera de la
+bloqueado mientras falte un dato y el endpoint de status rechaza `ARRIVED` o
+`ATTENDED` con `409` si no existe una captura final completa, incluso si se invoca fuera de la
 pantalla. Primero pide
 una autorización `APPOINTMENT_STATUS_CHANGE` y, cuando existe compra o apartado,
 una segunda autorización `PURCHASE_CAPTURE`. En la propuesta ambas mutaciones
@@ -246,7 +257,8 @@ servicio`, mostrando los índices mayores y menores sin confundirlos con ventas.
 El detalle conserva ID de cita, creación,
 confirmación cuando existe historial, horario, sucursal, cabina/capacidad,
 cliente y visitante, servicios, vendedor, especialista, resultado, venta,
-anticipo, saldo, especialista que atendió, propietario de la venta, estado/fecha
+representante de la cita, origen del representante y próxima cita (o la leyenda
+**No cuenta con una próxima cita**), anticipo, saldo, especialista que atendió, propietario de la venta, estado/fecha
 de liquidación, comentarios, estado, origen y última actualización. Excel crea
 `Resumen`, `Por cabina`, `Por día` y `Detalle` con fechas/importes tipados; PDF
 incluye resumen, desglose, ranking, servicios y detalle. La impresión, PDF y Excel
@@ -281,6 +293,10 @@ cambio cierra la revisión anterior y crea una nueva con `effectiveFrom`,
 `effectiveTo` y número de versión. No se eliminan ni reescriben citas,
 transiciones o revisiones anteriores. La bitácora agrega `Alta de status`,
 `Actualización de status` o `Inactivación de status` sin guardar el código.
+Cada definición incluye el interruptor **Mostrar en la agenda**. Ocultarlo
+retira las reservas de ese estado de las vistas diaria, semanal y lista, y evita
+ofrecer esa transición; no elimina la definición ni sus citas, y reportes,
+dashboard y revisiones históricas conservan los registros anteriores.
 
 Los ocho estados canónicos sincronizan el color de su versión activa con la
 Agenda. Los estados personalizados se muestran y versionan en la propuesta,
@@ -298,8 +314,10 @@ al `professionalProfileId`, se propone automáticamente en la siguiente reserva
 y puede retirarse sin reescribir citas anteriores. La preferencia nunca sustituye
 la captura final de quién atendió.
 
-Al cambiar una cita a `ATTENDED`, la demo mantiene el bloqueo hasta que termina
-la sesión y exige exactamente tantas filas de atención como lugares tenga la
+Al cambiar una cita a `ARRIVED`, la demo abre la captura obligatoria y mantiene
+el status anterior hasta guardar representante, especialistas y resultado de
+compra. Al cambiar después a `ATTENDED`, mantiene además el bloqueo hasta que
+termina la sesión y exige exactamente tantas filas de atención como lugares tenga la
 cabina. Una cabina individual requiere una persona y una especialista; una doble,
 dos; una triple, tres, y así sucesivamente. Cada fila obliga a registrar
 especialista y resultado de compra. La cita sólo cambia a atendida después de
@@ -314,8 +332,11 @@ Servicio bueno, regular y malo, pero pueden agregarse, cambiarse o retirarse en
 la configuración. Cada registro guarda ID, nombre y versión de categoría como
 snapshot, por lo que una modificación posterior no altera reportes históricos.
 
-Cancelar una cita continúa solicitando un motivo obligatorio y ahora lo agrega
-al mismo historial append-only. La acción **Reagendar** solicita código personal,
+Cancelar una cita continúa solicitando un motivo obligatorio y ahora exige
+además una fecha tentativa o marcar **No cuenta con una próxima cita**; ambos
+datos se agregan al historial append-only. Una cita **Atendida** no muestra
+reagenda. Una cita **No asistió** sí permite abrir **Reagendar** y exige fecha
+tentativa. La acción **Reagendar** solicita código personal,
 motivo y fecha tentativa obligatoria; este registro documenta la intención y no
 reserva automáticamente un horario. El movimiento efectivo de la cita conserva
 su validación independiente de disponibilidad y autorización.
@@ -337,7 +358,8 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `GET`          | `/api/scheduler/design-proposals/movements`                       | Consultar la bitácora por agente.                                             |
 | `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`       | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`        | Leer o guardar respuestas relacionadas con una cita.                          |
-| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`    | Guardar cabina, visitantes, especialistas y compra por persona.               |
+| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`    | Guardar cabina bloqueada, representante, visitantes, especialistas y compra.  |
+| `POST`         | `/api/scheduler/design-proposals/appointments/contexts`           | Resolver por lote representante, vendedor de cartera y próxima cita.          |
 | `GET/POST`     | `/api/scheduler/design-proposals/appointments/:id/journal`        | Consultar o agregar comentarios, postventa y motivos append-only.             |
 | `GET/PUT`      | `/api/scheduler/design-proposals/customers/:id/specialist-preference` | Proponer o retirar la especialista fija de futuras citas.                  |
 | `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`              | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
@@ -395,7 +417,8 @@ Recorrido manual recomendado:
    y confirma la vista previa, numeración y resumen de esa tienda. En Agenda
    alterna **Cabinas**, **Especialistas** y **Ambos**, y cambia el ancho de la
    ventana para comprobar el ajuste automático. Después crea una reserva en
-   cabina doble y, al cambiarla a **Atendida**,
+   cabina doble, elige un representante distinto al vendedor de cartera y, al
+   cambiarla a **Llegó**,
    registra dos personas, dos especialistas, una compra liquidada y un apartado.
    Debe pedir autorización de estado y después un código con permiso **Registrar
    compras**; desactiva ese permiso y confirma que el mismo código deja de
@@ -403,12 +426,16 @@ Recorrido manual recomendado:
 9. Abre Reportes → Compras de agenda o cabinas, combina periodo, sucursal,
    cabina, status, servicio, especialista, vendedor y monto. Confirma que
    tarjetas, series, ranking, analítica y tabla cambian juntas; imprime y descarga
-   PDF/Excel, verificando que sólo incluyan el detalle filtrado.
+   PDF/Excel, verificando que sólo incluyan el detalle filtrado, representante y
+   próxima cita. El indicador **Sin próxima cita** debe usar esa misma población.
 10. En Administración → Colores de status agrega uno, edita nombre/color y
     después inactívalo. Despliega su historial: deben existir tres versiones,
     conservar la misma clave y aparecer tres movimientos sin mostrar el código.
+    Apaga **Mostrar en la agenda** y confirma que desaparece de Agenda pero no de
+    reportes ni del historial de versiones.
 11. Intenta marcar una cita como Atendida antes de `endsAt`: debe rechazarse.
-    Después de terminar la sesión captura compra/apartado sin ver preguntas
+    Marca otra como Llegó: el color no debe cambiar hasta capturar representante,
+    compra/apartado y especialistas sin ver preguntas
     adicionales; vuelve a editar el monto y confirma que solicita
     **Corregir compras registradas** o el código master.
 12. Abre Reportes → Proyecciones, cambia de 3 a 6 meses y combina sucursales.
@@ -431,8 +458,9 @@ Recorrido manual recomendado:
     que la siguiente reserva propone la misma especialista, pero permite elegir
     otra para esa cita. Después de registrar asistencia abre **Comentario** y
     **Postventa**, captura ambos con código personal y revisa su historial. En
-    otra cita usa **Reagendar** con motivo y fecha tentativa, y cancela otra con
-    motivo obligatorio. Finalmente abre Reportes → Seguimiento y comentarios,
+    otra cita **No asistió** usa **Reagendar** con motivo y fecha tentativa, y
+    cancela otra con motivo obligatorio más fecha tentativa o **No cuenta con una
+    próxima cita**. Confirma que una cita atendida no muestre Reagendar. Finalmente abre Reportes → Seguimiento y comentarios,
     filtra sólo comentarios y descarga Excel/PDF; los nombres históricos de las
     categorías deben conservarse aunque su configuración haya cambiado.
 
