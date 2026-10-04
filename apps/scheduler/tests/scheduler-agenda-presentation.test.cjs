@@ -25,19 +25,39 @@ const {
   adaptSchedulerAppointment,
   adaptSchedulerBlock,
   buildSchedulerAgendaPresentation,
+  buildSchedulerCalendarTimeSlots,
   buildSchedulerCanonicalOperatingHours,
   buildSchedulerVisualBookings,
   scopeSchedulerAgendaPresentationColumns,
 } = loadSource("scheduler-agenda-presentation");
+
+test("extends the visible agenda slots when operating hours grow", () => {
+  const base = {
+    commerceId: "commerce-1",
+    is24Hours: false,
+    schedule: [{ day: "Lunes", enabled: true, open: "08:00", close: "12:00" }],
+  };
+  const initial = buildSchedulerCalendarTimeSlots(base, 30);
+  const extended = buildSchedulerCalendarTimeSlots(
+    {
+      ...base,
+      schedule: [{ ...base.schedule[0], close: "20:00" }],
+    },
+    30,
+  );
+
+  assert.equal(initial.length, 8);
+  assert.equal(initial.at(-1), "11:30");
+  assert.equal(extended.length, 24);
+  assert.equal(extended.at(-1), "19:30");
+});
 const {
   buildSchedulerAgendaRange,
   loadAllSchedulerAppointments,
   schedulerLocalDateTimeToInstant,
 } = loadSource("scheduler-agenda-data");
-const {
-  filterSchedulerAgendaColumns,
-  shouldFitSchedulerAgendaColumns,
-} = loadSource("scheduler-agenda-layout");
+const { filterSchedulerAgendaColumns, shouldFitSchedulerAgendaColumns } =
+  loadSource("scheduler-agenda-layout");
 const { getSchedulerStatusColorTokens } = loadSource(
   "scheduler-status-presentation",
 );
@@ -47,14 +67,8 @@ test("keeps the configured status color visible on every reservation", () => {
   assert.equal(tokens.accent, "#c026d3");
   assert.equal(tokens.surface, "color-mix(in srgb, #c026d3 12%, white)");
   assert.equal(tokens.border, "color-mix(in srgb, #c026d3 32%, white)");
-  assert.equal(
-    tokens.foreground,
-    "color-mix(in srgb, #c026d3 74%, #263649)",
-  );
-  assert.equal(
-    getSchedulerStatusColorTokens("not-a-color").accent,
-    "#94a3b8",
-  );
+  assert.equal(tokens.foreground, "color-mix(in srgb, #c026d3 74%, #263649)");
+  assert.equal(getSchedulerStatusColorTokens("not-a-color").accent, "#94a3b8");
 });
 const {
   buildSchedulerQueryScope,
@@ -247,7 +261,10 @@ test("filters agenda columns explicitly by cabins or specialists", () => {
   ];
 
   assert.deepEqual(
-    Array.from(filterSchedulerAgendaColumns(columns, "CABINS"), (item) => item.id),
+    Array.from(
+      filterSchedulerAgendaColumns(columns, "CABINS"),
+      (item) => item.id,
+    ),
     ["cabin-1", "cabin-2"],
   );
   assert.deepEqual(

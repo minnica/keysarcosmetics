@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   Clock3,
+  Copy,
   Plus,
   Save,
   SlidersHorizontal,
@@ -33,8 +34,11 @@ import { schedulerApi } from "@/lib/api";
 import {
   buildSchedulerAvailabilityDraft,
   buildSchedulerAvailabilityRules,
+  buildSchedulerAvailabilityTargets,
+  copySchedulerAvailabilityDayToWeek,
   schedulerAdministrationInvalidations,
   schedulerWeekdayOptions,
+  type SchedulerAvailabilityApplyScope,
   type SchedulerAvailabilityDayDraft,
 } from "@/lib/scheduler-administration-presentation";
 import {
@@ -93,6 +97,19 @@ function AvailabilityManager({
   });
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
+  const [applyScope, setApplyScope] =
+    useState<SchedulerAvailabilityApplyScope>("CURRENT");
+
+  const scheduleTargets = useMemo(
+    () =>
+      buildSchedulerAvailabilityTargets(
+        owners,
+        owner?.id ?? "",
+        branchProfileId,
+        applyScope,
+      ),
+    [applyScope, branchProfileId, owner?.id, owners],
+  );
 
   useEffect(() => {
     const nextOwner = owners.find((item) => item.id === ownerId) ?? owners[0];
@@ -126,7 +143,7 @@ function AvailabilityManager({
   );
 
   async function saveSchedule() {
-    if (!owner || !branchProfileId) return;
+    if (!owner || !branchProfileId || !scheduleTargets.length) return;
     let rules;
     try {
       rules = buildSchedulerAvailabilityRules(days);
@@ -139,15 +156,23 @@ function AvailabilityManager({
     setSaving(true);
     await runSchedulerMutation(
       () =>
-        schedulerApi.replaceAvailabilityRules({
-          branchProfileId,
-          ownerType,
-          ownerId: owner.id,
-          rules,
-        }),
+        Promise.all(
+          scheduleTargets.map((target) =>
+            schedulerApi.replaceAvailabilityRules({
+              branchProfileId: target.branchProfileId,
+              ownerType,
+              ownerId: target.ownerId,
+              rules,
+            }),
+          ),
+        ),
       {
         onSuccess: async () => {
-          toast.success("Horario actualizado.");
+          toast.success(
+            scheduleTargets.length === 1
+              ? "Horario actualizado en Agenda."
+              : `Horario aplicado a ${scheduleTargets.length} calendarios y actualizado en Agenda.`,
+          );
           invalidateSchedulerQueries(...schedulerAdministrationInvalidations());
           await onSaved();
         },
@@ -156,6 +181,18 @@ function AvailabilityManager({
       },
     );
     setSaving(false);
+  }
+
+  function copyDayToWeek(day: SchedulerAvailabilityDayDraft) {
+    setDays((current) =>
+      copySchedulerAvailabilityDayToWeek(current, day.weekday),
+    );
+    const label = schedulerWeekdayOptions.find(
+      (option) => option.value === day.weekday,
+    )?.label;
+    toast.success(
+      `Horario de ${label ?? "este día"} copiado a toda la semana. Guarda para aplicarlo.`,
+    );
   }
 
   async function addException() {
@@ -310,11 +347,11 @@ function AvailabilityManager({
           </div>
         </div>
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-          <div className="min-w-[720px] divide-y divide-slate-100">
+          <div className="min-w-[900px] divide-y divide-slate-100">
             {days.map((day, index) => (
               <div
                 key={day.weekday}
-                className="grid grid-cols-[120px_1fr_1fr] items-center gap-4 px-4 py-3"
+                className="grid grid-cols-[120px_minmax(260px,1fr)_minmax(310px,1fr)_120px] items-center gap-4 px-4 py-3"
               >
                 <label className="flex items-center gap-2 text-sm font-semibold">
                   <input
@@ -419,17 +456,63 @@ function AvailabilityManager({
                     }
                   />
                 </div>
+                <Button
+                  aria-label={`Copiar horario de ${schedulerWeekdayOptions[index]?.label} a todos los días`}
+                  className="justify-start"
+                  disabled={!canAdmin || saving}
+                  onClick={() => copyDayToWeek(day)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar a todos
+                </Button>
               </div>
             ))}
           </div>
         </div>
         {canAdmin ? (
-          <Button
-            onClick={() => void saveSchedule()}
-            disabled={saving || !branchProfileId}
-          >
-            <Save className="mr-2 h-4 w-4" /> Guardar horario
-          </Button>
+          <div className="flex flex-col gap-3 rounded-2xl border border-[#e7ddd3] bg-[#faf8f5] p-4 lg:flex-row lg:items-end">
+            <div className="w-full lg:max-w-sm">
+              <Label>Aplicar horario al guardar</Label>
+              <Select
+                value={applyScope}
+                onValueChange={(value) =>
+                  setApplyScope(value as SchedulerAvailabilityApplyScope)
+                }
+              >
+                <SelectTrigger className="mt-1.5 bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CURRENT">Este calendario</SelectItem>
+                  <SelectItem value="BRANCH">
+                    Todos los calendarios de esta sucursal
+                  </SelectItem>
+                  <SelectItem value="ALL">
+                    Todos los calendarios del módulo
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="min-w-0 flex-1 text-xs leading-5 text-slate-500">
+              Se actualizarán {scheduleTargets.length} calendario
+              {scheduleTargets.length === 1 ? "" : "s"}. Al ampliar apertura o
+              cierre, Agenda recalcula inmediatamente sus horas y
+              disponibilidad.
+            </p>
+            <Button
+              onClick={() => void saveSchedule()}
+              disabled={saving || !branchProfileId || !scheduleTargets.length}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {saving
+                ? "Guardando…"
+                : scheduleTargets.length > 1
+                  ? `Guardar en ${scheduleTargets.length}`
+                  : "Guardar horario"}
+            </Button>
+          </div>
         ) : null}
 
         <div className="border-t border-slate-200 pt-5">

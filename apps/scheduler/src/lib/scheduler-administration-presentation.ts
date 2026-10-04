@@ -27,6 +27,18 @@ export interface SchedulerAvailabilityDayDraft {
   breakEnd: string;
 }
 
+export type SchedulerAvailabilityApplyScope = "CURRENT" | "BRANCH" | "ALL";
+
+export interface SchedulerAvailabilityTargetOwner {
+  id: string;
+  branchProfileIds: readonly string[];
+}
+
+export interface SchedulerAvailabilityTarget {
+  ownerId: string;
+  branchProfileId: string;
+}
+
 export function schedulerMinutesToTime(minutes: number): string {
   const normalized = Math.max(0, Math.min(1440, Math.trunc(minutes)));
   const hours = Math.floor(normalized / 60);
@@ -140,6 +152,51 @@ export function buildSchedulerAvailabilityRules(
     });
   }
   return result;
+}
+
+export function copySchedulerAvailabilityDayToWeek(
+  days: readonly SchedulerAvailabilityDayDraft[],
+  sourceWeekday: SchedulerWeekday,
+): SchedulerAvailabilityDayDraft[] {
+  const source = days.find((day) => day.weekday === sourceWeekday);
+  if (!source) return days.map((day) => ({ ...day }));
+  return days.map((day) => ({
+    ...day,
+    enabled: source.enabled,
+    start: source.start,
+    end: source.end,
+    breakEnabled: source.breakEnabled,
+    breakStart: source.breakStart,
+    breakEnd: source.breakEnd,
+  }));
+}
+
+export function buildSchedulerAvailabilityTargets(
+  owners: readonly SchedulerAvailabilityTargetOwner[],
+  ownerId: string,
+  branchProfileId: string,
+  scope: SchedulerAvailabilityApplyScope,
+): SchedulerAvailabilityTarget[] {
+  if (!ownerId || !branchProfileId) return [];
+  if (scope === "CURRENT") return [{ ownerId, branchProfileId }];
+
+  const targets: SchedulerAvailabilityTarget[] = [];
+  const targetKeys = new Set<string>();
+  for (const owner of owners) {
+    for (const candidateBranchId of owner.branchProfileIds) {
+      if (scope === "BRANCH" && candidateBranchId !== branchProfileId) {
+        continue;
+      }
+      const targetKey = `${owner.id}:${candidateBranchId}`;
+      if (targetKeys.has(targetKey)) continue;
+      targetKeys.add(targetKey);
+      targets.push({
+        ownerId: owner.id,
+        branchProfileId: candidateBranchId,
+      });
+    }
+  }
+  return targets;
 }
 
 export function schedulerAdministrationInvalidations(): string[] {

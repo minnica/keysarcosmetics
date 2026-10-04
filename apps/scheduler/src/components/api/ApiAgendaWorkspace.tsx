@@ -36,6 +36,7 @@ import {
 import { useSchedulerSession } from "@/lib/session";
 import {
   buildSchedulerAgendaPresentation,
+  buildSchedulerCalendarTimeSlots,
   buildSchedulerCanonicalOperatingHours,
   buildSchedulerVisualBlocks,
   buildSchedulerVisualBookings,
@@ -1066,22 +1067,8 @@ export function ApiAgendaWorkspace() {
     ],
   );
   const calendarTimeSlots = useMemo(() => {
-    const windows = operatingHours.schedule.filter((day) => day.enabled);
-    if (!windows.length) return [];
-    const toMinutes = (value: string) => {
-      const [hour = "0", minute = "0"] = value.split(":");
-      return Number(hour) * 60 + Number(minute);
-    };
-    const start = Math.min(...windows.map((day) => toMinutes(day.open)));
-    const end = Math.max(...windows.map((day) => toMinutes(day.close)));
-    return Array.from(
-      { length: Math.max(0, Math.ceil((end - start) / agendaSlotMinutes)) },
-      (_, index) => {
-        const value = start + index * agendaSlotMinutes;
-        return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
-      },
-    );
-  }, [agendaSlotMinutes, operatingHours.schedule]);
+    return buildSchedulerCalendarTimeSlots(operatingHours, agendaSlotMinutes);
+  }, [agendaSlotMinutes, operatingHours]);
 
   useEffect(() => {
     const updateViewportWidth = () => setViewportWidth(window.innerWidth);

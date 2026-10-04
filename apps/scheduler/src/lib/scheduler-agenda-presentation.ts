@@ -37,6 +37,25 @@ function schedulerMinutesToTime(totalMinutes: number): string {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 }
 
+export function buildSchedulerCalendarTimeSlots(
+  config: SchedulerOperatingHours,
+  slotMinutes: number,
+): string[] {
+  if (!Number.isFinite(slotMinutes) || slotMinutes <= 0) return [];
+  const windows = config.schedule.filter((day) => day.enabled);
+  if (!windows.length && !config.is24Hours) return [];
+  const start = config.is24Hours
+    ? 0
+    : Math.min(...windows.map((day) => schedulerTimeToMinutes(day.open)));
+  const end = config.is24Hours
+    ? 1_440
+    : Math.max(...windows.map((day) => schedulerTimeToMinutes(day.close)));
+  return Array.from(
+    { length: Math.max(0, Math.ceil((end - start) / slotMinutes)) },
+    (_, index) => schedulerMinutesToTime(start + index * slotMinutes),
+  );
+}
+
 function schedulerOperatingWindow(config: SchedulerOperatingHours, date: Date) {
   if (config.is24Hours) {
     return {

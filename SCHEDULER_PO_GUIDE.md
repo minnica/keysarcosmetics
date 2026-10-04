@@ -203,6 +203,18 @@ La reserva y el selector de columnas sólo ofrecen cabinas activas de la sucursa
 elegida; un especialista continúa siendo una persona canónica y nunca sustituye
 a una cabina.
 
+En **Horario, descansos y días especiales**, cada día ofrece **Copiar a todos**
+para replicar apertura, cierre y descanso en la semana sin cambiar la identidad
+de cada día. Antes de guardar se elige el alcance: este calendario, todos los
+calendarios de la sucursal o todos los calendarios del módulo actual (sucursales,
+especialistas o recursos). La pantalla indica cuántos pares perfil/sucursal se
+actualizarán. El guardado reutiliza las reglas canónicas por `ownerType`,
+`ownerId` y `branchProfileId`, invalida el catálogo operativo y Agenda recalcula
+su primera y última franja visible; por ejemplo, extender de 12:00 a 20:00
+agrega inmediatamente las horas restantes. La implementación productiva deberá
+ofrecer una mutación masiva transaccional e idempotente para evitar aplicaciones
+parciales si uno de varios calendarios falla.
+
 Al crear una reserva en modo diseño, seleccionar una cabina abre una
 fila por cada lugar disponible. La primera corresponde al cliente principal y
 las demás permiten capturar visitantes. Cada persona exige nombre y un
@@ -535,6 +547,12 @@ Recorrido manual recomendado:
     una cita nueva debe usar esa cartera y las citas anteriores conservar el
     nombre histórico. Revisa también que las tarjetas oscuras de Reportes
     mantengan iconos y texto blancos en escritorio y móvil.
+17. En Administración → Sucursales y cabinas cambia el lunes de 08:00–12:00 a
+    08:00–20:00, pulsa **Copiar a todos** y guarda primero en este calendario.
+    Abre Agenda y confirma que aparecen franjas hasta las 19:30. Repite el cambio
+    con **Todos los calendarios de esta sucursal** y después con **Todos los
+    calendarios del módulo**; antes de guardar debe mostrarse el total exacto de
+    calendarios afectados.
 
 ## Dónde trabajar
 
@@ -597,10 +615,11 @@ cancelación, conflictos, duplicados y autorizaciones. Los chunks del build norm
 no contienen el runtime de diseño. Lint conserva tres avisos de `<img>` que ya
 existían en la rama base.
 
-El 3 de octubre de 2026 se repitieron TypeScript, lint, las 74 pruebas, el build
-normal y `build:design` después de incorporar autorizaciones por puesto. La
-cobertura separa el permiso para **Llegó** del permiso para registrar una compra,
-verifica el rechazo cruzado y conserva el override del código master.
+El 3 de octubre de 2026 se repitieron TypeScript, lint, las 77 pruebas y
+`build:design` después de incorporar autorizaciones por puesto y copia masiva de
+horarios. La cobertura separa el permiso para **Llegó** del permiso para
+registrar una compra, verifica el rechazo cruzado, conserva el override master y
+comprueba que una ampliación de horario extienda las franjas visibles de Agenda.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

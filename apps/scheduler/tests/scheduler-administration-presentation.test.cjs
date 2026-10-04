@@ -22,12 +22,82 @@ function loadSource(name) {
 }
 
 const {
+  buildSchedulerAvailabilityTargets,
   buildSchedulerAvailabilityDraft,
   buildSchedulerAvailabilityRules,
+  copySchedulerAvailabilityDayToWeek,
   schedulerMinutesToTime,
   schedulerTimeToMinutes,
   toggleSchedulerRelation,
 } = loadSource("scheduler-administration-presentation");
+
+test("copies one complete day to the rest of the week", () => {
+  const days = buildSchedulerAvailabilityDraft([], "BRANCH", "branch-1");
+  days[2] = {
+    ...days[2],
+    enabled: true,
+    start: "07:30",
+    end: "21:00",
+    breakEnabled: true,
+    breakStart: "14:00",
+    breakEnd: "15:30",
+  };
+
+  const copied = copySchedulerAvailabilityDayToWeek(days, "WEDNESDAY");
+  assert.equal(copied.length, 7);
+  assert.ok(copied.every((day) => day.start === "07:30"));
+  assert.ok(copied.every((day) => day.end === "21:00"));
+  assert.ok(copied.every((day) => day.breakEnabled));
+  assert.deepEqual(
+    Array.from(copied, (day) => day.weekday),
+    Array.from(days, (day) => day.weekday),
+  );
+});
+
+test("resolves current, branch and all calendar targets without duplicating owners", () => {
+  const owners = [
+    { id: "professional-1", branchProfileIds: ["branch-1", "branch-2"] },
+    { id: "professional-2", branchProfileIds: ["branch-1"] },
+  ];
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        buildSchedulerAvailabilityTargets(
+          owners,
+          "professional-1",
+          "branch-1",
+          "CURRENT",
+        ),
+      ),
+    ),
+    [{ ownerId: "professional-1", branchProfileId: "branch-1" }],
+  );
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        buildSchedulerAvailabilityTargets(
+          owners,
+          "professional-1",
+          "branch-1",
+          "BRANCH",
+        ),
+      ),
+    ),
+    [
+      { ownerId: "professional-1", branchProfileId: "branch-1" },
+      { ownerId: "professional-2", branchProfileId: "branch-1" },
+    ],
+  );
+  assert.equal(
+    buildSchedulerAvailabilityTargets(
+      owners,
+      "professional-1",
+      "branch-1",
+      "ALL",
+    ).length,
+    3,
+  );
+});
 
 test("maps canonical working and break rules into the seven-day editor", () => {
   const result = buildSchedulerAvailabilityDraft(
