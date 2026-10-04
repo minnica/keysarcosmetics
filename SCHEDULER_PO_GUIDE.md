@@ -160,9 +160,10 @@ crean vendedores paralelos. Los códigos tienen de 4 a 12 dígitos, son únicos 
 un valor utilizado no se puede reasignar posteriormente durante la sesión. La
 pantalla nunca muestra el valor guardado.
 
-**Administración → Comercios** y **Administración → Recursos** forman ahora un
-solo recorrido. Recursos aparece junto a Comercios en Información básica. En
-Comercios, **Alta de sucursal** obliga a elegir uno de dos modelos:
+Administración muestra un único submenú **Sucursales y cabinas**. La misma
+pantalla concentra comercio, contratación, sucursales canónicas, resumen de
+cabinas y edición individual de recursos. **Alta de sucursal** obliga a elegir
+uno de dos modelos:
 
 - **POS + Agenda**: sólo acepta una sucursal activa que ya exista en el catálogo
   POS. Cada sucursal POS se configura por separado y define su número de cabinas
@@ -173,10 +174,10 @@ Comercios, **Alta de sucursal** obliga a elegir uno de dos modelos:
   cobra ni sustituye el catálogo de facturación definitivo.
 
 La misma operación crea o ajusta las cabinas. Aumentar agrega columnas canónicas;
-reducir inactiva las sobrantes sin borrar su historial. **Recursos** conserva la
-edición individual de cabinas, equipos y estaciones y ofrece regreso directo al
-modelo comercial de la sucursal. La sucursal propietaria, las personas por
-cabina y la cantidad son explícitas antes de guardar. Los datos ficticios
+reducir inactiva las sobrantes sin borrar su historial. Más abajo, en esa misma
+pantalla, se conserva la edición individual de cabinas, equipos y estaciones.
+La sucursal propietaria, las personas por cabina y la cantidad son explícitas
+antes de guardar. Los datos ficticios
 incluyen cabina individual, doble y triple en Polanco, y tres cabinas en Mítikah.
 La reserva y el selector de columnas sólo ofrecen cabinas activas de la sucursal
 elegida; un especialista continúa siendo una persona canónica y nunca sustituye
@@ -377,11 +378,11 @@ Recorrido manual recomendado:
     cursor, el detalle emergente debe repetir la misma etiqueta coloreada; en
     pantallas de poca altura la franja debe seguir visible aunque se compacte el
     contenido de la tarjeta.
-14. En Administración → Comercios abre **Alta de sucursal**. Comprueba que POS +
+14. En Administración → Sucursales y cabinas abre **Alta de sucursal**. Comprueba que POS +
     Agenda sólo permita sucursales activas del POS y que cada una conserve sus
     propias cabinas. Después crea una sucursal Solo Agenda: la renta por cabina
     debe ser menor a la renta de sucursal. Confirma que sus cabinas aparecen en
-    Recursos y Agenda; reduce la cantidad y verifica que las sobrantes queden
+    la tabla inferior de recursos y Agenda; reduce la cantidad y verifica que las sobrantes queden
     inactivas, no eliminadas.
 
 ## Dónde trabajar

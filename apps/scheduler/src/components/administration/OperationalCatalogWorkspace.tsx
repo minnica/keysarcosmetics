@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -8,7 +7,6 @@ import {
   Box,
   Building2,
   DoorOpen,
-  Link2,
   Plus,
   RefreshCw,
   Save,
@@ -61,6 +59,7 @@ import {
 } from "./RestoredAdministrationFrame";
 
 type OperationalSection = "locals" | "professionals" | "services" | "resources";
+type OperationalEditor = "branch" | "professional" | "service" | "resource";
 type BranchCandidate = SchedulerOperationalCandidatesDto["branches"][number];
 type EmployeeCandidate = SchedulerOperationalCandidatesDto["employees"][number];
 type ServiceCandidate = SchedulerOperationalCandidatesDto["services"][number];
@@ -70,7 +69,7 @@ const sectionCopy: Record<
   { title: string; description: string; screen: SchedulerScreenKey }
 > = {
   locals: {
-    title: "Comercios, sucursales y cabinas",
+    title: "Sucursales y cabinas",
     description:
       "Vincula sucursales POS o contrata sucursales independientes y configura sus cabinas.",
     screen: "scheduler/administration/locals",
@@ -973,6 +972,9 @@ export function OperationalCatalogWorkspace({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeEditor, setActiveEditor] = useState<OperationalEditor | null>(
+    null,
+  );
   const [editorOpen, setEditorOpen] = useState(false);
   const [commerceDialogOpen, setCommerceDialogOpen] = useState(false);
   const [commerceDraft, setCommerceDraft] = useState({
@@ -1021,6 +1023,7 @@ export function OperationalCatalogWorkspace({
   }, [load]);
   useEffect(() => {
     setSelectedId(null);
+    setActiveEditor(null);
     setEditorOpen(false);
   }, [section]);
 
@@ -1060,6 +1063,7 @@ export function OperationalCatalogWorkspace({
             size="sm"
             onClick={() => {
               setSelectedId(row.original.id);
+              setActiveEditor("branch");
               setEditorOpen(true);
             }}
           >
@@ -1105,6 +1109,7 @@ export function OperationalCatalogWorkspace({
             size="sm"
             onClick={() => {
               setSelectedId(row.original.id);
+              setActiveEditor("professional");
               setEditorOpen(true);
             }}
           >
@@ -1155,6 +1160,7 @@ export function OperationalCatalogWorkspace({
             size="sm"
             onClick={() => {
               setSelectedId(row.original.id);
+              setActiveEditor("service");
               setEditorOpen(true);
             }}
           >
@@ -1281,6 +1287,7 @@ export function OperationalCatalogWorkspace({
           size="sm"
           onClick={() => {
             setSelectedId(row.original.id);
+            setActiveEditor("resource");
             setEditorOpen(true);
           }}
         >
@@ -1291,13 +1298,13 @@ export function OperationalCatalogWorkspace({
   ];
 
   const editorTitle =
-    section === "locals"
+    activeEditor === "branch"
       ? selectedBranch?.name
-      : section === "professionals"
+      : activeEditor === "professional"
         ? selectedEmployee?.name
-        : section === "services"
+        : activeEditor === "service"
           ? selectedService?.name
-          : selectedId
+          : activeEditor === "resource" && selectedId
             ? "Editar recurso"
             : "Nuevo recurso";
 
@@ -1465,31 +1472,12 @@ export function OperationalCatalogWorkspace({
           </>
         ) : null}
 
-        {section === "resources" ? (
+        {section === "locals" ? (
           <>
-            <Card className="admin-card border-[#d9c6b3]">
-              <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-                <div className="flex items-start gap-3">
-                  <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-[#ad8b67]" />
-                  <div>
-                    <h2 className="font-semibold text-slate-800">
-                      Recursos ligados al alta de sucursal
-                    </h2>
-                    <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-                      La cantidad inicial de cabinas y el modelo POS o Solo Agenda
-                      se administran desde Comercios. Aquí puedes ajustar cada
-                      cabina, equipo o estación de forma individual.
-                    </p>
-                  </div>
-                </div>
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/administracion?section=locals">
-                    Ir a sucursales y contratación
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div
+              className="grid scroll-mt-28 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+              id="cabinas-recursos"
+            >
               {resourceSummary.map(({ branch, cabins, cabinCapacity, specialists }) => (
                 <Card className="admin-card" key={branch.id}>
                   <CardContent className="p-5">
@@ -1539,6 +1527,7 @@ export function OperationalCatalogWorkspace({
                       size="sm"
                       onClick={() => {
                         setSelectedId(null);
+                        setActiveEditor("resource");
                         setEditorOpen(true);
                       }}
                     >
@@ -1554,12 +1543,6 @@ export function OperationalCatalogWorkspace({
                 />
               </CardContent>
             </Card>
-            <AdministrationRelationsPanel
-              section={section}
-              catalog={catalog}
-              canAdmin={canAdmin}
-              onSaved={refreshAfterMutation}
-            />
           </>
         ) : null}
       </div>
@@ -1569,7 +1552,7 @@ export function OperationalCatalogWorkspace({
           <DialogHeader>
             <DialogTitle>{editorTitle}</DialogTitle>
           </DialogHeader>
-          {section === "locals" && selectedBranch ? (
+          {activeEditor === "branch" && selectedBranch ? (
             <BranchEditor
               key={`${selectedBranch.id}-${catalog.branches.find((item) => item.branchId === selectedBranch.id)?.version ?? 0}`}
               candidate={selectedBranch}
@@ -1581,7 +1564,7 @@ export function OperationalCatalogWorkspace({
               canAdmin={canAdmin}
             />
           ) : null}
-          {section === "professionals" && selectedEmployee ? (
+          {activeEditor === "professional" && selectedEmployee ? (
             <ProfessionalEditor
               key={`${selectedEmployee.id}-${catalog.professionals.find((item) => item.employeeId === selectedEmployee.id)?.version ?? 0}`}
               candidate={selectedEmployee}
@@ -1593,7 +1576,7 @@ export function OperationalCatalogWorkspace({
               canAdmin={canAdmin}
             />
           ) : null}
-          {section === "services" && selectedService ? (
+          {activeEditor === "service" && selectedService ? (
             <ServiceEditor
               key={`${selectedService.id}-${catalog.services.find((item) => item.catalogItemId === selectedService.id)?.version ?? 0}`}
               candidate={selectedService}
@@ -1605,7 +1588,7 @@ export function OperationalCatalogWorkspace({
               canAdmin={canAdmin}
             />
           ) : null}
-          {section === "resources" ? (
+          {activeEditor === "resource" ? (
             <ResourceEditor
               key={selectedId ?? "new-resource"}
               catalog={catalog}

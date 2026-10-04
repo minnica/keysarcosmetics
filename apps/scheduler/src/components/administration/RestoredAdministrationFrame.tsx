@@ -6,9 +6,9 @@ import { Badge, Button } from "@cosmetics/ui";
 
 export const restoredAdministrationCopy = {
   locals: {
-    title: "Comercios",
+    title: "Sucursales y cabinas",
     description:
-      "Configura cada comercio, su horario operativo y las sucursales asociadas.",
+      "Configura contratación, sucursales POS o independientes y sus cabinas en un solo lugar.",
   },
   professionals: {
     title: "Especialistas",

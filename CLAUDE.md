@@ -1857,9 +1857,11 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 
 ### Scheduler: contratación de sucursales y cabinas (2026-10-03)
 
-- Administración agrupa Recursos junto a Comercios. El alta de una sucursal y
-  su cantidad/capacidad de cabinas se resuelve desde un mismo flujo; Recursos
-  queda como editor operativo individual y enlaza de regreso a Comercios.
+- Administración expone un único submenú **Sucursales y cabinas**. El alta de
+  una sucursal, su contratación y su cantidad/capacidad de cabinas se resuelven
+  arriba; el resumen y editor operativo individual de recursos viven más abajo
+  en la misma pantalla. La ruta heredada `?section=resources` presenta el mismo
+  contenido combinado y ya no aparece como entrada independiente.
 - `POS_LINKED` exige una sucursal activa preexistente del catálogo POS y permite
   configurar cabinas por sucursal. `SCHEDULER_STANDALONE` crea una sucursal sólo
   para Agenda con renta base y renta por cabina; la cuota de cabina debe ser

@@ -25,7 +25,8 @@ function isOperationalSection(value: string): value is OperationalSection {
 }
 
 export function ApiAdministrationWorkspace() {
-  const section = useSearchParams().get("section") ?? "locals";
+  const requestedSection = useSearchParams().get("section") ?? "locals";
+  const section = requestedSection === "resources" ? "locals" : requestedSection;
   if (isOperationalSection(section)) {
     return (
       <>

@@ -102,6 +102,29 @@ test("keeps the complete RV0 route inventory mounted", () => {
   ]);
 });
 
+test("combines commerce and resources into one administration submenu", () => {
+  const primaryNav = readFileSync(
+    path.join(sourceRoot, "components/SchedulerPrimaryNav.tsx"),
+    "utf8",
+  );
+  const sidebar = readFileSync(
+    path.join(sourceRoot, "components/layout/SchedulerAppSidebar.tsx"),
+    "utf8",
+  );
+  const administrationEntry = readFileSync(
+    path.join(sourceRoot, "components/api/ApiAdministrationWorkspace.tsx"),
+    "utf8",
+  );
+  assert.match(primaryNav, /id: "locals", label: "Sucursales y cabinas"/);
+  assert.doesNotMatch(primaryNav, /id: "resources", label: "Recursos"/);
+  assert.match(sidebar, /label: "Sucursales y cabinas"/);
+  assert.doesNotMatch(sidebar, /label: "Recursos"[\s\S]*adminSection: "resources"/);
+  assert.match(
+    administrationEntry,
+    /requestedSection === "resources" \? "locals" : requestedSection/,
+  );
+});
+
 test("keeps fixtures and retired workspaces out of the production graph", () => {
   const { reachable, unresolved } = productionGraph();
   assert.deepEqual(unresolved, []);

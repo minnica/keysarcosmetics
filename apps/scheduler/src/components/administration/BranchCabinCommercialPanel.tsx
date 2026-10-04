@@ -274,7 +274,7 @@ export function BranchCabinCommercialPanel({
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild size="sm" variant="outline">
-                <Link href="/administracion?section=resources">
+                <Link href="#cabinas-recursos">
                   <DoorOpen className="mr-2 h-4 w-4" /> Ver recursos
                 </Link>
               </Button>
@@ -489,8 +489,8 @@ export function BranchCabinCommercialPanel({
                   <p className="mt-1 text-xs text-red-700">Entre 1 y 10 personas.</p>
                 ) : null}
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Las capacidades diferentes se ajustan después en Recursos sin
-                  sobrescribir las cabinas existentes.
+                  Las capacidades diferentes se ajustan en la tabla inferior de
+                  recursos sin sobrescribir las cabinas existentes.
                 </p>
               </div>
               <div>

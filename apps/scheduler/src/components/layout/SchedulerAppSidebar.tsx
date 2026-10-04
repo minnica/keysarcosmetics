@@ -120,13 +120,7 @@ const reportItems: NavigationItem[] = [
 ];
 
 const administrationItems: NavigationItem[] = [
-  { label: "Comercios", icon: Globe2, adminSection: "locals", screenId: "administration.locals" },
-  {
-    label: "Recursos",
-    icon: SlidersHorizontal,
-    adminSection: "resources",
-    screenId: "administration.resources",
-  },
+  { label: "Sucursales y cabinas", icon: Globe2, adminSection: "locals", screenId: "administration.locals" },
   {
     label: "Especialistas",
     icon: UsersRound,
