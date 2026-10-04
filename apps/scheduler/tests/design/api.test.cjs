@@ -1242,3 +1242,132 @@ test("la búsqueda avanzada combina agenda, servicios, cumpleaños, vendedor y c
   assert.equal(inactive.items[0].displayName, "Sofía Mendoza Lara");
   assert.equal(inactive.items[0].agenda.lastAppointmentAt, null);
 });
+
+test("la especialista preferida se fija por cliente sin impedir otra asignación por cita", () => {
+  const { state, request } = session();
+  const customerId = state.customers[0].id;
+  const specialist = state.catalog.professionals[1];
+  const saved = request(
+    "PUT",
+    `/api/scheduler/design-proposals/customers/${customerId}/specialist-preference`,
+    { specialistProfileId: specialist.id },
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.data.specialistProfileId, specialist.id);
+  assert.equal(
+    request(
+      "GET",
+      `/api/scheduler/design-proposals/customers/${customerId}/specialist-preference`,
+    ).body.data.specialistName,
+    specialist.name,
+  );
+  assert.notEqual(
+    state.appointments[0].services[0].professionals[0].professionalProfileId,
+    undefined,
+  );
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/customers/${customerId}/specialist-preference`,
+      { specialistProfileId: null },
+    ).body.data,
+    null,
+  );
+});
+
+test("comentarios y postventa exigen asistencia, código y conservan snapshots descargables", () => {
+  const { state, request } = session();
+  const appointment = state.appointments.find(
+    (candidate) => candidate.status === "ATTENDED",
+  );
+  const pendingAppointment = state.appointments.find(
+    (candidate) => candidate.status === "CONFIRMED",
+  );
+  const unauthorized = request(
+    "POST",
+    `/api/scheduler/design-proposals/appointments/${appointment.id}/journal`,
+    {
+      kind: "SELLER_COMMENT",
+      comment: "Seguimiento ficticio de la cita.",
+      authorizationToken: "invalid",
+    },
+  );
+  assert.equal(unauthorized.status, 403);
+
+  const pendingGrant = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code: "1111",
+      purpose: "APPOINTMENT_COMMENT_CREATE",
+      targetType: "APPOINTMENT_JOURNAL",
+      targetId: pendingAppointment.id,
+    },
+  ).body.data;
+  assert.equal(
+    request(
+      "POST",
+      `/api/scheduler/design-proposals/appointments/${pendingAppointment.id}/journal`,
+      {
+        kind: "SELLER_COMMENT",
+        comment: "Todavía no corresponde.",
+        authorizationToken: pendingGrant.token,
+      },
+    ).status,
+    409,
+  );
+
+  const grant = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code: "1111",
+      purpose: "POST_SALE_COMMENT_CREATE",
+      targetType: "APPOINTMENT_JOURNAL",
+      targetId: appointment.id,
+    },
+  ).body.data;
+  const saved = request(
+    "POST",
+    `/api/scheduler/design-proposals/appointments/${appointment.id}/journal`,
+    {
+      kind: "POST_SALE_COMMENT",
+      comment: "La clienta calificó bien el servicio.",
+      categoryId: "service-good",
+      categoryLabel: "Servicio bueno",
+      categoryVersion: 1,
+      authorizationToken: grant.token,
+    },
+  );
+  assert.equal(saved.status, 201);
+  assert.equal(saved.body.data.actorName, "Renata Castillo");
+  assert.equal(saved.body.data.categoryLabel, "Servicio bueno");
+
+  assert.equal(
+    request(
+      "POST",
+      "/api/scheduler/design-proposals/operation-authorizations/commit",
+      {
+        token: grant.token,
+        action: "Comentario postventa",
+        targetType: "APPOINTMENT_JOURNAL",
+        targetId: appointment.id,
+      },
+    ).status,
+    201,
+  );
+  const report = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/appointment-journal",
+    {
+      dateFrom: "2020-01-01",
+      dateTo: "2030-12-31",
+      branchIds: [appointment.branchId],
+      kinds: ["POST_SALE_COMMENT"],
+    },
+  );
+  assert.equal(report.status, 201);
+  assert.equal(report.body.data.summary.postSaleComments, 1);
+  assert.equal(report.body.data.rows[0].customerName, appointment.customerName);
+  assert.equal(report.body.data.rows[0].categoryLabel, "Servicio bueno");
+});

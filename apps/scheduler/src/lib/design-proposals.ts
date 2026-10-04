@@ -28,6 +28,11 @@ export const schedulerDesignProposals: DesignProposalClient = {
   saveAppointmentAnswers: unavailable,
   appointmentCabinVisit: unavailable,
   saveAppointmentCabinVisit: unavailable,
+  appointmentJournal: unavailable,
+  addAppointmentJournalEntry: unavailable,
+  appointmentJournalReport: unavailable,
+  customerSpecialistPreference: unavailable,
+  saveCustomerSpecialistPreference: unavailable,
   cabinSalesReport: unavailable,
   salesProjectionReport: unavailable,
 };

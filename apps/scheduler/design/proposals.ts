@@ -1,10 +1,13 @@
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignAppointmentJournalEntry,
+  DesignAppointmentJournalReport,
   DesignBranchCommercialModel,
   DesignCabinSalesReport,
   DesignSalesProjectionReport,
   DesignCustomerAdvancedPage,
+  DesignCustomerSpecialistPreference,
   DesignDemoAccountOption,
   DesignMovementRecord,
   DesignOperationAgent,
@@ -128,6 +131,32 @@ export const schedulerDesignProposals: DesignProposalClient = {
               },
             }
           : {}),
+      },
+    ),
+  appointmentJournal: (appointmentId) =>
+    request<DesignAppointmentJournalEntry[]>(
+      `/api/scheduler/design-proposals/appointments/${appointmentId}/journal`,
+    ),
+  addAppointmentJournalEntry: (appointmentId, input) =>
+    request<DesignAppointmentJournalEntry>(
+      `/api/scheduler/design-proposals/appointments/${appointmentId}/journal`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  appointmentJournalReport: (input) =>
+    request<DesignAppointmentJournalReport>(
+      "/api/scheduler/design-proposals/reports/appointment-journal",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  customerSpecialistPreference: (customerId) =>
+    request<DesignCustomerSpecialistPreference | null>(
+      `/api/scheduler/design-proposals/customers/${customerId}/specialist-preference`,
+    ),
+  saveCustomerSpecialistPreference: (customerId, specialistProfileId) =>
+    request<DesignCustomerSpecialistPreference | null>(
+      `/api/scheduler/design-proposals/customers/${customerId}/specialist-preference`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ specialistProfileId }),
       },
     ),
   cabinSalesReport: (input) =>

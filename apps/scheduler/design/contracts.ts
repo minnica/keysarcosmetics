@@ -15,7 +15,9 @@ export type DesignOperationPurpose =
   | "SCHEDULE_BLOCK_DELETE"
   | "CUSTOMER_UPDATE"
   | "PURCHASE_CAPTURE"
-  | "PURCHASE_CORRECTION";
+  | "PURCHASE_CORRECTION"
+  | "APPOINTMENT_COMMENT_CREATE"
+  | "POST_SALE_COMMENT_CREATE";
 
 export type DesignOperationAgentSource = "SCHEDULER" | "POS_CRM";
 
@@ -142,6 +144,63 @@ export interface DesignAppointmentCabinVisit {
   cabinName: string;
   cabinCapacity: number;
   visitors: DesignCabinVisitPerson[];
+  updatedAt: string;
+}
+
+export type DesignAppointmentJournalKind =
+  | "SELLER_COMMENT"
+  | "POST_SALE_COMMENT"
+  | "CANCELLATION_REASON"
+  | "RESCHEDULE_REASON";
+
+export interface DesignAppointmentJournalEntry {
+  id: string;
+  appointmentId: string;
+  kind: DesignAppointmentJournalKind;
+  comment: string;
+  categoryId: string | null;
+  categoryLabel: string | null;
+  categoryVersion: number | null;
+  tentativeDate: string | null;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  customerId: string;
+  customerName: string;
+  branchId: string;
+  branchName: string;
+  serviceNames: string[];
+  appointmentStartsAt: string;
+  appointmentStatus: SchedulerAppointmentStatus;
+  createdAt: string;
+}
+
+export interface DesignAppointmentJournalFilters {
+  dateFrom: string;
+  dateTo: string;
+  branchIds: string[];
+  kinds: DesignAppointmentJournalKind[];
+  query?: string;
+}
+
+export interface DesignAppointmentJournalReport {
+  generatedAt: string;
+  filters: DesignAppointmentJournalFilters;
+  summary: {
+    appointments: number;
+    entries: number;
+    sellerComments: number;
+    postSaleComments: number;
+    cancellations: number;
+    reschedules: number;
+  };
+  rows: DesignAppointmentJournalEntry[];
+}
+
+export interface DesignCustomerSpecialistPreference {
+  customerId: string;
+  specialistProfileId: string;
+  specialistName: string;
   updatedAt: string;
 }
 
@@ -413,6 +472,31 @@ export interface DesignProposalClient {
     },
     authorizationToken?: string,
   ): Promise<DesignAppointmentCabinVisit>;
+  appointmentJournal(
+    appointmentId: string,
+  ): Promise<DesignAppointmentJournalEntry[]>;
+  addAppointmentJournalEntry(
+    appointmentId: string,
+    input: {
+      kind: DesignAppointmentJournalKind;
+      comment: string;
+      categoryId?: string;
+      categoryLabel?: string;
+      categoryVersion?: number;
+      tentativeDate?: string;
+      authorizationToken: string;
+    },
+  ): Promise<DesignAppointmentJournalEntry>;
+  appointmentJournalReport(
+    input: DesignAppointmentJournalFilters,
+  ): Promise<DesignAppointmentJournalReport>;
+  customerSpecialistPreference(
+    customerId: string,
+  ): Promise<DesignCustomerSpecialistPreference | null>;
+  saveCustomerSpecialistPreference(
+    customerId: string,
+    specialistProfileId: string | null,
+  ): Promise<DesignCustomerSpecialistPreference | null>;
   cabinSalesReport(
     input: DesignCabinSalesReportFilters,
   ): Promise<DesignCabinSalesReport>;

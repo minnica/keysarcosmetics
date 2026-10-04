@@ -27,6 +27,10 @@ import {
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignAppointmentJournalEntry,
+  DesignAppointmentJournalFilters,
+  DesignAppointmentJournalKind,
+  DesignAppointmentJournalReport,
   DesignBranchCommercialModel,
   DesignCabinSalesReport,
   DesignCabinSalesReportBreakdown,
@@ -247,6 +251,8 @@ function operationPurpose(value: unknown): DesignOperationPurpose {
     "CUSTOMER_UPDATE",
     "PURCHASE_CAPTURE",
     "PURCHASE_CORRECTION",
+    "APPOINTMENT_COMMENT_CREATE",
+    "POST_SALE_COMMENT_CREATE",
   ];
   if (!purposes.includes(value as DesignOperationPurpose)) {
     fail(400, "Propósito de autorización no reconocido.");
@@ -1218,6 +1224,57 @@ function buildSalesProjectionReport(
   };
 }
 
+function buildAppointmentJournalReport(
+  state: DesignState,
+  input: DesignAppointmentJournalFilters,
+): DesignAppointmentJournalReport {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dateFrom) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(input.dateTo) ||
+      input.dateFrom > input.dateTo) {
+    fail(400, "Selecciona un periodo válido para el reporte de seguimiento.");
+  }
+  const allowedBranches = new Set(designBootstrap(state).authorizedBranchIds);
+  const requestedBranches = new Set(
+    input.branchIds.filter((branchId) => allowedBranches.has(branchId)),
+  );
+  const kinds = new Set(input.kinds);
+  const query = textKey(input.query ?? "").trim();
+  const rows = state.appointmentJournal
+    .filter((entry) => {
+      const date = entry.createdAt.slice(0, 10);
+      return (
+        date >= input.dateFrom &&
+        date <= input.dateTo &&
+        allowedBranches.has(entry.branchId) &&
+        (requestedBranches.size === 0 || requestedBranches.has(entry.branchId)) &&
+        (kinds.size === 0 || kinds.has(entry.kind)) &&
+        (!query ||
+          [
+            entry.customerName,
+            entry.actorName,
+            entry.comment,
+            entry.categoryLabel,
+            entry.branchName,
+            ...entry.serviceNames,
+          ].some((value) => textKey(value).includes(query)))
+      );
+    })
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  return {
+    generatedAt: new Date().toISOString(),
+    filters: input,
+    summary: {
+      appointments: new Set(rows.map((entry) => entry.appointmentId)).size,
+      entries: rows.length,
+      sellerComments: rows.filter((entry) => entry.kind === "SELLER_COMMENT").length,
+      postSaleComments: rows.filter((entry) => entry.kind === "POST_SALE_COMMENT").length,
+      cancellations: rows.filter((entry) => entry.kind === "CANCELLATION_REASON").length,
+      reschedules: rows.filter((entry) => entry.kind === "RESCHEDULE_REASON").length,
+    },
+    rows,
+  };
+}
+
 function advancedCustomerSearch(
   state: DesignState,
   input: DesignCustomerAdvancedFilters,
@@ -1877,6 +1934,32 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         lookbackMonths: Number(body.lookbackMonths) || 6,
       });
     }
+    if (id === "reports" && action === "appointment-journal") {
+      if (method !== "POST") {
+        fail(405, "Usa POST para el reporte de seguimiento de citas.");
+      }
+      const validKinds: DesignAppointmentJournalKind[] = [
+        "SELLER_COMMENT",
+        "POST_SALE_COMMENT",
+        "CANCELLATION_REASON",
+        "RESCHEDULE_REASON",
+      ];
+      return buildAppointmentJournalReport(state, {
+        dateFrom: String(body.dateFrom ?? ""),
+        dateTo: String(body.dateTo ?? ""),
+        branchIds: Array.isArray(body.branchIds)
+          ? body.branchIds.map(String)
+          : [],
+        kinds: Array.isArray(body.kinds)
+          ? body.kinds.filter((kind): kind is DesignAppointmentJournalKind =>
+              validKinds.includes(kind as DesignAppointmentJournalKind),
+            )
+          : [],
+        ...(typeof body.query === "string" && body.query.trim()
+          ? { query: body.query.trim() }
+          : {}),
+      });
+    }
     if (id === "customers" && action === "advanced-search") {
       if (method !== "POST") fail(405, "Usa POST para la búsqueda avanzada.");
       const input = body as unknown as DesignCustomerAdvancedFilters;
@@ -1913,6 +1996,34 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         page: Number(input.page) || 1,
         pageSize: Number(input.pageSize) || 25,
       });
+    }
+    if (id === "customers" && parts[5] === "specialist-preference") {
+      const customerId = String(action ?? "");
+      customer(state, customerId);
+      if (method === "GET") {
+        return state.customerSpecialistPreferences[customerId] ?? null;
+      }
+      if (method !== "PUT") {
+        fail(405, "Usa GET o PUT para la especialista preferida.");
+      }
+      const specialistProfileId = String(body.specialistProfileId ?? "");
+      if (!specialistProfileId) {
+        delete state.customerSpecialistPreferences[customerId];
+        return null;
+      }
+      const specialist =
+        state.catalog.professionals.find(
+          (candidate) =>
+            candidate.id === specialistProfileId && candidate.active,
+        ) ?? fail(400, "Selecciona una especialista activa.");
+      const preference = {
+        customerId,
+        specialistProfileId: specialist.id,
+        specialistName: specialist.name,
+        updatedAt: new Date().toISOString(),
+      };
+      state.customerSpecialistPreferences[customerId] = preference;
+      return preference;
     }
     if (id === "authorization-agents") {
       if (method === "GET") {
@@ -2256,6 +2367,99 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       };
       state.appointmentCabinVisits[appointmentId] = result;
       return result;
+    }
+    if (id === "appointments" && parts[5] === "journal") {
+      const appointmentId = String(action ?? "");
+      const appointmentItem = appointment(state, appointmentId);
+      if (method === "GET") {
+        return state.appointmentJournal
+          .filter((entry) => entry.appointmentId === appointmentId)
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      }
+      if (method !== "POST") {
+        fail(405, "Usa GET o POST para el historial de la cita.");
+      }
+      const kind = String(body.kind ?? "") as DesignAppointmentJournalKind;
+      const requiredPurposeByKind: Record<
+        DesignAppointmentJournalKind,
+        DesignOperationPurpose
+      > = {
+        SELLER_COMMENT: "APPOINTMENT_COMMENT_CREATE",
+        POST_SALE_COMMENT: "POST_SALE_COMMENT_CREATE",
+        CANCELLATION_REASON: "APPOINTMENT_CANCEL",
+        RESCHEDULE_REASON: "APPOINTMENT_MOVE",
+      };
+      const requiredPurpose = requiredPurposeByKind[kind];
+      if (!requiredPurpose) fail(400, "Tipo de seguimiento no reconocido.");
+      if (
+        (kind === "SELLER_COMMENT" || kind === "POST_SALE_COMMENT") &&
+        appointmentItem.status !== "ATTENDED"
+      ) {
+        fail(409, "Los comentarios se habilitan después de registrar la asistencia.");
+      }
+      const comment = String(body.comment ?? "").trim();
+      if (comment.length < 3 || comment.length > 2_000) {
+        fail(400, "El comentario debe contener de 3 a 2,000 caracteres.");
+      }
+      const tentativeDate =
+        kind === "RESCHEDULE_REASON" ? String(body.tentativeDate ?? "") : "";
+      if (
+        kind === "RESCHEDULE_REASON" &&
+        !/^\d{4}-\d{2}-\d{2}$/.test(tentativeDate)
+      ) {
+        fail(400, "Captura una fecha tentativa de reagenda válida.");
+      }
+      const token = String(body.authorizationToken ?? "");
+      const authorization = state.operationAuthorizations.get(token);
+      const agent = authorization
+        ? state.operationAgents.find(
+            (candidate) => candidate.id === authorization.agentId,
+          )
+        : undefined;
+      const authorizedAgent =
+        agent ?? fail(403, "El agente autorizado ya no está disponible.");
+      if (
+        !authorization ||
+        authorization.purpose !== requiredPurpose ||
+        (authorization.targetId && authorization.targetId !== appointmentId) ||
+        authorization.expiresAt < Date.now() ||
+        !authorizedAgent.active ||
+        !authorizedAgent.allowedPurposes.includes(requiredPurpose)
+      ) {
+        fail(403, "El registro requiere un código personal autorizado.");
+      }
+      const entry: DesignAppointmentJournalEntry = {
+        id: designId("design-appointment-journal"),
+        appointmentId,
+        kind,
+        comment,
+        categoryId:
+          typeof body.categoryId === "string" && body.categoryId
+            ? body.categoryId
+            : null,
+        categoryLabel:
+          typeof body.categoryLabel === "string" && body.categoryLabel
+            ? body.categoryLabel
+            : null,
+        categoryVersion:
+          Number.isInteger(Number(body.categoryVersion)) && body.categoryVersion
+            ? Number(body.categoryVersion)
+            : null,
+        tentativeDate: tentativeDate || null,
+        actorId: authorizedAgent.id,
+        actorName: authorizedAgent.name,
+        actorRole: authorizedAgent.role,
+        customerId: appointmentItem.customerId,
+        customerName: appointmentItem.customerName,
+        branchId: appointmentItem.branchId,
+        branchName: appointmentItem.branchName,
+        serviceNames: appointmentItem.services.map((service) => service.serviceName),
+        appointmentStartsAt: appointmentItem.startsAt,
+        appointmentStatus: appointmentItem.status,
+        createdAt: new Date().toISOString(),
+      };
+      state.appointmentJournal.unshift(entry);
+      return entry;
     }
     fail(404, "Propuesta de diseño no encontrada.");
   }

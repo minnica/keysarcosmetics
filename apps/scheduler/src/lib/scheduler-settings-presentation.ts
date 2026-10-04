@@ -224,6 +224,15 @@ export const schedulerSettingDefinitions: Record<
       limitUnit: "months",
       allowBlockedTimeBookings: false,
       allowExtendedHours: false,
+      showSellerComments: true,
+      showPostSaleComments: true,
+      postSaleCategories: [
+        { name: "Servicio bueno" },
+        { name: "Servicio regular" },
+        { name: "Servicio malo" },
+      ],
+      cancellationReasons: [],
+      rescheduleReasons: [],
       additionalFields: {
         email: { enabled: true, required: false },
         phone: { enabled: true, required: true },
@@ -308,6 +317,48 @@ export const schedulerSettingDefinitions: Record<
         "No amplía los horarios canónicos hasta conectar un consumidor.",
         "Excepciones",
       ),
+      toggle(
+        "showSellerComments",
+        "Comentarios del vendedor",
+        "Muestra el botón después de registrar la asistencia. Cada comentario exige código personal y conserva autor, fecha y cita.",
+        "Seguimiento de la cita",
+      ),
+      toggle(
+        "showPostSaleComments",
+        "Comentarios postventa",
+        "Muestra el botón después de registrar la asistencia y conserva un historial categorizado.",
+        "Seguimiento de la cita",
+      ),
+      {
+        path: "postSaleCategories",
+        label: "Categorías postventa",
+        description:
+          "Opciones como servicio bueno, regular o malo. Los registros guardan una copia del nombre y versión para no alterar históricos.",
+        kind: "object-list",
+        group: "Seguimiento de la cita",
+        itemLabel: "Categoría",
+        itemValueKey: "name",
+      },
+      {
+        path: "cancellationReasons",
+        label: "Motivos frecuentes de cancelación",
+        description:
+          "Catálogo opcional para agilizar la captura; siempre se conserva el motivo escrito en el historial.",
+        kind: "object-list",
+        group: "Motivos",
+        itemLabel: "Motivo",
+        itemValueKey: "name",
+      },
+      {
+        path: "rescheduleReasons",
+        label: "Motivos frecuentes de reagenda",
+        description:
+          "Catálogo opcional para registrar la causa y una fecha tentativa obligatoria.",
+        kind: "object-list",
+        group: "Motivos",
+        itemLabel: "Motivo",
+        itemValueKey: "name",
+      },
       toggle(
         "additionalFields.email.enabled",
         "Pedir e-mail",

@@ -29,7 +29,9 @@ import { schedulerLocalDateTimeToInstant } from "../src/lib/scheduler-agenda-dat
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignAppointmentJournalEntry,
   DesignBranchCommercialModel,
+  DesignCustomerSpecialistPreference,
   DesignMovementRecord,
   DesignOperationAgentSource,
   DesignOperationPurpose,
@@ -450,6 +452,8 @@ export function createDesignState(
         "CUSTOMER_UPDATE",
         "PURCHASE_CAPTURE",
         "PURCHASE_CORRECTION",
+        "APPOINTMENT_COMMENT_CREATE",
+        "POST_SALE_COMMENT_CREATE",
       ] as DesignOperationPurpose[],
       updatedAt: now,
     })),
@@ -471,6 +475,8 @@ export function createDesignState(
           "CUSTOMER_UPDATE",
           "PURCHASE_CAPTURE",
           "PURCHASE_CORRECTION",
+          "APPOINTMENT_COMMENT_CREATE",
+          "POST_SALE_COMMENT_CREATE",
         ] as DesignOperationPurpose[],
         updatedAt: now,
       }),
@@ -563,6 +569,11 @@ export function createDesignState(
     >(),
     appointmentAnswers: {} as Record<string, DesignAppointmentAnswer[]>,
     appointmentCabinVisits: {} as Record<string, DesignAppointmentCabinVisit>,
+    appointmentJournal: [] as DesignAppointmentJournalEntry[],
+    customerSpecialistPreferences: {} as Record<
+      string,
+      DesignCustomerSpecialistPreference
+    >,
     idempotency: new Map<string, { payload: string; result: unknown }>(),
     movements: [] as Array<DesignMovement | DesignMovementRecord>,
   };
