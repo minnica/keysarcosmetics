@@ -132,8 +132,11 @@ Sin intervención, Agenda mide el monitor, descuenta el panel lateral y ajusta
 automáticamente las columnas cuando conservan un ancho legible; si no caben,
 mantiene el desplazamiento horizontal dentro de la cuadrícula. El panel ofrece
 los modos **Cabinas**, **Especialistas** y **Ambos**. Las cabinas se distinguen
-por icono, capacidad y acento café; los especialistas usan su propia etiqueta y
-acento azul. El botón de impresión cambia a día, ajusta columnas y abre la
+por un encabezado compacto sin avatar redundante, capacidad y acento café; los
+especialistas usan avatar, su propia etiqueta y acento azul. Ninguna columna se
+reduce por debajo del mínimo operativo: seis o más columnas conservan nombres y
+sucursal legibles, con desplazamiento horizontal cuando el monitor no alcanza.
+El botón de impresión cambia a día, ajusta columnas y abre la
 impresión horizontal del navegador sin menú ni panel lateral.
 
 Clientes incorpora en el entorno de diseño una búsqueda avanzada combinable.
@@ -204,6 +207,15 @@ compra exige monto de venta mayor a cero; un apartado exige además un anticipo
 mayor a cero que no puede superar la venta. La especialista que atendió queda
 relacionada por persona, no sólo por cita.
 
+Cabina y especialistas no crean reservas paralelas. Al guardar la atención, el
+mock sincroniza la cabina y todas las especialistas en la primera línea de la
+misma cita canónica. Por eso el mismo `appointmentId`, horario, servicio y status
+se proyectan simultáneamente en la columna de cabina y en cada columna de
+especialista; cambiar entre **Cabinas**, **Especialistas** y **Ambos** no duplica
+conteos ni ventas. Antes de guardar se vuelve a validar que ninguna especialista
+ni la cabina tengan otra cita activa traslapada. En producción, esta asociación
+debe persistirse de forma atómica y versionada junto con la atención.
+
 El cambio a **Atendida** sólo se habilita cuando el instante actual es igual o
 posterior a `endsAt`; la UI lo informa y el API de diseño vuelve a validar la
 misma regla con `409`, por lo que no depende únicamente del navegador. Al elegir
@@ -250,8 +262,11 @@ independiente de **Ventas y pagos**. Puede seleccionar día, semana, mes o rango
 personalizado desde calendario, y combinar sucursal, cabina, status, resultado
 de compra, servicio, especialista, vendedor, monto mínimo/máximo y búsqueda.
 Todos esos criterios producen una sola población a nivel visitante; esa misma
-población alimenta indicadores, comparación por cabina, series por día/semana/mes,
-ranking de especialistas por sucursal, tabla, impresión, PDF y Excel. La analítica
+población alimenta indicadores, consolidado por sucursal, comparación por cabina,
+series por día/semana/mes, ranking de especialistas por sucursal, tabla,
+impresión, PDF y Excel. Las citas se cuentan por `appointmentId`, mientras los
+montos se suman por visitante una sola vez; el consolidado de sucursal es la suma
+de sus cabinas y no una segunda contabilización. La analítica
 de servicios calcula `asistidas / citas del servicio` y `canceladas / citas del
 servicio`, mostrando los índices mayores y menores sin confundirlos con ventas.
 El detalle conserva ID de cita, creación,
@@ -260,7 +275,7 @@ cliente y visitante, servicios, vendedor, especialista, resultado, venta,
 representante de la cita, origen del representante y próxima cita (o la leyenda
 **No cuenta con una próxima cita**), anticipo, saldo, especialista que atendió, propietario de la venta, estado/fecha
 de liquidación, comentarios, estado, origen y última actualización. Excel crea
-`Resumen`, `Por cabina`, `Por día` y `Detalle` con fechas/importes tipados; PDF
+`Resumen`, `Por sucursal`, `Por cabina`, `Por día` y `Detalle` con fechas/importes tipados; PDF
 incluye resumen, desglose, ranking, servicios y detalle. La impresión, PDF y Excel
 usan únicamente el resultado ya filtrado. Las librerías pesadas se cargan sólo al
 solicitar una descarga.
