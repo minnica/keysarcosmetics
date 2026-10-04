@@ -288,6 +288,45 @@ pero asignarlos a citas reales requiere ampliar de forma aditiva el enum,
 transiciones, permisos, reportes e integración POS del contrato productivo; no
 se fuerza un valor personalizado dentro del enum vigente.
 
+### Especialista por cliente, seguimiento y comentarios de cita
+
+La reserva conserva dos decisiones separadas. Cada cita puede elegir una
+especialista distinta y la persona que efectivamente atendió siempre se captura
+en la atención en cabina. De forma opcional, al crear una cita se puede marcar
+**Fijar para futuras citas**: la preferencia queda relacionada al `customerId` y
+al `professionalProfileId`, se propone automáticamente en la siguiente reserva
+y puede retirarse sin reescribir citas anteriores. La preferencia nunca sustituye
+la captura final de quién atendió.
+
+Al cambiar una cita a `ATTENDED`, la demo mantiene el bloqueo hasta que termina
+la sesión y exige exactamente tantas filas de atención como lugares tenga la
+cabina. Una cabina individual requiere una persona y una especialista; una doble,
+dos; una triple, tres, y así sucesivamente. Cada fila obliga a registrar
+especialista y resultado de compra. La cita sólo cambia a atendida después de
+guardar la atención completa.
+
+En **Configuraciones → Agenda → Seguimiento de la cita** existen interruptores
+versionados para mostrar **Comentario** y **Postventa**. Ambos botones aparecen
+únicamente en citas atendidas. El comentario del vendedor solicita un código
+personal con permiso `APPOINTMENT_COMMENT_CREATE`; postventa solicita
+`POST_SALE_COMMENT_CREATE`, comentario y categoría. Las categorías iniciales son
+Servicio bueno, regular y malo, pero pueden agregarse, cambiarse o retirarse en
+la configuración. Cada registro guarda ID, nombre y versión de categoría como
+snapshot, por lo que una modificación posterior no altera reportes históricos.
+
+Cancelar una cita continúa solicitando un motivo obligatorio y ahora lo agrega
+al mismo historial append-only. La acción **Reagendar** solicita código personal,
+motivo y fecha tentativa obligatoria; este registro documenta la intención y no
+reserva automáticamente un horario. El movimiento efectivo de la cita conserva
+su validación independiente de disponibilidad y autorización.
+
+**Reportes → Seguimiento y comentarios** permite filtrar por periodo, sucursal,
+tipo y texto; ofrece vista de todos los seguimientos o sólo comentarios. Excel,
+PDF e impresión usan exactamente la población filtrada e incluyen cliente,
+datos de la cita, sucursal, servicios, status, comentario, categoría, fecha
+tentativa, actor, rol y fecha de captura. Los códigos personales nunca se
+almacenan ni se exportan.
+
 Contratos propuestos, exclusivos de `apps/scheduler/design`:
 
 | Método         | Ruta                                                              | Uso propuesto                                                                 |
@@ -299,7 +338,10 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`       | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`        | Leer o guardar respuestas relacionadas con una cita.                          |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`    | Guardar cabina, visitantes, especialistas y compra por persona.               |
+| `GET/POST`     | `/api/scheduler/design-proposals/appointments/:id/journal`        | Consultar o agregar comentarios, postventa y motivos append-only.             |
+| `GET/PUT`      | `/api/scheduler/design-proposals/customers/:id/specialist-preference` | Proponer o retirar la especialista fija de futuras citas.                  |
 | `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`              | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
+| `POST`         | `/api/scheduler/design-proposals/reports/appointment-journal`      | Exportar seguimiento y comentarios desde una población filtrada única.        |
 | `POST`         | `/api/scheduler/design-proposals/reports/sales-projections`         | Comparar meses históricos y calcular la proyección demo por sucursal.         |
 | `GET/POST/PUT` | `/api/scheduler/design-proposals/status-definitions[/:id]`         | Consultar, crear y versionar status; la baja es sólo inactivación lógica.      |
 | `GET/POST`     | `/api/scheduler/design-proposals/branch-commercial-models`        | Vincular sucursal POS o independiente, renta propuesta y cabinas contratadas.  |
@@ -384,6 +426,15 @@ Recorrido manual recomendado:
     debe ser menor a la renta de sucursal. Confirma que sus cabinas aparecen en
     la tabla inferior de recursos y Agenda; reduce la cantidad y verifica que las sobrantes queden
     inactivas, no eliminadas.
+15. En Configuraciones → Agenda activa comentarios y postventa, edita las
+    categorías y crea una cita marcando **Fijar para futuras citas**. Comprueba
+    que la siguiente reserva propone la misma especialista, pero permite elegir
+    otra para esa cita. Después de registrar asistencia abre **Comentario** y
+    **Postventa**, captura ambos con código personal y revisa su historial. En
+    otra cita usa **Reagendar** con motivo y fecha tentativa, y cancela otra con
+    motivo obligatorio. Finalmente abre Reportes → Seguimiento y comentarios,
+    filtra sólo comentarios y descarga Excel/PDF; los nombres históricos de las
+    categorías deben conservarse aunque su configuración haya cambiado.
 
 ## Dónde trabajar
 
