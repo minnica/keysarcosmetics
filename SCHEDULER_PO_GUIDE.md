@@ -160,16 +160,27 @@ crean vendedores paralelos. Los códigos tienen de 4 a 12 dígitos, son únicos 
 un valor utilizado no se puede reasignar posteriormente durante la sesión. La
 pantalla nunca muestra el valor guardado.
 
-En **Administración → Recursos**, una cabina se registra con su capacidad. Al
-crear recursos nuevos se puede indicar cuántas cabinas iguales existen; la UI
-genera nombres consecutivos y conserva una fila canónica por cabina. La sucursal
-propietaria, el tipo, las personas por cabina y la cantidad son explícitos antes
-de guardar. Una vista previa describe qué columnas se crearán y un resumen por
-sucursal separa número de cabinas, capacidad total y especialistas asignados.
-Los datos ficticios incluyen cabina individual, doble y triple en Polanco, y
-tres cabinas en Mítikah. La reserva y el selector de columnas sólo ofrecen
-cabinas activas de la sucursal elegida; un especialista continúa siendo una
-persona canónica y nunca sustituye a una cabina.
+**Administración → Comercios** y **Administración → Recursos** forman ahora un
+solo recorrido. Recursos aparece junto a Comercios en Información básica. En
+Comercios, **Alta de sucursal** obliga a elegir uno de dos modelos:
+
+- **POS + Agenda**: sólo acepta una sucursal activa que ya exista en el catálogo
+  POS. Cada sucursal POS se configura por separado y define su número de cabinas
+  y personas por cabina.
+- **Solo Agenda**: crea una sucursal independiente y solicita renta mensual de
+  sucursal y renta mensual por cabina. La cuota de cabina debe ser positiva y
+  menor a la renta base. El importe mostrado es una simulación comercial; no
+  cobra ni sustituye el catálogo de facturación definitivo.
+
+La misma operación crea o ajusta las cabinas. Aumentar agrega columnas canónicas;
+reducir inactiva las sobrantes sin borrar su historial. **Recursos** conserva la
+edición individual de cabinas, equipos y estaciones y ofrece regreso directo al
+modelo comercial de la sucursal. La sucursal propietaria, las personas por
+cabina y la cantidad son explícitas antes de guardar. Los datos ficticios
+incluyen cabina individual, doble y triple en Polanco, y tres cabinas en Mítikah.
+La reserva y el selector de columnas sólo ofrecen cabinas activas de la sucursal
+elegida; un especialista continúa siendo una persona canónica y nunca sustituye
+a una cabina.
 
 Al crear o editar una reserva en modo diseño, seleccionar una cabina abre una
 fila por cada lugar disponible. La primera corresponde al cliente principal y
@@ -290,6 +301,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`              | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
 | `POST`         | `/api/scheduler/design-proposals/reports/sales-projections`         | Comparar meses históricos y calcular la proyección demo por sucursal.         |
 | `GET/POST/PUT` | `/api/scheduler/design-proposals/status-definitions[/:id]`         | Consultar, crear y versionar status; la baja es sólo inactivación lógica.      |
+| `GET/POST`     | `/api/scheduler/design-proposals/branch-commercial-models`        | Vincular sucursal POS o independiente, renta propuesta y cabinas contratadas.  |
 
 Estos endpoints no existen en el runtime productivo. El alias
 `@scheduler/design-proposals` selecciona el cliente MSW sólo con
@@ -365,6 +377,12 @@ Recorrido manual recomendado:
     cursor, el detalle emergente debe repetir la misma etiqueta coloreada; en
     pantallas de poca altura la franja debe seguir visible aunque se compacte el
     contenido de la tarjeta.
+14. En Administración → Comercios abre **Alta de sucursal**. Comprueba que POS +
+    Agenda sólo permita sucursales activas del POS y que cada una conserve sus
+    propias cabinas. Después crea una sucursal Solo Agenda: la renta por cabina
+    debe ser menor a la renta de sucursal. Confirma que sus cabinas aparecen en
+    Recursos y Agenda; reduce la cantidad y verifica que las sobrantes queden
+    inactivas, no eliminadas.
 
 ## Dónde trabajar
 

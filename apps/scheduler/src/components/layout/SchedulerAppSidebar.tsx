@@ -122,6 +122,12 @@ const reportItems: NavigationItem[] = [
 const administrationItems: NavigationItem[] = [
   { label: "Comercios", icon: Globe2, adminSection: "locals", screenId: "administration.locals" },
   {
+    label: "Recursos",
+    icon: SlidersHorizontal,
+    adminSection: "resources",
+    screenId: "administration.resources",
+  },
+  {
     label: "Especialistas",
     icon: UsersRound,
     adminSection: "professionals",
@@ -133,12 +139,6 @@ const administrationItems: NavigationItem[] = [
     icon: WalletCards,
     adminSection: "commissions",
     screenId: "administration.commissions",
-  },
-  {
-    label: "Recursos",
-    icon: SlidersHorizontal,
-    adminSection: "resources",
-    screenId: "administration.resources",
   },
   { label: "Encuestas", icon: FileText, adminSection: "surveys", screenId: "administration.surveys" },
   {

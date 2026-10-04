@@ -1855,6 +1855,23 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
   `apps/scheduler/src/lib/scheduler-status-presentation.ts`; colores inválidos
   usan un gris seguro sin alterar el status ni su historial.
 
+### Scheduler: contratación de sucursales y cabinas (2026-10-03)
+
+- Administración agrupa Recursos junto a Comercios. El alta de una sucursal y
+  su cantidad/capacidad de cabinas se resuelve desde un mismo flujo; Recursos
+  queda como editor operativo individual y enlaza de regreso a Comercios.
+- `POS_LINKED` exige una sucursal activa preexistente del catálogo POS y permite
+  configurar cabinas por sucursal. `SCHEDULER_STANDALONE` crea una sucursal sólo
+  para Agenda con renta base y renta por cabina; la cuota de cabina debe ser
+  positiva y menor a la renta de la sucursal.
+- El entorno de diseño usa
+  `/api/scheduler/design-proposals/branch-commercial-models`. El importe es una
+  simulación configurable, no un cobro. Reducir cabinas las inactiva y conserva
+  historial; aumentar crea recursos y horarios relacionados por IDs.
+- La implementación real requerirá catálogo de planes/precios versionado,
+  suscripción, facturación e integración POS autoritativa en backend. No confiar
+  en importes ni IDs enviados por el navegador.
+
 ---
 
 ## Pendientes conocidos

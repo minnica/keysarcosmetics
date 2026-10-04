@@ -14,6 +14,8 @@ export const schedulerDesignDemoAccounts: readonly DesignDemoAccountOption[] =
 
 export const schedulerDesignProposals: DesignProposalClient = {
   available: false,
+  listBranchCommercialModels: unavailable,
+  saveBranchCommercialModel: unavailable,
   listAuthorizationAgents: unavailable,
   saveAuthorizationAgent: unavailable,
   authorizeOperation: unavailable,

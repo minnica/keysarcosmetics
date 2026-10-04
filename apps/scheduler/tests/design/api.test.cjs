@@ -1041,6 +1041,139 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
   assert.equal(completed.body.data.status, "ATTENDED");
 });
 
+test("liga cada sucursal POS o independiente con sus cabinas y su modelo de renta", () => {
+  const { state, request } = session();
+  const commerceId = state.catalog.commerces[0].id;
+  const initialModels = request(
+    "GET",
+    "/api/scheduler/design-proposals/branch-commercial-models",
+  );
+  assert.equal(initialModels.status, 200);
+  assert.equal(initialModels.body.data.length, state.catalog.branches.length);
+
+  const missingPosBranch = request(
+    "POST",
+    "/api/scheduler/design-proposals/branch-commercial-models",
+    {
+      commerceId,
+      mode: "POS_LINKED",
+      posBranchId: "branch-not-in-pos",
+      timezone: "America/Mexico_City",
+      cabinCount: 2,
+      cabinCapacity: 1,
+    },
+  );
+  assert.equal(missingPosBranch.status, 409);
+
+  const posModel = initialModels.body.data.find(
+    (model) => model.posBranchId === "branch-rv4",
+  );
+  const updatedPos = request(
+    "POST",
+    "/api/scheduler/design-proposals/branch-commercial-models",
+    {
+      id: posModel.id,
+      commerceId,
+      mode: "POS_LINKED",
+      posBranchId: "branch-rv4",
+      timezone: "America/Mexico_City",
+      cabinCount: 4,
+      cabinCapacity: 2,
+    },
+  );
+  assert.equal(updatedPos.status, 201);
+  assert.equal(updatedPos.body.data.cabinCount, 4);
+  assert.equal(updatedPos.body.data.estimatedMonthlyAmount, null);
+  const polancoProfile = state.catalog.branches.find(
+    (branch) => branch.branchId === "branch-rv4",
+  );
+  assert.equal(
+    state.catalog.resources.filter(
+      (resource) =>
+        resource.branchProfileId === polancoProfile.id &&
+        resource.kind === "ROOM" &&
+        resource.active,
+    ).length,
+    4,
+  );
+  const reducedPos = request(
+    "POST",
+    "/api/scheduler/design-proposals/branch-commercial-models",
+    {
+      id: updatedPos.body.data.id,
+      commerceId,
+      mode: "POS_LINKED",
+      posBranchId: "branch-rv4",
+      timezone: "America/Mexico_City",
+      cabinCount: 2,
+      cabinCapacity: 1,
+    },
+  );
+  assert.equal(reducedPos.status, 201);
+  const polancoCabins = state.catalog.resources.filter(
+    (resource) =>
+      resource.branchProfileId === polancoProfile.id &&
+      resource.kind === "ROOM",
+  );
+  assert.equal(polancoCabins.filter((resource) => resource.active).length, 2);
+  assert.equal(polancoCabins.length, 4);
+
+  const invalidRent = request(
+    "POST",
+    "/api/scheduler/design-proposals/branch-commercial-models",
+    {
+      commerceId,
+      mode: "SCHEDULER_STANDALONE",
+      branchName: "Satélite",
+      timezone: "America/Mexico_City",
+      cabinCount: 3,
+      cabinCapacity: 1,
+      branchMonthlyAmount: 500,
+      cabinMonthlyAmount: 500,
+    },
+  );
+  assert.equal(invalidRent.status, 400);
+
+  const standalone = request(
+    "POST",
+    "/api/scheduler/design-proposals/branch-commercial-models",
+    {
+      commerceId,
+      mode: "SCHEDULER_STANDALONE",
+      branchName: "Satélite",
+      timezone: "America/Mexico_City",
+      cabinCount: 3,
+      cabinCapacity: 2,
+      branchMonthlyAmount: 2400,
+      cabinMonthlyAmount: 300,
+    },
+  );
+  assert.equal(standalone.status, 201);
+  assert.equal(standalone.body.data.estimatedMonthlyAmount, 3300);
+  assert.equal(standalone.body.data.mode, "SCHEDULER_STANDALONE");
+  assert.ok(
+    state.candidates.branches.some(
+      (branch) => branch.id === standalone.body.data.branchId,
+    ),
+  );
+  assert.equal(
+    state.catalog.resources.filter(
+      (resource) =>
+        resource.branchProfileId === standalone.body.data.branchProfileId &&
+        resource.kind === "ROOM" &&
+        resource.active,
+    ).length,
+    3,
+  );
+  assert.ok(
+    state.catalog.availabilityRules.some(
+      (rule) =>
+        rule.branchProfileId === standalone.body.data.branchProfileId &&
+        rule.ownerType === "RESOURCE",
+    ),
+  );
+});
+
 test("las respuestas adicionales se relacionan con la cita por ID", () => {
   const { state, request } = session();
   const appointmentId = state.appointments[0].id;

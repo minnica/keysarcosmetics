@@ -29,6 +29,7 @@ import { schedulerLocalDateTimeToInstant } from "../src/lib/scheduler-agenda-dat
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignBranchCommercialModel,
   DesignMovementRecord,
   DesignOperationAgentSource,
   DesignOperationPurpose,
@@ -475,6 +476,31 @@ export function createDesignState(
       }),
     ),
   ];
+  const branchCommercialModels: DesignBranchCommercialModel[] =
+    catalog.branches.map((branch) => {
+      const cabins = catalog.resources.filter(
+        (resource) =>
+          resource.branchProfileId === branch.id &&
+          resource.kind === "ROOM" &&
+          resource.active,
+      );
+      return {
+        id: `design-branch-model-${branch.id}`,
+        branchProfileId: branch.id,
+        branchId: branch.branchId,
+        branchName: branch.branchName,
+        commerceId: branch.commerceId,
+        mode: "POS_LINKED" as const,
+        posBranchId: branch.branchId,
+        cabinCount: cabins.length,
+        cabinCapacity: cabins[0]?.capacity ?? 1,
+        branchMonthlyAmount: null,
+        cabinMonthlyAmount: null,
+        estimatedMonthlyAmount: null,
+        currency: "MXN" as const,
+        updatedAt: now,
+      };
+    });
   const state = {
     controls: normalizedControls,
     catalog,
@@ -517,6 +543,7 @@ export function createDesignState(
       }
     >(),
     operationAgents,
+    branchCommercialModels,
     statusDefinitions,
     statusDefinitionHistory,
     usedAuthorizationCodes: new Set(operationAgents.map((agent) => agent.code)),

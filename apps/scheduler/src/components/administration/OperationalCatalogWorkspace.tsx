@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import {
   Box,
   Building2,
   DoorOpen,
+  Link2,
   Plus,
   RefreshCw,
   Save,
@@ -51,6 +53,7 @@ import { useSchedulerSession } from "@/lib/session";
 import { schedulerAdministrationInvalidations } from "@/lib/scheduler-administration-presentation";
 import { invalidateSchedulerQueries } from "@/components/api/ApiState";
 import { AdministrationRelationsPanel } from "./AdministrationRelationsPanel";
+import { BranchCabinCommercialPanel } from "./BranchCabinCommercialPanel";
 import {
   AdministrationCoverageNotice,
   AdministrationRefreshButton,
@@ -67,9 +70,9 @@ const sectionCopy: Record<
   { title: string; description: string; screen: SchedulerScreenKey }
 > = {
   locals: {
-    title: "Comercios y sucursales",
+    title: "Comercios, sucursales y cabinas",
     description:
-      "Activa sucursales existentes y define la frontera operativa de su agenda.",
+      "Vincula sucursales POS o contrata sucursales independientes y configura sus cabinas.",
     screen: "scheduler/administration/locals",
   },
   professionals: {
@@ -1312,6 +1315,12 @@ export function OperationalCatalogWorkspace({
       <div className="space-y-6">
         {section === "locals" ? (
           <>
+            <BranchCabinCommercialPanel
+              candidates={candidates}
+              catalog={catalog}
+              canAdmin={canAdmin}
+              onSaved={refreshAfterMutation}
+            />
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {catalog.commerces.map((commerce) => (
                 <Card key={commerce.id} className="admin-card">
@@ -1458,6 +1467,28 @@ export function OperationalCatalogWorkspace({
 
         {section === "resources" ? (
           <>
+            <Card className="admin-card border-[#d9c6b3]">
+              <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                <div className="flex items-start gap-3">
+                  <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-[#ad8b67]" />
+                  <div>
+                    <h2 className="font-semibold text-slate-800">
+                      Recursos ligados al alta de sucursal
+                    </h2>
+                    <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+                      La cantidad inicial de cabinas y el modelo POS o Solo Agenda
+                      se administran desde Comercios. Aquí puedes ajustar cada
+                      cabina, equipo o estación de forma individual.
+                    </p>
+                  </div>
+                </div>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/administracion?section=locals">
+                    Ir a sucursales y contratación
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {resourceSummary.map(({ branch, cabins, cabinCapacity, specialists }) => (
                 <Card className="admin-card" key={branch.id}>

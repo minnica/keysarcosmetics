@@ -1,6 +1,7 @@
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignBranchCommercialModel,
   DesignCabinSalesReport,
   DesignSalesProjectionReport,
   DesignCustomerAdvancedPage,
@@ -52,6 +53,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const schedulerDesignProposals: DesignProposalClient = {
   available: true,
+  listBranchCommercialModels: () =>
+    request<DesignBranchCommercialModel[]>(
+      "/api/scheduler/design-proposals/branch-commercial-models",
+    ),
+  saveBranchCommercialModel: (input) =>
+    request<DesignBranchCommercialModel>(
+      "/api/scheduler/design-proposals/branch-commercial-models",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
   listAuthorizationAgents: () =>
     request<DesignOperationAgent[]>(
       "/api/scheduler/design-proposals/authorization-agents",

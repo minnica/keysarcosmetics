@@ -11,6 +11,7 @@ import type {
 import {
   SCHEDULER_APPOINTMENT_STATUSES,
   SCHEDULER_SETTING_SECTIONS,
+  SCHEDULER_WEEKDAYS,
 } from "@cosmetics/types";
 import {
   buildDesignAppointment,
@@ -26,6 +27,7 @@ import {
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
+  DesignBranchCommercialModel,
   DesignCabinSalesReport,
   DesignCabinSalesReportBreakdown,
   DesignCabinSalesReportFilters,
@@ -197,6 +199,39 @@ function publicOperationAgent(
     allowedPurposes: [...agent.allowedPurposes],
     updatedAt: agent.updatedAt,
   };
+}
+
+function ensureWorkingRules(
+  state: DesignState,
+  branchProfileId: string,
+  ownerType: "BRANCH" | "RESOURCE",
+  ownerId: string,
+) {
+  if (
+    state.catalog.availabilityRules.some(
+      (rule) =>
+        rule.branchProfileId === branchProfileId &&
+        rule.ownerType === ownerType &&
+        rule.ownerId === ownerId &&
+        rule.kind === "WORKING",
+    )
+  ) {
+    return;
+  }
+  state.catalog.availabilityRules.push(
+    ...SCHEDULER_WEEKDAYS.map((weekday) => ({
+      id: designId("design-hours"),
+      branchProfileId,
+      ownerType,
+      ownerId,
+      kind: "WORKING" as const,
+      weekday,
+      startMinute: 8 * 60,
+      endMinute: 20 * 60,
+      effectiveFrom: new Date().toISOString(),
+      effectiveTo: null,
+    })),
+  );
 }
 
 function operationPurpose(value: unknown): DesignOperationPurpose {
@@ -1382,6 +1417,238 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     };
   }
   if (resource === "design-proposals") {
+    if (id === "branch-commercial-models") {
+      if (method === "GET") {
+        return [...state.branchCommercialModels].sort((left, right) =>
+          left.branchName.localeCompare(right.branchName, "es-MX"),
+        );
+      }
+      if (method !== "POST") {
+        fail(405, "Usa GET o POST para los modelos de sucursal.");
+      }
+      if (state.controls.role !== "master") {
+        fail(403, "Sólo master puede contratar sucursales y cabinas.");
+      }
+      const mode = String(body.mode);
+      if (!["POS_LINKED", "SCHEDULER_STANDALONE"].includes(mode)) {
+        fail(400, "Selecciona un modelo de sucursal válido.");
+      }
+      const commerceId = String(body.commerceId ?? "");
+      if (
+        !state.catalog.commerces.some(
+          (commerce) => commerce.id === commerceId && commerce.active,
+        )
+      ) {
+        fail(400, "Selecciona un comercio activo.");
+      }
+      const cabinCount = Number(body.cabinCount);
+      const cabinCapacity = Number(body.cabinCapacity);
+      if (!Number.isInteger(cabinCount) || cabinCount < 1 || cabinCount > 20) {
+        fail(400, "La sucursal debe tener entre 1 y 20 cabinas.");
+      }
+      if (
+        !Number.isInteger(cabinCapacity) ||
+        cabinCapacity < 1 ||
+        cabinCapacity > 10
+      ) {
+        fail(400, "Cada cabina debe admitir entre 1 y 10 personas.");
+      }
+      const timezone = String(body.timezone ?? "").trim();
+      if (!timezone.includes("/")) {
+        fail(400, "Captura una zona horaria IANA válida.");
+      }
+      const existingModel =
+        state.branchCommercialModels.find(
+          (model) => model.id === String(body.id ?? ""),
+        ) ??
+        (mode === "POS_LINKED"
+          ? state.branchCommercialModels.find(
+              (model) =>
+                model.mode === "POS_LINKED" &&
+                model.posBranchId === String(body.posBranchId ?? ""),
+            )
+          : undefined);
+      let branchId = existingModel?.branchId ?? "";
+      let branchName = existingModel?.branchName ?? "";
+      let branchProfile = existingModel
+        ? state.catalog.branches.find(
+            (branch) => branch.id === existingModel.branchProfileId,
+          )
+        : undefined;
+      let posBranchId: string | null = null;
+
+      if (mode === "POS_LINKED") {
+        posBranchId = String(body.posBranchId ?? "");
+        const posBranch =
+          state.candidates.branches.find(
+            (branch) => branch.id === posBranchId && branch.active,
+          ) ??
+          fail(
+            409,
+            "La sucursal debe existir y estar activa en el POS antes de configurar sus cabinas.",
+          );
+        branchId = posBranch.id;
+        branchName = posBranch.name;
+        branchProfile =
+          state.catalog.branches.find(
+            (branch) => branch.branchId === posBranch.id,
+          ) ?? branchProfile;
+      } else {
+        branchName = String(body.branchName ?? "").trim();
+        if (branchName.length < 2 || branchName.length > 80) {
+          fail(400, "El nombre de la sucursal debe tener de 2 a 80 caracteres.");
+        }
+        if (
+          state.catalog.branches.some(
+            (branch) =>
+              branch.id !== branchProfile?.id &&
+              textKey(branch.branchName) === textKey(branchName),
+          )
+        ) {
+          fail(409, "Ya existe una sucursal con ese nombre.");
+        }
+        const branchMonthlyAmount = Number(body.branchMonthlyAmount);
+        const cabinMonthlyAmount = Number(body.cabinMonthlyAmount);
+        if (!(branchMonthlyAmount > 0) || !(cabinMonthlyAmount > 0)) {
+          fail(400, "Captura la renta mensual de la sucursal y de cada cabina.");
+        }
+        if (cabinMonthlyAmount >= branchMonthlyAmount) {
+          fail(
+            400,
+            "La renta mensual por cabina debe ser menor que la renta de la sucursal.",
+          );
+        }
+        branchId = existingModel?.branchId ?? designId("design-branch");
+      }
+
+      const timestamp = new Date().toISOString();
+      if (!branchProfile) {
+        branchProfile = {
+          id: designId("design-branch-profile"),
+          branchId,
+          branchName,
+          branchActive: true,
+          commerceId,
+          timezone,
+          bookingEnabled: true,
+          active: true,
+          effectiveFrom: timestamp,
+          effectiveTo: null,
+          version: 1,
+        };
+        state.catalog.branches.push(branchProfile);
+      } else {
+        branchProfile.branchName = branchName;
+        branchProfile.branchActive = true;
+        branchProfile.commerceId = commerceId;
+        branchProfile.timezone = timezone;
+        branchProfile.bookingEnabled = true;
+        branchProfile.active = true;
+        branchProfile.version += 1;
+      }
+
+      const candidate = state.candidates.branches.find(
+        (branch) => branch.id === branchId,
+      );
+      if (candidate) {
+        candidate.name = branchName;
+        candidate.active = true;
+        candidate.profileId = branchProfile.id;
+        candidate.profileActive = true;
+      } else {
+        state.candidates.branches.push({
+          id: branchId,
+          name: branchName,
+          active: true,
+          profileId: branchProfile.id,
+          profileActive: true,
+        });
+      }
+      ensureWorkingRules(state, branchProfile.id, "BRANCH", branchProfile.id);
+
+      const activeCabins = state.catalog.resources.filter(
+        (item) =>
+          item.branchProfileId === branchProfile.id &&
+          item.kind === "ROOM" &&
+          item.active,
+      );
+      activeCabins.slice(0, cabinCount).forEach((cabin) => {
+        ensureWorkingRules(state, branchProfile!.id, "RESOURCE", cabin.id);
+      });
+      activeCabins.slice(cabinCount).forEach((cabin) => {
+        cabin.active = false;
+        cabin.effectiveTo = timestamp;
+        cabin.version += 1;
+      });
+      for (let index = activeCabins.length; index < cabinCount; index += 1) {
+        const cabin = {
+          id: designId("design-cabin"),
+          branchProfileId: branchProfile.id,
+          name: `Cabina ${branchName} ${index + 1}`,
+          kind: "ROOM" as const,
+          capacity: cabinCapacity,
+          exclusive: true,
+          acceptsOnline: true,
+          active: true,
+          effectiveFrom: timestamp,
+          effectiveTo: null,
+          version: 1,
+        };
+        state.catalog.resources.push(cabin);
+        ensureWorkingRules(state, branchProfile.id, "RESOURCE", cabin.id);
+      }
+
+      const branchMonthlyAmount =
+        mode === "SCHEDULER_STANDALONE"
+          ? Number(body.branchMonthlyAmount)
+          : null;
+      const cabinMonthlyAmount =
+        mode === "SCHEDULER_STANDALONE"
+          ? Number(body.cabinMonthlyAmount)
+          : null;
+      const model: DesignBranchCommercialModel = {
+        id: existingModel?.id ?? designId("design-branch-model"),
+        branchProfileId: branchProfile.id,
+        branchId,
+        branchName,
+        commerceId,
+        mode: mode as DesignBranchCommercialModel["mode"],
+        posBranchId,
+        cabinCount,
+        cabinCapacity,
+        branchMonthlyAmount,
+        cabinMonthlyAmount,
+        estimatedMonthlyAmount:
+          branchMonthlyAmount !== null && cabinMonthlyAmount !== null
+            ? branchMonthlyAmount + cabinMonthlyAmount * cabinCount
+            : null,
+        currency: "MXN",
+        updatedAt: timestamp,
+      };
+      if (existingModel) Object.assign(existingModel, model);
+      else state.branchCommercialModels.push(model);
+      state.movements.unshift({
+        id: designId("design-movement"),
+        actorId: designBootstrap(state).user.id,
+        actor: designBootstrap(state).user.name,
+        actorRole: designBootstrap(state).user.positionName ?? "Sesión",
+        actorSource: "SESSION",
+        action: existingModel
+          ? "Actualización de sucursal y cabinas"
+          : "Alta de sucursal y cabinas",
+        purpose: "SYSTEM_WRITE",
+        targetType: "BRANCH_COMMERCIAL_MODEL",
+        targetId: model.id,
+        createdAt: timestamp,
+        metadata: {
+          mode: model.mode,
+          branchId: model.branchId,
+          cabinCount: String(model.cabinCount),
+          cabinCapacity: String(model.cabinCapacity),
+        },
+      });
+      return model;
+    }
     if (id === "status-definitions") {
       const commerceId = String(
         body.commerceId ?? query.get("commerceId") ?? "",

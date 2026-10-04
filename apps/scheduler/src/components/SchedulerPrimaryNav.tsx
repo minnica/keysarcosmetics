@@ -66,6 +66,7 @@ const administrationGroups: Array<{
     label: "Información básica",
     items: [
       { id: "locals", label: "Comercios", icon: <Globe2 className="h-4 w-4" /> },
+      { id: "resources", label: "Recursos", icon: <SlidersHorizontal className="h-4 w-4" /> },
       { id: "professionals", label: "Especialistas", icon: <UsersRound className="h-4 w-4" /> },
       { id: "services", label: "Servicios", icon: <Sparkles className="h-4 w-4" /> },
     ],
@@ -74,7 +75,6 @@ const administrationGroups: Array<{
     label: "Opciones avanzadas",
     items: [
       { id: "commissions", label: "Comisiones", icon: <WalletCards className="h-4 w-4" /> },
-      { id: "resources", label: "Recursos", icon: <SlidersHorizontal className="h-4 w-4" /> },
       { id: "surveys", label: "Encuestas", icon: <FileText className="h-4 w-4" /> },
       { id: "consents", label: "Consentimientos", icon: <Check className="h-4 w-4" /> },
       { id: "whatsapp", label: "WhatsApp", icon: <MessageCircle className="h-4 w-4" /> },

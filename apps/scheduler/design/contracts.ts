@@ -76,6 +76,40 @@ export interface DesignStatusCatalog {
   revisions: DesignStatusDefinitionRevision[];
 }
 
+export type DesignBranchCommercialMode =
+  | "POS_LINKED"
+  | "SCHEDULER_STANDALONE";
+
+export interface DesignBranchCommercialModel {
+  id: string;
+  branchProfileId: string;
+  branchId: string;
+  branchName: string;
+  commerceId: string;
+  mode: DesignBranchCommercialMode;
+  posBranchId: string | null;
+  cabinCount: number;
+  cabinCapacity: number;
+  branchMonthlyAmount: number | null;
+  cabinMonthlyAmount: number | null;
+  estimatedMonthlyAmount: number | null;
+  currency: "MXN";
+  updatedAt: string;
+}
+
+export interface DesignBranchCommercialModelInput {
+  id?: string;
+  commerceId: string;
+  mode: DesignBranchCommercialMode;
+  posBranchId?: string;
+  branchName?: string;
+  timezone: string;
+  cabinCount: number;
+  cabinCapacity: number;
+  branchMonthlyAmount?: number;
+  cabinMonthlyAmount?: number;
+}
+
 export type DesignPurchaseKind = "NONE" | "FULL" | "LAYAWAY" | null;
 export type DesignSaleSettlementStatus =
   | "NOT_APPLICABLE"
@@ -320,6 +354,10 @@ export interface DesignCustomerAdvancedPage {
 
 export interface DesignProposalClient {
   available: boolean;
+  listBranchCommercialModels(): Promise<DesignBranchCommercialModel[]>;
+  saveBranchCommercialModel(
+    input: DesignBranchCommercialModelInput,
+  ): Promise<DesignBranchCommercialModel>;
   listAuthorizationAgents(): Promise<DesignOperationAgent[]>;
   saveAuthorizationAgent(input: {
     id?: string;
