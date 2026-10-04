@@ -169,6 +169,17 @@ seleccionarse por cita sin cambiar al vendedor de cartera. Los códigos tienen d
 un valor utilizado no se puede reasignar posteriormente durante la sesión. La
 pantalla nunca muestra el valor guardado.
 
+La misma pantalla incluye **Autorizaciones por puesto**. Cada status canónico
+de Agenda —incluidos Llegó, Atendido, No asistió y Cancelado— tiene su propia
+lista de puestos autorizados. **Registrar compra o apartado** y **Corregir una
+compra registrada** se configuran por separado, por lo que Recepción puede
+autorizar una llegada sin poder capturar montos y una Especialista puede
+capturar una venta sin autorizar otros status. El puesto concede la capacidad y
+el código personal identifica a quien ejecutó el movimiento. Una regla sin
+puestos queda reservada al código master; master conserva acceso total. La
+política se vuelve a validar al consumir el token: retirar un puesto invalida
+autorizaciones pendientes sin modificar citas ni movimientos históricos.
+
 Administración muestra un único submenú **Sucursales y cabinas**. La misma
 pantalla concentra comercio, contratación, sucursales canónicas, resumen de
 cabinas y edición individual de recursos. **Alta de sucursal** obliga a elegir
@@ -237,17 +248,16 @@ una saga idempotente que no deje capturas parciales.
 
 Registrar uno o más montos solicita una segunda autorización de uso único con el
 propósito `PURCHASE_CAPTURE`, además del código usado para alta/cambio de cita.
-El código debe pertenecer a una identidad Scheduler o a un empleado con rol de
-especialista/facialista/cosmetólogo, y esa identidad debe tener habilitado
-**Registrar compras** en Códigos personales. Un código válido sin ese permiso —o
-de un vendedor— se rechaza. **Cambiar estados** se administra de forma separada.
-La bitácora guarda conteo y total, nunca el código personal.
+El código debe pertenecer a una identidad activa cuyo puesto esté marcado en
+**Registrar compra o apartado**. Un código válido de un puesto no seleccionado
+se rechaza; master conserva el override. Los status se administran por separado,
+uno por uno. La bitácora guarda actor, puesto y movimiento, nunca el código.
 
 Después de registrar el resultado financiero de todos los visitantes, cualquier
 corrección exige una autorización nueva `PURCHASE_CORRECTION`. El endpoint
 rechaza incluso una corrección de **No compró** sin ese propósito. Códigos master
-y códigos de especialistas/agentes a los que master habilite **Corregir compras
-registradas** pueden autorizarla; el token se consume como un movimiento distinto
+y códigos de personas cuyo puesto esté habilitado en **Corregir compra o
+apartado registrado** pueden autorizarla; el token se consume como un movimiento distinto
 y queda auditado como `Corrección de compra por visitante`.
 
 Al registrar un **Apartado**, la venta guarda como propietario comercial al
@@ -403,6 +413,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | Método         | Ruta                                                                  | Uso propuesto                                                                 |
 | -------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `GET/POST/PUT` | `/api/scheduler/design-proposals/authorization-agents[/:id]`          | Consultar identidades externas y asignar un código ficticio único.            |
+| `GET/PUT`      | `/api/scheduler/design-proposals/authorization-policy`                | Versionar puestos permitidos por status o captura de compra.                  |
 | `POST`         | `/api/scheduler/design-proposals/operation-authorizations`            | Resolver el agente por código y emitir un token de un solo movimiento.        |
 | `POST`         | `/api/scheduler/design-proposals/operation-authorizations/commit`     | Consumir el token y agregar la bitácora redactada.                            |
 | `GET`          | `/api/scheduler/design-proposals/movements`                           | Consultar la bitácora por agente.                                             |
@@ -470,9 +481,10 @@ Recorrido manual recomendado:
    cabina doble, elige un representante distinto al vendedor de cartera y, al
    cambiarla a **Llegó**,
    registra dos personas, dos especialistas, una compra liquidada y un apartado.
-   Debe pedir autorización de estado y después un código con permiso **Registrar
-   compras**; desactiva ese permiso y confirma que el mismo código deja de
-   autorizar el monto.
+   Debe pedir autorización de estado y después un código cuyo puesto pueda
+   **Registrar compra o apartado**. Permite a Recepción autorizar sólo **Llegó**
+   y a Especialistas registrar compras; confirma que el código de Recepción
+   autoriza la llegada pero recibe rechazo para el monto.
 9. Abre Reportes → Compras de agenda o cabinas, combina periodo, sucursal,
    cabina, status, servicio, especialista, vendedor y monto. Confirma que
    tarjetas, series, ranking, analítica y tabla cambian juntas; imprime y descarga
@@ -584,6 +596,11 @@ El cliente Axios real se probó contra MSW: login, disponibilidad, reservas,
 cancelación, conflictos, duplicados y autorizaciones. Los chunks del build normal
 no contienen el runtime de diseño. Lint conserva tres avisos de `<img>` que ya
 existían en la rama base.
+
+El 3 de octubre de 2026 se repitieron TypeScript, lint, las 74 pruebas, el build
+normal y `build:design` después de incorporar autorizaciones por puesto. La
+cobertura separa el permiso para **Llegó** del permiso para registrar una compra,
+verifica el rechazo cruzado y conserva el override del código master.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

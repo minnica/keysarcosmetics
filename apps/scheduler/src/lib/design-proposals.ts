@@ -18,6 +18,8 @@ export const schedulerDesignProposals: DesignProposalClient = {
   saveBranchCommercialModel: unavailable,
   listAuthorizationAgents: unavailable,
   saveAuthorizationAgent: unavailable,
+  authorizationPolicy: unavailable,
+  saveAuthorizationPolicy: unavailable,
   authorizeOperation: unavailable,
   commitOperation: unavailable,
   listMovements: unavailable,

@@ -15,6 +15,7 @@ import {
 } from "@cosmetics/types";
 import {
   buildDesignAppointment,
+  designAuthorizationRoleId,
   designAccountForControls,
   designBootstrap,
   designDemoAccounts,
@@ -33,6 +34,9 @@ import type {
   DesignAppointmentJournalFilters,
   DesignAppointmentJournalKind,
   DesignAppointmentJournalReport,
+  DesignAuthorizationPolicy,
+  DesignAuthorizationRoleOption,
+  DesignAuthorizationScopeKey,
   DesignBranchCommercialModel,
   DesignCabinSalesReport,
   DesignCabinSalesReportBreakdown,
@@ -199,12 +203,117 @@ function publicOperationAgent(
     source: agent.source,
     active: agent.active,
     codeConfigured: Boolean(agent.code),
-    canAuthorizePurchases:
-      agent.source === "SCHEDULER" ||
-      /(especialista|facialista|cosmet[oó]log)/i.test(agent.role),
+    canAuthorizePurchases: agent.active,
     allowedPurposes: [...agent.allowedPurposes],
     updatedAt: agent.updatedAt,
   };
+}
+
+function authorizationRoleOptions(
+  state: DesignState,
+): DesignAuthorizationRoleOption[] {
+  const roles = new Map<string, DesignAuthorizationRoleOption>();
+  for (const agent of state.operationAgents) {
+    const id = designAuthorizationRoleId(agent.source, agent.role);
+    const existing = roles.get(id);
+    if (existing) {
+      if (agent.active) existing.activeAgents += 1;
+      continue;
+    }
+    roles.set(id, {
+      id,
+      label: agent.role,
+      source: agent.source,
+      activeAgents: agent.active ? 1 : 0,
+    });
+  }
+  return [...roles.values()].sort(
+    (left, right) =>
+      left.source.localeCompare(right.source) ||
+      left.label.localeCompare(right.label, "es-MX"),
+  );
+}
+
+function authorizationScopeKeys(): DesignAuthorizationScopeKey[] {
+  return [
+    ...SCHEDULER_APPOINTMENT_STATUSES.map(
+      (status) => `STATUS:${status}` as DesignAuthorizationScopeKey,
+    ),
+    "PURCHASE_CAPTURE",
+    "PURCHASE_CORRECTION",
+  ];
+}
+
+function authorizationPolicyCatalog(
+  state: DesignState,
+): DesignAuthorizationPolicy {
+  const statusLabels = new Map(
+    state.statusDefinitions.flatMap((definition) =>
+      definition.canonicalStatus
+        ? [[definition.canonicalStatus, definition.label] as const]
+        : [],
+    ),
+  );
+  return {
+    roles: authorizationRoleOptions(state),
+    rules: authorizationScopeKeys().map((scopeKey) => ({
+      scopeKey,
+      label:
+        scopeKey === "PURCHASE_CAPTURE"
+          ? "Registrar monto de compra o apartado"
+          : scopeKey === "PURCHASE_CORRECTION"
+            ? "Corregir compra o apartado registrado"
+            : `Cambiar status a ${statusLabels.get(scopeKey.slice(7) as SchedulerAppointmentStatus) ?? scopeKey.slice(7)}`,
+      kind: scopeKey.startsWith("STATUS:") ? "STATUS" : "PURCHASE",
+      roleIds: [...(state.authorizationPolicy.rules[scopeKey] ?? [])],
+    })),
+    version: state.authorizationPolicy.version,
+    updatedAt: state.authorizationPolicy.updatedAt,
+  };
+}
+
+function isMasterAuthorizationAgent(
+  agent: DesignState["operationAgents"][number],
+) {
+  return designDemoAccounts.some(
+    (account) =>
+      account.role === "master" && agent.externalId === `design-${account.id}`,
+  );
+}
+
+function agentCanAuthorizeScope(
+  state: DesignState,
+  agent: DesignState["operationAgents"][number],
+  scopeKey: DesignAuthorizationScopeKey | null,
+) {
+  if (!scopeKey || isMasterAuthorizationAgent(agent)) return true;
+  return (state.authorizationPolicy.rules[scopeKey] ?? []).includes(
+    designAuthorizationRoleId(agent.source, agent.role),
+  );
+}
+
+function authorizationScopeForPurpose(
+  purpose: DesignOperationPurpose,
+  value: unknown,
+): DesignAuthorizationScopeKey | null {
+  if (purpose === "PURCHASE_CAPTURE" || purpose === "PURCHASE_CORRECTION") {
+    return purpose;
+  }
+  if (purpose === "APPOINTMENT_CANCEL") {
+    if (value !== "STATUS:CANCELED") {
+      fail(400, "La cancelación debe autorizar el status Cancelado.");
+    }
+    return "STATUS:CANCELED";
+  }
+  if (purpose !== "APPOINTMENT_STATUS_CHANGE") return null;
+  const scopeKey = String(value ?? "") as DesignAuthorizationScopeKey;
+  if (
+    !authorizationScopeKeys().includes(scopeKey) ||
+    !scopeKey.startsWith("STATUS:")
+  ) {
+    fail(400, "Indica el status que requiere autorización.");
+  }
+  return scopeKey;
 }
 
 const COMPANY_PORTFOLIO_NAME = "Cartera de la empresa";
@@ -311,6 +420,7 @@ function requireOperationAuthorization(
   token: unknown,
   purpose: DesignOperationPurpose,
   targetId: string,
+  scopeKey: DesignAuthorizationScopeKey | null = null,
 ) {
   const authorization = state.operationAuthorizations.get(String(token ?? ""));
   const agent = authorization
@@ -324,7 +434,9 @@ function requireOperationAuthorization(
     (authorization.targetId && authorization.targetId !== targetId) ||
     authorization.expiresAt < Date.now() ||
     !agent?.active ||
-    !agent.allowedPurposes.includes(purpose)
+    authorization.scopeKey !== scopeKey ||
+    !agentCanAuthorizeScope(state, agent, scopeKey) ||
+    (scopeKey === null && !agent.allowedPurposes.includes(purpose))
   ) {
     fail(403, "Este movimiento requiere un código personal autorizado.");
   }
@@ -2227,6 +2339,59 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       syncPortfolioRepresentativeOptions(state);
       return publicOperationAgent(next);
     }
+    if (id === "authorization-policy") {
+      if (method === "GET") return authorizationPolicyCatalog(state);
+      if (method !== "PUT") {
+        fail(405, "Usa GET o PUT para la política de autorizaciones.");
+      }
+      if (state.controls.role !== "master") {
+        fail(403, "Sólo master puede asignar autorizaciones por puesto.");
+      }
+      versionGuard(state.authorizationPolicy, body);
+      const validScopes = authorizationScopeKeys();
+      const validRoleIds = new Set(
+        authorizationRoleOptions(state).map((role) => role.id),
+      );
+      const nextRules = { ...state.authorizationPolicy.rules };
+      for (const rule of rows(body.rules)) {
+        const scopeKey = String(
+          rule.scopeKey ?? "",
+        ) as DesignAuthorizationScopeKey;
+        if (!validScopes.includes(scopeKey)) {
+          fail(400, "La operación de autorización no es válida.");
+        }
+        const roleIds = Array.isArray(rule.roleIds)
+          ? [...new Set(rule.roleIds.map(String))]
+          : [];
+        if (roleIds.some((roleId) => !validRoleIds.has(roleId))) {
+          fail(
+            400,
+            "La política contiene un puesto que ya no está disponible.",
+          );
+        }
+        nextRules[scopeKey] = roleIds;
+      }
+      state.authorizationPolicy.rules = nextRules;
+      state.authorizationPolicy.version += 1;
+      state.authorizationPolicy.updatedAt = new Date().toISOString();
+      state.movements.unshift({
+        id: designId("design-movement"),
+        actorId: designBootstrap(state).user.id,
+        actor: designBootstrap(state).user.name,
+        actorRole: "Master",
+        actorSource: "SCHEDULER",
+        action: "Actualización de autorizaciones por puesto",
+        purpose: "SYSTEM_WRITE",
+        targetType: "AUTHORIZATION_POLICY",
+        targetId: "scheduler-role-policy",
+        createdAt: state.authorizationPolicy.updatedAt,
+        metadata: {
+          rules: String(rows(body.rules).length),
+          version: String(state.authorizationPolicy.version),
+        },
+      });
+      return authorizationPolicyCatalog(state);
+    }
     if (id === "operation-authorizations") {
       if (action === "commit") {
         const token = String(body.token ?? "");
@@ -2245,7 +2410,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             (candidate) => candidate.id === authorization.agentId,
           ) ?? fail(403, "El agente ya no está activo.");
         if (!agent.active) fail(403, "El agente ya no está activo.");
-        if (!agent.allowedPurposes.includes(authorization.purpose)) {
+        if (
+          !agentCanAuthorizeScope(state, agent, authorization.scopeKey) ||
+          (authorization.scopeKey === null &&
+            !agent.allowedPurposes.includes(authorization.purpose))
+        ) {
           fail(403, "El agente ya no tiene permiso para este movimiento.");
         }
         state.operationAuthorizations.delete(token);
@@ -2278,25 +2447,20 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const token = designId("design-operation-authorization");
       const expiresAt = Date.now() + 120_000;
       const purpose = operationPurpose(body.purpose);
+      const scopeKey = authorizationScopeForPurpose(purpose, body.scopeKey);
       if (
-        (purpose === "PURCHASE_CAPTURE" || purpose === "PURCHASE_CORRECTION") &&
-        agent.source !== "SCHEDULER" &&
-        !/(especialista|facialista|cosmet[oó]log)/i.test(agent.role)
+        !agentCanAuthorizeScope(state, agent, scopeKey) ||
+        (scopeKey === null && !agent.allowedPurposes.includes(purpose))
       ) {
         fail(
           403,
-          "El código de compra debe pertenecer a un especialista o agente de Scheduler.",
-        );
-      }
-      if (!agent.allowedPurposes.includes(purpose)) {
-        fail(
-          403,
-          "Este especialista o agente no tiene permiso para este movimiento.",
+          "El puesto de este agente no está autorizado para este movimiento.",
         );
       }
       state.operationAuthorizations.set(token, {
         agentId: agent.id,
         purpose,
+        scopeKey,
         targetType: String(body.targetType ?? ""),
         targetId: String(body.targetId ?? ""),
         expiresAt,
@@ -2304,6 +2468,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       return {
         token,
         purpose,
+        scopeKey,
         expiresAt: new Date(expiresAt).toISOString(),
         actor: {
           id: agent.id,
@@ -2583,7 +2748,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             authorization.targetId !== appointmentId) ||
           authorization.expiresAt < Date.now() ||
           !agent?.active ||
-          !agent.allowedPurposes.includes(requiredPurpose)
+          authorization.scopeKey !== requiredPurpose ||
+          !agentCanAuthorizeScope(state, agent, requiredPurpose)
         ) {
           fail(
             403,
@@ -2707,7 +2873,13 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         (authorization.targetId && authorization.targetId !== appointmentId) ||
         authorization.expiresAt < Date.now() ||
         !authorizedAgent.active ||
-        !authorizedAgent.allowedPurposes.includes(requiredPurpose)
+        !agentCanAuthorizeScope(
+          state,
+          authorizedAgent,
+          authorization.scopeKey,
+        ) ||
+        (authorization.scopeKey === null &&
+          !authorizedAgent.allowedPurposes.includes(requiredPurpose))
       ) {
         fail(403, "El registro requiere un código personal autorizado.");
       }
@@ -2843,19 +3015,20 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     const existing = id ? appointment(state, id) : undefined;
     if (existing) versionGuard(existing, body);
     if (action === "cancel" || action === "status") {
+      const status = action === "cancel" ? "CANCELED" : String(body.status);
+      if (
+        !(SCHEDULER_APPOINTMENT_STATUSES as readonly string[]).includes(status)
+      )
+        fail(400, "Estado inválido.");
       if (action === "status") {
         requireOperationAuthorization(
           state,
           body.authorizationToken,
           "APPOINTMENT_STATUS_CHANGE",
           existing!.id,
+          `STATUS:${status}` as DesignAuthorizationScopeKey,
         );
       }
-      const status = action === "cancel" ? "CANCELED" : String(body.status);
-      if (
-        !(SCHEDULER_APPOINTMENT_STATUSES as readonly string[]).includes(status)
-      )
-        fail(400, "Estado inválido.");
       if (
         status === "ATTENDED" &&
         Date.now() < new Date(existing!.endsAt).getTime()

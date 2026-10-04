@@ -4,6 +4,7 @@ import type {
   DesignAppointmentContext,
   DesignAppointmentJournalEntry,
   DesignAppointmentJournalReport,
+  DesignAuthorizationPolicy,
   DesignBranchCommercialModel,
   DesignCabinSalesReport,
   DesignSalesProjectionReport,
@@ -74,6 +75,15 @@ export const schedulerDesignProposals: DesignProposalClient = {
     request<DesignOperationAgent>(
       `/api/scheduler/design-proposals/authorization-agents${input.id ? `/${input.id}` : ""}`,
       { method: input.id ? "PUT" : "POST", body: JSON.stringify(input) },
+    ),
+  authorizationPolicy: () =>
+    request<DesignAuthorizationPolicy>(
+      "/api/scheduler/design-proposals/authorization-policy",
+    ),
+  saveAuthorizationPolicy: (input) =>
+    request<DesignAuthorizationPolicy>(
+      "/api/scheduler/design-proposals/authorization-policy",
+      { method: "PUT", body: JSON.stringify(input) },
     ),
   authorizeOperation: (input) =>
     request<DesignOperationGrant>(

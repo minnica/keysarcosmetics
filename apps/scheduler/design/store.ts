@@ -30,6 +30,7 @@ import type {
   DesignAppointmentAnswer,
   DesignAppointmentCabinVisit,
   DesignAppointmentJournalEntry,
+  DesignAuthorizationScopeKey,
   DesignBranchCommercialModel,
   DesignCustomerSpecialistPreference,
   DesignMovementRecord,
@@ -152,6 +153,19 @@ export function designToday(): string {
 }
 export function designId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+export function designAuthorizationRoleId(
+  source: DesignOperationAgentSource,
+  role: string,
+): string {
+  const normalizedRole = role
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${source.toLowerCase()}:${normalizedRole || "sin-puesto"}`;
 }
 export function designInstant(date: string, minute: number): string {
   const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
@@ -470,6 +484,29 @@ export function createDesignState(
       }),
     ),
   ];
+  const roleIdsForPurpose = (purpose: DesignOperationPurpose) => [
+    ...new Set(
+      operationAgents
+        .filter(
+          (agent) => agent.active && agent.allowedPurposes.includes(purpose),
+        )
+        .map((agent) => designAuthorizationRoleId(agent.source, agent.role)),
+    ),
+  ];
+  const authorizationPolicy = {
+    rules: {
+      ...Object.fromEntries(
+        SCHEDULER_APPOINTMENT_STATUSES.map((status) => [
+          `STATUS:${status}` as DesignAuthorizationScopeKey,
+          roleIdsForPurpose("APPOINTMENT_STATUS_CHANGE"),
+        ]),
+      ),
+      PURCHASE_CAPTURE: roleIdsForPurpose("PURCHASE_CAPTURE"),
+      PURCHASE_CORRECTION: roleIdsForPurpose("PURCHASE_CORRECTION"),
+    } as Record<DesignAuthorizationScopeKey, string[]>,
+    version: 1,
+    updatedAt: now,
+  };
   const branchCommercialModels: DesignBranchCommercialModel[] =
     catalog.branches.map((branch) => {
       const cabins = catalog.resources.filter(
@@ -537,6 +574,7 @@ export function createDesignState(
       }
     >(),
     operationAgents,
+    authorizationPolicy,
     branchCommercialModels,
     statusDefinitions,
     statusDefinitionHistory,
@@ -546,6 +584,7 @@ export function createDesignState(
       {
         agentId: string;
         purpose: DesignOperationPurpose;
+        scopeKey: DesignAuthorizationScopeKey | null;
         targetType: string;
         targetId: string;
         expiresAt: number;

@@ -52,6 +52,8 @@ import {
 import { schedulerApi } from "@/lib/api";
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import type {
+  DesignAuthorizationPolicy,
+  DesignAuthorizationScopeKey,
   DesignBranchCommercialModel,
   DesignOperationAgent,
   DesignOperationPurpose,
@@ -344,6 +346,8 @@ function SettingsHeader({ section }: { section: string }) {
 
 function AuthorizationAgentsSettings() {
   const [agents, setAgents] = useState<DesignOperationAgent[]>([]);
+  const [authorizationPolicy, setAuthorizationPolicy] =
+    useState<DesignAuthorizationPolicy | null>(null);
   const [commercialModels, setCommercialModels] = useState<
     DesignBranchCommercialModel[]
   >([]);
@@ -352,17 +356,20 @@ function AuthorizationAgentsSettings() {
   const [localRepresentativeCode, setLocalRepresentativeCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [policySaving, setPolicySaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!schedulerDesignProposals.available) return;
     setLoading(true);
     try {
-      const [nextAgents, nextModels] = await Promise.all([
+      const [nextAgents, nextModels, nextPolicy] = await Promise.all([
         schedulerDesignProposals.listAuthorizationAgents(),
         schedulerDesignProposals.listBranchCommercialModels(),
+        schedulerDesignProposals.authorizationPolicy(),
       ]);
       setAgents(nextAgents);
       setCommercialModels(nextModels);
+      setAuthorizationPolicy(nextPolicy);
     } catch (cause) {
       toast.error(
         cause instanceof Error
@@ -377,6 +384,57 @@ function AuthorizationAgentsSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  function toggleRoleAuthorization(
+    scopeKey: DesignAuthorizationScopeKey,
+    roleId: string,
+    enabled: boolean,
+  ) {
+    setAuthorizationPolicy((current) =>
+      current
+        ? {
+            ...current,
+            rules: current.rules.map((rule) =>
+              rule.scopeKey === scopeKey
+                ? {
+                    ...rule,
+                    roleIds: enabled
+                      ? [...new Set([...rule.roleIds, roleId])]
+                      : rule.roleIds.filter((id) => id !== roleId),
+                  }
+                : rule,
+            ),
+          }
+        : current,
+    );
+  }
+
+  async function saveRolePolicy() {
+    if (!authorizationPolicy) return;
+    setPolicySaving(true);
+    try {
+      const nextPolicy = await schedulerDesignProposals.saveAuthorizationPolicy(
+        {
+          expectedVersion: authorizationPolicy.version,
+          rules: authorizationPolicy.rules.map(({ scopeKey, roleIds }) => ({
+            scopeKey,
+            roleIds,
+          })),
+        },
+      );
+      setAuthorizationPolicy(nextPolicy);
+      toast.success("Autorizaciones por puesto actualizadas.");
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible actualizar las autorizaciones por puesto.",
+      );
+      await load();
+    } finally {
+      setPolicySaving(false);
+    }
+  }
 
   function togglePermission(
     agentId: string,
@@ -488,13 +546,94 @@ function AuthorizationAgentsSettings() {
           <h2 className="settings-title">Códigos de movimiento</h2>
           <p className="settings-description">
             La identidad proviene de Scheduler o del CRM/POS. Asigna un código
-            ficticio único y define si puede cambiar estados o registrar
-            compras o comentarios. Las altas locales sólo se habilitan cuando
+            ficticio único a cada persona. Los permisos para cambiar estados y
+            registrar montos se asignan por puesto; los comentarios conservan
+            permisos personales. Las altas locales sólo se habilitan cuando
             existe una sucursal de Agenda independiente.
           </p>
         </div>
         <Badge variant="outline">Sin códigos visibles</Badge>
       </div>
+      {authorizationPolicy ? (
+        <div className="mx-5 mb-5 rounded-2xl border border-[#e3d6c9] bg-[#fbf8f4] p-4 sm:mx-6 sm:p-5">
+          <div className="flex flex-col gap-3 border-b border-[#e9ded4] pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#263649]">
+                Autorizaciones por puesto
+              </p>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">
+                Elige qué puestos pueden autorizar cada status o monto. Una
+                operación sin puestos queda reservada al código master; master
+                conserva acceso total aunque no esté marcado.
+              </p>
+            </div>
+            <Button
+              disabled={policySaving}
+              onClick={() => void saveRolePolicy()}
+              size="sm"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {policySaving ? "Guardando…" : "Guardar puestos"}
+            </Button>
+          </div>
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            {(["STATUS", "PURCHASE"] as const).map((kind) => (
+              <div className="space-y-3" key={kind}>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b7654]">
+                  {kind === "STATUS"
+                    ? "Status de agenda"
+                    : "Compras y apartados"}
+                </p>
+                {authorizationPolicy.rules
+                  .filter((rule) => rule.kind === kind)
+                  .map((rule) => (
+                    <div
+                      className="rounded-xl border border-[#e7ddd3] bg-white p-3"
+                      key={rule.scopeKey}
+                    >
+                      <p className="text-sm font-semibold text-[#263649]">
+                        {rule.label}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {authorizationPolicy.roles.map((role) => (
+                          <label
+                            className="flex min-h-9 items-center gap-2 rounded-lg border border-[#e6ddd5] px-3 py-2 text-xs font-medium text-[#344256]"
+                            key={role.id}
+                          >
+                            <input
+                              checked={rule.roleIds.includes(role.id)}
+                              className="h-4 w-4 accent-[#263649]"
+                              disabled={role.activeAgents === 0}
+                              onChange={(event) =>
+                                toggleRoleAuthorization(
+                                  rule.scopeKey,
+                                  role.id,
+                                  event.target.checked,
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            <span>
+                              {role.label}
+                              <span className="ml-1 text-[10px] text-slate-400">
+                                {role.source === "POS_CRM" ? "POS" : "Agenda"}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      {rule.roleIds.length === 0 ? (
+                        <p className="mt-2 text-xs font-medium text-amber-700">
+                          Sólo código master
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {commercialModels.some(
         (model) => model.mode === "SCHEDULER_STANDALONE",
       ) ? (
@@ -571,9 +710,6 @@ function AuthorizationAgentsSettings() {
             <div className="flex flex-wrap gap-3 rounded-xl border border-[#eee6df] bg-[#faf8f5] px-3 py-2">
               {(
                 [
-                  ["APPOINTMENT_STATUS_CHANGE", "Cambiar estados"],
-                  ["PURCHASE_CAPTURE", "Registrar compras"],
-                  ["PURCHASE_CORRECTION", "Corregir compras registradas"],
                   ["APPOINTMENT_COMMENT_CREATE", "Comentarios de cita"],
                   ["POST_SALE_COMMENT_CREATE", "Comentarios postventa"],
                 ] as const
@@ -585,11 +721,6 @@ function AuthorizationAgentsSettings() {
                   <input
                     checked={agent.allowedPurposes.includes(purpose)}
                     className="h-4 w-4 accent-[#263649]"
-                    disabled={
-                      (purpose === "PURCHASE_CAPTURE" ||
-                        purpose === "PURCHASE_CORRECTION") &&
-                      !agent.canAuthorizePurchases
-                    }
                     onChange={(event) =>
                       togglePermission(agent.id, purpose, event.target.checked)
                     }

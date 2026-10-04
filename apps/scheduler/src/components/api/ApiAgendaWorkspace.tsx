@@ -74,6 +74,7 @@ import type {
   DesignAppointmentContext,
   DesignAppointmentJournalEntry,
   DesignAppointmentJournalKind,
+  DesignAuthorizationScopeKey,
   DesignOperationAgent,
   DesignOperationGrant,
   DesignOperationPurpose,
@@ -156,6 +157,7 @@ interface OperationPrompt {
   title: string;
   description: string;
   purpose: DesignOperationPurpose;
+  scopeKey?: DesignAuthorizationScopeKey;
   targetType: string;
   targetId?: string;
 }
@@ -1607,6 +1609,9 @@ export function ApiAgendaWorkspace() {
       const grant = await schedulerDesignProposals.authorizeOperation({
         code,
         purpose: operationPrompt.purpose,
+        ...(operationPrompt.scopeKey
+          ? { scopeKey: operationPrompt.scopeKey }
+          : {}),
         targetType: operationPrompt.targetType,
         ...(operationPrompt.targetId
           ? { targetId: operationPrompt.targetId }
@@ -1892,6 +1897,12 @@ export function ApiAgendaWorkspace() {
           : editingId
             ? "APPOINTMENT_UPDATE"
             : "APPOINTMENT_CREATE",
+        ...(completesAttendanceCapture
+          ? {
+              scopeKey:
+                `STATUS:${attendanceTargetStatus === "arrived" ? "ARRIVED" : "ATTENDED"}` as DesignAuthorizationScopeKey,
+            }
+          : {}),
         targetType: "APPOINTMENT",
         ...(editingId ? { targetId: editingId } : {}),
       },
@@ -2456,6 +2467,8 @@ export function ApiAgendaWorkspace() {
         description:
           "El código personal quedará asociado al cambio de estado, no a la cita.",
         purpose: "APPOINTMENT_STATUS_CHANGE",
+        scopeKey:
+          `STATUS:${schedulerBookingToCanonicalStatus[status]}` as DesignAuthorizationScopeKey,
         targetType: "APPOINTMENT",
         targetId: appointment.id,
       },
@@ -2516,6 +2529,7 @@ export function ApiAgendaWorkspace() {
         description:
           "Confirma al responsable de cancelar la cita. La autorización se consume una sola vez.",
         purpose: "APPOINTMENT_CANCEL",
+        scopeKey: "STATUS:CANCELED",
         targetType: "APPOINTMENT",
         targetId: appointment.id,
       },

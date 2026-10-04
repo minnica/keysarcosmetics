@@ -15,6 +15,7 @@ require.extensions[".ts"] = (module, filename) => {
 };
 const {
   createDesignState,
+  designAuthorizationRoleId,
   designDemoAccounts,
   designOrigin,
   designBootstrap,
@@ -41,13 +42,14 @@ function session(scenario = "normal", role = "master") {
   return { state, request };
 }
 
-function operationToken(request, purpose, targetId, code = "0000") {
+function operationToken(request, purpose, targetId, code = "0000", scopeKey) {
   const response = request(
     "POST",
     "/api/scheduler/design-proposals/operation-authorizations",
     {
       code,
       purpose,
+      ...(scopeKey ? { scopeKey } : {}),
       targetType: "APPOINTMENT",
       targetId,
     },
@@ -907,24 +909,39 @@ test("la atención de cabina rechaza traslapes de especialista y cabina", () => 
   assert.equal(cabinBusy.body.code, "RESOURCE_BUSY");
 });
 
-test("un código activo sin permiso de compra no puede registrar montos", () => {
+test("los puestos autorizan por separado llegada y montos de compra", () => {
   const { state, request } = session();
-  const agent = state.operationAgents.find(
+  const arrivalAgent = state.operationAgents.find(
     (candidate) => candidate.code === "1111",
   );
+  const purchaseAgent = state.operationAgents.find(
+    (candidate) => candidate.code === "2222",
+  );
+  const policy = request(
+    "GET",
+    "/api/scheduler/design-proposals/authorization-policy",
+  ).body.data;
+  const arrivalRoleId = designAuthorizationRoleId(
+    arrivalAgent.source,
+    arrivalAgent.role,
+  );
+  const purchaseRoleId = designAuthorizationRoleId(
+    purchaseAgent.source,
+    purchaseAgent.role,
+  );
   assert.equal(
-    request(
-      "PUT",
-      `/api/scheduler/design-proposals/authorization-agents/${agent.id}`,
-      {
-        externalId: agent.externalId,
-        name: agent.name,
-        role: agent.role,
-        source: agent.source,
-        active: true,
-        allowedPurposes: ["APPOINTMENT_STATUS_CHANGE"],
-      },
-    ).status,
+    request("PUT", "/api/scheduler/design-proposals/authorization-policy", {
+      expectedVersion: policy.version,
+      rules: policy.rules.map((rule) => ({
+        scopeKey: rule.scopeKey,
+        roleIds:
+          rule.scopeKey === "STATUS:ARRIVED"
+            ? [arrivalRoleId]
+            : rule.scopeKey === "PURCHASE_CAPTURE"
+              ? [purchaseRoleId]
+              : rule.roleIds,
+      })),
+    }).status,
     200,
   );
   assert.equal(
@@ -940,13 +957,65 @@ test("un código activo sin permiso de compra no puede registrar montos", () => 
     ).status,
     403,
   );
+  const arrivalGrant = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations",
+    {
+      code: "1111",
+      purpose: "APPOINTMENT_STATUS_CHANGE",
+      scopeKey: "STATUS:ARRIVED",
+      targetType: "APPOINTMENT",
+      targetId: state.appointments[0].id,
+    },
+  );
+  assert.equal(arrivalGrant.status, 201);
+  assert.equal(
+    request(
+      "POST",
+      `/api/scheduler/appointments/${state.appointments[0].id}/status`,
+      {
+        status: "CONFIRMED",
+        expectedVersion: state.appointments[0].version,
+        authorizationToken: arrivalGrant.body.data.token,
+      },
+    ).status,
+    403,
+  );
   assert.equal(
     request(
       "POST",
       "/api/scheduler/design-proposals/operation-authorizations",
       {
-        code: "1111",
+        code: "2222",
         purpose: "APPOINTMENT_STATUS_CHANGE",
+        scopeKey: "STATUS:ARRIVED",
+        targetType: "APPOINTMENT",
+        targetId: state.appointments[0].id,
+      },
+    ).status,
+    403,
+  );
+  assert.equal(
+    request(
+      "POST",
+      "/api/scheduler/design-proposals/operation-authorizations",
+      {
+        code: "2222",
+        purpose: "PURCHASE_CAPTURE",
+        targetType: "APPOINTMENT_PURCHASE",
+        targetId: state.appointments[0].id,
+      },
+    ).status,
+    201,
+  );
+  assert.equal(
+    request(
+      "POST",
+      "/api/scheduler/design-proposals/operation-authorizations",
+      {
+        code: "0000",
+        purpose: "APPOINTMENT_STATUS_CHANGE",
+        scopeKey: "STATUS:ARRIVED",
         targetType: "APPOINTMENT",
         targetId: state.appointments[0].id,
       },
@@ -1274,6 +1343,8 @@ test("no permite marcar asistencia antes de que termine la sesión", () => {
     request,
     "APPOINTMENT_STATUS_CHANGE",
     appointment.id,
+    "0000",
+    "STATUS:ATTENDED",
   );
   const result = request(
     "POST",
@@ -1308,6 +1379,8 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
     request,
     "APPOINTMENT_STATUS_CHANGE",
     appointment.id,
+    "0000",
+    "STATUS:ATTENDED",
   );
   const incomplete = request(
     "POST",
@@ -1324,6 +1397,8 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
     request,
     "APPOINTMENT_STATUS_CHANGE",
     appointment.id,
+    "0000",
+    "STATUS:ARRIVED",
   );
   const arrivalIncomplete = request(
     "POST",
@@ -1369,6 +1444,8 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
     request,
     "APPOINTMENT_STATUS_CHANGE",
     appointment.id,
+    "0000",
+    "STATUS:ARRIVED",
   );
   const arrivalCompleted = request(
     "POST",
@@ -1386,6 +1463,8 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
     request,
     "APPOINTMENT_STATUS_CHANGE",
     appointment.id,
+    "0000",
+    "STATUS:ATTENDED",
   );
   const completed = request(
     "POST",
@@ -1410,6 +1489,8 @@ test("permite corregir un status con código sin borrar el historial anterior", 
     request,
     "APPOINTMENT_STATUS_CHANGE",
     appointment.id,
+    "0000",
+    "STATUS:CONFIRMED",
   );
   const corrected = request(
     "POST",

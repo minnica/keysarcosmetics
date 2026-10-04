@@ -21,6 +21,32 @@ export type DesignOperationPurpose =
 
 export type DesignOperationAgentSource = "SCHEDULER" | "POS_CRM";
 
+export type DesignAuthorizationScopeKey =
+  | `STATUS:${SchedulerAppointmentStatus}`
+  | "PURCHASE_CAPTURE"
+  | "PURCHASE_CORRECTION";
+
+export interface DesignAuthorizationRoleOption {
+  id: string;
+  label: string;
+  source: DesignOperationAgentSource;
+  activeAgents: number;
+}
+
+export interface DesignAuthorizationPolicyRule {
+  scopeKey: DesignAuthorizationScopeKey;
+  label: string;
+  kind: "STATUS" | "PURCHASE";
+  roleIds: string[];
+}
+
+export interface DesignAuthorizationPolicy {
+  roles: DesignAuthorizationRoleOption[];
+  rules: DesignAuthorizationPolicyRule[];
+  version: number;
+  updatedAt: string;
+}
+
 export interface DesignDemoAccountOption {
   email: string;
   name: string;
@@ -44,6 +70,7 @@ export interface DesignOperationAgent {
 export interface DesignOperationGrant {
   token: string;
   purpose: DesignOperationPurpose;
+  scopeKey: DesignAuthorizationScopeKey | null;
   expiresAt: string;
   actor: Pick<DesignOperationAgent, "id" | "name" | "role" | "source">;
 }
@@ -448,9 +475,15 @@ export interface DesignProposalClient {
     code?: string;
     allowedPurposes: DesignOperationPurpose[];
   }): Promise<DesignOperationAgent>;
+  authorizationPolicy(): Promise<DesignAuthorizationPolicy>;
+  saveAuthorizationPolicy(input: {
+    rules: Array<Pick<DesignAuthorizationPolicyRule, "scopeKey" | "roleIds">>;
+    expectedVersion: number;
+  }): Promise<DesignAuthorizationPolicy>;
   authorizeOperation(input: {
     code: string;
     purpose: DesignOperationPurpose;
+    scopeKey?: DesignAuthorizationScopeKey;
     targetType: string;
     targetId?: string;
   }): Promise<DesignOperationGrant>;
