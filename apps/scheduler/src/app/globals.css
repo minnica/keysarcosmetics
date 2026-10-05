@@ -647,7 +647,7 @@
       display: contents;
     }
 
-    .scheduler-agenda-header-primary.space-y-2\.5
+    .scheduler-agenda-header-primary.space-y-1\.5
       > :not([hidden])
       ~ :not([hidden]) {
       margin-top: 0;
@@ -898,6 +898,124 @@
 
     .scheduler-agenda-card .scheduler-appointment {
       padding: 0.15rem 0.3rem;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .scheduler-agenda-header.scheduler-agenda-header {
+      padding: 0.5rem 1rem;
+    }
+
+    .scheduler-agenda-header .scheduler-agenda-header-layout {
+      display: grid;
+      grid-template-areas: "controls date actions";
+      grid-template-columns: auto minmax(16rem, 1fr) auto;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .scheduler-agenda-header-primary {
+      display: contents;
+    }
+
+    .scheduler-agenda-header-primary.space-y-1\.5
+      > :not([hidden])
+      ~ :not([hidden]) {
+      margin-top: 0;
+    }
+
+    .scheduler-agenda-view-controls.scheduler-agenda-view-controls {
+      grid-area: controls;
+      flex-wrap: nowrap;
+      gap: 0.35rem;
+    }
+
+    .scheduler-agenda-view-controls > div:first-child {
+      padding: 0.15rem;
+    }
+
+    .scheduler-agenda-view-controls > div:first-child button {
+      min-width: 3.4rem;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.72rem;
+    }
+
+    .scheduler-agenda-view-controls > button {
+      padding: 0.35rem 0.7rem;
+      font-size: 0.72rem;
+    }
+
+    .scheduler-agenda-view-controls > div:last-child button {
+      padding: 0.35rem;
+    }
+
+    .scheduler-agenda-date-context {
+      display: flex;
+      min-width: 0;
+      grid-area: date;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.05rem;
+    }
+
+    .scheduler-agenda-title.scheduler-agenda-title {
+      overflow: hidden;
+      max-width: 100%;
+      font-family: inherit;
+      font-size: 0.96rem !important;
+      font-weight: 650;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .scheduler-agenda-location.scheduler-agenda-location {
+      max-width: 100%;
+      margin-top: 0;
+      overflow: hidden;
+      border-radius: 0;
+      background: transparent;
+      padding: 0;
+      font-size: 0.64rem;
+      line-height: 1.1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .scheduler-agenda-location svg {
+      width: 0.7rem;
+      height: 0.7rem;
+    }
+
+    .scheduler-agenda-actions.scheduler-agenda-actions {
+      grid-area: actions;
+      flex-wrap: nowrap;
+      gap: 0.35rem;
+    }
+
+    .scheduler-agenda-updated.scheduler-agenda-updated {
+      max-width: 10rem;
+      overflow: hidden;
+      font-size: 0.68rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .scheduler-sidebar-intro {
+      display: none;
+    }
+
+    .scheduler-sidebar-inner {
+      padding-top: 0.65rem;
+    }
+
+    .scheduler-sidebar-view-row.scheduler-sidebar-view-row {
+      margin-bottom: 0.75rem;
+    }
+
+    section.scheduler-agenda-content {
+      padding: 0.5rem 0.75rem;
     }
   }
 

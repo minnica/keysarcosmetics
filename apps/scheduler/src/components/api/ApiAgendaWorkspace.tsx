@@ -3112,7 +3112,7 @@ export function ApiAgendaWorkspace() {
           </aside>
         ) : null}
 
-        <section className="scheduler-agenda-content flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-6 xl:px-8">
+        <section className="scheduler-agenda-content flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-3 sm:px-5 xl:px-4">
           {!resourcePanelOpen ? (
             <button
               className="scheduler-agenda-resource-toggle mb-4 hidden h-11 w-fit items-center gap-2 rounded-2xl border border-[rgba(236,209,200,0.82)] bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[var(--scheduler-accent)] hover:bg-[var(--scheduler-accent-soft)] xl:flex"

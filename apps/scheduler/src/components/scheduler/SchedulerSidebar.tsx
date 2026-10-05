@@ -78,47 +78,52 @@ export function SchedulerSidebar({
   onCollapse,
 }: SchedulerSidebarProps) {
   return (
-    <div className="min-h-full bg-[linear-gradient(180deg,rgba(255,251,247,0.96)_0%,rgba(245,239,232,0.92)_100%)] backdrop-blur">
-      <div className="flex min-h-full flex-col px-4 pb-5 pt-4">
-        <div className="mb-4">
+    <div className="scheduler-sidebar-root min-h-full bg-[linear-gradient(180deg,rgba(255,251,247,0.96)_0%,rgba(245,239,232,0.92)_100%)] backdrop-blur">
+      <div className="scheduler-sidebar-inner flex min-h-full flex-col px-4 pb-5 pt-4">
+        <div className="scheduler-sidebar-intro mb-4">
           <p className="label-caps">Vista y recursos</p>
           <p className="mt-1 text-sm text-slate-500">Define qué quieres ver en la agenda.</p>
         </div>
 
-        <div className="mb-5 flex items-center gap-2 rounded-[20px] border border-[rgba(236,209,200,0.82)] bg-white p-1.5 shadow-sm">
-          <button
-            aria-label="Ver agenda como calendario"
-            aria-pressed={displayMode === 'calendar'}
-            className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-[15px] text-sm font-semibold transition ${
-              displayMode === 'calendar'
-                ? 'bg-[var(--scheduler-ink-strong)] text-white shadow-sm'
-                : 'text-slate-500 hover:bg-[var(--scheduler-accent-soft)]'
-            }`}
-            onClick={() => onDisplayModeChange('calendar')}
-            type="button"
-          >
-            <CalendarDays className="h-5 w-5" />
-            Calendario
-          </button>
-          <button
-            aria-label="Ver agenda como lista"
-            aria-pressed={displayMode === 'list'}
-            className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-[15px] text-sm font-semibold transition ${
-              displayMode === 'list'
-                ? 'bg-[var(--scheduler-ink-strong)] text-white shadow-sm'
-                : 'text-slate-500 hover:bg-[var(--scheduler-accent-soft)]'
-            }`}
-            onClick={() => onDisplayModeChange('list')}
-            type="button"
-          >
-            <List className="h-5 w-5" />
-            Lista
-          </button>
+        <div className="scheduler-sidebar-view-row mb-5 flex items-center justify-between gap-3">
+          <div className="scheduler-sidebar-view-toggle inline-flex items-center gap-1 rounded-[18px] border border-[rgba(236,209,200,0.82)] bg-white p-1 shadow-sm">
+            <button
+              aria-label="Ver agenda como calendario"
+              aria-pressed={displayMode === 'calendar'}
+              className={`flex h-10 w-12 items-center justify-center rounded-[13px] transition ${
+                displayMode === 'calendar'
+                  ? 'bg-[var(--scheduler-ink-strong)] text-white shadow-sm'
+                  : 'text-slate-500 hover:bg-[var(--scheduler-accent-soft)]'
+              }`}
+              onClick={() => onDisplayModeChange('calendar')}
+              title="Calendario"
+              type="button"
+            >
+              <CalendarDays className="h-5 w-5" />
+              <span className="sr-only">Calendario</span>
+            </button>
+            <button
+              aria-label="Ver agenda como lista"
+              aria-pressed={displayMode === 'list'}
+              className={`flex h-10 w-12 items-center justify-center rounded-[13px] transition ${
+                displayMode === 'list'
+                  ? 'bg-[var(--scheduler-ink-strong)] text-white shadow-sm'
+                  : 'text-slate-500 hover:bg-[var(--scheduler-accent-soft)]'
+              }`}
+              onClick={() => onDisplayModeChange('list')}
+              title="Lista"
+              type="button"
+            >
+              <List className="h-5 w-5" />
+              <span className="sr-only">Lista</span>
+            </button>
+          </div>
           {onCollapse ? (
             <button
               aria-label="Ocultar panel de recursos"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] text-slate-400 transition hover:bg-[var(--scheduler-accent-soft)] hover:text-slate-700"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[rgba(236,209,200,0.82)] bg-white text-slate-400 shadow-sm transition hover:bg-[var(--scheduler-accent-soft)] hover:text-slate-700"
               onClick={onCollapse}
+              title="Ocultar panel"
               type="button"
             >
               <PanelLeftClose className="h-5 w-5" />

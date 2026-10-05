@@ -642,6 +642,13 @@ Recorrido manual recomendado:
     reserva con el cliente seleccionado y muestra fecha, servicio, cabina y
     demás datos. **Guardar reserva** nunca debe crear implícitamente un cliente
     que todavía no tenga ID.
+20. Abre Agenda en un escritorio de al menos 1280 px. El encabezado debe ocupar
+    una sola fila compacta, sin desbordamiento horizontal, y dejar más altura a
+    la cuadrícula y al panel de recursos. En el panel izquierdo los modos
+    **Calendario** y **Lista** deben mostrar sólo sus iconos; conserva sus nombres
+    accesibles, estados `aria-pressed` y ayudas al pasar el cursor. Comprueba que
+    Día/Semana, fecha, actualización, filtros, impresión y Nueva reserva sigan
+    disponibles.
 
 ## Dónde trabajar
 
@@ -737,6 +744,13 @@ contacto, cartera y respuestas configurables mediante `createCustomer`; la
 reserva sólo continúa cuando existe `customerId`. La revisión de duplicados se
 mantiene antes del alta y seleccionar un perfil existente también vuelve al
 segundo paso sin crear una cita. No se agregó un contrato productivo nuevo.
+
+El 4 de octubre de 2026 se compactó la composición de Agenda para escritorio.
+Desde 1280 px el encabezado distribuye rango, fecha y acciones en una sola fila
+de 56 px; la cuadrícula y el panel izquierdo reciben el alto restante. El
+selector Calendario/Lista usa controles de 48 px sólo con iconos, sin perder
+etiquetas accesibles ni la posibilidad de contraer el panel. En 1280×720 y
+1536×864 no hubo desbordamiento horizontal ni errores de consola.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI
