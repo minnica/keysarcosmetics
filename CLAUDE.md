@@ -1874,6 +1874,20 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
   suscripción, facturación e integración POS autoritativa en backend. No confiar
   en importes ni IDs enviados por el navegador.
 
+### Scheduler: movimiento de citas por arrastre (2026-10-04)
+
+- Una sesión con `agenda:WRITE` puede arrastrar citas `PENDING`, `RESERVED`,
+  `CONFIRMED` o `WAITING` a otra hora, cabina o especialista dentro de la misma
+  sucursal. Cada cambio exige `APPOINTMENT_MOVE`, vuelve a validar disponibilidad
+  y genera un movimiento con origen `DRAG_DROP`.
+- `ARRIVED`, `ATTENDED`, `CANCELED`, `NO_SHOW` y cualquier cita con compra o
+  apartado de monto positivo no son movibles. UI y API deben aplicar la misma
+  regla; una autorización de arrastre no permite alterar una venta registrada.
+- La reasignación conserva servicios, membresía y equipos auxiliares, actualiza
+  capacidad/cabina/especialista y debe refrescar las proyecciones de reportes y
+  dashboards. Producción debe persistir cita, proyección y auditoría de forma
+  consistente; el prototipo lo simula sin cambiar Prisma ni backend.
+
 ---
 
 ## Pendientes conocidos

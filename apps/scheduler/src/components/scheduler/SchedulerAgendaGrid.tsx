@@ -67,6 +67,7 @@ import {
 import { SchedulerBookingCard } from "./SchedulerBookingCard";
 import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
 import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
+import { canMoveSchedulerBooking } from "@/lib/scheduler-appointment-move";
 import type { DesignAppointmentContext } from "../../../design/contracts";
 
 interface SchedulerAgendaGridProps {
@@ -165,12 +166,6 @@ const compactAgendaMediaQuery = [
 const denseAgendaMediaQuery = "(min-width: 1024px) and (max-height: 780px)";
 const ultraDenseAgendaMediaQuery =
   "(min-width: 1024px) and (max-height: 680px)";
-const movableBookingStatuses = new Set<BookingStatus>([
-  "pending",
-  "reserved",
-  "confirmed",
-]);
-
 function bookingMoveTargetKey(target: SchedulerBookingMoveTarget) {
   return `${target.date.getFullYear()}-${target.date.getMonth()}-${target.date.getDate()}:${target.startTime}:${target.columnId}`;
 }
@@ -570,7 +565,10 @@ export function SchedulerAgendaGrid({
     event: DragEvent<HTMLButtonElement>,
     booking: Booking,
   ) {
-    if (!canWrite || !movableBookingStatuses.has(booking.status)) {
+    if (
+      !canWrite ||
+      !canMoveSchedulerBooking(booking.status, booking.purchased === true)
+    ) {
       event.preventDefault();
       return;
     }
@@ -792,6 +790,12 @@ export function SchedulerAgendaGrid({
                   const statusColor = statusColors[booking.status];
                   const statusTokens =
                     getSchedulerStatusColorTokens(statusColor);
+                  const canMoveBooking =
+                    canWrite &&
+                    canMoveSchedulerBooking(
+                      booking.status,
+                      booking.purchased === true,
+                    );
 
                   return (
                     <Dialog key={booking.id}>
@@ -799,21 +803,17 @@ export function SchedulerAgendaGrid({
                         <TooltipTrigger asChild>
                           <DialogTrigger asChild>
                             <button
-                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}. Puedes arrastrarla a otra hora.`}
+                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}.${canMoveBooking ? " Puedes arrastrarla a otra hora o columna." : ""}`}
                               className={cn(
                                 "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
-                                canWrite &&
-                                  movableBookingStatuses.has(booking.status)
+                                canMoveBooking
                                   ? "scheduler-appointment-draggable"
                                   : "",
                                 draggingBooking?.id === booking.id
                                   ? "scheduler-appointment-dragging"
                                   : "",
                               )}
-                              draggable={
-                                canWrite &&
-                                movableBookingStatuses.has(booking.status)
-                              }
+                              draggable={canMoveBooking}
                               onClickCapture={suppressClickAfterDrag}
                               onDragEnd={finishBookingDrag}
                               onDragStart={(event) =>
@@ -1195,6 +1195,12 @@ export function SchedulerAgendaGrid({
                   const statusColor = statusColors[booking.status];
                   const statusTokens =
                     getSchedulerStatusColorTokens(statusColor);
+                  const canMoveBooking =
+                    canWrite &&
+                    canMoveSchedulerBooking(
+                      booking.status,
+                      booking.purchased === true,
+                    );
 
                   return (
                     <Dialog key={booking.id}>
@@ -1202,21 +1208,17 @@ export function SchedulerAgendaGrid({
                         <TooltipTrigger asChild>
                           <DialogTrigger asChild>
                             <button
-                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}. Puedes arrastrarla a otro día u hora.`}
+                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}.${canMoveBooking ? " Puedes arrastrarla a otro día u hora." : ""}`}
                               className={cn(
                                 "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
-                                canWrite &&
-                                  movableBookingStatuses.has(booking.status)
+                                canMoveBooking
                                   ? "scheduler-appointment-draggable"
                                   : "",
                                 draggingBooking?.id === booking.id
                                   ? "scheduler-appointment-dragging"
                                   : "",
                               )}
-                              draggable={
-                                canWrite &&
-                                movableBookingStatuses.has(booking.status)
-                              }
+                              draggable={canMoveBooking}
                               onClickCapture={suppressClickAfterDrag}
                               onDragEnd={finishBookingDrag}
                               onDragStart={(event) =>

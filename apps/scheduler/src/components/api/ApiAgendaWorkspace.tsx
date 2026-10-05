@@ -55,6 +55,7 @@ import {
   schedulerLocalDateKey,
   schedulerLocalDateTimeToInstant,
 } from "@/lib/scheduler-agenda-data";
+import { canMoveSchedulerBooking } from "@/lib/scheduler-appointment-move";
 import {
   defaultBookingStatusColors,
   type Booking,
@@ -173,11 +174,6 @@ interface AppointmentJournalRequest {
 }
 
 const createStatuses: BookingStatus[] = ["pending", "reserved", "confirmed"];
-const movableAppointmentStatuses = new Set<SchedulerAppointmentDto["status"]>([
-  "PENDING",
-  "RESERVED",
-  "CONFIRMED",
-]);
 
 function bookingSourceId(booking: Booking): string {
   return booking.sourceId ?? booking.id;
@@ -2410,9 +2406,13 @@ export function ApiAgendaWorkspace() {
       (item) => item.id === bookingSourceId(booking),
     );
     if (!appointment || !canWrite) return;
-    if (!movableAppointmentStatuses.has(appointment.status)) {
+    if (!canMoveSchedulerBooking(booking.status, booking.purchased === true)) {
       toast.error(
-        "Sólo puedes arrastrar citas pendientes, reservadas o confirmadas.",
+        booking.purchased
+          ? "La cita ya tiene una compra o apartado y no puede moverse."
+          : booking.status === "arrived" || booking.status === "attended"
+            ? "Una cita que ya llegó o fue atendida no puede moverse."
+            : "Este estado final no permite mover la cita.",
       );
       return;
     }

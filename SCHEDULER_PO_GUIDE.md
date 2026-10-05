@@ -121,12 +121,13 @@ configuran intervalos muy cortos, las tarjetas reducen su altura y el detalle
 completo permanece disponible al colocar el cursor sobre la cita. El tooltip
 muestra cliente, horario, servicio, especialista, estado, contacto y notas.
 
-Las citas **Pendiente**, **Reservada** o **Confirmada** se pueden mover con el
-mouse sólo cuando la sesión tiene `agenda:WRITE`, el mismo permiso usado para
-editar una cita. En vista diaria se arrastran a otra hora, cabina o especialista
-de la misma sucursal; en vista semanal también se pueden soltar en otro día sin
-cambiar su asignación. La celda destino se resalta antes de soltar y las sesiones
-de sólo lectura no muestran tarjetas arrastrables ni aceptan destinos.
+Las citas **Pendiente**, **Reservada**, **Confirmada** o **En espera** se pueden
+mover con el mouse sólo cuando la sesión tiene `agenda:WRITE`, el mismo permiso
+usado para editar una cita, y todavía no tienen compra o apartado. En vista
+diaria se arrastran a otra hora, cabina o especialista de la misma sucursal; en
+vista semanal también se pueden soltar en otro día sin cambiar su asignación. La
+celda destino se resalta antes de soltar y las sesiones de sólo lectura no
+muestran tarjetas arrastrables ni aceptan destinos.
 
 Soltar sobre una cabina sustituye únicamente el recurso de tipo `ROOM`, conserva
 equipos auxiliares y adopta la capacidad configurada de la cabina destino.
@@ -138,10 +139,11 @@ alternativa accesible y el flujo requerido para cambiar de sucursal.
 Soltar una cita solicita un código con permiso `APPOINTMENT_MOVE`. El servidor
 vuelve a validar versión, horario de sucursal, descansos, bloqueos, cabina,
 especialistas y solapamientos; si existe conflicto, la cita permanece en su
-horario original. Llegadas, citas atendidas, canceladas o no asistidas no son
-arrastrables. El movimiento exitoso agrega la acción **Cambio de horario por
-arrastre** o **Cambio de horario y asignación por arrastre** a la bitácora, con
-columna anterior/nueva pero sin guardar el código personal. Agenda invalida
+horario original. **Llegó**, **Atendida** y cualquier cita con compra o apartado
+son inmutables mediante arrastre; canceladas y no asistidas continúan como
+estados históricos finales. El movimiento exitoso agrega la acción **Cambio de
+horario por arrastre** o **Cambio de horario y asignación por arrastre** a la
+bitácora, con columna anterior/nueva pero sin guardar el código personal. Agenda invalida
 también los reportes; la proyección de visita conserva sincronizados cabina,
 capacidad y especialista para que dashboard, desglose por cabina y reporte de
 especialistas reflejen el destino. No se propone un endpoint nuevo: se reutiliza
@@ -513,8 +515,12 @@ Recorrido manual recomendado:
    semanal muévela a otro día; después intenta soltarla sobre un horario ocupado
    y confirma que permanece en el horario anterior. `limited@example.test` sólo
    debe poder arrastrar si conserva `agenda:WRITE`; una sesión de consulta y una
-   cita atendida no deben mostrar cursor de arrastre. **Editar** debe seguir
-   permitiendo el cambio por teclado.
+   cita atendida no deben mostrar cursor de arrastre. Confirma que **En espera**
+   todavía se pueda mover; registra después una compra o apartado y verifica que
+   la misma cita deje de ser arrastrable aunque conserve un status activo.
+   **Editar** debe seguir siendo la alternativa por teclado para las citas que
+   aún son movibles; las correcciones posteriores conservan sus flujos de
+   autorización específicos y no se resuelven por arrastre.
 4. Selecciona Todas, Disponibles y una combinación manual de sucursales; comprueba
    el nombre de local en cada columna, alterna el ajuste y abre la impresión diaria.
 5. En Clientes combina cancelación, servicio, cumpleaños, vendedor y un campo
@@ -661,7 +667,7 @@ cancelación, conflictos, duplicados y autorizaciones. Los chunks del build norm
 no contienen el runtime de diseño. Lint conserva tres avisos de `<img>` que ya
 existían en la rama base.
 
-El 4 de octubre de 2026 se repitieron TypeScript, lint, las 81 pruebas y
+El 4 de octubre de 2026 se repitieron TypeScript, lint, las 82 pruebas y
 `build:design` después de incorporar autorizaciones por puesto, copia masiva de
 horarios, paginación del detalle de ventas y movimiento de citas por arrastre.
 La cobertura separa el permiso para **Llegó** del permiso para registrar una
@@ -670,7 +676,10 @@ una ampliación de horario extienda las franjas visibles de Agenda, valida las
 vistas de 20/40/60/todas las filas y confirma que una cita multiservicio mueve
 todas sus líneas por el mismo intervalo. También comprueba que la reasignación
 de cabina conserva equipos, cambia capacidad, actualiza el reporte de cabinas y
-genera un movimiento autorizado sin almacenar el código personal.
+genera un movimiento autorizado sin almacenar el código personal. La regla de
+inmutabilidad comprueba además que **En espera** sigue siendo editable, mientras
+**Llegó**, **Atendida**, compra y apartado bloquean otro arrastre tanto en UI
+como en el API simulado.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

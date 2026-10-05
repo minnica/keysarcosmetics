@@ -713,6 +713,21 @@ function checkAppointmentAvailability(
     }
   }
 }
+
+function appointmentHasCommercialCapture(
+  state: DesignState,
+  appointmentId: string,
+): boolean {
+  return Boolean(
+    state.appointmentCabinVisits[appointmentId]?.visitors.some(
+      (visitor) =>
+        (visitor.purchaseKind === "FULL" ||
+          visitor.purchaseKind === "LAYAWAY") &&
+        Number(visitor.saleAmount ?? visitor.purchaseAmount ?? 0) > 0,
+    ),
+  );
+}
+
 function patchCollection(
   collection: DesignRow[],
   body: DesignRow,
@@ -3031,14 +3046,26 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     if (id && method === "GET") return appointment(state, id);
     const existing = id ? appointment(state, id) : undefined;
     if (existing) versionGuard(existing, body);
+    const moveHasCommercialCapture = Boolean(
+      action === "move" &&
+      existing &&
+      appointmentHasCommercialCapture(state, existing.id),
+    );
     if (
       action === "move" &&
       existing &&
-      !["PENDING", "RESERVED", "CONFIRMED"].includes(existing.status)
+      (moveHasCommercialCapture ||
+        !["PENDING", "RESERVED", "CONFIRMED", "WAITING"].includes(
+          existing.status,
+        ))
     ) {
       fail(
         409,
-        "Sólo las citas pendientes, reservadas o confirmadas pueden moverse por arrastre.",
+        moveHasCommercialCapture
+          ? "La cita ya tiene una compra o apartado y no puede moverse."
+          : existing.status === "ARRIVED" || existing.status === "ATTENDED"
+            ? "Una cita que ya llegó o fue atendida no puede moverse."
+            : "El estado final de la cita no permite moverla.",
       );
     }
     if (action === "cancel" || action === "status") {

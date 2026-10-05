@@ -589,7 +589,7 @@ test("los códigos de agente son únicos y cada movimiento consume una autorizac
   );
 });
 
-test("mover una cita cambia la cabina del reporte y registra el movimiento autorizado", () => {
+test("mover una cita sin venta actualiza reportes y una venta posterior bloquea otro cambio", () => {
   const { state, request } = session();
   const appointment = state.appointments.find(
     (item) => item.status === "CONFIRMED",
@@ -639,14 +639,14 @@ test("mover una cita cambia la cabina del reporte y registra el movimiento autor
         customerId: appointment.customerId,
         name: appointment.customerName,
         specialistProfileId: sourceProfessional.professionalProfileId,
-        purchased: true,
-        purchaseAmount: 900,
-        purchaseKind: "FULL",
-        saleAmount: 900,
-        depositAmount: 900,
-        saleOwnerSpecialistProfileId: sourceProfessional.professionalProfileId,
-        settlementStatus: "PAID",
-        settledAt: appointment.startsAt,
+        purchased: null,
+        purchaseAmount: null,
+        purchaseKind: null,
+        saleAmount: null,
+        depositAmount: null,
+        saleOwnerSpecialistProfileId: null,
+        settlementStatus: "NOT_APPLICABLE",
+        settledAt: null,
       },
     ],
     updatedAt: appointment.updatedAt,
@@ -684,6 +684,18 @@ test("mover una cita cambia la cabina del reporte y registra el movimiento autor
     targetProfessional.id,
   );
 
+  const movedVisitor = state.appointmentCabinVisits[appointment.id].visitors[0];
+  Object.assign(movedVisitor, {
+    purchased: true,
+    purchaseAmount: 900,
+    purchaseKind: "FULL",
+    saleAmount: 900,
+    depositAmount: 900,
+    saleOwnerSpecialistProfileId: targetProfessional.id,
+    settlementStatus: "PAID",
+    settledAt: appointment.startsAt,
+  });
+
   const report = request(
     "POST",
     "/api/scheduler/design-proposals/reports/cabin-sales",
@@ -700,6 +712,29 @@ test("mover una cita cambia la cabina del reporte y registra el movimiento autor
   );
   assert.equal(reportRow.cabinResourceId, targetRoom.id);
   assert.equal(reportRow.attendingSpecialistProfileId, targetProfessional.id);
+
+  const blockedAfterSale = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/move`,
+    {
+      startsAt: appointment.startsAt,
+      expectedVersion: moved.body.data.version,
+      services: moved.body.data.services.map((service) => ({
+        serviceProfileId: service.serviceProfileId,
+        professionalProfileIds: [sourceProfessional.professionalProfileId],
+        resourceIds: [sourceRoom.id],
+        startsAt: service.startsAt,
+        capacityUnits: sourceRoom.capacity,
+        membershipId: service.membership?.membershipId ?? null,
+      })),
+    },
+  );
+  assert.equal(blockedAfterSale.status, 409);
+  assert.match(blockedAfterSale.body.message, /compra o apartado/i);
+  assert.equal(
+    state.appointmentCabinVisits[appointment.id].cabinResourceId,
+    targetRoom.id,
+  );
 
   const committed = request(
     "POST",
@@ -721,6 +756,44 @@ test("mover una cita cambia la cabina del reporte y registra el movimiento autor
     committed.body.data.metadata.targetColumnId,
     `resource:${targetRoom.id}`,
   );
+
+  const attendedAppointment = state.appointments.find(
+    (item) => item.status === "ATTENDED",
+  );
+  state.appointmentCabinVisits[attendedAppointment.id]?.visitors.forEach(
+    (visitor) => {
+      Object.assign(visitor, {
+        purchased: false,
+        purchaseAmount: 0,
+        purchaseKind: "NONE",
+        saleAmount: 0,
+        depositAmount: 0,
+        saleOwnerSpecialistProfileId: null,
+        settlementStatus: "NOT_APPLICABLE",
+        settledAt: null,
+      });
+    },
+  );
+  const blockedAfterAttendance = request(
+    "POST",
+    `/api/scheduler/appointments/${attendedAppointment.id}/move`,
+    {
+      startsAt: attendedAppointment.startsAt,
+      expectedVersion: attendedAppointment.version,
+      services: attendedAppointment.services.map((service) => ({
+        serviceProfileId: service.serviceProfileId,
+        professionalProfileIds: service.professionals.map(
+          (professional) => professional.professionalProfileId,
+        ),
+        resourceIds: service.resources.map((resource) => resource.resourceId),
+        startsAt: service.startsAt,
+        capacityUnits: service.capacityUnits,
+        membershipId: service.membership?.membershipId ?? null,
+      })),
+    },
+  );
+  assert.equal(blockedAfterAttendance.status, 409);
+  assert.match(blockedAfterAttendance.body.message, /llegó o fue atendida/i);
 
   const { state: readOnlyState, request: readOnlyRequest } = session(
     "normal",

@@ -62,6 +62,17 @@ const { filterSchedulerAgendaColumns, shouldFitSchedulerAgendaColumns } =
 const { getSchedulerStatusColorTokens } = loadSource(
   "scheduler-status-presentation",
 );
+const { canMoveSchedulerBooking } = loadSource("scheduler-appointment-move");
+
+test("moves only editable appointments without a purchase or layaway", () => {
+  for (const status of ["pending", "reserved", "confirmed", "waiting"]) {
+    assert.equal(canMoveSchedulerBooking(status, false), true);
+    assert.equal(canMoveSchedulerBooking(status, true), false);
+  }
+  for (const status of ["arrived", "attended", "no-show", "canceled"]) {
+    assert.equal(canMoveSchedulerBooking(status, false), false);
+  }
+});
 
 test("keeps the configured status color visible on every reservation", () => {
   const tokens = getSchedulerStatusColorTokens("#c026d3");
