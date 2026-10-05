@@ -202,22 +202,34 @@ function SchedulerAppointmentSummary({
       />
       <div
         className={cn(
-          "scheduler-appointment-attendees grid w-full min-w-0 grid-cols-1 items-center",
-          hasMultipleAttendees ? "gap-0" : "gap-0.5",
+          "scheduler-appointment-attendees mt-0.5 grid w-full min-w-0 flex-1 overflow-hidden",
+          hasMultipleAttendees ? "items-stretch gap-0" : "items-center",
         )}
+        style={{
+          gridTemplateColumns: `repeat(${attendeeNames.length}, minmax(0, 1fr))`,
+        }}
       >
-        {attendeeNames.map((name) => (
+        {attendeeNames.map((name, index) => (
           <span
             className={cn(
-              "scheduler-appointment-attendee min-w-0 text-center font-semibold leading-[1.05]",
+              "scheduler-appointment-attendee min-w-0 items-center justify-center overflow-hidden px-1 text-center font-semibold",
               hasMultipleAttendees
-                ? "truncate border-t border-current/10 px-1 pt-px text-[0.58rem]"
-                : "truncate text-[0.82rem]",
+                ? "flex border-l border-current/20 text-[0.58rem] leading-[0.95] first:border-l-0"
+                : "block truncate text-[0.82rem] leading-[1.05]",
             )}
-            key={name}
+            key={`${name}-${index}`}
             title={name}
           >
-            {name}
+            <span
+              className={cn(
+                "min-w-0",
+                hasMultipleAttendees
+                  ? "line-clamp-2 break-words"
+                  : "truncate",
+              )}
+            >
+              {name}
+            </span>
           </span>
         ))}
       </div>

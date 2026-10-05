@@ -632,10 +632,12 @@ Recorrido manual recomendado:
     calendarios afectados.
 18. Abre Agenda en la vista **Cabinas** y localiza la reserva de las 12:00 en
     la cabina doble de Mítikah. La hora sólo debe aparecer en el eje lateral;
-    dentro de la tarjeta deben verse centrados los dos visitantes y el estado
-    compartido. Esta representación conserva una sola reserva canónica con dos
-    personas, dos especialistas y capacidad 2, por lo que ventas, ocupación y
-    reportes no se duplican artificialmente.
+    dentro de la tarjeta deben verse los dos visitantes en mitades horizontales
+    del mismo ancho, separados por una línea vertical, y el estado compartido.
+    Una cabina triple divide el ancho en tres partes. Esta representación
+    conserva una sola reserva canónica con sus personas, especialistas y
+    capacidad, por lo que ventas, ocupación y reportes no se duplican
+    artificialmente.
 19. Abre **Nueva reserva**, escribe un cliente que no exista y pulsa **Nuevo
     cliente**. La primera pantalla debe mostrar únicamente nombre, apellido,
     teléfono, correo, representante de cartera y los campos configurables del
@@ -739,6 +741,12 @@ hora que ya muestra el eje y ahora centra visitantes y status. El contexto de
 la cita expone los nombres de sus asistentes para que una cabina doble muestre
 sus dos personas dentro de la misma reserva; el contrato conserva el fallback
 al cliente principal cuando no existe un registro de atención en cabina.
+
+El 5 de octubre de 2026 los ocupantes de una reserva se distribuyeron
+horizontalmente dentro de la tarjeta. Una cabina doble divide el ancho en dos y
+una triple en tres, con separadores verticales, nombres de hasta dos líneas y un
+solo status compartido. El cambio es únicamente visual y no crea citas,
+ocupaciones ni ventas adicionales.
 
 El 4 de octubre de 2026 el alta de cliente desde Agenda se separó de la reserva
 en dos pasos. El primer paso reutiliza el mismo borrador para guardar identidad,
