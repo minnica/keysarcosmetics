@@ -628,6 +628,12 @@ Recorrido manual recomendado:
     con **Todos los calendarios de esta sucursal** y después con **Todos los
     calendarios del módulo**; antes de guardar debe mostrarse el total exacto de
     calendarios afectados.
+18. Abre Agenda en la vista **Cabinas** y localiza la reserva de las 12:00 en
+    la cabina doble de Mítikah. La hora sólo debe aparecer en el eje lateral;
+    dentro de la tarjeta deben verse centrados los dos visitantes y el estado
+    compartido. Esta representación conserva una sola reserva canónica con dos
+    personas, dos especialistas y capacidad 2, por lo que ventas, ocupación y
+    reportes no se duplican artificialmente.
 
 ## Dónde trabajar
 
@@ -710,6 +716,12 @@ suite aislada de diseño en 27; también se validaron TypeScript, lint y
 `build:design`. La revisión React confirmó claves estables, estado derivado sin
 efectos adicionales, controles accesibles con nombre y foco, y ausencia de
 nuevas dependencias o componentes duplicados.
+
+El 4 de octubre de 2026 se simplificó la tarjeta de Agenda: dejó de repetir la
+hora que ya muestra el eje y ahora centra visitantes y status. El contexto de
+la cita expone los nombres de sus asistentes para que una cabina doble muestre
+sus dos personas dentro de la misma reserva; el contrato conserva el fallback
+al cliente principal cuando no existe un registro de atención en cabina.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

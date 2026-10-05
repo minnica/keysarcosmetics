@@ -2572,6 +2572,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             )[0];
           const context: DesignAppointmentContext = {
             appointmentId,
+            attendeeNames:
+              visit?.visitors.map((visitor) => visitor.name) ??
+              [appointmentItem.customerName],
             attendingSpecialistProfileIds: [
               "ARRIVED",
               "WAITING",

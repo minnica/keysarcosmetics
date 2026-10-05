@@ -162,6 +162,68 @@ function nextAppointmentLabel(context?: DesignAppointmentContext) {
   }).format(new Date(context.nextAppointmentAt));
 }
 
+interface SchedulerAppointmentSummaryProps {
+  booking: Booking;
+  context: DesignAppointmentContext | undefined;
+  statusColor: string;
+  statusLabel: string;
+}
+
+function SchedulerAppointmentSummary({
+  booking,
+  context,
+  statusColor,
+  statusLabel,
+}: SchedulerAppointmentSummaryProps) {
+  const attendeeNames = Array.from(
+    new Set(
+      (context?.attendeeNames.length
+        ? context.attendeeNames
+        : [booking.customerName]
+      )
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ),
+  );
+  const hasMultipleAttendees = attendeeNames.length > 1;
+
+  return (
+    <div className="scheduler-appointment-summary flex h-full min-w-0 flex-col items-center justify-center">
+      <SchedulerStatusBadge
+        className="scheduler-appointment-status-badge max-w-[88%]"
+        color={statusColor}
+        compact
+        hasPurchase={
+          booking.purchased === true && (booking.purchaseAmount ?? 0) > 0
+        }
+        label={statusLabel}
+        status={booking.status}
+      />
+      <div
+        className={cn(
+          "scheduler-appointment-attendees grid w-full min-w-0 grid-cols-1 items-center",
+          hasMultipleAttendees ? "gap-0" : "gap-0.5",
+        )}
+      >
+        {attendeeNames.map((name) => (
+          <span
+            className={cn(
+              "scheduler-appointment-attendee min-w-0 text-center font-semibold leading-[1.05]",
+              hasMultipleAttendees
+                ? "truncate border-t border-current/10 px-1 pt-px text-[0.58rem]"
+                : "truncate text-[0.82rem]",
+            )}
+            key={name}
+            title={name}
+          >
+            {name}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const compactAgendaMediaQuery = [
   "(min-width: 1024px) and (max-height: 900px)",
   "(min-width: 1024px) and (any-pointer: coarse) and (max-height: 1100px)",
@@ -833,28 +895,12 @@ export function SchedulerAgendaGrid({
                               }}
                               type="button"
                             >
-                              <div className="scheduler-appointment-meta mb-1 flex items-center justify-between gap-2">
-                                <span className="scheduler-appointment-time text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
-                                  {booking.start}
-                                </span>
-                                <SchedulerStatusBadge
-                                  className="scheduler-appointment-status-badge max-w-[68%]"
-                                  color={statusColor}
-                                  compact
-                                  hasPurchase={
-                                    booking.purchased === true &&
-                                    (booking.purchaseAmount ?? 0) > 0
-                                  }
-                                  label={statusLabels[booking.status]}
-                                  status={booking.status}
-                                />
-                              </div>
-                              <p className="scheduler-appointment-title line-clamp-2 text-[0.96rem] font-semibold tracking-[-0.02em]">
-                                {booking.customerName}
-                              </p>
-                              <p className="scheduler-appointment-detail mt-1 truncate text-[0.74rem] uppercase tracking-[0.12em] opacity-75">
-                                {booking.serviceName}
-                              </p>
+                              <SchedulerAppointmentSummary
+                                booking={booking}
+                                context={appointmentContexts[booking.id]}
+                                statusColor={statusColor}
+                                statusLabel={statusLabels[booking.status]}
+                              />
                             </button>
                           </DialogTrigger>
                         </TooltipTrigger>
@@ -865,7 +911,10 @@ export function SchedulerAgendaGrid({
                           sideOffset={10}
                         >
                           <p className="font-semibold">
-                            {booking.customerName}
+                            {appointmentContexts[
+                              booking.id
+                            ]?.attendeeNames.join(" · ") ??
+                              booking.customerName}
                           </p>
                           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
                             <dt>Horario</dt>
@@ -1247,28 +1296,12 @@ export function SchedulerAgendaGrid({
                               }}
                               type="button"
                             >
-                              <div className="scheduler-appointment-meta mb-1 flex items-center justify-between gap-2">
-                                <span className="scheduler-appointment-time text-[0.68rem] font-semibold uppercase tracking-[0.18em] opacity-70">
-                                  {booking.start}
-                                </span>
-                                <SchedulerStatusBadge
-                                  className="scheduler-appointment-status-badge max-w-[68%]"
-                                  color={statusColor}
-                                  compact
-                                  hasPurchase={
-                                    booking.purchased === true &&
-                                    (booking.purchaseAmount ?? 0) > 0
-                                  }
-                                  label={statusLabels[booking.status]}
-                                  status={booking.status}
-                                />
-                              </div>
-                              <p className="scheduler-appointment-title line-clamp-2 text-[0.9rem] font-semibold">
-                                {booking.customerName}
-                              </p>
-                              <p className="scheduler-appointment-detail mt-1 truncate text-[0.7rem] uppercase tracking-[0.12em] opacity-75">
-                                {booking.serviceName}
-                              </p>
+                              <SchedulerAppointmentSummary
+                                booking={booking}
+                                context={appointmentContexts[booking.id]}
+                                statusColor={statusColor}
+                                statusLabel={statusLabels[booking.status]}
+                              />
                             </button>
                           </DialogTrigger>
                         </TooltipTrigger>
@@ -1279,7 +1312,10 @@ export function SchedulerAgendaGrid({
                           sideOffset={10}
                         >
                           <p className="font-semibold">
-                            {booking.customerName}
+                            {appointmentContexts[
+                              booking.id
+                            ]?.attendeeNames.join(" · ") ??
+                              booking.customerName}
                           </p>
                           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
                             <dt>Horario</dt>

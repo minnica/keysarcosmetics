@@ -1023,6 +1023,10 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
   assert.equal(contexts.body.data[appointmentId].purchaseKind, "FULL");
   assert.equal(contexts.body.data[appointmentId].saleAmount, 1750);
   assert.deepEqual(
+    contexts.body.data[appointmentId].attendeeNames,
+    saved.body.data.visitors.map((visitor) => visitor.name),
+  );
+  assert.deepEqual(
     contexts.body.data[appointmentId].attendingSpecialistProfileIds,
     [],
   );

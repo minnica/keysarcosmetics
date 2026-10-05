@@ -860,6 +860,7 @@ export function ApiAgendaWorkspace() {
         contexts[bookingSourceId(booking)] ??
           ({
             appointmentId: bookingSourceId(booking),
+            attendeeNames: [booking.customerName],
             attendingSpecialistProfileIds: [],
             representativeId: null,
             representativeName: null,
