@@ -12,6 +12,7 @@ export type BookingChannel = "web" | "marketplace" | "charly" | "walk-in";
 export type BookingPurchaseType = "cash" | "layaway" | "settlement";
 
 export type BookingStatusColors = Record<BookingStatus, string>;
+export type BookingStatusLabels = Record<BookingStatus, string>;
 
 export interface CommerceOption {
   id: string;

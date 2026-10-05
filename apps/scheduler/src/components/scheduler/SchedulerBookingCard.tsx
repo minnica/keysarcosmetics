@@ -34,11 +34,12 @@ import {
   X,
 } from "lucide-react";
 import {
-  bookingStatuses,
   type Booking,
   type BookingStatus,
   type BookingStatusColors,
+  type BookingStatusLabels,
 } from "@/lib/scheduler-presentation";
+import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
 import {
   canManageSchedulerPaymentHistory,
   type SchedulerFinancialAuditEvent,
@@ -61,6 +62,7 @@ interface SchedulerBookingCardProps {
   financialAuditEvents: SchedulerFinancialAuditEvent[];
   selectedDate: Date;
   statusColors: BookingStatusColors;
+  statusLabels: BookingStatusLabels;
   onEdit: (booking: Booking) => void;
   onDelete: (bookingId: string) => void;
   onStatusChange: (bookingId: string, status: BookingStatus) => void;
@@ -119,6 +121,7 @@ export function SchedulerBookingCard({
   financialAuditEvents,
   selectedDate,
   statusColors,
+  statusLabels,
   onEdit,
   onDelete,
   onStatusChange,
@@ -144,18 +147,11 @@ export function SchedulerBookingCard({
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editingAmount, setEditingAmount] = useState("");
   const [editingTentativeAmount, setEditingTentativeAmount] = useState("");
-  const [statusCorrectionOpen, setStatusCorrectionOpen] = useState(false);
-  const statusMeta = bookingStatuses[booking.status];
   const service = getServiceByName(booking.serviceName);
   const hasPayment =
     typeof booking.purchaseAmount === "number" && booking.purchaseAmount > 0;
-  const availableStatusTransitions = statusTransitions[booking.status].filter(
+  const availableStatuses = statusCorrectionOrder.filter(
     (status) => !visibleStatuses || visibleStatuses.has(status),
-  );
-  const availableStatusCorrections = statusCorrectionOrder.filter(
-    (status) =>
-      status !== booking.status &&
-      (!visibleStatuses || visibleStatuses.has(status)),
   );
   const isCompleted =
     Boolean(booking.serviceRecords?.length) ||
@@ -228,7 +224,8 @@ export function SchedulerBookingCard({
               </span>
             </p>
             <p className="mt-1 text-[0.78rem] text-slate-500">
-              Vendedor de cartera: {appointmentContext?.portfolioSellerName ?? "Sin asignar"}
+              Vendedor de cartera:{" "}
+              {appointmentContext?.portfolioSellerName ?? "Sin asignar"}
             </p>
           </div>
         </div>
@@ -629,101 +626,96 @@ export function SchedulerBookingCard({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div
-          className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-[0.9rem]"
-          style={{
-            backgroundColor: `color-mix(in srgb, ${statusColors[booking.status]} 10%, white)`,
-            borderColor: `color-mix(in srgb, ${statusColors[booking.status]} 28%, white)`,
-            color: `color-mix(in srgb, ${statusColors[booking.status]} 72%, #364152)`,
-          }}
-        >
-          <span
-            className="h-[18px] w-[18px] rounded-full border-2 border-white"
-            style={{ backgroundColor: statusColors[booking.status] }}
-          />
-          <span className="font-medium">{statusMeta.label}</span>
-        </div>
-        {!canWrite ? (
-          <div className="ml-auto inline-flex items-center gap-1.5 text-[0.82rem] font-medium text-slate-600">
-            <LockKeyhole className="h-3.5 w-3.5" />
-            Sólo lectura
+      <section className="space-y-2.5 rounded-2xl border border-[rgba(236,209,200,0.82)] bg-white/70 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[0.78rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              Estados configurados
+            </p>
+            <p className="mt-0.5 text-[0.72rem] text-slate-400">
+              Se muestran nombre y color autorizados para la agenda.
+            </p>
           </div>
-        ) : (
-          <>
-            {isCompleted ? (
-              <div className="inline-flex items-center gap-1.5 text-[0.78rem] font-medium text-slate-500">
-                <LockKeyhole className="h-3.5 w-3.5" />
-                Registro finalizado
-              </div>
+          <div className="inline-flex items-center gap-1.5 text-[0.74rem] font-medium text-slate-500">
+            {canWrite ? (
+              <>
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Código requerido
+              </>
             ) : (
-              availableStatusTransitions.map((status) => (
-                <button
-                  key={status}
-                  aria-label={`Cambiar estado a ${bookingStatuses[status].label}`}
-                  aria-pressed={status === booking.status}
-                  className={cn(
-                    "h-5 w-5 rounded-full border border-white transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2",
-                    status === booking.status
-                      ? "ring-2 ring-offset-2 ring-[rgba(195,165,131,0.5)]"
-                      : "",
-                  )}
-                  style={{ backgroundColor: statusColors[status] }}
-                  onClick={() => onStatusChange(booking.id, status)}
-                  title={bookingStatuses[status].label}
-                  type="button"
-                />
-              ))
+              <>
+                <LockKeyhole className="h-3.5 w-3.5" />
+                Sólo lectura
+              </>
             )}
-            <Dialog
-              open={statusCorrectionOpen}
-              onOpenChange={setStatusCorrectionOpen}
-            >
-              <DialogTrigger asChild>
-                <button
-                  className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[rgba(236,209,200,0.95)] bg-white px-2.5 text-[0.76rem] font-semibold text-[var(--scheduler-ink-strong)] hover:bg-[#fbf8f4]"
-                  type="button"
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {availableStatuses.map((status) => {
+            const tokens = getSchedulerStatusColorTokens(statusColors[status]);
+            const isCurrent = status === booking.status;
+            const isDirectTransition =
+              statusTransitions[booking.status].includes(status);
+            const content = (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white"
+                  style={{ backgroundColor: tokens.accent }}
+                />
+                <span>{statusLabels[status]}</span>
+                {isCurrent ? (
+                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[0.58rem] font-bold uppercase tracking-[0.08em]">
+                    Actual
+                  </span>
+                ) : null}
+              </>
+            );
+            const style = {
+              backgroundColor: tokens.surface,
+              borderColor: tokens.border,
+              color: tokens.foreground,
+            };
+
+            if (isCurrent || !canWrite) {
+              return (
+                <span
+                  aria-current={isCurrent ? "true" : undefined}
+                  className={cn(
+                    "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-[0.76rem] font-semibold",
+                    !isCurrent && "opacity-70",
+                  )}
+                  key={status}
+                  style={style}
                 >
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  Corregir status
-                </button>
-              </DialogTrigger>
-              <DialogContent className="scheduler-modal-shell max-w-[460px] rounded-2xl border-0 bg-white p-0 shadow-[0_20px_60px_rgba(15,23,42,0.2)]">
-                <DialogHeader className="border-b border-[rgba(236,209,200,0.88)] px-5 py-4 text-left">
-                  <DialogTitle className="text-[1.2rem] text-[var(--scheduler-ink-strong)]">
-                    Corregir status de la cita
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 px-5 pb-5">
-                  <p className="text-sm leading-5 text-slate-600">
-                    El status anterior permanecerá en el historial. Para aplicar
-                    la corrección se solicitará un código personal autorizado.
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {availableStatusCorrections.map((status) => (
-                      <button
-                        key={status}
-                        className="flex min-h-11 items-center gap-2.5 rounded-xl border border-slate-200 px-3 text-left text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                        onClick={() => {
-                          setStatusCorrectionOpen(false);
-                          onStatusChange(booking.id, status);
-                        }}
-                        type="button"
-                      >
-                        <span
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: statusColors[status] }}
-                        />
-                        {bookingStatuses[status].label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </>
-        )}
-      </div>
+                  {content}
+                </span>
+              );
+            }
+
+            return (
+              <button
+                aria-label={`${isDirectTransition ? "Cambiar" : "Corregir"} estado a ${statusLabels[status]}`}
+                className="inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-[0.76rem] font-semibold transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
+                key={status}
+                onClick={() => onStatusChange(booking.id, status)}
+                style={style}
+                title={`${isDirectTransition ? "Cambiar" : "Corregir"} a ${statusLabels[status]} con código autorizado`}
+                type="button"
+              >
+                {content}
+              </button>
+            );
+          })}
+        </div>
+        {canWrite && isCompleted ? (
+          <p className="flex items-center gap-1.5 text-[0.7rem] text-slate-500">
+            <LockKeyhole className="h-3.5 w-3.5" />
+            El registro está finalizado; cualquier corrección conserva el
+            historial y solicita un código autorizado.
+          </p>
+        ) : null}
+      </section>
 
       {!financialHistoryReadOnly &&
       booking.status === "arrived" &&

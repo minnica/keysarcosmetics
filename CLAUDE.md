@@ -1851,6 +1851,14 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
   vistas diaria, semanal y de lista.
 - El tooltip de la reserva repite la etiqueta coloreada. En layouts compactos la
   franja permanece visible aunque se oculten metadatos secundarios.
+- El detalle de la cita muestra todos los estados activos y visibles como chips
+  con nombre y color configurados; el actual lleva la marca **Actual**. Una
+  sesión de escritura puede elegir cualquier chip, pero la mutación conserva la
+  autorización `STATUS:<canonicalStatus>` y solicita un código válido. En sólo
+  lectura se presenta la misma paleta sin acciones.
+- `ApiAgendaWorkspace` resuelve etiqueta y color desde `DesignStatusDefinition`
+  cuando existe el catálogo de diseño y conserva los valores canónicos como
+  fallback. La cuadrícula, tooltip, lista y detalle reciben la misma proyección.
 - La normalización visual está centralizada en
   `apps/scheduler/src/lib/scheduler-status-presentation.ts`; colores inválidos
   usan un gris seguro sin alterar el status ni su historial.

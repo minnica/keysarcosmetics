@@ -33,6 +33,7 @@ import {
   type Booking,
   type BookingStatus,
   type BookingStatusColors,
+  type BookingStatusLabels,
   type Professional,
   type SchedulerView,
 } from "@/lib/scheduler-presentation";
@@ -77,6 +78,7 @@ interface SchedulerAgendaGridProps {
   visibleProfessionals: Professional[];
   visibleBookings: Booking[];
   statusColors: BookingStatusColors;
+  statusLabels: BookingStatusLabels;
   allBookings: Booking[];
   visibleBlocks: AvailabilityBlock[];
   selectedDate: Date;
@@ -231,6 +233,7 @@ export function SchedulerAgendaGrid({
   visibleProfessionals,
   visibleBookings,
   statusColors,
+  statusLabels,
   allBookings,
   visibleBlocks,
   selectedDate,
@@ -842,6 +845,7 @@ export function SchedulerAgendaGrid({
                                     booking.purchased === true &&
                                     (booking.purchaseAmount ?? 0) > 0
                                   }
+                                  label={statusLabels[booking.status]}
                                   status={booking.status}
                                 />
                               </div>
@@ -885,6 +889,7 @@ export function SchedulerAgendaGrid({
                                   booking.purchased === true &&
                                   (booking.purchaseAmount ?? 0) > 0
                                 }
+                                label={statusLabels[booking.status]}
                                 status={booking.status}
                               />
                             </dd>
@@ -975,6 +980,7 @@ export function SchedulerAgendaGrid({
                           )}
                           selectedDate={selectedDate}
                           statusColors={statusColors}
+                          statusLabels={statusLabels}
                           onDelete={onDeleteBooking}
                           onEdit={onEditBooking}
                           onOpenDetail={onOpenBookingDetail}
@@ -1253,6 +1259,7 @@ export function SchedulerAgendaGrid({
                                     booking.purchased === true &&
                                     (booking.purchaseAmount ?? 0) > 0
                                   }
+                                  label={statusLabels[booking.status]}
                                   status={booking.status}
                                 />
                               </div>
@@ -1296,6 +1303,7 @@ export function SchedulerAgendaGrid({
                                   booking.purchased === true &&
                                   (booking.purchaseAmount ?? 0) > 0
                                 }
+                                label={statusLabels[booking.status]}
                                 status={booking.status}
                               />
                             </dd>
@@ -1390,6 +1398,7 @@ export function SchedulerAgendaGrid({
                             )
                           }
                           statusColors={statusColors}
+                          statusLabels={statusLabels}
                           onDelete={onDeleteBooking}
                           onEdit={onEditBooking}
                           onOpenDetail={onOpenBookingDetail}

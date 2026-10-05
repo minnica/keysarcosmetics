@@ -395,6 +395,15 @@ retira las reservas de ese estado de las vistas diaria, semanal y lista, y evita
 ofrecer esa transición; no elimina la definición ni sus citas, y reportes,
 dashboard y revisiones históricas conservan los registros anteriores.
 
+Al abrir una cita, la sección **Estados configurados** muestra todos los estados
+activos con **Mostrar en la agenda**, cada uno como un chip con su nombre y color
+vigentes; el estado actual queda identificado explícitamente. Ya no se presentan
+círculos anónimos. En una sesión de escritura, elegir cualquier chip solicita el
+código personal autorizado para ese status; las correcciones de una cita
+finalizada conservan la transición anterior en el historial. En sólo lectura se
+mantiene visible la paleta completa, pero ningún chip ejecuta cambios. Tarjetas,
+tooltip y vista de lista usan la misma etiqueta configurada y el mismo color.
+
 Los ocho estados canónicos sincronizan el color de su versión activa con la
 Agenda. Los estados personalizados se muestran y versionan en la propuesta,
 pero asignarlos a citas reales requiere ampliar de forma aditiva el enum,
@@ -694,6 +703,13 @@ genera un movimiento autorizado sin almacenar el código personal. La regla de
 inmutabilidad comprueba además que **En espera** sigue siendo editable, mientras
 **Llegó**, **Atendida**, compra y apartado bloquean otro arrastre tanto en UI
 como en el API simulado.
+
+El 4 de octubre de 2026 se añadieron pruebas para resolver etiquetas de status
+configuradas con fallback canónico. La suite completa quedó en 84 pruebas y la
+suite aislada de diseño en 27; también se validaron TypeScript, lint y
+`build:design`. La revisión React confirmó claves estables, estado derivado sin
+efectos adicionales, controles accesibles con nombre y foco, y ausencia de
+nuevas dependencias o componentes duplicados.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

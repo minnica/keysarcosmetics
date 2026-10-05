@@ -1,4 +1,17 @@
+import type { BookingStatusLabels } from "./scheduler-presentation";
+
 const fallbackSchedulerStatusColor = "#94a3b8";
+
+const defaultSchedulerStatusLabels: BookingStatusLabels = {
+  pending: "Pendiente",
+  reserved: "Reservado",
+  confirmed: "Confirmado",
+  arrived: "Llegó",
+  waiting: "En espera",
+  attended: "Atendido",
+  "no-show": "No asistió",
+  canceled: "Cancelado",
+};
 
 export interface SchedulerStatusColorTokens {
   accent: string;
@@ -20,4 +33,10 @@ export function getSchedulerStatusColorTokens(
     border: `color-mix(in srgb, ${accent} 32%, white)`,
     foreground: `color-mix(in srgb, ${accent} 74%, #263649)`,
   };
+}
+
+export function buildSchedulerStatusLabels(
+  overrides: Partial<BookingStatusLabels> = {},
+): BookingStatusLabels {
+  return { ...defaultSchedulerStatusLabels, ...overrides };
 }

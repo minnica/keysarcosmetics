@@ -63,9 +63,8 @@ const {
   isSchedulerCabinColumn,
   shouldFitSchedulerAgendaColumns,
 } = loadSource("scheduler-agenda-layout");
-const { getSchedulerStatusColorTokens } = loadSource(
-  "scheduler-status-presentation",
-);
+const { buildSchedulerStatusLabels, getSchedulerStatusColorTokens } =
+  loadSource("scheduler-status-presentation");
 const { canMoveSchedulerBooking } = loadSource("scheduler-appointment-move");
 
 test("moves only editable appointments without a purchase or layaway", () => {
@@ -85,6 +84,18 @@ test("keeps the configured status color visible on every reservation", () => {
   assert.equal(tokens.border, "color-mix(in srgb, #c026d3 32%, white)");
   assert.equal(tokens.foreground, "color-mix(in srgb, #c026d3 74%, #263649)");
   assert.equal(getSchedulerStatusColorTokens("not-a-color").accent, "#94a3b8");
+});
+
+test("uses configured status labels without losing canonical fallbacks", () => {
+  const labels = buildSchedulerStatusLabels({
+    confirmed: "Confirmación autorizada",
+    arrived: "Cliente en sucursal",
+  });
+
+  assert.equal(labels.confirmed, "Confirmación autorizada");
+  assert.equal(labels.arrived, "Cliente en sucursal");
+  assert.equal(labels.attended, "Atendido");
+  assert.equal(labels.canceled, "Cancelado");
 });
 const {
   buildSchedulerQueryScope,
@@ -517,10 +528,10 @@ test("shows appointments under specialists only after actual attendance is captu
     presentation,
     { "appointment-1": ["professional-1"] },
   );
-  assert.deepEqual(
-    Array.from(afterAttendance.appointments[0].columnIds),
-    ["resource:resource-1", "professional:professional-1"],
-  );
+  assert.deepEqual(Array.from(afterAttendance.appointments[0].columnIds), [
+    "resource:resource-1",
+    "professional:professional-1",
+  ]);
 });
 
 test("scopes repeated professional columns by branch for combined agendas", () => {

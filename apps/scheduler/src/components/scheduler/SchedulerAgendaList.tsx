@@ -7,6 +7,7 @@ import { es } from "date-fns/locale";
 import {
   type Booking,
   type BookingStatusColors,
+  type BookingStatusLabels,
   type Professional,
 } from "@/lib/scheduler-presentation";
 import { SchedulerAvatar } from "./SchedulerAvatar";
@@ -18,6 +19,7 @@ interface SchedulerAgendaListProps {
   professionals: Professional[];
   selectedDate: Date;
   statusColors: BookingStatusColors;
+  statusLabels: BookingStatusLabels;
   onOpenBooking: (booking: Booking) => void;
   onOpenNewBooking: () => void;
   canWrite?: boolean;
@@ -28,6 +30,7 @@ export function SchedulerAgendaList({
   professionals,
   selectedDate,
   statusColors,
+  statusLabels,
   onOpenBooking,
   onOpenNewBooking,
   canWrite = true,
@@ -137,6 +140,7 @@ export function SchedulerAgendaList({
                     booking.purchased === true &&
                     (booking.purchaseAmount ?? 0) > 0
                   }
+                  label={statusLabels[booking.status]}
                   status={booking.status}
                 />
               </button>

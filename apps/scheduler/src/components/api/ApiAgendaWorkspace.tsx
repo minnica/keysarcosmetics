@@ -62,9 +62,11 @@ import {
   type Booking,
   type BookingStatus,
   type BookingStatusColors,
+  type BookingStatusLabels,
   type BranchOption,
   type CommerceOption,
 } from "@/lib/scheduler-presentation";
+import { buildSchedulerStatusLabels } from "@/lib/scheduler-status-presentation";
 import type { SchedulerClient } from "@/lib/scheduler-client-presentation";
 import {
   adaptSchedulerCustomerSummary,
@@ -513,6 +515,20 @@ export function ApiAgendaWorkspace() {
       ),
     [statusDefinitions.data?.items],
   );
+  const statusLabels = useMemo(() => {
+    const overrides: Partial<BookingStatusLabels> = {};
+    for (const definition of statusDefinitions.data?.items ?? []) {
+      if (
+        !definition.canonicalStatus ||
+        !definition.active ||
+        !definition.visibleInAgenda
+      )
+        continue;
+      overrides[schedulerCanonicalToBookingStatus[definition.canonicalStatus]] =
+        definition.label;
+    }
+    return buildSchedulerStatusLabels(overrides);
+  }, [statusDefinitions.data?.items]);
   const range = useMemo(
     () => buildSchedulerAgendaRange(selectedDate, currentView),
     [currentView, selectedDate],
@@ -886,8 +902,17 @@ export function ApiAgendaWorkspace() {
     for (const color of configured?.colors ?? []) {
       next[schedulerCanonicalToBookingStatus[color.status]] = color.color;
     }
+    for (const definition of statusDefinitions.data?.items ?? []) {
+      if (!definition.canonicalStatus || !definition.active) continue;
+      next[schedulerCanonicalToBookingStatus[definition.canonicalStatus]] =
+        definition.color;
+    }
     return next;
-  }, [administrationCatalog.data?.statusColors, selectedCommerce]);
+  }, [
+    administrationCatalog.data?.statusColors,
+    selectedCommerce,
+    statusDefinitions.data?.items,
+  ]);
   const allBookings = useMemo(() => {
     const contexts = appointmentContexts.data ?? {};
     return (
@@ -3113,6 +3138,7 @@ export function ApiAgendaWorkspace() {
                   paymentHistoryByClient={paymentHistoryByClient}
                   slotMinutes={agendaSlotMinutes}
                   statusColors={statusColors}
+                  statusLabels={statusLabels}
                   showSellerComments={showSellerComments}
                   showPostSaleComments={showPostSaleComments}
                   visibleBlocks={visibleBlocks}
@@ -3134,6 +3160,7 @@ export function ApiAgendaWorkspace() {
                   professionals={visibleColumns}
                   selectedDate={selectedDate}
                   statusColors={statusColors}
+                  statusLabels={statusLabels}
                 />
               )}
             </QueryBoundary>

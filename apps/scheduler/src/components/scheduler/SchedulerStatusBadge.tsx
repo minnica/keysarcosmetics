@@ -11,6 +11,7 @@ interface SchedulerStatusBadgeProps {
   className?: string;
   compact?: boolean;
   hasPurchase?: boolean;
+  label?: string;
 }
 
 export function SchedulerStatusBadge({
@@ -19,6 +20,7 @@ export function SchedulerStatusBadge({
   className,
   compact = false,
   hasPurchase = false,
+  label,
 }: SchedulerStatusBadgeProps) {
   const tokens = getSchedulerStatusColorTokens(color);
 
@@ -45,7 +47,7 @@ export function SchedulerStatusBadge({
         )}
         style={{ backgroundColor: tokens.accent }}
       />
-      <span className="truncate">{bookingStatuses[status].label}</span>
+      <span className="truncate">{label ?? bookingStatuses[status].label}</span>
       {hasPurchase ? (
         <span
           aria-label="Venta o apartado registrado"
