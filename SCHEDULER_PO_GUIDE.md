@@ -122,22 +122,32 @@ completo permanece disponible al colocar el cursor sobre la cita. El tooltip
 muestra cliente, horario, servicio, especialista, estado, contacto y notas.
 
 Las citas **Pendiente**, **Reservada** o **Confirmada** se pueden mover con el
-mouse. En vista diaria se arrastran verticalmente a otra franja de la misma
-cabina o especialista; en vista semanal también se pueden soltar en otro día.
-La celda destino se resalta antes de soltar. El movimiento conserva duración,
-servicios, capacidad, membresía, cabina y especialistas: todos los servicios se
-desplazan por el mismo intervalo, sin reasignar participantes. Para cambiar de
-cabina o especialista se mantiene el formulario **Editar**, que también es la
-alternativa accesible cuando no se usa arrastre.
+mouse sólo cuando la sesión tiene `agenda:WRITE`, el mismo permiso usado para
+editar una cita. En vista diaria se arrastran a otra hora, cabina o especialista
+de la misma sucursal; en vista semanal también se pueden soltar en otro día sin
+cambiar su asignación. La celda destino se resalta antes de soltar y las sesiones
+de sólo lectura no muestran tarjetas arrastrables ni aceptan destinos.
+
+Soltar sobre una cabina sustituye únicamente el recurso de tipo `ROOM`, conserva
+equipos auxiliares y adopta la capacidad configurada de la cabina destino.
+Soltar sobre una especialista la convierte en responsable principal y conserva
+especialistas de apoyo distintos. Todos los servicios se desplazan por el mismo
+intervalo y conservan membresía. El formulario **Editar** sigue siendo la
+alternativa accesible y el flujo requerido para cambiar de sucursal.
 
 Soltar una cita solicita un código con permiso `APPOINTMENT_MOVE`. El servidor
 vuelve a validar versión, horario de sucursal, descansos, bloqueos, cabina,
 especialistas y solapamientos; si existe conflicto, la cita permanece en su
 horario original. Llegadas, citas atendidas, canceladas o no asistidas no son
 arrastrables. El movimiento exitoso agrega la acción **Cambio de horario por
-arrastre** a la bitácora sin guardar el código personal. No se propone un endpoint
-nuevo: se reutiliza `POST /api/scheduler/appointments/:id/move` y el contrato de
-autorización existente.
+arrastre** o **Cambio de horario y asignación por arrastre** a la bitácora, con
+columna anterior/nueva pero sin guardar el código personal. Agenda invalida
+también los reportes; la proyección de visita conserva sincronizados cabina,
+capacidad y especialista para que dashboard, desglose por cabina y reporte de
+especialistas reflejen el destino. No se propone un endpoint nuevo: se reutiliza
+`POST /api/scheduler/appointments/:id/move` y el contrato de autorización
+existente. La integración productiva debe guardar cita, asignaciones, proyección
+de reporte y auditoría en una operación consistente.
 
 La selección de sucursales de Agenda admite **Todas**, **Disponibles en la
 fecha** o una combinación manual. Cada sucursal conserva su consulta, zona
@@ -496,12 +506,15 @@ Recorrido manual recomendado:
    sin revelar a quién pertenece.
 3. Crea o modifica una cita con un código válido y confirma que el calendario
    cabe en la ventana y que el hover muestra el detalle. Arrastra una cita
-   confirmada a otra hora dentro de su misma columna, autoriza el cambio y
-   comprueba que conserva duración, cabina, especialistas y servicios. En vista
+   confirmada a otra hora y después a otra cabina de la misma sucursal; autoriza
+   ambos cambios y comprueba que conserva duración, servicios y equipos, adopta
+   la capacidad nueva y aparece en esa cabina en Agenda y Reportes. Repite hacia
+   otra especialista y confirma el nuevo movimiento en la bitácora. En vista
    semanal muévela a otro día; después intenta soltarla sobre un horario ocupado
-   y confirma que permanece en el horario anterior. Una cita atendida no debe
-   mostrar cursor de arrastre y **Editar** debe seguir permitiendo el cambio por
-   teclado.
+   y confirma que permanece en el horario anterior. `limited@example.test` sólo
+   debe poder arrastrar si conserva `agenda:WRITE`; una sesión de consulta y una
+   cita atendida no deben mostrar cursor de arrastre. **Editar** debe seguir
+   permitiendo el cambio por teclado.
 4. Selecciona Todas, Disponibles y una combinación manual de sucursales; comprueba
    el nombre de local en cada columna, alterna el ajuste y abre la impresión diaria.
 5. En Clientes combina cancelación, servicio, cumpleaños, vendedor y un campo
@@ -648,14 +661,16 @@ cancelación, conflictos, duplicados y autorizaciones. Los chunks del build norm
 no contienen el runtime de diseño. Lint conserva tres avisos de `<img>` que ya
 existían en la rama base.
 
-El 4 de octubre de 2026 se repitieron TypeScript, lint, las 79 pruebas y
+El 4 de octubre de 2026 se repitieron TypeScript, lint, las 81 pruebas y
 `build:design` después de incorporar autorizaciones por puesto, copia masiva de
 horarios, paginación del detalle de ventas y movimiento de citas por arrastre.
 La cobertura separa el permiso para **Llegó** del permiso para registrar una
 compra, verifica el rechazo cruzado, conserva el override master, comprueba que
 una ampliación de horario extienda las franjas visibles de Agenda, valida las
 vistas de 20/40/60/todas las filas y confirma que una cita multiservicio mueve
-todas sus líneas por el mismo intervalo sin reasignar cabinas o especialistas.
+todas sus líneas por el mismo intervalo. También comprueba que la reasignación
+de cabina conserva equipos, cambia capacidad, actualiza el reporte de cabinas y
+genera un movimiento autorizado sin almacenar el código personal.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

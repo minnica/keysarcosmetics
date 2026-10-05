@@ -127,7 +127,10 @@ interface SchedulerAgendaGridProps {
 
 export interface SchedulerBookingMoveTarget {
   date: Date;
-  professionalId: string;
+  columnId: string;
+  branchId: string;
+  columnKind: "PROFESSIONAL" | "RESOURCE";
+  resourceKind?: "ROOM" | "EQUIPMENT" | "STATION" | "OTHER";
   startTime: string;
 }
 
@@ -169,7 +172,7 @@ const movableBookingStatuses = new Set<BookingStatus>([
 ]);
 
 function bookingMoveTargetKey(target: SchedulerBookingMoveTarget) {
-  return `${target.date.getFullYear()}-${target.date.getMonth()}-${target.date.getDate()}:${target.startTime}:${target.professionalId}`;
+  return `${target.date.getFullYear()}-${target.date.getMonth()}-${target.date.getDate()}:${target.startTime}:${target.columnId}`;
 }
 
 function useAgendaLayoutMetrics(): SchedulerAgendaLayoutMetrics {
@@ -279,6 +282,10 @@ export function SchedulerAgendaGrid({
   const [gridViewportHeight, setGridViewportHeight] = useState(0);
   const [draggingBooking, setDraggingBooking] = useState<Booking | null>(null);
   const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
+  const visibleColumnById = useMemo(
+    () => new Map(visibleProfessionals.map((column) => [column.id, column])),
+    [visibleProfessionals],
+  );
   const dayCalendarRange = useMemo(
     () =>
       getSchedulerCalendarRange(
@@ -586,7 +593,8 @@ export function SchedulerAgendaGrid({
     return Boolean(
       canWrite &&
       draggingBooking &&
-      draggingBooking.professionalId === target.professionalId,
+      draggingBooking.branchId === target.branchId &&
+      (target.columnKind === "PROFESSIONAL" || target.resourceKind === "ROOM"),
     );
   }
 
@@ -708,7 +716,12 @@ export function SchedulerAgendaGrid({
                       );
                       const moveTarget: SchedulerBookingMoveTarget = {
                         date: selectedDate,
-                        professionalId: professional.id,
+                        columnId: professional.id,
+                        branchId: professional.branchIds[0] ?? "",
+                        columnKind: professional.kind ?? "PROFESSIONAL",
+                        ...(professional.resourceKind
+                          ? { resourceKind: professional.resourceKind }
+                          : {}),
                         startTime: slot,
                       };
                       const moveTargetKey = bookingMoveTargetKey(moveTarget);
@@ -1106,6 +1119,9 @@ export function SchedulerAgendaGrid({
                   <div key={`week-${slot}`} className="contents">
                     <div className="scheduler-time-cell">{slot}</div>
                     {weekDays.map((day) => {
+                      const sourceColumn = draggingBooking
+                        ? visibleColumnById.get(draggingBooking.professionalId)
+                        : undefined;
                       const outsideOperatingHours =
                         isOutsideSchedulerOperatingHours(
                           commerceOperatingHours,
@@ -1115,10 +1131,15 @@ export function SchedulerAgendaGrid({
                         );
                       const moveTarget: SchedulerBookingMoveTarget = {
                         date: day,
-                        professionalId:
-                          draggingBooking?.professionalId ??
-                          visibleProfessionals[0]?.id ??
+                        columnId: sourceColumn?.id ?? "",
+                        branchId:
+                          draggingBooking?.branchId ??
+                          sourceColumn?.branchIds[0] ??
                           "",
+                        columnKind: sourceColumn?.kind ?? "PROFESSIONAL",
+                        ...(sourceColumn?.resourceKind
+                          ? { resourceKind: sourceColumn.resourceKind }
+                          : {}),
                         startTime: slot,
                       };
                       const moveTargetKey = bookingMoveTargetKey(moveTarget);

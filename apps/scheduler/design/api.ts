@@ -22,6 +22,7 @@ import {
   designId,
   designInstant,
   designSessionToken,
+  synchronizeCabinVisitFromAppointment,
   synchronizeAppointmentCabinVisitAssignment,
   type DesignRow,
   type DesignState,
@@ -693,6 +694,22 @@ function checkAppointmentAvailability(
       );
       if (!slots.slots.some((slot) => slot.startsAt === line.startsAt))
         fail(409, "El horario ya no está disponible.", "PROFESSIONAL_BUSY");
+    }
+    const primaryProfessional = line.professionals[0];
+    if (!primaryProfessional) continue;
+    for (const resource of line.resources) {
+      const slots = designAvailability(
+        candidateState,
+        new URLSearchParams({
+          branchId: item.branchId,
+          serviceProfileId: line.serviceProfileId,
+          date,
+          professionalProfileId: primaryProfessional.professionalProfileId,
+          resourceId: resource.resourceId,
+        }),
+      );
+      if (!slots.slots.some((slot) => slot.startsAt === line.startsAt))
+        fail(409, "La cabina ya no está disponible.", "RESOURCE_BUSY");
     }
   }
 }
@@ -3014,6 +3031,16 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     if (id && method === "GET") return appointment(state, id);
     const existing = id ? appointment(state, id) : undefined;
     if (existing) versionGuard(existing, body);
+    if (
+      action === "move" &&
+      existing &&
+      !["PENDING", "RESERVED", "CONFIRMED"].includes(existing.status)
+    ) {
+      fail(
+        409,
+        "Sólo las citas pendientes, reservadas o confirmadas pueden moverse por arrastre.",
+      );
+    }
     if (action === "cancel" || action === "status") {
       const status = action === "cancel" ? "CANCELED" : String(body.status);
       if (
@@ -3099,8 +3126,13 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     const item = buildDesignAppointment(state, input, existing);
     if (action === "move" && existing) item.status = existing.status;
     checkAppointmentAvailability(state, item, existing?.id);
-    if (existing) Object.assign(existing, item);
-    else {
+    if (existing) {
+      Object.assign(existing, item);
+      const existingVisit = state.appointmentCabinVisits[existing.id];
+      if (action === "move" && existingVisit) {
+        synchronizeCabinVisitFromAppointment(state, existing, existingVisit);
+      }
+    } else {
       state.appointments.push(item);
       const customerItem = state.customers.find(
         (candidate) => candidate.id === item.customerId,

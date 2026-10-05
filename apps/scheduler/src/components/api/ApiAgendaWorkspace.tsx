@@ -2416,10 +2416,24 @@ export function ApiAgendaWorkspace() {
       );
       return;
     }
-    if (target.professionalId !== booking.professionalId) {
+    if (target.branchId !== appointment.branchId) {
       toast.error(
-        "Arrastra la cita dentro de su misma cabina o especialista para conservar la asignación.",
+        "Para cambiar de sucursal utiliza Editar; el arrastre sólo mueve dentro de la misma sucursal.",
       );
+      return;
+    }
+    const targetColumn = visualColumns.find(
+      (column) => column.id === target.columnId,
+    );
+    if (!targetColumn?.entityId) {
+      toast.error("No se encontró la cabina o especialista de destino.");
+      return;
+    }
+    if (
+      targetColumn.kind === "RESOURCE" &&
+      targetColumn.resourceKind !== "ROOM"
+    ) {
+      toast.error("Sólo puedes reasignar la cita a una cabina o especialista.");
       return;
     }
     const targetDate = schedulerLocalDateKey(target.date);
@@ -2434,15 +2448,47 @@ export function ApiAgendaWorkspace() {
       );
       return;
     }
-    if (startsAt === appointment.startsAt) {
+    const roomResourceIds =
+      catalog.data?.resources
+        .filter((resource) => resource.kind === "ROOM")
+        .map((resource) => resource.id) ?? [];
+    const services = buildSchedulerAppointmentMoveServices(
+      appointment.canonical,
+      startsAt,
+      targetColumn.kind === "RESOURCE"
+        ? {
+            roomResourceId: targetColumn.entityId,
+            roomResourceIds,
+            ...(targetColumn.capacity
+              ? { roomCapacity: targetColumn.capacity }
+              : {}),
+          }
+        : { professionalProfileId: targetColumn.entityId },
+    );
+    const assignmentChanged = services.some((service, index) => {
+      const currentService = appointment.canonical.services[index];
+      if (!currentService) return true;
+      const currentProfessionalIds = currentService.professionals.map(
+        (professional) => professional.professionalProfileId,
+      );
+      const currentResourceIds = currentService.resources.map(
+        (resource) => resource.resourceId,
+      );
+      return (
+        service.professionalProfileIds.join("|") !==
+          currentProfessionalIds.join("|") ||
+        (service.resourceIds ?? []).join("|") !== currentResourceIds.join("|")
+      );
+    });
+    if (startsAt === appointment.startsAt && !assignmentChanged) {
       toast.info("La cita ya se encuentra en ese horario.");
       return;
     }
 
     requestOperationAuthorization(
       {
-        title: "Autorizar cambio de horario",
-        description: `Mover ${appointment.customerName} de ${booking.start} a ${target.startTime}. El servidor validará horario, cabina y especialistas antes de guardar.`,
+        title: "Autorizar cambio de cita",
+        description: `Mover ${appointment.customerName} de ${booking.start} a ${target.startTime} en ${targetColumn.name}. El servidor validará horario, cabina y especialistas antes de guardar.`,
         purpose: "APPOINTMENT_MOVE",
         targetType: "APPOINTMENT",
         targetId: appointment.id,
@@ -2452,33 +2498,37 @@ export function ApiAgendaWorkspace() {
           () =>
             schedulerApi.moveAppointment(appointment.id, {
               startsAt,
-              services: buildSchedulerAppointmentMoveServices(
-                appointment.canonical,
-                startsAt,
-              ),
+              services,
               expectedVersion: appointment.version,
             }),
           {
             onSuccess: async () => {
               await commitAuthorizedOperation(grant, {
-                action: "Cambio de horario por arrastre",
+                action: assignmentChanged
+                  ? "Cambio de horario y asignación por arrastre"
+                  : "Cambio de horario por arrastre",
                 targetType: "APPOINTMENT",
                 targetId: appointment.id,
                 metadata: {
                   branchId: appointment.branchId,
                   previousStartsAt: appointment.startsAt,
                   startsAt,
+                  previousColumnId: booking.professionalId,
+                  targetColumnId: target.columnId,
+                  targetColumnKind: target.columnKind,
+                  targetColumnLabel: targetColumn.name,
+                  assignmentChanged: String(assignmentChanged),
                   source: "DRAG_DROP",
                 },
               });
               await appointmentContexts.reload();
               toast.success(
-                `Cita movida al ${targetDate} a las ${target.startTime}.`,
+                `Cita movida al ${targetDate} a las ${target.startTime} en ${targetColumn.name}.`,
               );
             },
             onError: toast.error,
             onConflict: setConflict,
-            invalidate: ["agenda"],
+            invalidate: ["agenda", "reports"],
           },
         );
       },

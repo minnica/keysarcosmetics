@@ -589,6 +589,167 @@ test("los códigos de agente son únicos y cada movimiento consume una autorizac
   );
 });
 
+test("mover una cita cambia la cabina del reporte y registra el movimiento autorizado", () => {
+  const { state, request } = session();
+  const appointment = state.appointments.find(
+    (item) => item.status === "CONFIRMED",
+  );
+  const branch = state.catalog.branches.find(
+    (item) => item.branchId === appointment.branchId,
+  );
+  const rooms = state.catalog.resources.filter(
+    (resource) =>
+      resource.active &&
+      resource.kind === "ROOM" &&
+      resource.branchProfileId === branch.id,
+  );
+  const sourceRoom = rooms.find((room) => room.capacity === 1);
+  const targetRoom = rooms.find(
+    (room) => room.id !== sourceRoom.id && room.capacity > 1,
+  );
+  const sourceProfessional = appointment.services[0].professionals[0];
+  const targetProfessional = state.catalog.professionals.find(
+    (professional) =>
+      professional.active &&
+      professional.id !== sourceProfessional.professionalProfileId,
+  );
+  const representative = state.operationAgents.find((agent) => agent.active);
+
+  appointment.services[0].resources = [
+    {
+      resourceId: sourceRoom.id,
+      name: sourceRoom.name,
+      units: 1,
+      exclusive: true,
+    },
+  ];
+  appointment.services[0].capacityUnits = sourceRoom.capacity;
+  state.appointmentCabinVisits[appointment.id] = {
+    appointmentId: appointment.id,
+    cabinResourceId: sourceRoom.id,
+    cabinName: sourceRoom.name,
+    cabinCapacity: sourceRoom.capacity,
+    representativeId: representative.id,
+    representativeName: representative.name,
+    representativeRole: representative.role,
+    representativeSource: representative.source,
+    visitors: [
+      {
+        id: "visitor-drag-report",
+        customerId: appointment.customerId,
+        name: appointment.customerName,
+        specialistProfileId: sourceProfessional.professionalProfileId,
+        purchased: true,
+        purchaseAmount: 900,
+        purchaseKind: "FULL",
+        saleAmount: 900,
+        depositAmount: 900,
+        saleOwnerSpecialistProfileId: sourceProfessional.professionalProfileId,
+        settlementStatus: "PAID",
+        settledAt: appointment.startsAt,
+      },
+    ],
+    updatedAt: appointment.updatedAt,
+  };
+
+  const grantToken = operationToken(
+    request,
+    "APPOINTMENT_MOVE",
+    appointment.id,
+  );
+  const moved = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/move`,
+    {
+      startsAt: appointment.startsAt,
+      expectedVersion: appointment.version,
+      services: appointment.services.map((service) => ({
+        serviceProfileId: service.serviceProfileId,
+        professionalProfileIds: [targetProfessional.id],
+        resourceIds: [targetRoom.id],
+        startsAt: service.startsAt,
+        capacityUnits: targetRoom.capacity,
+        membershipId: service.membership?.membershipId ?? null,
+      })),
+    },
+  );
+  assert.equal(moved.status, 201);
+  assert.equal(
+    state.appointmentCabinVisits[appointment.id].cabinResourceId,
+    targetRoom.id,
+  );
+  assert.equal(
+    state.appointmentCabinVisits[appointment.id].visitors[0]
+      .specialistProfileId,
+    targetProfessional.id,
+  );
+
+  const report = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/cabin-sales",
+    {
+      dateFrom: state.controls.date,
+      dateTo: state.controls.date,
+      branchIds: [appointment.branchId],
+      query: appointment.customerName,
+    },
+  );
+  assert.equal(report.status, 201);
+  const reportRow = report.body.data.rows.find(
+    (row) => row.appointmentId === appointment.id,
+  );
+  assert.equal(reportRow.cabinResourceId, targetRoom.id);
+  assert.equal(reportRow.attendingSpecialistProfileId, targetProfessional.id);
+
+  const committed = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations/commit",
+    {
+      token: grantToken,
+      action: "Cambio de horario y asignación por arrastre",
+      targetType: "APPOINTMENT",
+      targetId: appointment.id,
+      metadata: {
+        previousColumnId: `resource:${sourceRoom.id}`,
+        targetColumnId: `resource:${targetRoom.id}`,
+        source: "DRAG_DROP",
+      },
+    },
+  );
+  assert.equal(committed.status, 201);
+  assert.equal(
+    committed.body.data.metadata.targetColumnId,
+    `resource:${targetRoom.id}`,
+  );
+
+  const { state: readOnlyState, request: readOnlyRequest } = session(
+    "normal",
+    "read-only",
+  );
+  const readOnlyAppointment = readOnlyState.appointments.find(
+    (item) => item.status === "CONFIRMED",
+  );
+  const denied = readOnlyRequest(
+    "POST",
+    `/api/scheduler/appointments/${readOnlyAppointment.id}/move`,
+    {
+      startsAt: readOnlyAppointment.startsAt,
+      expectedVersion: readOnlyAppointment.version,
+      services: readOnlyAppointment.services.map((service) => ({
+        serviceProfileId: service.serviceProfileId,
+        professionalProfileIds: service.professionals.map(
+          (professional) => professional.professionalProfileId,
+        ),
+        resourceIds: service.resources.map((resource) => resource.resourceId),
+        startsAt: service.startsAt,
+        capacityUnits: service.capacityUnits,
+        membershipId: service.membership?.membershipId ?? null,
+      })),
+    },
+  );
+  assert.equal(denied.status, 403);
+});
+
 test("la baja POS transfiere la cartera vigente y conserva el representante histórico de las citas", () => {
   const { state, request } = session();
   const seller = state.operationAgents.find(

@@ -918,6 +918,38 @@ export function synchronizeAppointmentCabinVisitAssignment(
   return appointment;
 }
 
+export function synchronizeCabinVisitFromAppointment(
+  state: Pick<DesignState, "catalog">,
+  appointment: SchedulerAppointmentDto,
+  visit: DesignAppointmentCabinVisit,
+) {
+  const service = appointment.services[0];
+  if (!service) return visit;
+
+  const cabin = service.resources
+    .map((assignment) =>
+      state.catalog.resources.find(
+        (resource) => resource.id === assignment.resourceId,
+      ),
+    )
+    .find((resource) => resource?.kind === "ROOM");
+  if (cabin) {
+    visit.cabinResourceId = cabin.id;
+    visit.cabinName = cabin.name;
+    visit.cabinCapacity = cabin.capacity;
+  }
+
+  const specialistIds = service.professionals.map(
+    (professional) => professional.professionalProfileId,
+  );
+  visit.visitors.forEach((visitor, index) => {
+    const specialistProfileId = specialistIds[index];
+    if (specialistProfileId) visitor.specialistProfileId = specialistProfileId;
+  });
+  visit.updatedAt = appointment.updatedAt;
+  return visit;
+}
+
 export function buildDesignAppointment(
   state: Pick<DesignState, "catalog" | "customers">,
   input: SchedulerAppointmentCreateDto,

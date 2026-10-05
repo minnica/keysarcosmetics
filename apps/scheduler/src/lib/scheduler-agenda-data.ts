@@ -77,24 +77,64 @@ export async function loadAllSchedulerAppointments(
   return [first, ...remaining].flatMap((page) => page.items);
 }
 
+export interface SchedulerAppointmentMoveAssignment {
+  professionalProfileId?: string;
+  roomResourceId?: string;
+  roomResourceIds?: readonly string[];
+  roomCapacity?: number;
+}
+
 export function buildSchedulerAppointmentMoveServices(
   appointment: SchedulerAppointmentDto,
   startsAt: string,
+  assignment: SchedulerAppointmentMoveAssignment = {},
 ): SchedulerAppointmentServiceWriteDto[] {
   const offset =
     new Date(startsAt).getTime() - new Date(appointment.startsAt).getTime();
-  return appointment.services.map((service) => ({
-    serviceProfileId: service.serviceProfileId,
-    professionalProfileIds: service.professionals.map(
+  const roomResourceIds = new Set(assignment.roomResourceIds ?? []);
+  return appointment.services.map((service) => {
+    const currentProfessionalIds = service.professionals.map(
       (professional) => professional.professionalProfileId,
-    ),
-    resourceIds: service.resources.map((resource) => resource.resourceId),
-    startsAt: new Date(
-      new Date(service.startsAt).getTime() + offset,
-    ).toISOString(),
-    capacityUnits: service.capacityUnits,
-    membershipId: service.membership?.membershipId ?? null,
-  }));
+    );
+    const currentSupportIds = currentProfessionalIds.slice(1);
+    const targetWasSupport = assignment.professionalProfileId
+      ? currentSupportIds.includes(assignment.professionalProfileId)
+      : false;
+    const professionalProfileIds = assignment.professionalProfileId
+      ? [
+          assignment.professionalProfileId,
+          ...(targetWasSupport && currentProfessionalIds[0]
+            ? [currentProfessionalIds[0]]
+            : []),
+          ...currentSupportIds.filter(
+            (id) => id !== assignment.professionalProfileId,
+          ),
+        ]
+      : currentProfessionalIds;
+    const currentResourceIds = service.resources.map(
+      (resource) => resource.resourceId,
+    );
+    const resourceIds = assignment.roomResourceId
+      ? [
+          ...currentResourceIds.filter(
+            (id) =>
+              !roomResourceIds.has(id) && id !== assignment.roomResourceId,
+          ),
+          assignment.roomResourceId,
+        ]
+      : currentResourceIds;
+
+    return {
+      serviceProfileId: service.serviceProfileId,
+      professionalProfileIds,
+      resourceIds,
+      startsAt: new Date(
+        new Date(service.startsAt).getTime() + offset,
+      ).toISOString(),
+      capacityUnits: assignment.roomCapacity ?? service.capacityUnits,
+      membershipId: service.membership?.membershipId ?? null,
+    };
+  });
 }
 
 function formatterParts(value: Date, timezone: string) {

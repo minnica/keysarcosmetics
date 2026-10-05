@@ -174,6 +174,86 @@ test("moves every service by the same offset without changing assignments", () =
   ]);
 });
 
+test("reassigns the primary specialist and room while preserving support resources", () => {
+  const moved = buildSchedulerAppointmentMoveServices(
+    appointment({
+      services: [
+        service({
+          professionals: [
+            {
+              professionalProfileId: "professional-1",
+              name: "Renata Castillo",
+              role: "PRIMARY",
+            },
+            {
+              professionalProfileId: "professional-support",
+              name: "Elena Vargas",
+              role: "SUPPORT",
+            },
+          ],
+          resources: [
+            {
+              resourceId: "resource-1",
+              name: "Cabina 1",
+              units: 1,
+              exclusive: true,
+            },
+            {
+              resourceId: "equipment-1",
+              name: "Equipo facial",
+              units: 1,
+              exclusive: false,
+            },
+          ],
+        }),
+      ],
+    }),
+    "2026-09-08T04:30:00.000Z",
+    {
+      professionalProfileId: "professional-new",
+      roomResourceId: "resource-3",
+      roomResourceIds: ["resource-1", "resource-2", "resource-3"],
+      roomCapacity: 2,
+    },
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(moved[0])), {
+    serviceProfileId: "service-1",
+    professionalProfileIds: ["professional-new", "professional-support"],
+    resourceIds: ["equipment-1", "resource-3"],
+    startsAt: "2026-09-08T04:30:00.000Z",
+    capacityUnits: 2,
+    membershipId: "membership-1",
+  });
+
+  const swapped = buildSchedulerAppointmentMoveServices(
+    appointment({
+      services: [
+        service({
+          professionals: [
+            {
+              professionalProfileId: "professional-1",
+              name: "Renata Castillo",
+              role: "PRIMARY",
+            },
+            {
+              professionalProfileId: "professional-support",
+              name: "Elena Vargas",
+              role: "SUPPORT",
+            },
+          ],
+        }),
+      ],
+    }),
+    "2026-09-07T04:30:00.000Z",
+    { professionalProfileId: "professional-support" },
+  );
+  assert.deepEqual(Array.from(swapped[0].professionalProfileIds), [
+    "professional-support",
+    "professional-1",
+  ]);
+});
+
 test("converts instants with the branch timezone across midnight", () => {
   const result = adaptSchedulerAppointment(appointment());
   assert.equal(result.localDate, "2026-09-06");
