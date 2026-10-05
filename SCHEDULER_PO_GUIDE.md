@@ -634,6 +634,14 @@ Recorrido manual recomendado:
     compartido. Esta representación conserva una sola reserva canónica con dos
     personas, dos especialistas y capacidad 2, por lo que ventas, ocupación y
     reportes no se duplican artificialmente.
+19. Abre **Nueva reserva**, escribe un cliente que no exista y pulsa **Nuevo
+    cliente**. La primera pantalla debe mostrar únicamente nombre, apellido,
+    teléfono, correo, representante de cartera y los campos configurables del
+    expediente. **Guardar cliente** crea o vincula el perfil después de revisar
+    coincidencias por teléfono y nombre; sólo entonces regresa al paso de la
+    reserva con el cliente seleccionado y muestra fecha, servicio, cabina y
+    demás datos. **Guardar reserva** nunca debe crear implícitamente un cliente
+    que todavía no tenga ID.
 
 ## Dónde trabajar
 
@@ -722,6 +730,13 @@ hora que ya muestra el eje y ahora centra visitantes y status. El contexto de
 la cita expone los nombres de sus asistentes para que una cabina doble muestre
 sus dos personas dentro de la misma reserva; el contrato conserva el fallback
 al cliente principal cuando no existe un registro de atención en cabina.
+
+El 4 de octubre de 2026 el alta de cliente desde Agenda se separó de la reserva
+en dos pasos. El primer paso reutiliza el mismo borrador para guardar identidad,
+contacto, cartera y respuestas configurables mediante `createCustomer`; la
+reserva sólo continúa cuando existe `customerId`. La revisión de duplicados se
+mantiene antes del alta y seleccionar un perfil existente también vuelve al
+segundo paso sin crear una cita. No se agregó un contrato productivo nuevo.
 
 En esta sesión `dev:design` inició correctamente y `/` respondió `HTTP 200` con
 el backend apagado. La revisión visual automatizada queda pendiente: la CLI

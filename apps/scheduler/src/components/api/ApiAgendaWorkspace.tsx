@@ -158,7 +158,7 @@ interface CustomerRegistrationReview {
   selectedCustomerId: string;
 }
 
-interface SaveBookingOptions {
+interface CreateCustomerOptions {
   allowNameDuplicate?: boolean;
   customer?: SchedulerClient;
 }
@@ -1621,6 +1621,92 @@ export function ApiAgendaWorkspace() {
     });
   }
 
+  async function saveNewCustomer(options: CreateCustomerOptions = {}) {
+    if (!bookingDraft) return;
+    const selectedCustomer = options.customer;
+    if (selectedCustomer) {
+      createdCustomerByIntentRef.current[bookingIntentKey] =
+        selectedCustomer.id;
+      setClientSearchInput(selectedCustomer.fullName);
+      setBookingDraft((current) =>
+        current
+          ? {
+              ...current,
+              clientId: selectedCustomer.id,
+              customerName: selectedCustomer.fullName,
+              customerEmail: selectedCustomer.email,
+              phone: selectedCustomer.phone,
+            }
+          : current,
+      );
+      toast.success("Cliente seleccionado. Continúa con la reserva.");
+      return;
+    }
+    if (!canCreateClient) {
+      toast.error("No tienes permiso para crear clientes.");
+      return;
+    }
+    if (
+      normalizeSchedulerCustomerIdentityName(bookingDraft.customerName)
+        .split(" ")
+        .filter(Boolean).length < 2
+    ) {
+      toast.error("Captura nombre y apellido del cliente.");
+      return;
+    }
+    if (bookingDraft.phone.replace(/\D/g, "").length < 10) {
+      toast.error("Captura un teléfono válido del cliente.");
+      return;
+    }
+
+    setBookingSaving(true);
+    try {
+      const customerFields = additionalAnswersForDraft(
+        bookingDraft,
+        activeFieldDefinitions,
+        true,
+      );
+      const matches = await loadCustomerRegistrationMatches(
+        bookingDraft.customerName,
+        bookingDraft.phone,
+      );
+      if (matches.phoneMatch) {
+        setCustomerRegistrationReview({
+          kind: "phone",
+          customers: [matches.phoneMatch],
+          selectedCustomerId: matches.phoneMatch.id,
+        });
+        return;
+      }
+      if (matches.nameMatches.length && !options.allowNameDuplicate) {
+        setCustomerRegistrationReview({
+          kind: "name",
+          customers: matches.nameMatches,
+          selectedCustomerId: matches.nameMatches[0]!.id,
+        });
+        return;
+      }
+      const customer = await schedulerApi.createCustomer({
+        displayName: bookingDraft.customerName.trim(),
+        phone: bookingDraft.phone.trim(),
+        email: bookingDraft.customerEmail.trim() || null,
+        branchId: selectedBranch,
+        customFields: customerFields,
+      });
+      createdCustomerByIntentRef.current[bookingIntentKey] = customer.id;
+      setClientSearchInput(bookingDraft.customerName.trim());
+      setBookingDraft((current) =>
+        current ? { ...current, clientId: customer.id } : current,
+      );
+      setCustomerRegistrationReview(null);
+      toast.success("Cliente guardado. Continúa con los datos de la reserva.");
+    } catch (cause) {
+      toast.error(schedulerApiErrorMessage(cause));
+    } finally {
+      setBookingSaving(false);
+    }
+  }
+
   function requestOperationAuthorization(
     prompt: OperationPrompt,
     operation: (grant: DesignOperationGrant | null) => Promise<void>,
@@ -1787,8 +1873,17 @@ export function ApiAgendaWorkspace() {
     );
   }
 
-  function requestSaveBooking(options: SaveBookingOptions = {}) {
+  function requestSaveBooking() {
     if (!bookingDraft) return;
+    if (
+      !bookingDraft.clientId &&
+      !createdCustomerByIntentRef.current[bookingIntentKey]
+    ) {
+      toast.error(
+        "Selecciona un cliente existente o guarda primero el nuevo cliente.",
+      );
+      return;
+    }
     const editingId = bookingDraft.bookingId;
     const existingAppointment = editingId
       ? presentation?.appointments.find(
@@ -1901,11 +1996,11 @@ export function ApiAgendaWorkspace() {
             ...(editingId ? { targetId: editingId } : {}),
           },
           (purchaseGrant) =>
-            saveBooking(options, appointmentGrant, purchaseGrant),
+            saveBooking(appointmentGrant, purchaseGrant),
         );
         return;
       }
-      void saveBooking(options, appointmentGrant);
+      void saveBooking(appointmentGrant);
     };
     if (capturesOnlyAttendance && !completesAttendanceCapture) {
       continueWithPurchaseAuthorization(null);
@@ -1944,7 +2039,6 @@ export function ApiAgendaWorkspace() {
   }
 
   async function saveBooking(
-    options: SaveBookingOptions = {},
     grant: DesignOperationGrant | null = null,
     purchaseGrant: DesignOperationGrant | null = null,
   ) {
@@ -1982,15 +2076,10 @@ export function ApiAgendaWorkspace() {
     let additionalAnswers: DesignAppointmentAnswer[] = [];
     if (!appointmentDetailsLocked) {
       try {
-        const createsCustomer = !(
-          options.customer?.id ??
-          bookingDraft.clientId ??
-          createdCustomerByIntentRef.current[bookingIntentKey]
-        );
         additionalAnswers = additionalAnswersForDraft(
           bookingDraft,
           activeFieldDefinitions,
-          createsCustomer,
+          false,
         );
       } catch (cause) {
         toast.error(
@@ -2004,45 +2093,14 @@ export function ApiAgendaWorkspace() {
     setBookingSaving(true);
     setConflict(null);
     try {
-      let customerId =
-        options.customer?.id ??
+      const customerId =
         bookingDraft.clientId ??
         createdCustomerByIntentRef.current[bookingIntentKey] ??
         null;
       if (!customerId) {
-        if (!canCreateClient)
-          throw new Error(
-            "No tienes permiso para crear clientes. Selecciona un registro existente.",
-          );
-        const matches = await loadCustomerRegistrationMatches(
-          bookingDraft.customerName,
-          bookingDraft.phone,
+        throw new Error(
+          "Selecciona un cliente existente o guarda primero el nuevo cliente.",
         );
-        if (matches.phoneMatch) {
-          setCustomerRegistrationReview({
-            kind: "phone",
-            customers: [matches.phoneMatch],
-            selectedCustomerId: matches.phoneMatch.id,
-          });
-          return;
-        }
-        if (matches.nameMatches.length && !options.allowNameDuplicate) {
-          setCustomerRegistrationReview({
-            kind: "name",
-            customers: matches.nameMatches,
-            selectedCustomerId: matches.nameMatches[0]!.id,
-          });
-          return;
-        }
-        const customer = await schedulerApi.createCustomer({
-          displayName: bookingDraft.customerName.trim(),
-          phone: bookingDraft.phone.trim() || null,
-          email: bookingDraft.customerEmail.trim() || null,
-          branchId: selectedBranch,
-          customFields: additionalAnswers,
-        });
-        customerId = customer.id;
-        createdCustomerByIntentRef.current[bookingIntentKey] = customer.id;
       }
       const startsAt = slot?.startsAt ?? existing?.startsAt;
       if (!startsAt || !customerId)
@@ -3242,6 +3300,9 @@ export function ApiAgendaWorkspace() {
           onSave={() => {
             requestSaveBooking();
           }}
+          onSaveNewClient={() => {
+            void saveNewCustomer();
+          }}
           open={bookingDialogOpen}
           saving={bookingSaving}
           selectedBranch={selectedBranch}
@@ -3394,7 +3455,7 @@ export function ApiAgendaWorkspace() {
                 className="border border-[rgba(236,209,200,0.95)] bg-white text-[var(--scheduler-ink-strong)] hover:bg-[rgba(245,237,228,0.75)]"
                 onClick={() => {
                   setCustomerRegistrationReview(null);
-                  requestSaveBooking({ allowNameDuplicate: true });
+                  void saveNewCustomer({ allowNameDuplicate: true });
                 }}
               >
                 Crear perfil independiente
@@ -3406,19 +3467,7 @@ export function ApiAgendaWorkspace() {
                 if (!registrationReviewCustomer) return;
                 const customer = registrationReviewCustomer;
                 setCustomerRegistrationReview(null);
-                setClientSearchInput(customer.fullName);
-                setBookingDraft((current) =>
-                  current
-                    ? {
-                        ...current,
-                        clientId: customer.id,
-                        customerName: customer.fullName,
-                        customerEmail: customer.email,
-                        phone: customer.phone,
-                      }
-                    : current,
-                );
-                requestSaveBooking({ customer });
+                void saveNewCustomer({ customer });
               }}
             >
               Usar cliente seleccionado

@@ -23,6 +23,7 @@ import {
 } from "@cosmetics/ui";
 import {
   CalendarDays,
+  ChevronLeft,
   ChevronDown,
   ChevronUp,
   Clock3,
@@ -73,6 +74,7 @@ interface SchedulerBookingDialogProps {
   statusColors: BookingStatusColors;
   onDraftChange: (draft: BookingDraft) => void;
   onSave: () => void;
+  onSaveNewClient: () => void;
   availableStartTimes?: string[];
   availabilityLoading?: boolean;
   availabilityError?: string | null;
@@ -97,6 +99,105 @@ interface SchedulerBookingDialogProps {
   hideAdditionalFields?: boolean;
 }
 
+interface SchedulerConfiguredFieldsProps {
+  definitions: SchedulerCustomerFieldDefinitionDto[];
+  description: string;
+  idPrefix: string;
+  values: BookingDraft["additionalAnswers"];
+  onValueChange: (definitionId: string, value: string | boolean) => void;
+}
+
+function SchedulerConfiguredFields({
+  definitions,
+  description,
+  idPrefix,
+  values,
+  onValueChange,
+}: SchedulerConfiguredFieldsProps) {
+  if (!definitions.length) return null;
+
+  return (
+    <div className="grid gap-4 rounded-[20px] border border-[rgba(236,209,200,0.9)] bg-white/80 p-4 md:grid-cols-2">
+      <div className="md:col-span-2">
+        <p className="scheduler-modal-label">Preguntas configurables</p>
+        <p className="mt-1 text-sm text-slate-500">{description}</p>
+      </div>
+      {definitions.map((definition) => {
+        const value = values[definition.id];
+        return (
+          <div className="space-y-2" key={definition.id}>
+            <label
+              className="scheduler-modal-label"
+              htmlFor={`${idPrefix}-${definition.id}`}
+            >
+              {definition.label}
+              {definition.required ? " *" : ""}
+            </label>
+            {definition.type === "SELECT" ? (
+              <Select
+                value={typeof value === "string" ? value : ""}
+                onValueChange={(next) =>
+                  onValueChange(definition.id, next)
+                }
+              >
+                <SelectTrigger
+                  id={`${idPrefix}-${definition.id}`}
+                  className="scheduler-modal-select-trigger"
+                >
+                  <SelectValue placeholder="Selecciona una opción" />
+                </SelectTrigger>
+                <SelectContent className="scheduler-modal-select-content">
+                  {(definition.options ?? []).map((option) => (
+                    <SelectItem
+                      key={option}
+                      className="scheduler-modal-select-item"
+                      value={option}
+                    >
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : definition.type === "BOOLEAN" ? (
+              <label className="flex h-14 items-center gap-3 rounded-[22px] border border-[rgba(236,209,200,0.95)] bg-white px-4 text-sm text-slate-700">
+                <input
+                  checked={value === true}
+                  className="h-4 w-4 accent-[var(--scheduler-accent)]"
+                  id={`${idPrefix}-${definition.id}`}
+                  onChange={(event) =>
+                    onValueChange(definition.id, event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                Sí
+              </label>
+            ) : (
+              <Input
+                className="scheduler-modal-input"
+                id={`${idPrefix}-${definition.id}`}
+                inputMode={
+                  definition.type === "NUMBER" ? "decimal" : undefined
+                }
+                onChange={(event) =>
+                  onValueChange(definition.id, event.target.value)
+                }
+                type={
+                  definition.type === "DATE"
+                    ? "date"
+                    : definition.type === "NUMBER"
+                      ? "number"
+                      : "text"
+                }
+                value={typeof value === "string" ? value : ""}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SchedulerBookingDialog({
   open,
   onOpenChange,
@@ -112,6 +213,7 @@ export function SchedulerBookingDialog({
   statusColors,
   onDraftChange,
   onSave,
+  onSaveNewClient,
   availableStartTimes: canonicalStartTimes,
   availabilityLoading = false,
   availabilityError = null,
@@ -201,6 +303,21 @@ export function SchedulerBookingDialog({
   const appointmentFieldDefinitions = additionalFieldDefinitions.filter(
     (definition) => definition.id !== "design-field-sales-owner",
   );
+  const requiredCustomerFieldsComplete = additionalFieldDefinitions.every(
+    (definition) => {
+      if (!definition.required) return true;
+      const value = draft.additionalAnswers[definition.id];
+      return definition.type === "BOOLEAN"
+        ? typeof value === "boolean"
+        : typeof value === "string" && value.trim().length > 0;
+    },
+  );
+  const newClientFormValid = Boolean(
+    newClientFirstName.trim().length >= 2 &&
+      newClientLastName.trim().length >= 2 &&
+      normalizeClientPhone(draft.phone).length >= 10 &&
+      requiredCustomerFieldsComplete,
+  );
   const cabinVisitValid =
     !enableCabinVisitFlow ||
     Boolean(
@@ -239,6 +356,12 @@ export function SchedulerBookingDialog({
   }, [draft.customerName, open]);
 
   useEffect(() => {
+    if (!isNewClientOpen || !draft.clientId) return;
+    setIsNewClientOpen(false);
+    setClientSearchQuery(draft.customerName);
+  }, [draft.clientId, draft.customerName, isNewClientOpen]);
+
+  useEffect(() => {
     if (
       !open ||
       appointmentDetailsLocked ||
@@ -264,6 +387,18 @@ export function SchedulerBookingDialog({
 
   function patchDraft(patch: Partial<BookingDraft>) {
     onDraftChange({ ...draft, ...patch });
+  }
+
+  function updateConfiguredAnswer(
+    definitionId: string,
+    value: string | boolean,
+  ) {
+    patchDraft({
+      additionalAnswers: {
+        ...draft.additionalAnswers,
+        [definitionId]: value,
+      },
+    });
   }
 
   function selectCabin(cabinId: string) {
@@ -378,6 +513,161 @@ export function SchedulerBookingDialog({
     });
   }
 
+  const newClientForm = (
+    <div className="mx-auto w-full max-w-4xl space-y-5">
+      <div className="rounded-[24px] border border-[rgba(236,209,200,0.88)] bg-white/85 p-4 md:p-6">
+        <div className="mb-5">
+          <p className="label-caps">Paso 1 de 2</p>
+          <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[var(--scheduler-ink-strong)]">
+            Información del cliente
+          </h3>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Guarda primero el expediente. Después podrás continuar con fecha,
+            servicio, cabina y demás datos de la reserva.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="scheduler-modal-label" htmlFor="new-client-name">
+              Nombre *
+            </label>
+            <Input
+              autoFocus
+              className="scheduler-modal-input"
+              id="new-client-name"
+              placeholder="Nombre"
+              required
+              value={newClientFirstName}
+              onChange={(event) =>
+                handleNewClientNameChange(
+                  event.target.value,
+                  newClientLastName,
+                )
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <label
+              className="scheduler-modal-label"
+              htmlFor="new-client-last-name"
+            >
+              Apellido *
+            </label>
+            <Input
+              className="scheduler-modal-input"
+              id="new-client-last-name"
+              placeholder="Apellido"
+              required
+              value={newClientLastName}
+              onChange={(event) =>
+                handleNewClientNameChange(
+                  newClientFirstName,
+                  event.target.value,
+                )
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <label
+              className="scheduler-modal-label"
+              htmlFor="new-client-phone"
+            >
+              Teléfono *
+            </label>
+            <Input
+              autoComplete="tel"
+              className="scheduler-modal-input"
+              id="new-client-phone"
+              inputMode="tel"
+              placeholder="+52 55 0000 0000"
+              required
+              value={draft.phone}
+              onChange={(event) => handlePhoneChange(event.target.value)}
+            />
+            {exactPhoneMatch && draft.clientId !== exactPhoneMatch.id ? (
+              <p className="text-sm font-medium text-amber-800" role="status">
+                Este teléfono ya pertenece a {exactPhoneMatch.fullName}. Al
+                guardar podrás seleccionar ese expediente existente.
+              </p>
+            ) : null}
+          </div>
+          <div className="space-y-2">
+            <label
+              className="scheduler-modal-label"
+              htmlFor="new-client-email"
+            >
+              Email
+            </label>
+            <Input
+              autoComplete="email"
+              className="scheduler-modal-input"
+              id="new-client-email"
+              placeholder="correo@cliente.com"
+              type="email"
+              value={draft.customerEmail}
+              onChange={(event) =>
+                patchDraft({
+                  clientId: null,
+                  customerEmail: event.target.value,
+                })
+              }
+            />
+          </div>
+          {portfolioOwnerDefinition ? (
+            <div className="space-y-2 md:col-span-2">
+              <label className="scheduler-modal-label">
+                Representante de cartera *
+              </label>
+              <Select
+                value={
+                  typeof draft.additionalAnswers[
+                    portfolioOwnerDefinition.id
+                  ] === "string"
+                    ? String(
+                        draft.additionalAnswers[portfolioOwnerDefinition.id],
+                      )
+                    : ""
+                }
+                onValueChange={(value) =>
+                  updateConfiguredAnswer(portfolioOwnerDefinition.id, value)
+                }
+              >
+                <SelectTrigger className="scheduler-modal-select-trigger">
+                  <SelectValue placeholder="Selecciona vendedor, representante o cartera de empresa" />
+                </SelectTrigger>
+                <SelectContent className="scheduler-modal-select-content max-h-[320px]">
+                  {(portfolioOwnerDefinition.options ?? []).map((option) => (
+                    <SelectItem
+                      className="scheduler-modal-select-item"
+                      key={option}
+                      value={option}
+                    >
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs leading-5 text-slate-500">
+                Define la cartera vigente del cliente. Si el representante del
+                POS se inactiva, las nuevas citas usarán la cartera de la
+                empresa sin alterar el historial.
+              </p>
+            </div>
+          ) : null}
+          <div className="md:col-span-2">
+            <SchedulerConfiguredFields
+              definitions={appointmentFieldDefinitions}
+              description="Estos datos configurables se guardarán en el expediente y permanecerán disponibles al continuar la reserva."
+              idPrefix="new-client-question"
+              onValueChange={updateConfiguredAnswer}
+              values={draft.additionalAnswers}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -390,14 +680,18 @@ export function SchedulerBookingDialog({
               <div className="min-w-0">
                 <p className="label-caps">Agenda</p>
                 <DialogTitle className="mt-1 text-[1.7rem] font-semibold tracking-[-0.04em] text-[var(--scheduler-ink-strong)] md:text-[1.95rem]">
-                  {appointmentDetailsLocked
+                  {isNewClientOpen
+                    ? "Nuevo cliente"
+                    : appointmentDetailsLocked
                     ? "Atención y compra"
                     : isEditing
                       ? "Editar reserva"
                       : "Nueva reserva"}
                 </DialogTitle>
                 <p className="mt-1 text-[0.92rem] text-slate-500">
-                  {appointmentDetailsLocked
+                  {isNewClientOpen
+                    ? "Primero guarda los datos del cliente para continuar con la reserva."
+                    : appointmentDetailsLocked
                     ? "Registra cabina, visitantes, especialistas y compra sin modificar la cita finalizada."
                     : isEditing
                       ? "Ajusta los datos de la cita seleccionada antes de guardarla."
@@ -405,43 +699,45 @@ export function SchedulerBookingDialog({
                 </p>
               </div>
               <div className="flex items-center gap-3 self-start">
-                <Select
-                  disabled={appointmentDetailsLocked}
-                  value={draft.status}
-                  onValueChange={(value) =>
-                    patchDraft({ status: value as BookingStatus })
-                  }
-                >
-                  <SelectTrigger className="scheduler-modal-select-trigger h-12 w-[220px] text-base">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="scheduler-modal-select-content">
-                    {Object.entries(bookingStatuses)
-                      .filter(
-                        ([value]) =>
-                          !allowedStatuses ||
-                          allowedStatuses.includes(value as BookingStatus),
-                      )
-                      .map(([value, meta]) => (
-                        <SelectItem
-                          key={value}
-                          className="scheduler-modal-select-item"
-                          value={value}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span
-                              className="h-3.5 w-3.5 rounded-full"
-                              style={{
-                                backgroundColor:
-                                  statusColors[value as BookingStatus],
-                              }}
-                            />
-                            <span>{meta.label}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                {!isNewClientOpen ? (
+                  <Select
+                    disabled={appointmentDetailsLocked}
+                    value={draft.status}
+                    onValueChange={(value) =>
+                      patchDraft({ status: value as BookingStatus })
+                    }
+                  >
+                    <SelectTrigger className="scheduler-modal-select-trigger h-12 w-[220px] text-base">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="scheduler-modal-select-content">
+                      {Object.entries(bookingStatuses)
+                        .filter(
+                          ([value]) =>
+                            !allowedStatuses ||
+                            allowedStatuses.includes(value as BookingStatus),
+                        )
+                        .map(([value, meta]) => (
+                          <SelectItem
+                            key={value}
+                            className="scheduler-modal-select-item"
+                            value={value}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span
+                                className="h-3.5 w-3.5 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    statusColors[value as BookingStatus],
+                                }}
+                              />
+                              <span>{meta.label}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
                 <button
                   className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[rgba(236,209,200,0.95)] bg-white text-slate-500 shadow-sm transition hover:bg-[rgba(245,237,228,0.85)] hover:text-slate-700"
                   onClick={() => onOpenChange(false)}
@@ -454,7 +750,13 @@ export function SchedulerBookingDialog({
           </DialogHeader>
 
           <div className="scheduler-modal-body bg-[linear-gradient(180deg,rgba(243,240,233,0.4)_0%,rgba(255,255,255,0.22)_100%)]">
-            <div className="space-y-4 px-4 py-4 md:px-6 md:py-5">
+            {isNewClientOpen ? (
+              <div className="px-4 py-4 md:px-6 md:py-5">{newClientForm}</div>
+            ) : null}
+            <div
+              className="space-y-4 px-4 py-4 md:px-6 md:py-5"
+              hidden={isNewClientOpen}
+            >
               <div className="scheduler-modal-section rounded-[24px] p-4 md:p-5">
                 <div className="mb-4">
                   <p className="text-[0.95rem] font-medium text-slate-500">
@@ -694,149 +996,6 @@ export function SchedulerBookingDialog({
                       </div>
                     ) : null}
                   </div>
-
-                  {canCreateClient &&
-                  !appointmentDetailsLocked &&
-                  isNewClientOpen ? (
-                    <div className="rounded-[22px] border border-[rgba(236,209,200,0.88)] bg-[rgba(255,255,255,0.78)] p-4">
-                      <div className="mb-3">
-                        <p className="text-[0.82rem] uppercase tracking-[0.16em] text-slate-400">
-                          Nuevo cliente
-                        </p>
-                        <p className="mt-1 text-[0.95rem] text-slate-500">
-                          Completa los datos basicos antes de guardar la
-                          reserva.
-                        </p>
-                      </div>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <label className="scheduler-modal-label">
-                            Nombre
-                          </label>
-                          <Input
-                            className="scheduler-modal-input"
-                            placeholder="Nombre"
-                            value={newClientFirstName}
-                            onChange={(event) =>
-                              handleNewClientNameChange(
-                                event.target.value,
-                                newClientLastName,
-                              )
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="scheduler-modal-label">
-                            Apellido
-                          </label>
-                          <Input
-                            className="scheduler-modal-input"
-                            placeholder="Apellido"
-                            value={newClientLastName}
-                            onChange={(event) =>
-                              handleNewClientNameChange(
-                                newClientFirstName,
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="scheduler-modal-label">
-                            Telefono
-                          </label>
-                          <Input
-                            autoComplete="off"
-                            className="scheduler-modal-input"
-                            inputMode="tel"
-                            placeholder="+52 55 0000 0000"
-                            value={draft.phone}
-                            onChange={(event) =>
-                              handlePhoneChange(event.target.value)
-                            }
-                          />
-                          {exactPhoneMatch &&
-                          draft.clientId !== exactPhoneMatch.id ? (
-                            <p
-                              className="text-sm font-medium text-amber-800"
-                              role="status"
-                            >
-                              Este teléfono ya pertenece a{" "}
-                              {exactPhoneMatch.fullName}. Selecciona ese
-                              registro antes de guardar.
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="space-y-2">
-                          <label className="scheduler-modal-label">Email</label>
-                          <Input
-                            autoComplete="email"
-                            className="scheduler-modal-input"
-                            placeholder="correo@cliente.com"
-                            type="email"
-                            value={draft.customerEmail}
-                            onChange={(event) =>
-                              patchDraft({
-                                clientId: null,
-                                customerEmail: event.target.value,
-                              })
-                            }
-                          />
-                        </div>
-                        {portfolioOwnerDefinition ? (
-                          <div className="space-y-2 md:col-span-2">
-                            <label className="scheduler-modal-label">
-                              Representante de cartera *
-                            </label>
-                            <Select
-                              value={
-                                typeof draft.additionalAnswers[
-                                  portfolioOwnerDefinition.id
-                                ] === "string"
-                                  ? String(
-                                      draft.additionalAnswers[
-                                        portfolioOwnerDefinition.id
-                                      ],
-                                    )
-                                  : ""
-                              }
-                              onValueChange={(value) =>
-                                patchDraft({
-                                  additionalAnswers: {
-                                    ...draft.additionalAnswers,
-                                    [portfolioOwnerDefinition.id]: value,
-                                  },
-                                })
-                              }
-                            >
-                              <SelectTrigger className="scheduler-modal-select-trigger">
-                                <SelectValue placeholder="Selecciona vendedor, representante o cartera de empresa" />
-                              </SelectTrigger>
-                              <SelectContent className="scheduler-modal-select-content max-h-[320px]">
-                                {(portfolioOwnerDefinition.options ?? []).map(
-                                  (option) => (
-                                    <SelectItem
-                                      className="scheduler-modal-select-item"
-                                      key={option}
-                                      value={option}
-                                    >
-                                      {option}
-                                    </SelectItem>
-                                  ),
-                                )}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs leading-5 text-slate-500">
-                              Define la cartera vigente del cliente. Si el
-                              representante del POS se inactiva, las nuevas
-                              citas usarán la cartera de la empresa sin alterar
-                              el historial.
-                            </p>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
 
                   <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
                     <div className="space-y-2">
@@ -1318,106 +1477,15 @@ export function SchedulerBookingDialog({
 
                   {isAdditionalInfoOpen ? (
                     <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr]">
-                      {appointmentFieldDefinitions.length ? (
-                        <div className="grid gap-4 rounded-[20px] border border-[rgba(236,209,200,0.9)] bg-white/80 p-4 lg:col-span-2 md:grid-cols-2">
-                          <div className="md:col-span-2">
-                            <p className="scheduler-modal-label">
-                              Preguntas configurables
-                            </p>
-                            <p className="mt-1 text-sm text-slate-500">
-                              Estas respuestas se vinculan por ID a la cita y,
-                              si das de alta un cliente, también a su
-                              expediente.
-                            </p>
-                          </div>
-                          {appointmentFieldDefinitions.map((definition) => {
-                            const value =
-                              draft.additionalAnswers[definition.id];
-                            const updateValue = (next: string | boolean) =>
-                              patchDraft({
-                                additionalAnswers: {
-                                  ...draft.additionalAnswers,
-                                  [definition.id]: next,
-                                },
-                              });
-                            return (
-                              <div className="space-y-2" key={definition.id}>
-                                <label
-                                  className="scheduler-modal-label"
-                                  htmlFor={`booking-question-${definition.id}`}
-                                >
-                                  {definition.label}
-                                  {definition.required ? " *" : ""}
-                                </label>
-                                {definition.type === "SELECT" ? (
-                                  <Select
-                                    value={
-                                      typeof value === "string" ? value : ""
-                                    }
-                                    onValueChange={updateValue}
-                                  >
-                                    <SelectTrigger
-                                      id={`booking-question-${definition.id}`}
-                                      className="scheduler-modal-select-trigger"
-                                    >
-                                      <SelectValue placeholder="Selecciona una opción" />
-                                    </SelectTrigger>
-                                    <SelectContent className="scheduler-modal-select-content">
-                                      {(definition.options ?? []).map(
-                                        (option) => (
-                                          <SelectItem
-                                            key={option}
-                                            className="scheduler-modal-select-item"
-                                            value={option}
-                                          >
-                                            {option}
-                                          </SelectItem>
-                                        ),
-                                      )}
-                                    </SelectContent>
-                                  </Select>
-                                ) : definition.type === "BOOLEAN" ? (
-                                  <label className="flex h-14 items-center gap-3 rounded-[22px] border border-[rgba(236,209,200,0.95)] bg-white px-4 text-sm text-slate-700">
-                                    <input
-                                      checked={value === true}
-                                      className="h-4 w-4 accent-[var(--scheduler-accent)]"
-                                      id={`booking-question-${definition.id}`}
-                                      onChange={(event) =>
-                                        updateValue(event.target.checked)
-                                      }
-                                      type="checkbox"
-                                    />
-                                    Sí
-                                  </label>
-                                ) : (
-                                  <Input
-                                    className="scheduler-modal-input"
-                                    id={`booking-question-${definition.id}`}
-                                    inputMode={
-                                      definition.type === "NUMBER"
-                                        ? "decimal"
-                                        : undefined
-                                    }
-                                    onChange={(event) =>
-                                      updateValue(event.target.value)
-                                    }
-                                    type={
-                                      definition.type === "DATE"
-                                        ? "date"
-                                        : definition.type === "NUMBER"
-                                          ? "number"
-                                          : "text"
-                                    }
-                                    value={
-                                      typeof value === "string" ? value : ""
-                                    }
-                                  />
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
+                      <div className="lg:col-span-2">
+                        <SchedulerConfiguredFields
+                          definitions={appointmentFieldDefinitions}
+                          description="Estas respuestas se vinculan por ID a la cita. Si el cliente se creó en este flujo, el mismo borrador conserva los valores guardados en su expediente."
+                          idPrefix="booking-question"
+                          onValueChange={updateConfiguredAnswer}
+                          values={draft.additionalAnswers}
+                        />
+                      </div>
                       {showCommercialFields ? (
                         <div className="space-y-2">
                           <label className="scheduler-modal-label">
@@ -1507,23 +1575,36 @@ export function SchedulerBookingDialog({
               <Button
                 variant="outline"
                 className="scheduler-modal-secondary"
-                onClick={() => onOpenChange(false)}
+                onClick={() =>
+                  isNewClientOpen
+                    ? setIsNewClientOpen(false)
+                    : onOpenChange(false)
+                }
               >
-                Cancelar
+                {isNewClientOpen ? (
+                  <ChevronLeft className="mr-2 h-5 w-5" />
+                ) : null}
+                {isNewClientOpen ? "Volver" : "Cancelar"}
               </Button>
               <Button
                 className="scheduler-modal-cta"
                 disabled={
-                  !canSaveAtSelectedTime ||
-                  !cabinVisitValid ||
-                  availabilityLoading ||
-                  saving
+                  saving ||
+                  (isNewClientOpen
+                    ? !newClientFormValid
+                    : !canSaveAtSelectedTime ||
+                      !cabinVisitValid ||
+                      availabilityLoading)
                 }
-                onClick={() => onSave()}
+                onClick={() =>
+                  isNewClientOpen ? onSaveNewClient() : onSave()
+                }
               >
                 <UserRoundPlus className="mr-2 h-5 w-5" />
                 {saving
                   ? "Guardando…"
+                  : isNewClientOpen
+                    ? "Guardar cliente"
                   : appointmentDetailsLocked
                     ? "Guardar atención"
                     : isEditing
