@@ -11,8 +11,13 @@ interface SchedulerStatusBadgeProps {
   className?: string;
   compact?: boolean;
   hasPurchase?: boolean;
+  purchaseAmount?: number | undefined;
   label?: string;
 }
+
+const purchaseAmountFormatter = new Intl.NumberFormat("es-MX", {
+  maximumFractionDigits: 2,
+});
 
 export function SchedulerStatusBadge({
   status,
@@ -20,9 +25,20 @@ export function SchedulerStatusBadge({
   className,
   compact = false,
   hasPurchase = false,
+  purchaseAmount,
   label,
 }: SchedulerStatusBadgeProps) {
   const tokens = getSchedulerStatusColorTokens(color);
+  const visiblePurchaseAmount =
+    hasPurchase &&
+    typeof purchaseAmount === "number" &&
+    Number.isFinite(purchaseAmount) &&
+    purchaseAmount > 0
+      ? purchaseAmountFormatter.format(purchaseAmount)
+      : null;
+  const purchaseLabel = visiblePurchaseAmount
+    ? `Venta o apartado registrado por $${visiblePurchaseAmount}`
+    : "Venta o apartado registrado";
 
   return (
     <span
@@ -50,14 +66,19 @@ export function SchedulerStatusBadge({
       <span className="truncate">{label ?? bookingStatuses[status].label}</span>
       {hasPurchase ? (
         <span
-          aria-label="Venta o apartado registrado"
+          aria-label={purchaseLabel}
           className={cn(
             "inline-flex shrink-0 items-center justify-center rounded-full bg-[#263649] font-bold leading-none text-white",
-            compact ? "h-3.5 w-3.5 text-[0.5rem]" : "h-5 w-5 text-[0.68rem]",
+            compact
+              ? "h-3.5 gap-0.5 px-1 text-[0.5rem]"
+              : "h-5 gap-1 px-1.5 text-[0.68rem]",
           )}
-          title="Venta o apartado registrado"
+          title={purchaseLabel}
         >
-          $
+          <span aria-hidden="true">$</span>
+          {visiblePurchaseAmount ? (
+            <span className="tabular-nums">{visiblePurchaseAmount}</span>
+          ) : null}
         </span>
       ) : null}
     </span>

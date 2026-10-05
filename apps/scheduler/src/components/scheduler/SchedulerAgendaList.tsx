@@ -141,6 +141,7 @@ export function SchedulerAgendaList({
                     (booking.purchaseAmount ?? 0) > 0
                   }
                   label={statusLabels[booking.status]}
+                  purchaseAmount={booking.purchaseAmount}
                   status={booking.status}
                 />
               </button>

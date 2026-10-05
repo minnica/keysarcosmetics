@@ -119,7 +119,9 @@ Agenda ajusta todas las filas del horario al alto disponible de la ventana. No
 requiere desplazamiento vertical interno en la vista diaria o semanal; si se
 configuran intervalos muy cortos, las tarjetas reducen su altura y el detalle
 completo permanece disponible al colocar el cursor sobre la cita. El tooltip
-muestra cliente, horario, servicio, especialista, estado, contacto y notas.
+muestra cliente, horario, servicio, especialista, estado, contacto y notas. Si
+la cita registra compra o apartado, el status muestra junto al signo de pesos el
+monto total de la venta; para apartados no sustituye ese total por el anticipo.
 
 Las citas **Pendiente**, **Reservada**, **Confirmada** o **En espera** se pueden
 mover con el mouse sólo cuando la sesión tiene `agenda:WRITE`, el mismo permiso

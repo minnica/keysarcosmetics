@@ -197,6 +197,7 @@ function SchedulerAppointmentSummary({
           booking.purchased === true && (booking.purchaseAmount ?? 0) > 0
         }
         label={statusLabel}
+        purchaseAmount={booking.purchaseAmount}
         status={booking.status}
       />
       <div
@@ -939,6 +940,7 @@ export function SchedulerAgendaGrid({
                                   (booking.purchaseAmount ?? 0) > 0
                                 }
                                 label={statusLabels[booking.status]}
+                                purchaseAmount={booking.purchaseAmount}
                                 status={booking.status}
                               />
                             </dd>
@@ -1340,6 +1342,7 @@ export function SchedulerAgendaGrid({
                                   (booking.purchaseAmount ?? 0) > 0
                                 }
                                 label={statusLabels[booking.status]}
+                                purchaseAmount={booking.purchaseAmount}
                                 status={booking.status}
                               />
                             </dd>
