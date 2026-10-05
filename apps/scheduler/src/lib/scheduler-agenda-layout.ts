@@ -2,6 +2,12 @@ import type { Professional } from "./scheduler-presentation";
 
 export type SchedulerAgendaColumnMode = "CABINS" | "SPECIALISTS" | "ALL";
 
+export function isSchedulerCabinColumn(
+  column: Pick<Professional, "kind" | "resourceKind">,
+): boolean {
+  return column.kind === "RESOURCE" && column.resourceKind === "ROOM";
+}
+
 export function filterSchedulerAgendaColumns(
   columns: Professional[],
   mode: SchedulerAgendaColumnMode,
@@ -9,7 +15,7 @@ export function filterSchedulerAgendaColumns(
   if (mode === "ALL") return columns;
   return columns.filter((column) =>
     mode === "CABINS"
-      ? column.kind === "RESOURCE" && column.resourceKind === "ROOM"
+      ? isSchedulerCabinColumn(column)
       : column.kind !== "RESOURCE",
   );
 }

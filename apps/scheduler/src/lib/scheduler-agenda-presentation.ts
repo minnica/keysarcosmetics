@@ -479,6 +479,48 @@ export function scopeSchedulerAgendaPresentationColumns(
   };
 }
 
+export function projectSchedulerActualAttendanceColumns(
+  presentation: SchedulerAgendaPresentation,
+  attendingSpecialistIdsByAppointment: Readonly<
+    Record<string, readonly string[]>
+  >,
+): SchedulerAgendaPresentation {
+  const columnById = new Map(
+    presentation.columns.map((column) => [column.id, column]),
+  );
+
+  return {
+    ...presentation,
+    appointments: presentation.appointments.map((appointment) => {
+      const actualSpecialistIds = new Set(
+        attendingSpecialistIdsByAppointment[appointment.id] ?? [],
+      );
+      const actualProfessionalColumnIds = presentation.columns
+        .filter(
+          (column) =>
+            column.kind === "PROFESSIONAL" &&
+            column.branchProfileId === appointment.branchProfileId &&
+            column.entityId !== null &&
+            actualSpecialistIds.has(column.entityId),
+        )
+        .map((column) => column.id);
+      const nonProfessionalColumnIds = appointment.columnIds.filter(
+        (columnId) => columnById.get(columnId)?.kind !== "PROFESSIONAL",
+      );
+
+      return {
+        ...appointment,
+        columnIds: [
+          ...new Set([
+            ...nonProfessionalColumnIds,
+            ...actualProfessionalColumnIds,
+          ]),
+        ],
+      };
+    }),
+  };
+}
+
 const columnAccents = [
   "#c3a583",
   "#b994a8",

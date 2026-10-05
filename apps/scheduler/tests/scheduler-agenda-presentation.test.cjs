@@ -28,6 +28,7 @@ const {
   buildSchedulerCalendarTimeSlots,
   buildSchedulerCanonicalOperatingHours,
   buildSchedulerVisualBookings,
+  projectSchedulerActualAttendanceColumns,
   scopeSchedulerAgendaPresentationColumns,
 } = loadSource("scheduler-agenda-presentation");
 
@@ -57,8 +58,11 @@ const {
   loadAllSchedulerAppointments,
   schedulerLocalDateTimeToInstant,
 } = loadSource("scheduler-agenda-data");
-const { filterSchedulerAgendaColumns, shouldFitSchedulerAgendaColumns } =
-  loadSource("scheduler-agenda-layout");
+const {
+  filterSchedulerAgendaColumns,
+  isSchedulerCabinColumn,
+  shouldFitSchedulerAgendaColumns,
+} = loadSource("scheduler-agenda-layout");
 const { getSchedulerStatusColorTokens } = loadSource(
   "scheduler-status-presentation",
 );
@@ -410,6 +414,8 @@ test("filters agenda columns explicitly by cabins or specialists", () => {
     ["professional-1"],
   );
   assert.equal(filterSchedulerAgendaColumns(columns, "ALL").length, 4);
+  assert.equal(isSchedulerCabinColumn(columns[1]), true);
+  assert.equal(isSchedulerCabinColumn(columns[0]), false);
 });
 
 test("fits readable agenda columns automatically to the monitor width", () => {
@@ -460,6 +466,60 @@ test("projects one canonical appointment into its professional and resource colu
   assert.deepEqual(
     bookings.map((item) => item.professionalId),
     ["professional:professional-1", "resource:resource-1"],
+  );
+});
+
+test("shows appointments under specialists only after actual attendance is captured", () => {
+  const presentation = buildSchedulerAgendaPresentation({
+    catalog: {
+      commerces: [],
+      branches: [{ id: "branch-profile-1", branchId: "branch-1" }],
+      professionals: [
+        {
+          id: "professional-1",
+          name: "Renata",
+          active: true,
+          branchProfileIds: ["branch-profile-1"],
+        },
+      ],
+      resources: [
+        {
+          id: "resource-1",
+          name: "Cabina 1",
+          kind: "ROOM",
+          capacity: 1,
+          active: true,
+          branchProfileId: "branch-profile-1",
+        },
+      ],
+      services: [],
+      specialties: [],
+      groups: [],
+      professionalServices: [],
+      resourceRequirements: [],
+      availabilityRules: [],
+      availabilityExceptions: [],
+    },
+    branchId: "branch-1",
+    appointments: [appointment()],
+    blocks: [],
+  });
+
+  const beforeAttendance = projectSchedulerActualAttendanceColumns(
+    presentation,
+    {},
+  );
+  assert.deepEqual(Array.from(beforeAttendance.appointments[0].columnIds), [
+    "resource:resource-1",
+  ]);
+
+  const afterAttendance = projectSchedulerActualAttendanceColumns(
+    presentation,
+    { "appointment-1": ["professional-1"] },
+  );
+  assert.deepEqual(
+    Array.from(afterAttendance.appointments[0].columnIds),
+    ["resource:resource-1", "professional:professional-1"],
   );
 });
 

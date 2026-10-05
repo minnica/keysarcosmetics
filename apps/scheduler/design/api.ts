@@ -2572,6 +2572,19 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             )[0];
           const context: DesignAppointmentContext = {
             appointmentId,
+            attendingSpecialistProfileIds: [
+              "ARRIVED",
+              "WAITING",
+              "ATTENDED",
+            ].includes(appointmentItem.status)
+              ? [
+                  ...new Set(
+                    (visit?.visitors ?? []).map(
+                      (visitor) => visitor.specialistProfileId,
+                    ),
+                  ),
+                ]
+              : [],
             representativeId: visit?.representativeId ?? null,
             representativeName: visit?.representativeName ?? null,
             representativeRole: visit?.representativeRole ?? null,

@@ -68,6 +68,7 @@ import { SchedulerBookingCard } from "./SchedulerBookingCard";
 import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
 import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
 import { canMoveSchedulerBooking } from "@/lib/scheduler-appointment-move";
+import { isSchedulerCabinColumn } from "@/lib/scheduler-agenda-layout";
 import type { DesignAppointmentContext } from "../../../design/contracts";
 
 interface SchedulerAgendaGridProps {
@@ -1035,19 +1036,24 @@ export function SchedulerAgendaGrid({
                       </button>
                     </div>
 
-                    <button
-                      className="scheduler-slot-action-item"
-                      onClick={() =>
-                        onOpenNewBooking(
-                          slotActionOverlay.professionalId,
-                          slotActionOverlay.startTime,
-                        )
-                      }
-                      type="button"
-                    >
-                      <CalendarDays className="h-5 w-5" />
-                      <span>Reserva</span>
-                    </button>
+                    {isSchedulerCabinColumn(
+                      visibleColumnById.get(slotActionOverlay.professionalId) ??
+                        {},
+                    ) ? (
+                      <button
+                        className="scheduler-slot-action-item"
+                        onClick={() =>
+                          onOpenNewBooking(
+                            slotActionOverlay.professionalId,
+                            slotActionOverlay.startTime,
+                          )
+                        }
+                        type="button"
+                      >
+                        <CalendarDays className="h-5 w-5" />
+                        <span>Reserva</span>
+                      </button>
+                    ) : null}
 
                     <button
                       className="scheduler-slot-action-item"

@@ -1022,6 +1022,10 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
   assert.equal(contexts.body.data[appointmentId].hasPurchase, true);
   assert.equal(contexts.body.data[appointmentId].purchaseKind, "FULL");
   assert.equal(contexts.body.data[appointmentId].saleAmount, 1750);
+  assert.deepEqual(
+    contexts.body.data[appointmentId].attendingSpecialistProfileIds,
+    [],
+  );
   assert.ok("nextAppointmentAt" in contexts.body.data[appointmentId]);
 
   const anotherCabin = state.catalog.resources.find(
@@ -1692,6 +1696,15 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
   );
   assert.equal(arrivalCompleted.status, 201);
   assert.equal(arrivalCompleted.body.data.status, "ARRIVED");
+  const arrivalContext = request(
+    "POST",
+    "/api/scheduler/design-proposals/appointments/contexts",
+    { appointmentIds: [appointment.id] },
+  );
+  assert.deepEqual(
+    arrivalContext.body.data[appointment.id].attendingSpecialistProfileIds,
+    [specialist.id],
+  );
 
   const completedAttendanceToken = operationToken(
     request,

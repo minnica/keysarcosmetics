@@ -131,10 +131,13 @@ muestran tarjetas arrastrables ni aceptan destinos.
 
 Soltar sobre una cabina sustituye únicamente el recurso de tipo `ROOM`, conserva
 equipos auxiliares y adopta la capacidad configurada de la cabina destino.
-Soltar sobre una especialista la convierte en responsable principal y conserva
-especialistas de apoyo distintos. Todos los servicios se desplazan por el mismo
-intervalo y conservan membresía. El formulario **Editar** sigue siendo la
-alternativa accesible y el flujo requerido para cambiar de sucursal.
+Soltar sobre una especialista la convierte en responsable principal planeada y
+conserva especialistas de apoyo distintos. Esa asignación se usa para validar
+disponibilidad, pero no proyecta todavía la cita en la vista **Especialistas**;
+la columna operativa se completa sólo con quienes queden registrados al marcar
+**Llegó** o **Atendida**. Todos los servicios se desplazan por el mismo intervalo
+y conservan membresía. El formulario **Editar** sigue siendo la alternativa
+accesible y el flujo requerido para cambiar de sucursal.
 
 Soltar una cita solicita un código con permiso `APPOINTMENT_MOVE`. El servidor
 vuelve a validar versión, horario de sucursal, descansos, bloqueos, cabina,
@@ -245,11 +248,20 @@ agrega inmediatamente las horas restantes. La implementación productiva deberá
 ofrecer una mutación masiva transaccional e idempotente para evitar aplicaciones
 parciales si uno de varios calendarios falla.
 
+Las reservas nuevas se abren únicamente desde una columna de tipo `ROOM`. En
+una columna de especialista el menú conserva **Bloquear horario**, pero no
+muestra **Reserva**; el botón global elige la primera cabina activa de la
+sucursal y falla de forma explícita si ninguna está configurada. El selector de
+columna del alta también queda limitado a cabinas, por lo que una especialista
+nunca sustituye el recurso físico de la cita.
+
 Al crear una reserva en modo diseño, seleccionar una cabina abre una
 fila por cada lugar disponible. La primera corresponde al cliente principal y
 las demás permiten capturar visitantes. Cada persona exige nombre y un
-especialista diferente; así, una cabina doble muestra dos clientes/visitantes y
-dos especialistas, y una triple muestra tres. Por persona se registra compra
+especialista planeada diferente; así, una cabina doble muestra dos
+clientes/visitantes y dos asignaciones, y una triple muestra tres. Estas
+asignaciones reservan disponibilidad, pero aún no significan “quién atendió” ni
+alimentan las columnas de especialistas. Por persona se registra compra
 pendiente mientras se agenda. El formulario separa al **representante de esta
 cita** del vendedor de cartera: puede variar entre citas y conserva origen
 POS/CRM o alta local de Agenda. Al editar, la cabina y su capacidad son de sólo
@@ -261,14 +273,16 @@ compra exige monto de venta mayor a cero; un apartado exige además un anticipo
 mayor a cero que no puede superar la venta. La especialista que atendió queda
 relacionada por persona, no sólo por cita.
 
-Cabina y especialistas no crean reservas paralelas. Al guardar la atención, el
-mock sincroniza la cabina y todas las especialistas en la primera línea de la
-misma cita canónica. Por eso el mismo `appointmentId`, horario, servicio y status
-se proyectan simultáneamente en la columna de cabina y en cada columna de
-especialista; cambiar entre **Cabinas**, **Especialistas** y **Ambos** no duplica
-conteos ni ventas. Antes de guardar se vuelve a validar que ninguna especialista
-ni la cabina tengan otra cita activa traslapada. En producción, esta asociación
-debe persistirse de forma atómica y versionada junto con la atención.
+Cabina y especialistas no crean reservas paralelas. Antes de registrar llegada,
+el mismo `appointmentId` se muestra sólo en su cabina aunque exista una
+especialista planeada. Al guardar la atención, el mock expone en el contexto de
+la cita `attendingSpecialistProfileIds` y proyecta la misma cita en cada
+especialista realmente registrada; cambiar entre **Cabinas**, **Especialistas**
+y **Ambos** no duplica conteos ni ventas. Antes de guardar se vuelve a validar
+que ninguna especialista ni la cabina tengan otra cita activa traslapada. En
+producción, el contexto canónico deberá distinguir asignación planeada de
+atención efectiva y persistir esta asociación de forma atómica y versionada
+junto con la atención.
 
 El cambio a **Atendida** sólo se habilita cuando el instante actual es igual o
 posterior a `endsAt`; la UI lo informa y el API de diseño vuelve a validar la

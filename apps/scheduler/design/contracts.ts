@@ -175,6 +175,7 @@ export interface DesignAppointmentCabinVisit {
 
 export interface DesignAppointmentContext {
   appointmentId: string;
+  attendingSpecialistProfileIds: string[];
   representativeId: string | null;
   representativeName: string | null;
   representativeRole: string | null;

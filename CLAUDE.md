@@ -1888,6 +1888,21 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
   dashboards. Producción debe persistir cita, proyección y auditoría de forma
   consistente; el prototipo lo simula sin cambiar Prisma ni backend.
 
+### Scheduler: cabina, asignación planeada y atención real (2026-10-04)
+
+- Una reserva nueva se crea siempre desde una cabina activa (`RESOURCE/ROOM`).
+  Las columnas de especialistas permiten bloquear horario, pero no ofrecen el
+  alta de reserva; el botón global resuelve una cabina de la sucursal o informa
+  que primero debe configurarse.
+- La especialista seleccionada al agendar es una asignación planeada para
+  disponibilidad. No proyectar esa cita en la vista **Especialistas** hasta que
+  la captura obligatoria de **Llegó** o **Atendida** confirme quién atendió.
+- En el entorno de diseño, `DesignAppointmentContext` expone
+  `attendingSpecialistProfileIds` sólo para `ARRIVED`, `WAITING` y `ATTENDED`.
+  `projectSchedulerActualAttendanceColumns` conserva la columna de cabina y
+  reemplaza las columnas profesionales planeadas por las de atención efectiva.
+  Producción deberá exponer la misma distinción desde su contrato canónico.
+
 ---
 
 ## Pendientes conocidos

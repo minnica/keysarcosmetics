@@ -42,6 +42,7 @@ import {
   buildSchedulerVisualBookings,
   buildSchedulerVisualColumns,
   buildSchedulerVisualServices,
+  projectSchedulerActualAttendanceColumns,
   scopeSchedulerAgendaPresentationColumns,
   schedulerCanonicalToBookingStatus,
   schedulerBookingToCanonicalStatus,
@@ -89,6 +90,7 @@ import {
 } from "@/lib/scheduler-agenda-settings";
 import {
   filterSchedulerAgendaColumns,
+  isSchedulerCabinColumn,
   shouldFitSchedulerAgendaColumns,
   type SchedulerAgendaColumnMode,
 } from "@/lib/scheduler-agenda-layout";
@@ -817,31 +819,47 @@ export function ApiAgendaWorkspace() {
         schedulerDesignProposals.available && appointmentContextIds.length > 0,
     },
   );
-  const appointmentContextByBookingId = useMemo(() => {
+  const displayPresentation = useMemo(() => {
+    if (!presentation || !schedulerDesignProposals.available)
+      return presentation;
     const contexts = appointmentContexts.data ?? {};
-    return Object.fromEntries(
-      (presentation ? buildSchedulerVisualBookings(presentation) : []).map(
-        (booking) => [
-          booking.id,
-          contexts[bookingSourceId(booking)] ??
-            ({
-              appointmentId: bookingSourceId(booking),
-              representativeId: null,
-              representativeName: null,
-              representativeRole: null,
-              representativeSource: null,
-              portfolioSellerName: null,
-              hasPurchase: false,
-              purchaseKind: null,
-              saleAmount: 0,
-              depositAmount: 0,
-              nextAppointmentId: null,
-              nextAppointmentAt: null,
-            } satisfies DesignAppointmentContext),
-        ],
+    return projectSchedulerActualAttendanceColumns(
+      presentation,
+      Object.fromEntries(
+        Object.entries(contexts).map(([appointmentId, context]) => [
+          appointmentId,
+          context.attendingSpecialistProfileIds,
+        ]),
       ),
     );
   }, [appointmentContexts.data, presentation]);
+  const appointmentContextByBookingId = useMemo(() => {
+    const contexts = appointmentContexts.data ?? {};
+    return Object.fromEntries(
+      (displayPresentation
+        ? buildSchedulerVisualBookings(displayPresentation)
+        : []
+      ).map((booking) => [
+        booking.id,
+        contexts[bookingSourceId(booking)] ??
+          ({
+            appointmentId: bookingSourceId(booking),
+            attendingSpecialistProfileIds: [],
+            representativeId: null,
+            representativeName: null,
+            representativeRole: null,
+            representativeSource: null,
+            portfolioSellerName: null,
+            hasPurchase: false,
+            purchaseKind: null,
+            saleAmount: 0,
+            depositAmount: 0,
+            nextAppointmentId: null,
+            nextAppointmentAt: null,
+          } satisfies DesignAppointmentContext),
+      ]),
+    );
+  }, [appointmentContexts.data, displayPresentation]);
   const visualColumns = useMemo(
     () =>
       branchPresentations.flatMap((entry) =>
@@ -872,26 +890,28 @@ export function ApiAgendaWorkspace() {
   }, [administrationCatalog.data?.statusColors, selectedCommerce]);
   const allBookings = useMemo(() => {
     const contexts = appointmentContexts.data ?? {};
-    return (presentation ? buildSchedulerVisualBookings(presentation) : []).map(
-      (booking) => {
-        const context = contexts[bookingSourceId(booking)];
-        if (!context?.hasPurchase) return booking;
-        return {
-          ...booking,
-          purchased: true,
-          purchaseType:
-            context.purchaseKind === "LAYAWAY"
-              ? ("layaway" as const)
-              : ("cash" as const),
-          purchaseAmount: context.saleAmount,
-          paymentLabel:
-            context.purchaseKind === "LAYAWAY"
-              ? `Apartado · ${formatMoney(context.depositAmount)} de ${formatMoney(context.saleAmount)}`
-              : `Compra · ${formatMoney(context.saleAmount)}`,
-        };
-      },
-    );
-  }, [appointmentContexts.data, presentation]);
+    return (
+      displayPresentation
+        ? buildSchedulerVisualBookings(displayPresentation)
+        : []
+    ).map((booking) => {
+      const context = contexts[bookingSourceId(booking)];
+      if (!context?.hasPurchase) return booking;
+      return {
+        ...booking,
+        purchased: true,
+        purchaseType:
+          context.purchaseKind === "LAYAWAY"
+            ? ("layaway" as const)
+            : ("cash" as const),
+        purchaseAmount: context.saleAmount,
+        paymentLabel:
+          context.purchaseKind === "LAYAWAY"
+            ? `Apartado · ${formatMoney(context.depositAmount)} de ${formatMoney(context.saleAmount)}`
+            : `Compra · ${formatMoney(context.saleAmount)}`,
+      };
+    });
+  }, [appointmentContexts.data, displayPresentation]);
   const allBlocks = useMemo(
     () =>
       catalog.data
@@ -1253,22 +1273,35 @@ export function ApiAgendaWorkspace() {
   ) {
     if (!canWrite) return;
     preferredSpecialistLoadedForRef.current = null;
-    const availableColumns = visibleColumns.length
-      ? visibleColumns
-      : visualColumns;
-    const selectedColumn = availableColumns.find(
+    const requestedColumn = visualColumns.find(
       (column) => column.id === columnId,
     );
-    const targetBranchId = selectedColumn?.branchIds[0] ?? selectedBranch;
-    const sourceColumns = availableColumns.some((column) =>
-      column.branchIds.includes(targetBranchId),
-    )
-      ? availableColumns.filter((column) =>
-          column.branchIds.includes(targetBranchId),
-        )
-      : visualColumns.filter((column) =>
-          column.branchIds.includes(targetBranchId),
-        );
+    if (requestedColumn && !isSchedulerCabinColumn(requestedColumn)) {
+      toast.error(
+        "Las reservas se crean desde una cabina. La columna de especialista se completa al registrar quién atendió.",
+      );
+      return;
+    }
+    const selectedColumn =
+      requestedColumn ??
+      visualColumns.find(
+        (column) =>
+          column.branchIds.includes(selectedBranch) &&
+          isSchedulerCabinColumn(column),
+      ) ??
+      visualColumns.find(isSchedulerCabinColumn);
+    if (!selectedColumn) {
+      toast.error(
+        "Configura al menos una cabina en la sucursal antes de crear una reserva.",
+      );
+      return;
+    }
+    const targetBranchId = selectedColumn.branchIds[0] ?? selectedBranch;
+    const sourceColumns = visualColumns.filter(
+      (column) =>
+        column.branchIds.includes(targetBranchId) &&
+        isSchedulerCabinColumn(column),
+    );
     const targetBranchProfile = catalogBranches.find(
       (branch) => branch.branchId === targetBranchId,
     );
@@ -1282,7 +1315,7 @@ export function ApiAgendaWorkspace() {
     const nextDraft = createDraft(
       date,
       sourceColumns,
-      columnId,
+      selectedColumn.id,
       startTime,
       targetServices,
     );
@@ -1292,7 +1325,9 @@ export function ApiAgendaWorkspace() {
         resource.kind === "ROOM" &&
         resource.branchProfileId === targetBranchProfile?.id,
     );
-    const defaultCabin = targetCabins[0];
+    const defaultCabin =
+      targetCabins.find((cabin) => cabin.id === selectedColumn.entityId) ??
+      targetCabins[0];
     const targetSpecialists = (catalog.data?.professionals ?? []).filter(
       (professional) =>
         professional.active &&
@@ -3139,8 +3174,11 @@ export function ApiAgendaWorkspace() {
               (appointment) => appointment.id === bookingDraft.bookingId,
             )?.services.length ?? 0) > 1
               ? []
-              : visualColumns.filter((column) =>
-                  column.branchIds.includes(selectedBranch),
+              : visualColumns.filter(
+                  (column) =>
+                    column.branchIds.includes(selectedBranch) &&
+                    (Boolean(bookingDraft.bookingId) ||
+                      isSchedulerCabinColumn(column)),
                 )
           }
           draft={bookingDraft}
