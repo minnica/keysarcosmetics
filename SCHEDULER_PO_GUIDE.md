@@ -744,9 +744,17 @@ al cliente principal cuando no existe un registro de atención en cabina.
 
 El 5 de octubre de 2026 los ocupantes de una reserva se distribuyeron
 horizontalmente dentro de la tarjeta. Una cabina doble divide el ancho en dos y
-una triple en tres, con separadores verticales, nombres de hasta dos líneas y un
-solo status compartido. El cambio es únicamente visual y no crea citas,
+una triple en tres, con separadores verticales, nombres compactos de una línea y
+el nombre completo al pasar el cursor, además de un solo status compartido. El
+cambio es únicamente visual y no crea citas,
 ocupaciones ni ventas adicionales.
+
+El 6 de octubre de 2026 el historial protegido de visitas agregó el resultado
+de compra correspondiente a la clienta en cada cita: compra liquidada con total,
+apartado con total, abono y saldo, o **No compró**. El mock conserva este dato
+como snapshot por visitante dentro de la misma cita; producción deberá ampliar
+`GET /api/scheduler/clients/:id/visits` con ese snapshot opcional sin consultar
+ni recalcular ventas históricas desde el navegador.
 
 El 4 de octubre de 2026 el alta de cliente desde Agenda se separó de la reserva
 en dos pasos. El primer paso reutiliza el mismo borrador para guardar identidad,

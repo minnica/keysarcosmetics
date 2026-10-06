@@ -139,6 +139,42 @@ test("una sesión o código de otro usuario no autoriza movimientos", () => {
   assert.equal(response.status, 401);
 });
 
+test("el historial de visitas muestra la compra registrada para la clienta", () => {
+  const { state, request } = session();
+  const attendedAppointment = state.appointments.find(
+    (appointment) => appointment.status === "ATTENDED",
+  );
+  assert.ok(attendedAppointment);
+  const authorization = request(
+    "POST",
+    "/api/scheduler/authorizations",
+    {
+      secret: "0000",
+      purpose: "CLIENT_VISIT_HISTORY_VIEW",
+      screenKey: "scheduler/clients",
+      targetId: attendedAppointment.customerId,
+    },
+  );
+  assert.equal(authorization.status, 201);
+
+  const visits = request(
+    "GET",
+    `/api/scheduler/clients/${attendedAppointment.customerId}/visits`,
+    {},
+    {
+      "x-scheduler-authorization": authorization.body.data.token,
+    },
+  );
+  assert.equal(visits.status, 200);
+  const attendedVisit = visits.body.data.items.find(
+    (visit) => visit.id === attendedAppointment.id,
+  );
+  assert.equal(attendedVisit.purchase.purchaseKind, "FULL");
+  assert.equal(attendedVisit.purchase.saleAmount, 1850);
+  assert.equal(attendedVisit.purchase.depositAmount, 1850);
+  assert.equal(attendedVisit.purchase.balanceAmount, 0);
+});
+
 test("el cliente Axios real funciona con MSW sin servidor ni credenciales reales", async () => {
   const { state } = session();
   const server = setupServer(

@@ -15,7 +15,6 @@ import type {
   SchedulerCustomerFieldDefinitionDto,
   SchedulerCustomerFinancialHistoryDto,
   SchedulerCustomerSummaryDto,
-  SchedulerCustomerVisitHistoryDto,
 } from "@cosmetics/types";
 import {
   Badge,
@@ -50,6 +49,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  ShoppingBag,
   Upload,
   UserRound,
   UsersRound,
@@ -80,7 +80,10 @@ import {
   type SchedulerClientAdvancedFilterValue,
 } from "@/components/clients/SchedulerClientAdvancedFilters";
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
-import type { DesignCustomerAdvancedResult } from "../../../design/contracts";
+import type {
+  DesignCustomerAdvancedResult,
+  DesignCustomerVisitHistoryDto,
+} from "../../../design/contracts";
 
 type SensitiveSection = "profile" | "visits" | "financial";
 
@@ -184,14 +187,14 @@ function formatDateTime(value: string | null): string {
   }).format(new Date(value));
 }
 
-function formatMoney(value: string): string {
+function formatMoney(value: string | number): string {
   const amount = Number(value);
   return Number.isFinite(amount)
     ? new Intl.NumberFormat("es-MX", {
         style: "currency",
         currency: "MXN",
       }).format(amount)
-    : value;
+    : String(value);
 }
 
 function hasAgendaInsights(
@@ -363,7 +366,7 @@ export function ApiClientsWorkspace() {
     useState<SchedulerCustomerSummaryDto | null>(null);
   const [detail, setDetail] = useState<SchedulerCustomerDetailDto | null>(null);
   const [detailExpiresAt, setDetailExpiresAt] = useState<string | null>(null);
-  const [visits, setVisits] = useState<SchedulerCustomerVisitHistoryDto | null>(
+  const [visits, setVisits] = useState<DesignCustomerVisitHistoryDto | null>(
     null,
   );
   const [financial, setFinancial] =
@@ -1836,7 +1839,7 @@ function CustomerRecordDialog({
   open: boolean;
   recordCustomer: SchedulerCustomerSummaryDto | null;
   secrets: Record<SensitiveSection, string>;
-  visits: SchedulerCustomerVisitHistoryDto | null;
+  visits: DesignCustomerVisitHistoryDto | null;
   visitPage: number;
 }) {
   return (
@@ -2051,7 +2054,7 @@ function VisitHistory({
   data,
   onPageChange,
 }: {
-  data: SchedulerCustomerVisitHistoryDto;
+  data: DesignCustomerVisitHistoryDto;
   onPageChange: (page: number) => void;
 }) {
   return (
@@ -2072,6 +2075,26 @@ function VisitHistory({
               </div>
               <Badge variant="outline">{visit.status}</Badge>
             </div>
+            {visit.purchase ? (
+              <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#f8f4ef] px-3 py-2 text-xs text-slate-600">
+                <ShoppingBag className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ad8b67]" />
+                <div className="min-w-0">
+                  <p className="font-semibold text-[#263649]">
+                    {visit.purchase.purchaseKind === "FULL"
+                      ? `Compra liquidada · ${formatMoney(visit.purchase.saleAmount)}`
+                      : visit.purchase.purchaseKind === "LAYAWAY"
+                        ? `Apartado · ${formatMoney(visit.purchase.saleAmount)}`
+                        : "No compró"}
+                  </p>
+                  {visit.purchase.purchaseKind === "LAYAWAY" ? (
+                    <p className="mt-1 tabular-nums text-slate-500">
+                      Abono {formatMoney(visit.purchase.depositAmount)} · Saldo{" "}
+                      {formatMoney(visit.purchase.balanceAmount)}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </article>
         ))
       ) : (

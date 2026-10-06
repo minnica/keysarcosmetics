@@ -214,7 +214,7 @@ function SchedulerAppointmentSummary({
             className={cn(
               "scheduler-appointment-attendee min-w-0 items-center justify-center overflow-hidden px-1 text-center font-semibold",
               hasMultipleAttendees
-                ? "flex border-l border-current/20 text-[0.58rem] leading-[0.95] first:border-l-0"
+                ? "flex border-l border-current/20 text-[0.58rem] leading-none first:border-l-0"
                 : "block truncate text-[0.82rem] leading-[1.05]",
             )}
             key={`${name}-${index}`}
@@ -222,10 +222,7 @@ function SchedulerAppointmentSummary({
           >
             <span
               className={cn(
-                "min-w-0",
-                hasMultipleAttendees
-                  ? "line-clamp-2 break-words"
-                  : "truncate",
+                "block w-full min-w-0 truncate",
               )}
             >
               {name}

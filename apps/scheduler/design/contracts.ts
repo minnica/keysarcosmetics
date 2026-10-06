@@ -2,6 +2,7 @@ import type {
   SchedulerAppointmentStatus,
   SchedulerCustomerFieldDefinitionDto,
   SchedulerCustomerSummaryDto,
+  SchedulerCustomerVisitHistoryDto,
 } from "@cosmetics/types";
 
 export type DesignOperationPurpose =
@@ -189,6 +190,25 @@ export interface DesignAppointmentContext {
   nextAppointmentId: string | null;
   nextAppointmentAt: string | null;
 }
+
+export interface DesignCustomerVisitPurchaseSnapshot {
+  purchaseKind: Exclude<DesignPurchaseKind, null>;
+  saleAmount: number;
+  depositAmount: number;
+  balanceAmount: number;
+  settlementStatus: DesignSaleSettlementStatus;
+}
+
+export type DesignCustomerVisitHistoryDto = Omit<
+  SchedulerCustomerVisitHistoryDto,
+  "items"
+> & {
+  items: Array<
+    SchedulerCustomerVisitHistoryDto["items"][number] & {
+      purchase?: DesignCustomerVisitPurchaseSnapshot | null;
+    }
+  >;
+};
 
 export type DesignAppointmentJournalKind =
   | "SELLER_COMMENT"

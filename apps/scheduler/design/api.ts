@@ -3326,18 +3326,50 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           ...page(
             visibleAppointments(state)
               .filter((entry) => entry.customerId === id)
-              .map((entry) => ({
-                id: entry.id,
-                origin: "SCHEDULER_APPOINTMENT",
-                branchId: entry.branchId,
-                branchName: entry.branchName,
-                serviceName: entry.services
-                  .map((line) => line.serviceName)
-                  .join(", "),
-                status: entry.status,
-                scheduledAt: entry.startsAt,
-                createdAt: entry.createdAt,
-              })),
+              .map((entry) => {
+                const visitor = state.appointmentCabinVisits[
+                  entry.id
+                ]?.visitors.find((candidate) => candidate.customerId === id);
+                const purchaseKind =
+                  visitor?.purchaseKind ??
+                  (visitor?.purchased === true
+                    ? "FULL"
+                    : visitor?.purchased === false
+                      ? "NONE"
+                      : null);
+                const saleAmount = Number(
+                  visitor?.saleAmount ?? visitor?.purchaseAmount ?? 0,
+                );
+                const depositAmount = Number(
+                  visitor?.depositAmount ??
+                    (purchaseKind === "FULL" ? saleAmount : 0),
+                );
+                return {
+                  id: entry.id,
+                  origin: "SCHEDULER_APPOINTMENT",
+                  branchId: entry.branchId,
+                  branchName: entry.branchName,
+                  serviceName: entry.services
+                    .map((line) => line.serviceName)
+                    .join(", "),
+                  status: entry.status,
+                  scheduledAt: entry.startsAt,
+                  createdAt: entry.createdAt,
+                  purchase: purchaseKind
+                    ? {
+                        purchaseKind,
+                        saleAmount,
+                        depositAmount,
+                        balanceAmount: Math.max(
+                          0,
+                          saleAmount - depositAmount,
+                        ),
+                        settlementStatus:
+                          visitor?.settlementStatus ?? "NOT_APPLICABLE",
+                      }
+                    : null,
+                };
+              }),
             query,
           ),
           legacyRegistroCitaLinked: false,
