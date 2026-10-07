@@ -2087,10 +2087,32 @@ function VisitHistory({
                         : "No compró"}
                   </p>
                   {visit.purchase.purchaseKind === "LAYAWAY" ? (
-                    <p className="mt-1 tabular-nums text-slate-500">
-                      Abono {formatMoney(visit.purchase.depositAmount)} · Saldo{" "}
-                      {formatMoney(visit.purchase.balanceAmount)}
-                    </p>
+                    <>
+                      <p className="mt-1 tabular-nums text-slate-500">
+                        Abono {formatMoney(visit.purchase.depositAmount)} · Saldo{" "}
+                        {formatMoney(visit.purchase.balanceAmount)}
+                      </p>
+                      {visit.purchase.payments.length ? (
+                        <div className="mt-2 space-y-1 border-t border-[#e4d5c7] pt-2">
+                          {visit.purchase.payments.map((payment) => (
+                            <p
+                              className="flex items-center justify-between gap-3 text-slate-500"
+                              key={payment.id}
+                            >
+                              <span>
+                                {payment.kind === "SETTLEMENT"
+                                  ? "Liquidación"
+                                  : "Abono"}{" "}
+                                · {payment.actorName}
+                              </span>
+                              <span className="font-semibold tabular-nums text-[#263649]">
+                                {formatMoney(payment.amount)}
+                              </span>
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
               </div>

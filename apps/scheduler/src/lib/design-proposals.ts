@@ -30,6 +30,8 @@ export const schedulerDesignProposals: DesignProposalClient = {
   saveAppointmentAnswers: unavailable,
   appointmentCabinVisit: unavailable,
   appointmentContexts: unavailable,
+  customerOpenLayaways: unavailable,
+  applyLayawayPayment: unavailable,
   saveAppointmentCabinVisit: unavailable,
   appointmentJournal: unavailable,
   addAppointmentJournalEntry: unavailable,

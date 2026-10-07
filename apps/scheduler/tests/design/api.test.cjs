@@ -214,6 +214,126 @@ test("el historial de visitas separa la compra de cada clienta en una cabina dob
     companionVisit.purchase.saleAmount,
     attendedVisit.purchase.saleAmount,
   );
+
+  const currentAppointment = state.appointments.find(
+    (appointment) => appointment.id !== attendedAppointment.id,
+  );
+  currentAppointment.customerId = companionCustomer.id;
+  currentAppointment.customerName = companionCustomer.displayName;
+  currentAppointment.status = "ARRIVED";
+  currentAppointment.startsAt = new Date(
+    new Date(attendedAppointment.startsAt).getTime() + 7 * 86_400_000,
+  ).toISOString();
+  currentAppointment.endsAt = new Date(
+    new Date(currentAppointment.startsAt).getTime() + 60 * 60_000,
+  ).toISOString();
+
+  const openLayaways = request(
+    "GET",
+    `/api/scheduler/design-proposals/customers/${companionCustomer.id}/layaways?currentAppointmentId=${currentAppointment.id}`,
+  );
+  assert.equal(openLayaways.status, 200);
+  const targetLayaway = openLayaways.body.data.find(
+    (layaway) => layaway.sourceAppointmentId === attendedAppointment.id,
+  );
+  assert.ok(targetLayaway);
+  assert.equal(targetLayaway.balanceAmount, 1800);
+
+  const partialToken = operationToken(
+    request,
+    "PURCHASE_CAPTURE",
+    attendedAppointment.id,
+    "1111",
+    "PURCHASE_CAPTURE",
+  );
+  const partial = request(
+    "POST",
+    `/api/scheduler/design-proposals/customers/${companionCustomer.id}/layaways/${attendedAppointment.id}/payments`,
+    {
+      visitAppointmentId: currentAppointment.id,
+      amount: 500,
+      authorizationToken: partialToken,
+    },
+  );
+  assert.equal(partial.status, 201);
+  assert.equal(partial.body.data.paidAmount, 1100);
+  assert.equal(partial.body.data.balanceAmount, 1300);
+  assert.equal(partial.body.data.settlementStatus, "OPEN");
+  assert.equal(partial.body.data.payments[0].visitAppointmentId, currentAppointment.id);
+
+  const partialCommit = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations/commit",
+    {
+      token: partialToken,
+      action: "Abono a apartado",
+      targetType: "LAYAWAY",
+      targetId: attendedAppointment.id,
+      metadata: { amount: "500" },
+    },
+  );
+  assert.equal(partialCommit.status, 201);
+
+  const settlementToken = operationToken(
+    request,
+    "PURCHASE_CAPTURE",
+    attendedAppointment.id,
+    "1111",
+    "PURCHASE_CAPTURE",
+  );
+  const settled = request(
+    "POST",
+    `/api/scheduler/design-proposals/customers/${companionCustomer.id}/layaways/${attendedAppointment.id}/payments`,
+    {
+      visitAppointmentId: currentAppointment.id,
+      amount: 1300,
+      authorizationToken: settlementToken,
+    },
+  );
+  assert.equal(settled.status, 201);
+  assert.equal(settled.body.data.paidAmount, 2400);
+  assert.equal(settled.body.data.balanceAmount, 0);
+  assert.equal(settled.body.data.settlementStatus, "PAID");
+  assert.equal(settled.body.data.payments.length, 2);
+
+  const settlementCommit = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations/commit",
+    {
+      token: settlementToken,
+      action: "Liquidación de apartado",
+      targetType: "LAYAWAY",
+      targetId: attendedAppointment.id,
+      metadata: { amount: "1300" },
+    },
+  );
+  assert.equal(settlementCommit.status, 201);
+
+  const refreshedAuthorization = request(
+    "POST",
+    "/api/scheduler/authorizations",
+    {
+      secret: "0000",
+      purpose: "CLIENT_VISIT_HISTORY_VIEW",
+      screenKey: "scheduler/clients",
+      targetId: companionCustomer.id,
+    },
+  );
+  const refreshedVisits = request(
+    "GET",
+    `/api/scheduler/clients/${companionCustomer.id}/visits`,
+    {},
+    {
+      "x-scheduler-authorization": refreshedAuthorization.body.data.token,
+    },
+  );
+  const settledVisit = refreshedVisits.body.data.items.find(
+    (visit) => visit.id === attendedAppointment.id,
+  );
+  assert.equal(settledVisit.purchase.depositAmount, 2400);
+  assert.equal(settledVisit.purchase.balanceAmount, 0);
+  assert.equal(settledVisit.purchase.settlementStatus, "PAID");
+  assert.equal(settledVisit.purchase.payments.length, 2);
 });
 
 test("el cliente Axios real funciona con MSW sin servidor ni credenciales reales", async () => {

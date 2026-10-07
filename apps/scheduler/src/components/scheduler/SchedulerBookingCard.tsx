@@ -45,7 +45,10 @@ import {
   type SchedulerFinancialAuditEvent,
   type SchedulerFinancialProfile,
 } from "@/lib/scheduler-access";
-import type { DesignAppointmentContext } from "../../../design/contracts";
+import type {
+  DesignAppointmentContext,
+  DesignCustomerLayawaySummary,
+} from "../../../design/contracts";
 import {
   formatMoney,
   getServiceByName,
@@ -71,6 +74,10 @@ interface SchedulerBookingCardProps {
   onOpenClientHistory: (booking: Booking) => void;
   onOpenSellerComment: (booking: Booking) => void;
   onOpenPostSaleComment: (booking: Booking) => void;
+  onOpenLayawayPayment: (
+    booking: Booking,
+    layaway: DesignCustomerLayawaySummary,
+  ) => void;
   onOpenReschedule: (booking: Booking) => void;
   onRequestFinancialAccess: (booking: Booking) => void;
   onRevokeFinancialAccess: (booking: Booking) => void;
@@ -130,6 +137,7 @@ export function SchedulerBookingCard({
   onOpenClientHistory,
   onOpenSellerComment,
   onOpenPostSaleComment,
+  onOpenLayawayPayment,
   onOpenReschedule,
   onRequestFinancialAccess,
   onRevokeFinancialAccess,
@@ -162,6 +170,10 @@ export function SchedulerBookingCard({
   const canCaptureCabinVisit =
     enableCabinVisitFlow &&
     ["arrived", "waiting", "attended"].includes(booking.status);
+  const canCaptureLayawayPayment =
+    canWrite &&
+    ["arrived", "waiting", "attended"].includes(booking.status) &&
+    Boolean(booking.clientId);
   const canManagePaymentHistory =
     !financialHistoryReadOnly &&
     canManageSchedulerPaymentHistory(financialProfile);
@@ -301,6 +313,39 @@ export function SchedulerBookingCard({
           </p>
         </div>
       </div>
+
+      {canCaptureLayawayPayment && appointmentContext?.openLayaways.length ? (
+        <section className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
+          <div className="flex items-center gap-2 text-[0.82rem] font-semibold text-amber-900">
+            <WalletCards className="h-4 w-4" />
+            Apartados pendientes de visitas anteriores
+          </div>
+          {appointmentContext.openLayaways.map((layaway) => (
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5"
+              key={layaway.sourceAppointmentId}
+            >
+              <div className="min-w-0">
+                <p className="text-[0.76rem] text-slate-500">
+                  Venta {formatMoney(layaway.saleAmount)} · Abonado{" "}
+                  {formatMoney(layaway.paidAmount)}
+                </p>
+                <p className="mt-0.5 text-[0.88rem] font-semibold text-amber-800">
+                  Saldo {formatMoney(layaway.balanceAmount)}
+                </p>
+              </div>
+              <button
+                className="inline-flex min-h-9 items-center gap-2 rounded-xl bg-[var(--scheduler-ink-strong)] px-3 text-[0.78rem] font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
+                onClick={() => onOpenLayawayPayment(booking, layaway)}
+                type="button"
+              >
+                <ShoppingBag className="h-3.5 w-3.5" />
+                Abonar o liquidar
+              </button>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {financialProfile ? (
         <Dialog>

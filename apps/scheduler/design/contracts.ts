@@ -174,6 +174,32 @@ export interface DesignAppointmentCabinVisit {
   updatedAt: string;
 }
 
+export interface DesignLayawayPayment {
+  id: string;
+  sourceAppointmentId: string;
+  visitAppointmentId: string;
+  customerId: string;
+  amount: number;
+  kind: "PAYMENT" | "SETTLEMENT";
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  createdAt: string;
+}
+
+export interface DesignCustomerLayawaySummary {
+  sourceAppointmentId: string;
+  customerId: string;
+  customerName: string;
+  sourceStartsAt: string;
+  branchName: string;
+  saleAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  settlementStatus: DesignSaleSettlementStatus;
+  payments: DesignLayawayPayment[];
+}
+
 export interface DesignAppointmentContext {
   appointmentId: string;
   attendeeNames: string[];
@@ -189,6 +215,7 @@ export interface DesignAppointmentContext {
   depositAmount: number;
   nextAppointmentId: string | null;
   nextAppointmentAt: string | null;
+  openLayaways: DesignCustomerLayawaySummary[];
 }
 
 export interface DesignCustomerVisitPurchaseSnapshot {
@@ -197,6 +224,7 @@ export interface DesignCustomerVisitPurchaseSnapshot {
   depositAmount: number;
   balanceAmount: number;
   settlementStatus: DesignSaleSettlementStatus;
+  payments: DesignLayawayPayment[];
 }
 
 export type DesignCustomerVisitHistoryDto = Omit<
@@ -542,6 +570,19 @@ export interface DesignProposalClient {
   appointmentContexts(
     appointmentIds: string[],
   ): Promise<Record<string, DesignAppointmentContext>>;
+  customerOpenLayaways(
+    customerId: string,
+    currentAppointmentId: string,
+  ): Promise<DesignCustomerLayawaySummary[]>;
+  applyLayawayPayment(
+    customerId: string,
+    sourceAppointmentId: string,
+    input: {
+      visitAppointmentId: string;
+      amount: number;
+      authorizationToken: string;
+    },
+  ): Promise<DesignCustomerLayawaySummary>;
   saveAppointmentCabinVisit(
     appointmentId: string,
     input: {

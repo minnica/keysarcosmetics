@@ -82,6 +82,7 @@ import type {
   DesignAppointmentJournalKind,
   DesignAuthorizationScopeKey,
   DesignCustomerVisitHistoryDto,
+  DesignCustomerLayawaySummary,
   DesignOperationAgent,
   DesignOperationGrant,
   DesignOperationPurpose,
@@ -117,6 +118,7 @@ import {
   SchedulerAppointmentJournalDialog,
   type AppointmentJournalCategoryOption,
 } from "@/components/scheduler/SchedulerAppointmentJournalDialog";
+import { SchedulerLayawayPaymentDialog } from "@/components/scheduler/SchedulerLayawayPaymentDialog";
 import {
   getSchedulerSettingValue,
   resolveSchedulerSettingDocumentForScope,
@@ -151,6 +153,11 @@ interface SensitiveRequest {
 interface FinancialRecord {
   profile: SchedulerFinancialProfile;
   data: SchedulerCustomerFinancialHistoryDto;
+}
+
+interface LayawayPaymentRequest {
+  booking: Booking;
+  layaway: DesignCustomerLayawaySummary;
 }
 
 interface CustomerRegistrationReview {
@@ -414,6 +421,9 @@ export function ApiAgendaWorkspace() {
   >([]);
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalSaving, setJournalSaving] = useState(false);
+  const [layawayPaymentRequest, setLayawayPaymentRequest] =
+    useState<LayawayPaymentRequest | null>(null);
+  const [layawayPaymentSaving, setLayawayPaymentSaving] = useState(false);
   const pendingOperationRef = useRef<
     ((grant: DesignOperationGrant | null) => Promise<void>) | null
   >(null);
@@ -874,6 +884,7 @@ export function ApiAgendaWorkspace() {
             depositAmount: 0,
             nextAppointmentId: null,
             nextAppointmentAt: null,
+            openLayaways: [],
           } satisfies DesignAppointmentContext),
       ]),
     );
@@ -1168,6 +1179,7 @@ export function ApiAgendaWorkspace() {
     setFinancialRecords({});
     setHistoryBooking(null);
     setHistoryEntries([]);
+    setLayawayPaymentRequest(null);
     setRecordBooking(null);
     setCustomerDetail(null);
     setCustomerRegistrationReview(null);
@@ -2042,6 +2054,71 @@ export function ApiAgendaWorkspace() {
         ...(editingId ? { targetId: editingId } : {}),
       },
       async (grant) => continueWithPurchaseAuthorization(grant),
+    );
+  }
+
+  function saveLayawayPayment(amount: number) {
+    if (!layawayPaymentRequest?.booking.clientId) return;
+    const { booking, layaway } = layawayPaymentRequest;
+    const customerId = booking.clientId!;
+    const liquidates = amount === layaway.balanceAmount;
+    requestOperationAuthorization(
+      {
+        title: liquidates
+          ? "Autorizar liquidación de apartado"
+          : "Autorizar abono a apartado",
+        description:
+          "El código identifica a la persona que recibe el pago y se consume en este movimiento.",
+        purpose: "PURCHASE_CAPTURE",
+        scopeKey: "PURCHASE_CAPTURE",
+        targetType: "LAYAWAY",
+        targetId: layaway.sourceAppointmentId,
+      },
+      async (grant) => {
+        if (!grant) return;
+        setLayawayPaymentSaving(true);
+        try {
+          const updated = await schedulerDesignProposals.applyLayawayPayment(
+            customerId,
+            layaway.sourceAppointmentId,
+            {
+              visitAppointmentId: bookingSourceId(booking),
+              amount,
+              authorizationToken: grant.token,
+            },
+          );
+          await commitAuthorizedOperation(grant, {
+            action:
+              updated.settlementStatus === "PAID"
+                ? "Liquidación de apartado"
+                : "Abono a apartado",
+            targetType: "LAYAWAY",
+            targetId: layaway.sourceAppointmentId,
+            metadata: {
+              customerId,
+              visitAppointmentId: bookingSourceId(booking),
+              amount: String(amount),
+              paidAmount: String(updated.paidAmount),
+              balanceAmount: String(updated.balanceAmount),
+            },
+          });
+          toast.success(
+            updated.settlementStatus === "PAID"
+              ? "Apartado liquidado y agregado al historial de la clienta."
+              : "Abono agregado al historial de la clienta.",
+          );
+          setLayawayPaymentRequest(null);
+          await appointmentContexts.reload();
+        } catch (cause) {
+          toast.error(
+            cause instanceof Error
+              ? cause.message
+              : "No fue posible registrar el pago del apartado.",
+          );
+        } finally {
+          setLayawayPaymentSaving(false);
+        }
+      },
     );
   }
 
@@ -3181,6 +3258,9 @@ export function ApiAgendaWorkspace() {
                   onOpenPostSaleComment={(booking) =>
                     void openAppointmentJournal(booking, "POST_SALE_COMMENT")
                   }
+                  onOpenLayawayPayment={(booking, layaway) =>
+                    setLayawayPaymentRequest({ booking, layaway })
+                  }
                   onOpenReschedule={(booking) =>
                     void openAppointmentJournal(booking, "RESCHEDULE_REASON")
                   }
@@ -3627,6 +3707,18 @@ export function ApiAgendaWorkspace() {
           saving={journalSaving}
         />
       ) : null}
+      <SchedulerLayawayPaymentDialog
+        customerName={
+          layawayPaymentRequest?.booking.customerName ?? "Clienta"
+        }
+        layaway={layawayPaymentRequest?.layaway ?? null}
+        onOpenChange={(open) => {
+          if (!open && !layawayPaymentSaving) setLayawayPaymentRequest(null);
+        }}
+        onSubmit={saveLayawayPayment}
+        open={Boolean(layawayPaymentRequest)}
+        saving={layawayPaymentSaving}
+      />
       <SchedulerOperationAuthorizationDialog
         description={
           operationPrompt?.description ??

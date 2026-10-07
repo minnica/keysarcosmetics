@@ -47,6 +47,8 @@ import type {
   DesignCabinServiceAnalytics,
   DesignCustomerAdvancedFilters,
   DesignCustomerAdvancedPage,
+  DesignCustomerLayawaySummary,
+  DesignLayawayPayment,
   DesignMovementRecord,
   DesignOperationAgent,
   DesignOperationPurpose,
@@ -726,6 +728,56 @@ function appointmentHasCommercialCapture(
         Number(visitor.saleAmount ?? visitor.purchaseAmount ?? 0) > 0,
     ),
   );
+}
+
+function customerLayaways(
+  state: DesignState,
+  customerId: string,
+  beforeStartsAt?: string,
+): DesignCustomerLayawaySummary[] {
+  return Object.values(state.appointmentCabinVisits)
+    .flatMap((visit) => {
+      const visitor = visit.visitors.find(
+        (candidate) => candidate.customerId === customerId,
+      );
+      if (!visitor || visitor.purchaseKind !== "LAYAWAY") return [];
+      const sourceAppointment = state.appointments.find(
+        (candidate) => candidate.id === visit.appointmentId,
+      );
+      if (!sourceAppointment) return [];
+      if (beforeStartsAt && sourceAppointment.startsAt >= beforeStartsAt) {
+        return [];
+      }
+      const saleAmount = Number(
+        visitor.saleAmount ?? visitor.purchaseAmount ?? 0,
+      );
+      const paidAmount = Number(visitor.depositAmount ?? 0);
+      const payments = state.layawayPayments
+        .filter(
+          (payment) =>
+            payment.sourceAppointmentId === sourceAppointment.id &&
+            payment.customerId === customerId,
+        )
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      return [
+        {
+          sourceAppointmentId: sourceAppointment.id,
+          customerId,
+          customerName: visitor.name,
+          sourceStartsAt: sourceAppointment.startsAt,
+          branchName: sourceAppointment.branchName,
+          saleAmount,
+          paidAmount,
+          balanceAmount: Math.max(0, saleAmount - paidAmount),
+          settlementStatus:
+            paidAmount >= saleAmount ? "PAID" : visitor.settlementStatus,
+          payments,
+        } satisfies DesignCustomerLayawaySummary,
+      ];
+    })
+    .sort((left, right) =>
+      left.sourceStartsAt.localeCompare(right.sourceStartsAt),
+    );
 }
 
 function patchCollection(
@@ -2511,6 +2563,116 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       };
     }
     if (id === "movements") return state.movements;
+    if (id === "customers" && parts[5] === "layaways") {
+      const customerId = String(action ?? "");
+      customer(state, customerId);
+      const currentAppointmentId = String(
+        body.visitAppointmentId ?? query.get("currentAppointmentId") ?? "",
+      );
+      const currentAppointment = appointment(state, currentAppointmentId);
+      if (currentAppointment.customerId !== customerId) {
+        fail(409, "La visita actual pertenece a otra clienta.");
+      }
+      if (method === "GET") {
+        return customerLayaways(
+          state,
+          customerId,
+          currentAppointment.startsAt,
+        ).filter((layaway) => layaway.balanceAmount > 0);
+      }
+      if (
+        method !== "POST" ||
+        !parts[6] ||
+        parts[7] !== "payments"
+      ) {
+        fail(405, "Usa GET para consultar o POST para registrar un abono.");
+      }
+      if (
+        !["ARRIVED", "WAITING", "ATTENDED"].includes(
+          currentAppointment.status,
+        )
+      ) {
+        fail(409, "El abono sólo se registra durante una visita de la clienta.");
+      }
+      const sourceAppointmentId = String(parts[6]);
+      const sourceAppointment = appointment(state, sourceAppointmentId);
+      if (sourceAppointment.startsAt >= currentAppointment.startsAt) {
+        fail(409, "El apartado debe pertenecer a una visita anterior.");
+      }
+      const sourceVisit =
+        state.appointmentCabinVisits[sourceAppointmentId] ??
+        fail(404, "No existe un apartado abierto para esta clienta.");
+      const visitor =
+        sourceVisit.visitors.find(
+          (candidate) => candidate.customerId === customerId,
+        ) ?? fail(404, "No existe un apartado abierto para esta clienta.");
+      if (visitor.purchaseKind !== "LAYAWAY") {
+        fail(404, "No existe un apartado abierto para esta clienta.");
+      }
+      const authorizationToken = String(body.authorizationToken ?? "");
+      const authorization =
+        state.operationAuthorizations.get(authorizationToken) ??
+        fail(403, "El abono requiere un código personal autorizado.");
+      const authorizedAgent =
+        state.operationAgents.find(
+          (candidate) => candidate.id === authorization.agentId,
+        ) ?? fail(403, "El agente autorizado ya no está disponible.");
+      if (
+        authorization.purpose !== "PURCHASE_CAPTURE" ||
+        authorization.scopeKey !== "PURCHASE_CAPTURE" ||
+        authorization.targetId !== sourceAppointmentId ||
+        authorization.expiresAt < Date.now() ||
+        !authorizedAgent.active ||
+        !agentCanAuthorizeScope(
+          state,
+          authorizedAgent,
+          authorization.scopeKey,
+        )
+      ) {
+        fail(403, "El abono requiere un código personal autorizado.");
+      }
+      const saleAmount = Number(
+        visitor.saleAmount ?? visitor.purchaseAmount ?? 0,
+      );
+      const paidAmount = Number(visitor.depositAmount ?? 0);
+      const balanceAmount = Math.max(0, saleAmount - paidAmount);
+      const amount = Number(body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        fail(400, "El abono debe ser mayor a cero.");
+      }
+      if (amount > balanceAmount) {
+        fail(400, "El abono no puede superar el saldo pendiente.");
+      }
+      if (balanceAmount === 0) {
+        fail(409, "El apartado ya está liquidado.");
+      }
+      const createdAt = new Date().toISOString();
+      const payment: DesignLayawayPayment = {
+        id: designId("design-layaway-payment"),
+        sourceAppointmentId,
+        visitAppointmentId: currentAppointmentId,
+        customerId,
+        amount,
+        kind: amount === balanceAmount ? "SETTLEMENT" : "PAYMENT",
+        actorId: authorizedAgent.id,
+        actorName: authorizedAgent.name,
+        actorRole: authorizedAgent.role,
+        createdAt,
+      };
+      state.layawayPayments.push(payment);
+      const nextPaidAmount = paidAmount + amount;
+      visitor.depositAmount = nextPaidAmount;
+      visitor.purchaseAmount = saleAmount;
+      visitor.settlementStatus =
+        nextPaidAmount >= saleAmount ? "PAID" : "OPEN";
+      visitor.settledAt = nextPaidAmount >= saleAmount ? createdAt : null;
+      sourceVisit.updatedAt = createdAt;
+      return (
+        customerLayaways(state, customerId).find(
+          (layaway) => layaway.sourceAppointmentId === sourceAppointmentId,
+        ) ?? fail(500, "No fue posible actualizar el saldo del apartado.")
+      );
+    }
     if (id === "appointments" && action === "contexts") {
       if (method !== "POST") {
         fail(405, "Usa POST para consultar el contexto de las citas.");
@@ -2599,6 +2761,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             depositAmount,
             nextAppointmentId: nextAppointment?.id ?? null,
             nextAppointmentAt: nextAppointment?.startsAt ?? null,
+            openLayaways: customerLayaways(
+              state,
+              appointmentItem.customerId,
+              appointmentItem.startsAt,
+            ).filter((layaway) => layaway.balanceAmount > 0),
           };
           return [appointmentId, context];
         }),
@@ -3372,6 +3539,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                         ),
                         settlementStatus:
                           visitor?.settlementStatus ?? "NOT_APPLICABLE",
+                        payments: state.layawayPayments.filter(
+                          (payment) =>
+                            payment.sourceAppointmentId === entry.id &&
+                            payment.customerId === id,
+                        ),
                       }
                     : null,
                 };

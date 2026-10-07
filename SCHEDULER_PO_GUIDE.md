@@ -499,6 +499,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `POST`         | `/api/scheduler/design-proposals/appointments/contexts`               | Resolver por lote representante, snapshot de cartera, compra y próxima cita.  |
 | `GET/POST`     | `/api/scheduler/design-proposals/appointments/:id/journal`            | Consultar o agregar comentarios, postventa y motivos append-only.             |
 | `GET/PUT`      | `/api/scheduler/design-proposals/customers/:id/specialist-preference` | Proponer o retirar la especialista fija de futuras citas.                     |
+| `GET/POST`     | `/api/scheduler/design-proposals/customers/:id/layaways[/:sourceAppointmentId/payments]` | Consultar apartados abiertos y registrar abonos o liquidaciones autorizadas. |
 | `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`                 | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
 | `POST`         | `/api/scheduler/design-proposals/reports/appointment-journal`         | Exportar seguimiento y comentarios desde una población filtrada única.        |
 | `POST`         | `/api/scheduler/design-proposals/reports/sales-projections`           | Comparar meses históricos y calcular la proyección demo por sucursal.         |
@@ -762,6 +763,24 @@ ni recalcular ventas históricas desde el navegador. En cabinas dobles, triples 
 de mayor capacidad, el historial incluye la cita cuando la clienta aparece como
 visitante y muestra exclusivamente su propia compra mediante `customerId`; no
 suma ni replica las ventas de las demás personas de la cabina.
+
+El 6 de octubre de 2026 se agregó el seguimiento de apartados en visitas
+posteriores. Cuando una clienta con saldo abierto llega, queda en espera o es
+atendida, su tarjeta muestra **Abonar o liquidar**. Un abono debe ser menor al
+saldo y una liquidación cubre exactamente el restante; ambas acciones requieren
+un código con alcance `PURCHASE_CAPTURE`, consumen una autorización de un solo
+uso y generan un movimiento identificable. El saldo continúa ligado a la venta
+y a la clienta originales, no crea una venta nueva en la visita actual ni suma
+importes de otras visitantes de una cabina múltiple. Cada pago conserva la cita
+de origen, la visita donde se recibió, monto, actor y fecha. El historial de la
+clienta muestra el total acumulado, saldo, abonos y liquidación; al quedar en
+cero, el apartado pasa a `PAID` y deja de ofrecer el botón en visitas futuras.
+Producción deberá persistir pagos y actualización de saldo en una sola
+transacción append-only, además de proyectarlos en reportes y auditoría.
+La validación de esta entrega quedó en 86 pruebas totales y 28 pruebas aisladas
+de diseño, además de TypeScript, lint y `build:design`. La revisión visual no
+pudo automatizarse porque el sandbox de Windows falló antes de abrir el
+navegador; el servidor local en `http://localhost:3008/` sí respondió `HTTP 200`.
 
 El 4 de octubre de 2026 el alta de cliente desde Agenda se separó de la reserva
 en dos pasos. El primer paso reutiliza el mismo borrador para guardar identidad,

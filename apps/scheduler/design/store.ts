@@ -33,6 +33,7 @@ import type {
   DesignAuthorizationScopeKey,
   DesignBranchCommercialModel,
   DesignCustomerSpecialistPreference,
+  DesignLayawayPayment,
   DesignMovementRecord,
   DesignOperationAgentSource,
   DesignOperationPurpose,
@@ -600,6 +601,7 @@ export function createDesignState(
       { employeeId: string | null; ownerName: string }
     >,
     appointmentCabinVisits: {} as Record<string, DesignAppointmentCabinVisit>,
+    layawayPayments: [] as DesignLayawayPayment[],
     appointmentJournal: [] as DesignAppointmentJournalEntry[],
     customerSpecialistPreferences: {} as Record<
       string,

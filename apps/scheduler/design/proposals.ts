@@ -9,6 +9,7 @@ import type {
   DesignCabinSalesReport,
   DesignSalesProjectionReport,
   DesignCustomerAdvancedPage,
+  DesignCustomerLayawaySummary,
   DesignCustomerSpecialistPreference,
   DesignDemoAccountOption,
   DesignMovementRecord,
@@ -133,6 +134,15 @@ export const schedulerDesignProposals: DesignProposalClient = {
     request<Record<string, DesignAppointmentContext>>(
       "/api/scheduler/design-proposals/appointments/contexts",
       { method: "POST", body: JSON.stringify({ appointmentIds }) },
+    ),
+  customerOpenLayaways: (customerId, currentAppointmentId) =>
+    request<DesignCustomerLayawaySummary[]>(
+      `/api/scheduler/design-proposals/customers/${customerId}/layaways?currentAppointmentId=${encodeURIComponent(currentAppointmentId)}`,
+    ),
+  applyLayawayPayment: (customerId, sourceAppointmentId, input) =>
+    request<DesignCustomerLayawaySummary>(
+      `/api/scheduler/design-proposals/customers/${customerId}/layaways/${sourceAppointmentId}/payments`,
+      { method: "POST", body: JSON.stringify(input) },
     ),
   saveAppointmentCabinVisit: (appointmentId, input, authorizationToken) =>
     request<DesignAppointmentCabinVisit>(

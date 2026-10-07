@@ -144,6 +144,24 @@ export function SchedulerClientHistoryDialog({
                                       {formatMoney(entry.purchase.depositAmount)} · Saldo{' '}
                                       {formatMoney(entry.purchase.balanceAmount)}
                                     </p>
+                                    {entry.purchase.payments.length ? (
+                                      <div className="mt-1.5 border-t border-[#e4d5c7] pt-1.5">
+                                        {entry.purchase.payments.map((payment) => (
+                                          <p
+                                            className="flex items-center justify-between gap-3"
+                                            key={payment.id}
+                                          >
+                                            <span>
+                                              {payment.kind === 'SETTLEMENT' ? 'Liquidación' : 'Abono'} ·{' '}
+                                              {payment.actorName}
+                                            </span>
+                                            <span className="font-semibold tabular-nums">
+                                              {formatMoney(payment.amount)}
+                                            </span>
+                                          </p>
+                                        ))}
+                                      </div>
+                                    ) : null}
                                   </>
                                 ) : (
                                   <p className="font-semibold">No compró</p>

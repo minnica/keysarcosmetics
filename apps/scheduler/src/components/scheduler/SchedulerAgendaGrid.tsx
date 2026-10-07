@@ -70,7 +70,10 @@ import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
 import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
 import { canMoveSchedulerBooking } from "@/lib/scheduler-appointment-move";
 import { isSchedulerCabinColumn } from "@/lib/scheduler-agenda-layout";
-import type { DesignAppointmentContext } from "../../../design/contracts";
+import type {
+  DesignAppointmentContext,
+  DesignCustomerLayawaySummary,
+} from "../../../design/contracts";
 
 interface SchedulerAgendaGridProps {
   currentView: SchedulerView;
@@ -102,6 +105,10 @@ interface SchedulerAgendaGridProps {
   onOpenClientHistory: (booking: Booking) => void;
   onOpenSellerComment: (booking: Booking) => void;
   onOpenPostSaleComment: (booking: Booking) => void;
+  onOpenLayawayPayment: (
+    booking: Booking,
+    layaway: DesignCustomerLayawaySummary,
+  ) => void;
   onOpenReschedule: (booking: Booking) => void;
   financialAccessByClient: Record<string, SchedulerFinancialProfile>;
   financialAuditEvents: SchedulerFinancialAuditEvent[];
@@ -329,6 +336,7 @@ export function SchedulerAgendaGrid({
   onOpenClientHistory,
   onOpenSellerComment,
   onOpenPostSaleComment,
+  onOpenLayawayPayment,
   onOpenReschedule,
   financialAccessByClient,
   financialAuditEvents,
@@ -1059,6 +1067,10 @@ export function SchedulerAgendaGrid({
                             setOpenBookingCardId(null);
                             onOpenPostSaleComment(selectedBooking);
                           }}
+                          onOpenLayawayPayment={(selectedBooking, layaway) => {
+                            setOpenBookingCardId(null);
+                            onOpenLayawayPayment(selectedBooking, layaway);
+                          }}
                           onOpenReschedule={onOpenReschedule}
                           onStatusChange={onUpdateBookingStatus}
                           onPurchaseDecision={onPurchaseDecision}
@@ -1473,6 +1485,10 @@ export function SchedulerAgendaGrid({
                           onOpenPostSaleComment={(selectedBooking) => {
                             setOpenBookingCardId(null);
                             onOpenPostSaleComment(selectedBooking);
+                          }}
+                          onOpenLayawayPayment={(selectedBooking, layaway) => {
+                            setOpenBookingCardId(null);
+                            onOpenLayawayPayment(selectedBooking, layaway);
                           }}
                           onOpenReschedule={onOpenReschedule}
                           onStatusChange={onUpdateBookingStatus}
