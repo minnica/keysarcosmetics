@@ -1797,16 +1797,17 @@ export function ApiAgendaWorkspace() {
   }) {
     if (!journalRequest) return;
     const appointmentId = bookingSourceId(journalRequest.booking);
+    const journalKind = journalRequest.kind;
     const purpose: DesignOperationPurpose =
-      journalRequest.kind === "SELLER_COMMENT"
+      journalKind === "SELLER_COMMENT"
         ? "APPOINTMENT_COMMENT_CREATE"
-        : journalRequest.kind === "POST_SALE_COMMENT"
+        : journalKind === "POST_SALE_COMMENT"
           ? "POST_SALE_COMMENT_CREATE"
           : "APPOINTMENT_MOVE";
     requestOperationAuthorization(
       {
         title:
-          journalRequest.kind === "RESCHEDULE_REASON"
+          journalKind === "RESCHEDULE_REASON"
             ? "Autorizar solicitud de reagenda"
             : "Autorizar comentario de cita",
         description:
@@ -1822,7 +1823,7 @@ export function ApiAgendaWorkspace() {
           await schedulerDesignProposals.addAppointmentJournalEntry(
             appointmentId,
             {
-              kind: journalRequest.kind,
+              kind: journalKind,
               comment: input.comment,
               ...(input.category
                 ? {
@@ -1839,15 +1840,15 @@ export function ApiAgendaWorkspace() {
           );
           await commitAuthorizedOperation(grant, {
             action:
-              journalRequest.kind === "SELLER_COMMENT"
+              journalKind === "SELLER_COMMENT"
                 ? "Comentario de vendedor"
-                : journalRequest.kind === "POST_SALE_COMMENT"
+                : journalKind === "POST_SALE_COMMENT"
                   ? "Comentario postventa"
                   : "Solicitud de reagenda",
             targetType: "APPOINTMENT_JOURNAL",
             targetId: appointmentId,
             metadata: {
-              kind: journalRequest.kind,
+              kind: journalKind,
               ...(input.category
                 ? { categoryLabel: input.category.label }
                 : {}),
@@ -1856,9 +1857,14 @@ export function ApiAgendaWorkspace() {
                 : {}),
             },
           });
-          setJournalEntries(
-            await schedulerDesignProposals.appointmentJournal(appointmentId),
-          );
+          if (journalKind === "POST_SALE_COMMENT") {
+            setJournalRequest(null);
+            setJournalEntries([]);
+          } else {
+            setJournalEntries(
+              await schedulerDesignProposals.appointmentJournal(appointmentId),
+            );
+          }
           toast.success("Seguimiento guardado en el historial de la cita.");
         } catch (cause) {
           toast.error(

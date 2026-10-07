@@ -463,6 +463,10 @@ personal con permiso `APPOINTMENT_COMMENT_CREATE`; postventa solicita
 Servicio bueno, regular y malo, pero pueden agregarse, cambiarse o retirarse en
 la configuración. Cada registro guarda ID, nombre y versión de categoría como
 snapshot, por lo que una modificación posterior no altera reportes históricos.
+Al autorizar y guardar correctamente un seguimiento postventa, la ficha y el
+formulario se cierran y la operadora regresa a la agenda. Un error de
+autorización o persistencia conserva abierto el formulario para corregirlo o
+reintentarlo sin perder el comentario capturado.
 
 Cancelar una cita continúa solicitando un motivo obligatorio y ahora exige
 además una fecha tentativa o marcar **No cuenta con una próxima cita**; ambos

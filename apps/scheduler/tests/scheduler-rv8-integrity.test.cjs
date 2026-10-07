@@ -126,6 +126,26 @@ test("combines commerce and resources into one administration submenu", () => {
   );
 });
 
+test("returns to the agenda after a successful post-sale save", () => {
+  const agendaWorkspace = readFileSync(
+    path.join(sourceRoot, "components/api/ApiAgendaWorkspace.tsx"),
+    "utf8",
+  );
+  const agendaGrid = readFileSync(
+    path.join(sourceRoot, "components/scheduler/SchedulerAgendaGrid.tsx"),
+    "utf8",
+  );
+
+  assert.match(
+    agendaWorkspace,
+    /journalKind === "POST_SALE_COMMENT"[\s\S]{0,160}setJournalRequest\(null\)[\s\S]{0,80}setJournalEntries\(\[\]\)/,
+  );
+  const postSaleOpeners = agendaGrid.match(
+    /onOpenPostSaleComment=\{\(selectedBooking\) => \{[\s\S]{0,120}setOpenBookingCardId\(null\);[\s\S]{0,120}onOpenPostSaleComment\(selectedBooking\);/g,
+  );
+  assert.equal(postSaleOpeners?.length, 2);
+});
+
 test("keeps fixtures and retired workspaces out of the production graph", () => {
   const { reachable, unresolved } = productionGraph();
   assert.deepEqual(unresolved, []);

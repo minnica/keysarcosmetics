@@ -353,6 +353,9 @@ export function SchedulerAgendaGrid({
   const [gridViewportHeight, setGridViewportHeight] = useState(0);
   const [draggingBooking, setDraggingBooking] = useState<Booking | null>(null);
   const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
+  const [openBookingCardId, setOpenBookingCardId] = useState<string | null>(
+    null,
+  );
   const visibleColumnById = useMemo(
     () => new Map(visibleProfessionals.map((column) => [column.id, column])),
     [visibleProfessionals],
@@ -874,7 +877,13 @@ export function SchedulerAgendaGrid({
                     );
 
                   return (
-                    <Dialog key={booking.id}>
+                    <Dialog
+                      key={booking.id}
+                      onOpenChange={(open) =>
+                        setOpenBookingCardId(open ? booking.id : null)
+                      }
+                      open={openBookingCardId === booking.id}
+                    >
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <DialogTrigger asChild>
@@ -1046,7 +1055,10 @@ export function SchedulerAgendaGrid({
                           onOpenDetail={onOpenBookingDetail}
                           onOpenClientHistory={onOpenClientHistory}
                           onOpenSellerComment={onOpenSellerComment}
-                          onOpenPostSaleComment={onOpenPostSaleComment}
+                          onOpenPostSaleComment={(selectedBooking) => {
+                            setOpenBookingCardId(null);
+                            onOpenPostSaleComment(selectedBooking);
+                          }}
                           onOpenReschedule={onOpenReschedule}
                           onStatusChange={onUpdateBookingStatus}
                           onPurchaseDecision={onPurchaseDecision}
@@ -1275,7 +1287,13 @@ export function SchedulerAgendaGrid({
                     );
 
                   return (
-                    <Dialog key={booking.id}>
+                    <Dialog
+                      key={booking.id}
+                      onOpenChange={(open) =>
+                        setOpenBookingCardId(open ? booking.id : null)
+                      }
+                      open={openBookingCardId === booking.id}
+                    >
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <DialogTrigger asChild>
@@ -1452,7 +1470,10 @@ export function SchedulerAgendaGrid({
                           onOpenDetail={onOpenBookingDetail}
                           onOpenClientHistory={onOpenClientHistory}
                           onOpenSellerComment={onOpenSellerComment}
-                          onOpenPostSaleComment={onOpenPostSaleComment}
+                          onOpenPostSaleComment={(selectedBooking) => {
+                            setOpenBookingCardId(null);
+                            onOpenPostSaleComment(selectedBooking);
+                          }}
                           onOpenReschedule={onOpenReschedule}
                           onStatusChange={onUpdateBookingStatus}
                           onPurchaseDecision={onPurchaseDecision}
