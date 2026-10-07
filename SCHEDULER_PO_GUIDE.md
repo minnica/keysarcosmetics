@@ -775,6 +775,10 @@ importes de otras visitantes de una cabina múltiple. Cada pago conserva la cita
 de origen, la visita donde se recibió, monto, actor y fecha. El historial de la
 clienta muestra el total acumulado, saldo, abonos y liquidación; al quedar en
 cero, el apartado pasa a `PAID` y deja de ofrecer el botón en visitas futuras.
+El encabezado del historial muestra además **Total comprado** y el número de
+compras registradas. Suma una sola vez el total de venta de cada compra o
+apartado de esa clienta; los abonos posteriores reducen el saldo, pero no
+duplican el valor de la venta.
 Producción deberá persistir pagos y actualización de saldo en una sola
 transacción append-only, además de proyectarlos en reportes y auditoría.
 La validación de esta entrega quedó en 86 pruebas totales y 28 pruebas aisladas

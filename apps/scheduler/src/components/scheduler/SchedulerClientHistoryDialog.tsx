@@ -53,6 +53,16 @@ export function SchedulerClientHistoryDialog({
     (result, entry) => ({ ...result, [entry.category]: result[entry.category] + 1 }),
     { attended: 0, 'no-show': 0, scheduled: 0 } as Record<ClientVisitCategory, number>,
   )
+  const purchaseSummary = history.reduce(
+    (summary, entry) => {
+      if (!entry.purchase || entry.purchase.purchaseKind === 'NONE') return summary
+      return {
+        count: summary.count + 1,
+        total: summary.total + entry.purchase.saleAmount,
+      }
+    },
+    { count: 0, total: 0 },
+  )
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -78,14 +88,19 @@ export function SchedulerClientHistoryDialog({
           </DialogHeader>
 
           <div className="bg-[rgba(255,255,255,0.94)] px-5 py-5 sm:px-6">
-            <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white sm:grid-cols-4">
               {(Object.keys(categoryMeta) as ClientVisitCategory[]).map((category, index) => {
                 const meta = categoryMeta[category]
                 const Icon = meta.icon
                 return (
                   <div
                     key={category}
-                    className={cn('px-3 py-3', index > 0 && 'border-l border-slate-200')}
+                    className={cn(
+                      'px-3 py-3',
+                      index % 2 === 1 && 'border-l border-slate-200',
+                      index >= 2 && 'border-t border-slate-200 sm:border-t-0',
+                      index > 0 && 'sm:border-l sm:border-slate-200',
+                    )}
                   >
                     <div className="flex items-center gap-1.5 text-slate-500">
                       <Icon className="h-3.5 w-3.5" />
@@ -97,6 +112,21 @@ export function SchedulerClientHistoryDialog({
                   </div>
                 )
               })}
+              <div className="border-l border-t border-slate-200 px-3 py-3 sm:border-t-0">
+                <div className="flex items-center gap-1.5 text-slate-500">
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  <span className="truncate text-[0.7rem] font-medium sm:text-[0.76rem]">
+                    Total comprado
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-lg font-semibold tracking-[-0.03em] text-[var(--scheduler-ink-strong)] tabular-nums">
+                  {formatMoney(purchaseSummary.total)}
+                </p>
+                <p className="mt-0.5 text-[0.66rem] text-slate-500">
+                  {purchaseSummary.count}{' '}
+                  {purchaseSummary.count === 1 ? 'compra registrada' : 'compras registradas'}
+                </p>
+              </div>
             </div>
 
             <div className="mt-4 max-h-[430px] space-y-2 overflow-y-auto pr-1">
