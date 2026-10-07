@@ -1,11 +1,11 @@
 'use client'
 
 import { Badge, Dialog, DialogContent, DialogHeader, DialogTitle, cn } from '@cosmetics/ui'
-import { CalendarClock, CalendarDays, CheckCircle2, Clock3, UserX, X } from 'lucide-react'
+import { CalendarClock, CalendarDays, CheckCircle2, Clock3, ShoppingBag, UserX, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { bookingStatuses, type Booking } from '@/lib/scheduler-presentation'
-import type { ClientVisitCategory, ClientVisitHistoryEntry } from './scheduler-utils'
+import { formatMoney, type ClientVisitCategory, type ClientVisitHistoryEntry } from './scheduler-utils'
 
 interface SchedulerClientHistoryDialogProps {
   open: boolean
@@ -123,6 +123,34 @@ export function SchedulerClientHistoryDialog({
                           <p className="mt-0.5 truncate text-[0.78rem] text-slate-500">
                             {entry.professionalName}
                           </p>
+                          {entry.purchase ? (
+                            <div className="mt-2 flex items-start gap-2 rounded-lg border border-[#eadfd4] bg-[#fbf7f2] px-3 py-2 text-[#72583f]">
+                              <ShoppingBag className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              <div className="min-w-0 text-[0.74rem] leading-5">
+                                {entry.purchase.purchaseKind === 'FULL' ? (
+                                  <p>
+                                    <span className="font-semibold">Compra liquidada</span>
+                                    {' · '}{formatMoney(entry.purchase.saleAmount)}
+                                  </p>
+                                ) : entry.purchase.purchaseKind === 'LAYAWAY' ? (
+                                  <>
+                                    <p className="font-semibold">
+                                      {entry.purchase.settlementStatus === 'PAID'
+                                        ? 'Apartado liquidado'
+                                        : 'Apartado registrado'}
+                                    </p>
+                                    <p>
+                                      Venta {formatMoney(entry.purchase.saleAmount)} · Abono{' '}
+                                      {formatMoney(entry.purchase.depositAmount)} · Saldo{' '}
+                                      {formatMoney(entry.purchase.balanceAmount)}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <p className="font-semibold">No compró</p>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex flex-col items-end gap-1.5">
                           <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold', category.className)}>

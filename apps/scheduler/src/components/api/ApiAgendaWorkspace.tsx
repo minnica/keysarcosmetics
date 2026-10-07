@@ -81,6 +81,7 @@ import type {
   DesignAppointmentJournalEntry,
   DesignAppointmentJournalKind,
   DesignAuthorizationScopeKey,
+  DesignCustomerVisitHistoryDto,
   DesignOperationAgent,
   DesignOperationGrant,
   DesignOperationPurpose,
@@ -2874,11 +2875,12 @@ export function ApiAgendaWorkspace() {
         );
         setRecordBooking(booking);
       } else if (purpose === "history") {
-        const history = await schedulerApi.customerVisits(
+        const history: DesignCustomerVisitHistoryDto =
+          await schedulerApi.customerVisits(
           customerId,
           authorization.token,
           { branchId: selectedBranch, page: 1, pageSize: 100 },
-        );
+          );
         setHistoryEntries(
           history.items.map<ClientVisitHistoryEntry>((visit) => {
             const instant = visit.scheduledAt ?? visit.createdAt;
@@ -2898,6 +2900,7 @@ export function ApiAgendaWorkspace() {
               serviceName: visit.serviceName,
               professionalName: visit.branchName,
               status,
+              purchase: visit.purchase ?? null,
               category:
                 status === "attended"
                   ? "attended"

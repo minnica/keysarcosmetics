@@ -139,12 +139,21 @@ test("una sesión o código de otro usuario no autoriza movimientos", () => {
   assert.equal(response.status, 401);
 });
 
-test("el historial de visitas muestra la compra registrada para la clienta", () => {
+test("el historial de visitas separa la compra de cada clienta en una cabina doble", () => {
   const { state, request } = session();
   const attendedAppointment = state.appointments.find(
     (appointment) => appointment.status === "ATTENDED",
   );
   assert.ok(attendedAppointment);
+  const cabinVisit = state.appointmentCabinVisits[attendedAppointment.id];
+  const companionCustomer = state.customers.find(
+    (customer) => customer.id !== attendedAppointment.customerId,
+  );
+  assert.ok(cabinVisit);
+  assert.ok(companionCustomer);
+  assert.equal(cabinVisit.visitors.length, 2);
+  cabinVisit.visitors[1].customerId = companionCustomer.id;
+
   const authorization = request(
     "POST",
     "/api/scheduler/authorizations",
@@ -173,6 +182,38 @@ test("el historial de visitas muestra la compra registrada para la clienta", () 
   assert.equal(attendedVisit.purchase.saleAmount, 1850);
   assert.equal(attendedVisit.purchase.depositAmount, 1850);
   assert.equal(attendedVisit.purchase.balanceAmount, 0);
+
+  const companionAuthorization = request(
+    "POST",
+    "/api/scheduler/authorizations",
+    {
+      secret: "0000",
+      purpose: "CLIENT_VISIT_HISTORY_VIEW",
+      screenKey: "scheduler/clients",
+      targetId: companionCustomer.id,
+    },
+  );
+  assert.equal(companionAuthorization.status, 201);
+  const companionVisits = request(
+    "GET",
+    `/api/scheduler/clients/${companionCustomer.id}/visits`,
+    {},
+    {
+      "x-scheduler-authorization": companionAuthorization.body.data.token,
+    },
+  );
+  assert.equal(companionVisits.status, 200);
+  const companionVisit = companionVisits.body.data.items.find(
+    (visit) => visit.id === attendedAppointment.id,
+  );
+  assert.equal(companionVisit.purchase.purchaseKind, "LAYAWAY");
+  assert.equal(companionVisit.purchase.saleAmount, 2400);
+  assert.equal(companionVisit.purchase.depositAmount, 600);
+  assert.equal(companionVisit.purchase.balanceAmount, 1800);
+  assert.notEqual(
+    companionVisit.purchase.saleAmount,
+    attendedVisit.purchase.saleAmount,
+  );
 });
 
 test("el cliente Axios real funciona con MSW sin servidor ni credenciales reales", async () => {

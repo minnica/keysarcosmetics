@@ -3325,7 +3325,13 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         return {
           ...page(
             visibleAppointments(state)
-              .filter((entry) => entry.customerId === id)
+              .filter(
+                (entry) =>
+                  entry.customerId === id ||
+                  state.appointmentCabinVisits[entry.id]?.visitors.some(
+                    (candidate) => candidate.customerId === id,
+                  ),
+              )
               .map((entry) => {
                 const visitor = state.appointmentCabinVisits[
                   entry.id

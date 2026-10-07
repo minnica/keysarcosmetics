@@ -21,6 +21,7 @@ import {
   type Professional,
   type ServiceOption,
 } from "@/lib/scheduler-presentation";
+import type { DesignCustomerVisitPurchaseSnapshot } from "../../../design/contracts";
 
 const fallbackDateKey = "1970-01-01";
 
@@ -181,6 +182,7 @@ export interface ClientVisitHistoryEntry {
   professionalName: string;
   status: BookingStatus;
   category: ClientVisitCategory;
+  purchase?: DesignCustomerVisitPurchaseSnapshot | null;
 }
 
 export interface BlockDraft {

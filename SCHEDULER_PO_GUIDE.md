@@ -758,7 +758,10 @@ de compra correspondiente a la clienta en cada cita: compra liquidada con total,
 apartado con total, abono y saldo, o **No compró**. El mock conserva este dato
 como snapshot por visitante dentro de la misma cita; producción deberá ampliar
 `GET /api/scheduler/clients/:id/visits` con ese snapshot opcional sin consultar
-ni recalcular ventas históricas desde el navegador.
+ni recalcular ventas históricas desde el navegador. En cabinas dobles, triples o
+de mayor capacidad, el historial incluye la cita cuando la clienta aparece como
+visitante y muestra exclusivamente su propia compra mediante `customerId`; no
+suma ni replica las ventas de las demás personas de la cabina.
 
 El 4 de octubre de 2026 el alta de cliente desde Agenda se separó de la reserva
 en dos pasos. El primer paso reutiliza el mismo borrador para guardar identidad,
