@@ -296,6 +296,15 @@ producción, el contexto canónico deberá distinguir asignación planeada de
 atención efectiva y persistir esta asociación de forma atómica y versionada
 junto con la atención.
 
+Dos citas canónicas distintas que coinciden en la misma cabina y horario se
+presentan en carriles horizontales separados, tanto en día como en semana. Cada
+tarjeta conserva su propio `appointmentId`, cliente, status, venta,
+representante/vendedor y especialista, y abre su propio registro de atención.
+Al terminar una cita, la siguiente franja vuelve a ocupar el ancho completo.
+Esta regla no divide una reserva grupal: una cita de cabina doble con dos
+visitantes sigue siendo una sola reserva canónica y mantiene sus personas en el
+registro por visitante documentado arriba.
+
 El cambio a **Atendida** sólo se habilita cuando el instante actual es igual o
 posterior a `endsAt`; la UI lo informa y el API de diseño vuelve a validar la
 misma regla con `409`, por lo que no depende únicamente del navegador. Al elegir

@@ -69,7 +69,10 @@ import { SchedulerBookingCard } from "./SchedulerBookingCard";
 import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
 import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
 import { canMoveSchedulerBooking } from "@/lib/scheduler-appointment-move";
-import { isSchedulerCabinColumn } from "@/lib/scheduler-agenda-layout";
+import {
+  getSchedulerBookingOverlapLayout,
+  isSchedulerCabinColumn,
+} from "@/lib/scheduler-agenda-layout";
 import type {
   DesignAppointmentContext,
   DesignCustomerLayawaySummary,
@@ -477,6 +480,14 @@ export function SchedulerAgendaGrid({
   }, [visibleProfessionals]);
 
   const dayAppointments = useMemo(() => {
+    const overlapLayout = getSchedulerBookingOverlapLayout(
+      visibleBookings.map((booking) => ({
+        id: booking.id,
+        groupId: booking.professionalId,
+        startMinutes: getMinutesFromTime(booking.start),
+        endMinutes: getMinutesFromTime(booking.end),
+      })),
+    );
     const overlays: Array<DayOverlayBooking | null> = visibleBookings.map(
       (booking) => {
         if (
@@ -486,6 +497,10 @@ export function SchedulerAgendaGrid({
           return null;
         const columnIndex = professionalIndexMap.get(booking.professionalId);
         if (columnIndex == null) return null;
+        const lane = overlapLayout[booking.id] ?? {
+          laneIndex: 0,
+          laneCount: 1,
+        };
         return {
           booking,
           style: {
@@ -498,9 +513,10 @@ export function SchedulerAgendaGrid({
               agendaLayout,
             ),
             ...getOverlayHorizontalStyle(
-              columnIndex,
-              professionalCount,
+              columnIndex * lane.laneCount + lane.laneIndex,
+              professionalCount * lane.laneCount,
               agendaLayout,
+              lane.laneCount > 1 ? 2 : agendaLayout.cardHorizontalInset,
             ),
           },
         };
@@ -519,6 +535,19 @@ export function SchedulerAgendaGrid({
     slotMinutes,
     visibleBookings,
   ]);
+
+  const weekBookingOverlapLayout = useMemo(
+    () =>
+      getSchedulerBookingOverlapLayout(
+        weekBookings.map((booking) => ({
+          id: booking.id,
+          groupId: String(booking.dayOffset),
+          startMinutes: getMinutesFromTime(booking.start),
+          endMinutes: getMinutesFromTime(booking.end),
+        })),
+      ),
+    [weekBookings],
+  );
 
   const dayBlocks = useMemo(() => {
     const overlays: Array<DayOverlayBlock | null> = visibleBlocks.map(
@@ -1283,10 +1312,17 @@ export function SchedulerAgendaGrid({
                     slotMinutes,
                     agendaLayout,
                   );
+                  const lane = weekBookingOverlapLayout[booking.id] ?? {
+                    laneIndex: 0,
+                    laneCount: 1,
+                  };
                   const horizontalStyle = getOverlayHorizontalStyle(
-                    booking.dayOffset,
-                    7,
+                    booking.dayOffset * lane.laneCount + lane.laneIndex,
+                    7 * lane.laneCount,
                     agendaLayout,
+                    lane.laneCount > 1
+                      ? 2
+                      : agendaLayout.cardHorizontalInset,
                   );
                   const statusColor = statusColors[booking.status];
                   const statusTokens =

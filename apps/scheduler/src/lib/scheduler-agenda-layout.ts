@@ -33,3 +33,66 @@ export function shouldFitSchedulerAgendaColumns(
 
   return availableWidth / columnCount >= minimumReadableColumnWidth;
 }
+
+export interface SchedulerBookingOverlapInput {
+  id: string;
+  groupId: string;
+  startMinutes: number;
+  endMinutes: number;
+}
+
+export interface SchedulerBookingOverlapLane {
+  laneIndex: number;
+  laneCount: number;
+}
+
+export function getSchedulerBookingOverlapLayout(
+  bookings: SchedulerBookingOverlapInput[],
+): Record<string, SchedulerBookingOverlapLane> {
+  const result: Record<string, SchedulerBookingOverlapLane> = {};
+  const groups = new Map<string, SchedulerBookingOverlapInput[]>();
+  for (const booking of bookings) {
+    const group = groups.get(booking.groupId) ?? [];
+    group.push(booking);
+    groups.set(booking.groupId, group);
+  }
+
+  function assignCluster(cluster: SchedulerBookingOverlapInput[]) {
+    const laneEnds: number[] = [];
+    const assignments = cluster.map((booking) => {
+      const reusableLane = laneEnds.findIndex(
+        (laneEnd) => laneEnd <= booking.startMinutes,
+      );
+      const laneIndex = reusableLane < 0 ? laneEnds.length : reusableLane;
+      laneEnds[laneIndex] = booking.endMinutes;
+      return { booking, laneIndex };
+    });
+    const laneCount = Math.max(1, laneEnds.length);
+    assignments.forEach(({ booking, laneIndex }) => {
+      result[booking.id] = { laneIndex, laneCount };
+    });
+  }
+
+  for (const group of groups.values()) {
+    const sorted = [...group].sort(
+      (left, right) =>
+        left.startMinutes - right.startMinutes ||
+        left.endMinutes - right.endMinutes ||
+        left.id.localeCompare(right.id),
+    );
+    let cluster: SchedulerBookingOverlapInput[] = [];
+    let clusterEnd = Number.NEGATIVE_INFINITY;
+    for (const booking of sorted) {
+      if (cluster.length && booking.startMinutes >= clusterEnd) {
+        assignCluster(cluster);
+        cluster = [];
+        clusterEnd = Number.NEGATIVE_INFINITY;
+      }
+      cluster.push(booking);
+      clusterEnd = Math.max(clusterEnd, booking.endMinutes);
+    }
+    if (cluster.length) assignCluster(cluster);
+  }
+
+  return result;
+}

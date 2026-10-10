@@ -60,6 +60,7 @@ const {
 } = loadSource("scheduler-agenda-data");
 const {
   filterSchedulerAgendaColumns,
+  getSchedulerBookingOverlapLayout,
   isSchedulerCabinColumn,
   shouldFitSchedulerAgendaColumns,
 } = loadSource("scheduler-agenda-layout");
@@ -75,6 +76,38 @@ test("moves only editable appointments without a purchase or layaway", () => {
   for (const status of ["arrived", "attended", "no-show", "canceled"]) {
     assert.equal(canMoveSchedulerBooking(status, false), false);
   }
+});
+
+test("keeps simultaneous appointments as separate lanes in the same cabin", () => {
+  const layout = getSchedulerBookingOverlapLayout([
+    {
+      id: "appointment-a",
+      groupId: "cabin-double",
+      startMinutes: 9 * 60,
+      endMinutes: 10 * 60,
+    },
+    {
+      id: "appointment-b",
+      groupId: "cabin-double",
+      startMinutes: 9 * 60,
+      endMinutes: 10 * 60,
+    },
+    {
+      id: "appointment-c",
+      groupId: "cabin-double",
+      startMinutes: 10 * 60,
+      endMinutes: 11 * 60,
+    },
+  ]);
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(layout)),
+    {
+      "appointment-a": { laneIndex: 0, laneCount: 2 },
+      "appointment-b": { laneIndex: 1, laneCount: 2 },
+      "appointment-c": { laneIndex: 0, laneCount: 1 },
+    },
+  );
 });
 
 test("keeps the configured status color visible on every reservation", () => {
