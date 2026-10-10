@@ -1753,7 +1753,7 @@ function advancedCustomerSearch(
     );
 
   const pageNumber = Math.max(1, Number(input.page) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(input.pageSize) || 25));
+  const pageSize = Math.min(5000, Math.max(1, Number(input.pageSize) || 20));
   const offset = (pageNumber - 1) * pageSize;
   return {
     items: matched.slice(offset, offset + pageSize),

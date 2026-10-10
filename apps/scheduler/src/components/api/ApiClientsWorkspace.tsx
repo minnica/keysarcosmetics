@@ -53,7 +53,6 @@ import {
   ShoppingBag,
   Upload,
   UserRound,
-  UsersRound,
   WalletCards,
 } from "lucide-react";
 import {
@@ -93,6 +92,7 @@ import type { SchedulerCustomerImportRow } from "@/lib/scheduler-customer-import
 import { exportSchedulerReport } from "@/lib/scheduler-report-export";
 
 type SensitiveSection = "profile" | "visits" | "financial";
+type CustomerPageSize = 20 | 40 | 60 | "ALL";
 
 interface CustomerDraft {
   id: string | null;
@@ -372,7 +372,7 @@ export function ApiClientsWorkspace() {
   const [appliedAdvancedFilters, setAppliedAdvancedFilters] =
     useState<SchedulerClientAdvancedFilterValue>(emptyAdvancedFilters);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState<CustomerPageSize>(20);
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<CustomerDraft>(emptyDraft);
   const [saving, setSaving] = useState(false);
@@ -414,6 +414,7 @@ export function ApiClientsWorkspace() {
   const [exporting, setExporting] = useState(false);
   const [duplicateReviewOpen, setDuplicateReviewOpen] = useState(false);
 
+  const queryPageSize = pageSize === "ALL" ? 5000 : pageSize;
   const canonicalResults = useSchedulerQuery(
     () =>
       schedulerApi.searchCustomers({
@@ -421,16 +422,13 @@ export function ApiClientsWorkspace() {
         branchId,
         ...(sourceId ? { sourceId } : {}),
         page,
-        pageSize,
+        pageSize: queryPageSize,
       }),
-    [query, branchId, sourceId, page, pageSize],
+    [query, branchId, sourceId, page, queryPageSize],
     {
       queryKey: `${schedulerCustomerQueryPrefix}:search`,
       branchId,
-      enabled:
-        !schedulerDesignProposals.available &&
-        query.length >= 2 &&
-        Boolean(branchId),
+      enabled: !schedulerDesignProposals.available && Boolean(branchId),
     },
   );
   const advancedFilterKey = JSON.stringify(appliedAdvancedFilters);
@@ -459,18 +457,13 @@ export function ApiClientsWorkspace() {
           .filter(([, value]) => value.trim())
           .map(([definitionId, value]) => ({ definitionId, value })),
         page,
-        pageSize,
+        pageSize: queryPageSize,
       }),
-    [query, branchId, sourceId, page, pageSize, advancedFilterKey],
+    [query, branchId, sourceId, page, queryPageSize, advancedFilterKey],
     {
       queryKey: `${schedulerCustomerQueryPrefix}:advanced-search`,
       branchId,
-      enabled:
-        schedulerDesignProposals.available &&
-        Boolean(branchId) &&
-        (query.length >= 2 ||
-          appliedAdvancedFilterCount > 0 ||
-          Boolean(sourceId)),
+      enabled: schedulerDesignProposals.available && Boolean(branchId),
     },
   );
   const results = schedulerDesignProposals.available
@@ -509,10 +502,17 @@ export function ApiClientsWorkspace() {
 
   const totalPages = Math.max(
     1,
-    Math.ceil((results.data?.total ?? 0) / pageSize),
+    pageSize === "ALL" ? 1 : Math.ceil((results.data?.total ?? 0) / pageSize),
   );
-  const pageStart = results.data?.total ? (page - 1) * pageSize + 1 : 0;
-  const pageEnd = Math.min(page * pageSize, results.data?.total ?? 0);
+  const pageStart = results.data?.total
+    ? pageSize === "ALL"
+      ? 1
+      : (page - 1) * pageSize + 1
+    : 0;
+  const pageEnd =
+    pageSize === "ALL"
+      ? (results.data?.total ?? 0)
+      : Math.min(page * pageSize, results.data?.total ?? 0);
   const activeDefinitions = useMemo(
     () => definitions.data?.filter((definition) => definition.active) ?? [],
     [definitions.data],
@@ -635,13 +635,8 @@ export function ApiClientsWorkspace() {
   function submitSearch(event?: FormEvent) {
     event?.preventDefault();
     const next = queryInput.trim();
-    const filters = advancedFilterCount(advancedFilters);
     if (next.length > 0 && next.length < 2) {
       toast.error("Escribe al menos dos caracteres o deja el texto vacío.");
-      return;
-    }
-    if (next.length < 2 && filters === 0 && !sourceId) {
-      toast.error("Escribe un término o selecciona al menos un filtro.");
       return;
     }
     setPage(1);
@@ -919,7 +914,7 @@ export function ApiClientsWorkspace() {
         `${imported} clientes importados en la sucursal seleccionada.`,
       );
     }
-    if (hasSearchRequest) void results.reload();
+    void results.reload();
   }
 
   async function exportCustomers(secret?: string) {
@@ -1097,12 +1092,7 @@ export function ApiClientsWorkspace() {
             </FormField>
             <Button
               className="h-11 rounded-xl bg-[#263649] px-5 text-white hover:bg-[#1d2b3a] lg:mt-7"
-              disabled={
-                queryInput.trim().length === 1 ||
-                (queryInput.trim().length < 2 &&
-                  draftAdvancedFilterCount === 0 &&
-                  !sourceId)
-              }
+              disabled={queryInput.trim().length === 1}
               type="submit"
             >
               <Search className="mr-2 h-4 w-4" /> Buscar
@@ -1182,7 +1172,7 @@ export function ApiClientsWorkspace() {
                   ? `Coincidencias para “${query}”`
                   : hasSearchRequest
                     ? `${appliedAdvancedFilterCount + Number(Boolean(sourceId))} filtros combinados`
-                    : "Consulta la base compartida"}
+                    : "Todos los clientes"}
               </h2>
             </div>
             {results.data ? (
@@ -1192,17 +1182,14 @@ export function ApiClientsWorkspace() {
             ) : null}
           </div>
 
-          {!hasSearchRequest ? (
+          {!branchId ? (
             <div className="flex min-h-64 flex-col items-center justify-center px-6 py-12 text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f5ede4] text-[#ad8b67]">
-                <UsersRound className="h-6 w-6" />
+                <MapPin className="h-6 w-6" />
               </span>
-              <h3 className="mt-4 font-semibold">
-                Busca o combina filtros avanzados
-              </h3>
+              <h3 className="mt-4 font-semibold">Selecciona una sucursal</h3>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                Usa texto, actividad en agenda, estatus, servicios, cumpleaños,
-                vendedor o cualquier campo personalizado.
+                Elige la sucursal para consultar su base de clientes.
               </p>
             </div>
           ) : (
@@ -1378,17 +1365,23 @@ export function ApiClientsWorkspace() {
                     aria-label="Clientes por página"
                     className="rounded-lg border border-[#e7ddd4] bg-white px-2 py-2"
                     onChange={(event) => {
-                      setPageSize(Number(event.target.value));
+                      const nextPageSize = event.target.value;
+                      setPageSize(
+                        nextPageSize === "ALL"
+                          ? "ALL"
+                          : (Number(nextPageSize) as CustomerPageSize),
+                      );
                       setPage(1);
                       setMergeSelection([]);
                     }}
                     value={pageSize}
                   >
-                    {[25, 50, 100].map((size) => (
+                    {[20, 40, 60].map((size) => (
                       <option key={size} value={size}>
                         {size}
                       </option>
                     ))}
+                    <option value="ALL">Todos</option>
                   </select>
                   por página
                 </label>
@@ -1462,7 +1455,7 @@ export function ApiClientsWorkspace() {
             window.clearTimeout(editorSensitiveTimer.current);
             editorSensitiveTimer.current = null;
           }
-          if (hasSearchRequest) void results.reload();
+          void results.reload();
         }}
         onSubmit={(event) => void saveCustomer(event)}
         open={editorOpen}
