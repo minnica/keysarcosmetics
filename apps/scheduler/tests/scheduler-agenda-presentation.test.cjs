@@ -67,6 +67,18 @@ const {
 const { buildSchedulerStatusLabels, getSchedulerStatusColorTokens } =
   loadSource("scheduler-status-presentation");
 const { canMoveSchedulerBooking } = loadSource("scheduler-appointment-move");
+const { getSchedulerAppointmentAttendeeIndex } = loadSource(
+  "scheduler-appointment-hover",
+);
+
+test("selects the individual attendee under the pointer in shared cabins", () => {
+  assert.equal(getSchedulerAppointmentAttendeeIndex(100, 100, 300, 3), 0);
+  assert.equal(getSchedulerAppointmentAttendeeIndex(199, 100, 300, 3), 0);
+  assert.equal(getSchedulerAppointmentAttendeeIndex(200, 100, 300, 3), 1);
+  assert.equal(getSchedulerAppointmentAttendeeIndex(399, 100, 300, 3), 2);
+  assert.equal(getSchedulerAppointmentAttendeeIndex(500, 100, 300, 3), 2);
+  assert.equal(getSchedulerAppointmentAttendeeIndex(250, 100, 0, 3), 0);
+});
 
 test("moves only editable appointments without a purchase or layaway", () => {
   for (const status of ["pending", "reserved", "confirmed", "waiting"]) {
@@ -100,14 +112,11 @@ test("keeps simultaneous appointments as separate lanes in the same cabin", () =
     },
   ]);
 
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(layout)),
-    {
-      "appointment-a": { laneIndex: 0, laneCount: 2 },
-      "appointment-b": { laneIndex: 1, laneCount: 2 },
-      "appointment-c": { laneIndex: 0, laneCount: 1 },
-    },
-  );
+  assert.deepEqual(JSON.parse(JSON.stringify(layout)), {
+    "appointment-a": { laneIndex: 0, laneCount: 2 },
+    "appointment-b": { laneIndex: 1, laneCount: 2 },
+    "appointment-c": { laneIndex: 0, laneCount: 1 },
+  });
 });
 
 test("keeps the configured status color visible on every reservation", () => {

@@ -200,9 +200,28 @@ export interface DesignCustomerLayawaySummary {
   payments: DesignLayawayPayment[];
 }
 
+export interface DesignAppointmentAttendeeContext {
+  visitorId: string;
+  customerId: string | null;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  specialistProfileId: string | null;
+  specialistName: string | null;
+  purchaseKind: DesignPurchaseKind | null;
+  saleAmount: number;
+  depositAmount: number;
+  balanceAmount: number;
+  settlementStatus: DesignSaleSettlementStatus;
+  portfolioSellerName: string | null;
+  nextAppointmentId: string | null;
+  nextAppointmentAt: string | null;
+}
+
 export interface DesignAppointmentContext {
   appointmentId: string;
   attendeeNames: string[];
+  attendees: DesignAppointmentAttendeeContext[];
   attendingSpecialistProfileIds: string[];
   representativeId: string | null;
   representativeName: string | null;

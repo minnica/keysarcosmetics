@@ -362,8 +362,9 @@ export function ApiAgendaWorkspace() {
   const [resourcePanelOpen, setResourcePanelOpen] = useState(true);
   const [displayMode, setDisplayMode] =
     useState<SchedulerDisplayMode>("calendar");
-  const [lastAgendaUpdatedAt, setLastAgendaUpdatedAt] =
-    useState<Date | null>(null);
+  const [lastAgendaUpdatedAt, setLastAgendaUpdatedAt] = useState<Date | null>(
+    null,
+  );
   const [columnMode, setColumnMode] =
     useState<SchedulerAgendaColumnMode>("ALL");
   const [columnFitOverride, setColumnFitOverride] = useState<boolean | null>(
@@ -908,6 +909,31 @@ export function ApiAgendaWorkspace() {
           ({
             appointmentId: bookingSourceId(booking),
             attendeeNames: [booking.customerName],
+            attendees: [
+              {
+                visitorId: `${bookingSourceId(booking)}-primary`,
+                customerId: booking.clientId ?? null,
+                name: booking.customerName,
+                phone: booking.phone ?? null,
+                email: booking.customerEmail ?? null,
+                specialistProfileId: booking.professionalId || null,
+                specialistName: null,
+                purchaseKind:
+                  booking.purchased === true
+                    ? "FULL"
+                    : booking.purchased === false
+                      ? "NONE"
+                      : null,
+                saleAmount: booking.purchaseAmount ?? 0,
+                depositAmount: booking.purchaseAmount ?? 0,
+                balanceAmount: 0,
+                settlementStatus:
+                  booking.purchased === true ? "PAID" : "NOT_APPLICABLE",
+                portfolioSellerName: null,
+                nextAppointmentId: null,
+                nextAppointmentAt: null,
+              },
+            ],
             attendingSpecialistProfileIds: [],
             representativeId: null,
             representativeName: null,
@@ -2050,8 +2076,7 @@ export function ApiAgendaWorkspace() {
             targetType: "APPOINTMENT_PURCHASE",
             ...(editingId ? { targetId: editingId } : {}),
           },
-          (purchaseGrant) =>
-            saveBooking(appointmentGrant, purchaseGrant),
+          (purchaseGrant) => saveBooking(appointmentGrant, purchaseGrant),
         );
         return;
       }
@@ -2990,11 +3015,11 @@ export function ApiAgendaWorkspace() {
         setRecordBooking(booking);
       } else if (purpose === "history") {
         const history: DesignCustomerVisitHistoryDto =
-          await schedulerApi.customerVisits(
-          customerId,
-          authorization.token,
-          { branchId: selectedBranch, page: 1, pageSize: 100 },
-          );
+          await schedulerApi.customerVisits(customerId, authorization.token, {
+            branchId: selectedBranch,
+            page: 1,
+            pageSize: 100,
+          });
         setHistoryEntries(
           history.items.map<ClientVisitHistoryEntry>((visit) => {
             const instant = visit.scheduledAt ?? visit.createdAt;
@@ -3753,9 +3778,7 @@ export function ApiAgendaWorkspace() {
         />
       ) : null}
       <SchedulerLayawayPaymentDialog
-        customerName={
-          layawayPaymentRequest?.booking.customerName ?? "Clienta"
-        }
+        customerName={layawayPaymentRequest?.booking.customerName ?? "Clienta"}
         layaway={layawayPaymentRequest?.layaway ?? null}
         onOpenChange={(open) => {
           if (!open && !layawayPaymentSaving) setLayawayPaymentRequest(null);

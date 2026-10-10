@@ -773,6 +773,18 @@ el nombre completo al pasar el cursor, además de un solo status compartido. El
 cambio es únicamente visual y no crea citas,
 ocupaciones ni ventas adicionales.
 
+El 10 de octubre de 2026 el detalle emergente también quedó segmentado por la
+posición horizontal del puntero. En una cabina doble, la mitad izquierda muestra
+exclusivamente el registro de la primera persona y la derecha el de la segunda;
+una cabina triple aplica la misma regla por tercios. Cada detalle identifica a la
+persona seleccionada, especialista, contacto, status, compra liquidada o
+apartado, representante, vendedor de cartera y próxima cita sin sumar los datos
+de las demás visitantes. `DesignAppointmentContext.attendees` propone el
+snapshot individual por `visitorId` y `customerId`; producción deberá agregar el
+mismo arreglo al endpoint de contextos de citas conservando `attendeeNames` como
+fallback compatible. La selección del segmento ocurre sólo en presentación y
+no modifica la cita, la atención ni el historial financiero.
+
 El 6 de octubre de 2026 el historial protegido de visitas agregó el resultado
 de compra correspondiente a la clienta en cada cita: compra liquidada con total,
 apartado con total, abono y saldo, o **No compró**. El mock conserva este dato
@@ -855,12 +867,13 @@ inactiva el origen y vuelve a calcular candidatos. Producción requiere
 paginación y evidencias sin exponer datos fuera del permiso); la mutación
 canónica de merge no cambia.
 
-La validación del 10 de octubre de 2026 quedó en 93 pruebas totales y 30 de
+La validación del 10 de octubre de 2026 quedó en 94 pruebas totales y 30 de
 diseño, además de TypeScript, lint y `build:design`. La revisión React confirmó
 que los diálogos permanecen fuera del componente principal, los módulos pesados
 de Excel se cargan de forma dinámica, los controles conservan nombre accesible y
-las consultas se invalidan por el prefijo compartido de Clientes. Lint conserva
-los tres avisos previos de `<img>` fuera de este cambio.
+las consultas se invalidan por el prefijo compartido de Clientes. La cobertura
+incluye ahora la selección por mitades o tercios del registro individual bajo el
+puntero. Lint conserva los tres avisos previos de `<img>` fuera de este cambio.
 
 Cuando se selecciona o guarda un cliente, **Nuevo cliente** queda deshabilitado
 y la acción también se protege dentro del componente. Para registrar otro

@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type DragEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   Badge,
@@ -69,11 +70,13 @@ import { SchedulerBookingCard } from "./SchedulerBookingCard";
 import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
 import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
 import { canMoveSchedulerBooking } from "@/lib/scheduler-appointment-move";
+import { getSchedulerAppointmentAttendeeIndex } from "@/lib/scheduler-appointment-hover";
 import {
   getSchedulerBookingOverlapLayout,
   isSchedulerCabinColumn,
 } from "@/lib/scheduler-agenda-layout";
 import type {
+  DesignAppointmentAttendeeContext,
   DesignAppointmentContext,
   DesignCustomerLayawaySummary,
 } from "../../../design/contracts";
@@ -164,12 +167,137 @@ interface SlotActionOverlay {
   style: CSSProperties;
 }
 
-function nextAppointmentLabel(context?: DesignAppointmentContext) {
-  if (!context?.nextAppointmentAt) return "No cuenta con una próxima cita";
+function nextAppointmentLabel(nextAppointmentAt?: string | null) {
+  if (!nextAppointmentAt) return "No cuenta con una próxima cita";
   return new Intl.DateTimeFormat("es-MX", {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(context.nextAppointmentAt));
+  }).format(new Date(nextAppointmentAt));
+}
+
+const appointmentCurrencyFormatter = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+  maximumFractionDigits: 0,
+});
+
+function purchaseOutcomeLabel(
+  attendee: DesignAppointmentAttendeeContext | undefined,
+  booking: Booking,
+) {
+  if (!attendee) {
+    return booking.purchased === true && (booking.purchaseAmount ?? 0) > 0
+      ? `Compra · ${appointmentCurrencyFormatter.format(booking.purchaseAmount ?? 0)}`
+      : "Pendiente de registrar";
+  }
+  if (attendee.purchaseKind === "NONE") return "Sin compra";
+  if (attendee.purchaseKind === "FULL") {
+    return `Compra liquidada · ${appointmentCurrencyFormatter.format(attendee.saleAmount)}`;
+  }
+  if (attendee.purchaseKind === "LAYAWAY") {
+    return `Apartado · ${appointmentCurrencyFormatter.format(attendee.depositAmount)} de ${appointmentCurrencyFormatter.format(attendee.saleAmount)}`;
+  }
+  return "Pendiente de registrar";
+}
+
+interface SchedulerAppointmentTooltipCardProps {
+  align: "start" | "center";
+  attendeeIndex: number;
+  booking: Booking;
+  context: DesignAppointmentContext | undefined;
+  fallbackSpecialistName: string;
+  side: "right" | "top";
+  statusColor: string;
+  statusLabel: string;
+}
+
+function SchedulerAppointmentTooltipCard({
+  align,
+  attendeeIndex,
+  booking,
+  context,
+  fallbackSpecialistName,
+  side,
+  statusColor,
+  statusLabel,
+}: SchedulerAppointmentTooltipCardProps) {
+  const attendee = context?.attendees?.[attendeeIndex];
+  const attendeeName =
+    attendee?.name ??
+    context?.attendeeNames[attendeeIndex] ??
+    booking.customerName;
+  const purchaseAmount = attendee?.saleAmount ?? booking.purchaseAmount;
+  const hasPurchase = attendee
+    ? ["FULL", "LAYAWAY"].includes(attendee.purchaseKind ?? "") &&
+      attendee.saleAmount > 0
+    : booking.purchased === true && (booking.purchaseAmount ?? 0) > 0;
+  const contact = attendee
+    ? attendee.phone || attendee.email || "Sin contacto"
+    : booking.phone || booking.customerEmail || "Sin contacto";
+
+  return (
+    <TooltipContent
+      align={align}
+      className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
+      side={side}
+      sideOffset={10}
+    >
+      <p className="font-semibold">{attendeeName}</p>
+      {context?.attendees && context.attendees.length > 1 ? (
+        <p className="mt-0.5 text-[0.66rem] uppercase tracking-[0.14em] text-white/45">
+          Persona {attendeeIndex + 1} de {context.attendees.length}
+        </p>
+      ) : null}
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
+        <dt>Horario</dt>
+        <dd>
+          {booking.start}–{booking.end}
+        </dd>
+        <dt>Servicio</dt>
+        <dd>{booking.serviceName}</dd>
+        <dt>Especialista</dt>
+        <dd>
+          {attendee
+            ? (attendee.specialistName ?? "Sin asignar")
+            : fallbackSpecialistName}
+        </dd>
+        <dt>Estado</dt>
+        <dd>
+          <SchedulerStatusBadge
+            color={statusColor}
+            compact
+            hasPurchase={hasPurchase}
+            label={statusLabel}
+            purchaseAmount={purchaseAmount}
+            status={booking.status}
+          />
+        </dd>
+        <dt>Resultado</dt>
+        <dd>{purchaseOutcomeLabel(attendee, booking)}</dd>
+        <dt>Contacto</dt>
+        <dd>{contact}</dd>
+        <dt>Representante</dt>
+        <dd>{context?.representativeName ?? "Por registrar"}</dd>
+        <dt>Vendedor cartera</dt>
+        <dd>
+          {attendee
+            ? (attendee.portfolioSellerName ?? "Sin asignar")
+            : (context?.portfolioSellerName ?? "Sin asignar")}
+        </dd>
+        <dt>Próxima cita</dt>
+        <dd>
+          {nextAppointmentLabel(
+            attendee ? attendee.nextAppointmentAt : context?.nextAppointmentAt,
+          )}
+        </dd>
+      </dl>
+      {booking.notes ? (
+        <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
+          {booking.notes}
+        </p>
+      ) : null}
+    </TooltipContent>
+  );
 }
 
 interface SchedulerAppointmentSummaryProps {
@@ -230,13 +358,7 @@ function SchedulerAppointmentSummary({
             key={`${name}-${index}`}
             title={name}
           >
-            <span
-              className={cn(
-                "block w-full min-w-0 truncate",
-              )}
-            >
-              {name}
-            </span>
+            <span className={cn("block w-full min-w-0 truncate")}>{name}</span>
           </span>
         ))}
       </div>
@@ -367,6 +489,10 @@ export function SchedulerAgendaGrid({
   const [openBookingCardId, setOpenBookingCardId] = useState<string | null>(
     null,
   );
+  const [hoveredBookingAttendee, setHoveredBookingAttendee] = useState<{
+    bookingId: string;
+    attendeeIndex: number;
+  } | null>(null);
   const visibleColumnById = useMemo(
     () => new Map(visibleProfessionals.map((column) => [column.id, column])),
     [visibleProfessionals],
@@ -743,6 +869,30 @@ export function SchedulerAgendaGrid({
     event.stopPropagation();
   }
 
+  function trackBookingAttendee(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    booking: Booking,
+  ) {
+    const context = appointmentContexts[booking.id];
+    const attendeeCount = Math.max(
+      1,
+      context?.attendees?.length ?? context?.attendeeNames.length ?? 1,
+    );
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const attendeeIndex = getSchedulerAppointmentAttendeeIndex(
+      event.clientX,
+      bounds.left,
+      bounds.width,
+      attendeeCount,
+    );
+    setHoveredBookingAttendee((current) =>
+      current?.bookingId === booking.id &&
+      current.attendeeIndex === attendeeIndex
+        ? current
+        : { bookingId: booking.id, attendeeIndex },
+    );
+  }
+
   return (
     <TooltipProvider delayDuration={220}>
       <Card className="scheduler-agenda-card flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86)_0%,rgba(255,255,255,0.76)_100%)] shadow-[0_30px_80px_rgba(15,23,42,0.1)] backdrop-blur">
@@ -912,6 +1062,14 @@ export function SchedulerAgendaGrid({
                       booking.status,
                       booking.purchased === true,
                     );
+                  const hoveredAttendeeIndex =
+                    hoveredBookingAttendee?.bookingId === booking.id
+                      ? hoveredBookingAttendee.attendeeIndex
+                      : 0;
+                  const fallbackSpecialistName =
+                    visibleProfessionals.find(
+                      (item) => item.id === booking.professionalId,
+                    )?.name ?? "Sin asignar";
 
                   return (
                     <Dialog
@@ -941,6 +1099,9 @@ export function SchedulerAgendaGrid({
                               onDragStart={(event) =>
                                 startBookingDrag(event, booking)
                               }
+                              onPointerMove={(event) =>
+                                trackBookingAttendee(event, booking)
+                              }
                               style={{
                                 ...style,
                                 backgroundColor: statusTokens.surface,
@@ -960,74 +1121,16 @@ export function SchedulerAgendaGrid({
                             </button>
                           </DialogTrigger>
                         </TooltipTrigger>
-                        <TooltipContent
+                        <SchedulerAppointmentTooltipCard
                           align="start"
-                          className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
+                          attendeeIndex={hoveredAttendeeIndex}
+                          booking={booking}
+                          context={appointmentContexts[booking.id]}
+                          fallbackSpecialistName={fallbackSpecialistName}
                           side="right"
-                          sideOffset={10}
-                        >
-                          <p className="font-semibold">
-                            {appointmentContexts[
-                              booking.id
-                            ]?.attendeeNames.join(" · ") ??
-                              booking.customerName}
-                          </p>
-                          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
-                            <dt>Horario</dt>
-                            <dd>
-                              {booking.start}–{booking.end}
-                            </dd>
-                            <dt>Servicio</dt>
-                            <dd>{booking.serviceName}</dd>
-                            <dt>Especialista</dt>
-                            <dd>
-                              {visibleProfessionals.find(
-                                (item) => item.id === booking.professionalId,
-                              )?.name ?? "Sin asignar"}
-                            </dd>
-                            <dt>Estado</dt>
-                            <dd>
-                              <SchedulerStatusBadge
-                                color={statusColor}
-                                compact
-                                hasPurchase={
-                                  booking.purchased === true &&
-                                  (booking.purchaseAmount ?? 0) > 0
-                                }
-                                label={statusLabels[booking.status]}
-                                purchaseAmount={booking.purchaseAmount}
-                                status={booking.status}
-                              />
-                            </dd>
-                            <dt>Contacto</dt>
-                            <dd>
-                              {booking.phone ||
-                                booking.customerEmail ||
-                                "Sin contacto"}
-                            </dd>
-                            <dt>Representante</dt>
-                            <dd>
-                              {appointmentContexts[booking.id]
-                                ?.representativeName ?? "Por registrar"}
-                            </dd>
-                            <dt>Vendedor cartera</dt>
-                            <dd>
-                              {appointmentContexts[booking.id]
-                                ?.portfolioSellerName ?? "Sin asignar"}
-                            </dd>
-                            <dt>Próxima cita</dt>
-                            <dd>
-                              {nextAppointmentLabel(
-                                appointmentContexts[booking.id],
-                              )}
-                            </dd>
-                          </dl>
-                          {booking.notes ? (
-                            <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
-                              {booking.notes}
-                            </p>
-                          ) : null}
-                        </TooltipContent>
+                          statusColor={statusColor}
+                          statusLabel={statusLabels[booking.status]}
+                        />
                       </Tooltip>
                       <DialogContent
                         className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
@@ -1320,9 +1423,7 @@ export function SchedulerAgendaGrid({
                     booking.dayOffset * lane.laneCount + lane.laneIndex,
                     7 * lane.laneCount,
                     agendaLayout,
-                    lane.laneCount > 1
-                      ? 2
-                      : agendaLayout.cardHorizontalInset,
+                    lane.laneCount > 1 ? 2 : agendaLayout.cardHorizontalInset,
                   );
                   const statusColor = statusColors[booking.status];
                   const statusTokens =
@@ -1333,6 +1434,14 @@ export function SchedulerAgendaGrid({
                       booking.status,
                       booking.purchased === true,
                     );
+                  const hoveredAttendeeIndex =
+                    hoveredBookingAttendee?.bookingId === booking.id
+                      ? hoveredBookingAttendee.attendeeIndex
+                      : 0;
+                  const fallbackSpecialistName =
+                    visibleProfessionals.find(
+                      (item) => item.id === booking.professionalId,
+                    )?.name ?? "Sin asignar";
 
                   return (
                     <Dialog
@@ -1362,6 +1471,9 @@ export function SchedulerAgendaGrid({
                               onDragStart={(event) =>
                                 startBookingDrag(event, booking)
                               }
+                              onPointerMove={(event) =>
+                                trackBookingAttendee(event, booking)
+                              }
                               style={{
                                 ...style,
                                 ...horizontalStyle,
@@ -1382,74 +1494,16 @@ export function SchedulerAgendaGrid({
                             </button>
                           </DialogTrigger>
                         </TooltipTrigger>
-                        <TooltipContent
+                        <SchedulerAppointmentTooltipCard
                           align="center"
-                          className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
+                          attendeeIndex={hoveredAttendeeIndex}
+                          booking={booking}
+                          context={appointmentContexts[booking.id]}
+                          fallbackSpecialistName={fallbackSpecialistName}
                           side="top"
-                          sideOffset={10}
-                        >
-                          <p className="font-semibold">
-                            {appointmentContexts[
-                              booking.id
-                            ]?.attendeeNames.join(" · ") ??
-                              booking.customerName}
-                          </p>
-                          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[0.72rem] leading-5 text-white/75">
-                            <dt>Horario</dt>
-                            <dd>
-                              {booking.start}–{booking.end}
-                            </dd>
-                            <dt>Servicio</dt>
-                            <dd>{booking.serviceName}</dd>
-                            <dt>Especialista</dt>
-                            <dd>
-                              {visibleProfessionals.find(
-                                (item) => item.id === booking.professionalId,
-                              )?.name ?? "Sin asignar"}
-                            </dd>
-                            <dt>Estado</dt>
-                            <dd>
-                              <SchedulerStatusBadge
-                                color={statusColor}
-                                compact
-                                hasPurchase={
-                                  booking.purchased === true &&
-                                  (booking.purchaseAmount ?? 0) > 0
-                                }
-                                label={statusLabels[booking.status]}
-                                purchaseAmount={booking.purchaseAmount}
-                                status={booking.status}
-                              />
-                            </dd>
-                            <dt>Contacto</dt>
-                            <dd>
-                              {booking.phone ||
-                                booking.customerEmail ||
-                                "Sin contacto"}
-                            </dd>
-                            <dt>Representante</dt>
-                            <dd>
-                              {appointmentContexts[booking.id]
-                                ?.representativeName ?? "Por registrar"}
-                            </dd>
-                            <dt>Vendedor cartera</dt>
-                            <dd>
-                              {appointmentContexts[booking.id]
-                                ?.portfolioSellerName ?? "Sin asignar"}
-                            </dd>
-                            <dt>Próxima cita</dt>
-                            <dd>
-                              {nextAppointmentLabel(
-                                appointmentContexts[booking.id],
-                              )}
-                            </dd>
-                          </dl>
-                          {booking.notes ? (
-                            <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
-                              {booking.notes}
-                            </p>
-                          ) : null}
-                        </TooltipContent>
+                          statusColor={statusColor}
+                          statusLabel={statusLabels[booking.status]}
+                        />
                       </Tooltip>
                       <DialogContent
                         className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"

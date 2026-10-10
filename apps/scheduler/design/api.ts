@@ -29,6 +29,7 @@ import {
 } from "./store";
 import type {
   DesignAppointmentAnswer,
+  DesignAppointmentAttendeeContext,
   DesignAppointmentCabinVisit,
   DesignAppointmentContext,
   DesignAppointmentJournalEntry,
@@ -2834,25 +2835,95 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               ),
             0,
           );
-          const nextAppointment = visibleAppointments(state)
-            .filter(
-              (candidate) =>
-                candidate.id !== appointmentItem.id &&
-                candidate.customerId === appointmentItem.customerId &&
-                designBootstrap(state).authorizedBranchIds.includes(
-                  candidate.branchId,
-                ) &&
-                candidate.startsAt > appointmentItem.startsAt &&
-                !["CANCELED", "NO_SHOW"].includes(candidate.status),
-            )
-            .sort((left, right) =>
-              left.startsAt.localeCompare(right.startsAt),
-            )[0];
+          const nextAppointmentForCustomer = (customerId: string | null) =>
+            customerId
+              ? visibleAppointments(state)
+                  .filter(
+                    (candidate) =>
+                      candidate.id !== appointmentItem.id &&
+                      candidate.customerId === customerId &&
+                      candidate.startsAt > appointmentItem.startsAt &&
+                      !["CANCELED", "NO_SHOW"].includes(candidate.status),
+                  )
+                  .sort((left, right) =>
+                    left.startsAt.localeCompare(right.startsAt),
+                  )[0]
+              : undefined;
+          const nextAppointment = nextAppointmentForCustomer(
+            appointmentItem.customerId,
+          );
+          const fallbackSpecialistId =
+            appointmentItem.services[0]?.professionals[0]
+              ?.professionalProfileId ?? null;
+          const attendeeRows = visit?.visitors ?? [
+            {
+              id: `${appointmentId}-primary`,
+              customerId: appointmentItem.customerId,
+              name: appointmentItem.customerName,
+              specialistProfileId: fallbackSpecialistId ?? "",
+              purchaseKind: null,
+              saleAmount: null,
+              purchaseAmount: null,
+              depositAmount: null,
+              settlementStatus: "NOT_APPLICABLE" as const,
+            },
+          ];
+          const attendees: DesignAppointmentAttendeeContext[] =
+            attendeeRows.map((visitor) => {
+              const attendeeCustomer = visitor.customerId
+                ? state.customers.find(
+                    (candidate) => candidate.id === visitor.customerId,
+                  )
+                : undefined;
+              const specialist = state.catalog.professionals.find(
+                (candidate) => candidate.id === visitor.specialistProfileId,
+              );
+              const attendeeSaleAmount = Number(
+                visitor.saleAmount ?? visitor.purchaseAmount ?? 0,
+              );
+              const attendeeDepositAmount = Number(
+                visitor.purchaseKind === "FULL"
+                  ? attendeeSaleAmount
+                  : (visitor.depositAmount ?? 0),
+              );
+              const attendeeNextAppointment = nextAppointmentForCustomer(
+                visitor.customerId,
+              );
+              const attendeePortfolio =
+                attendeeCustomer?.currentPortfolios.find(
+                  (candidate) =>
+                    candidate.branchId === appointmentItem.branchId,
+                );
+
+              return {
+                visitorId: visitor.id,
+                customerId: visitor.customerId,
+                name: visitor.name,
+                phone: attendeeCustomer?.phone ?? null,
+                email: attendeeCustomer?.email ?? null,
+                specialistProfileId: visitor.specialistProfileId || null,
+                specialistName: specialist?.name ?? null,
+                purchaseKind: visitor.purchaseKind,
+                saleAmount: attendeeSaleAmount,
+                depositAmount: attendeeDepositAmount,
+                balanceAmount: Math.max(
+                  0,
+                  attendeeSaleAmount - attendeeDepositAmount,
+                ),
+                settlementStatus: visitor.settlementStatus,
+                portfolioSellerName:
+                  attendeePortfolio?.ownerName ??
+                  (visitor.customerId === appointmentItem.customerId
+                    ? portfolioSellerName
+                    : null),
+                nextAppointmentId: attendeeNextAppointment?.id ?? null,
+                nextAppointmentAt: attendeeNextAppointment?.startsAt ?? null,
+              };
+            });
           const context: DesignAppointmentContext = {
             appointmentId,
-            attendeeNames: visit?.visitors.map((visitor) => visitor.name) ?? [
-              appointmentItem.customerName,
-            ],
+            attendeeNames: attendees.map((attendee) => attendee.name),
+            attendees,
             attendingSpecialistProfileIds: [
               "ARRIVED",
               "WAITING",

@@ -1300,6 +1300,28 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
     saved.body.data.visitors.map((visitor) => visitor.name),
   );
   assert.deepEqual(
+    contexts.body.data[appointmentId].attendees.map((attendee) => ({
+      name: attendee.name,
+      specialistName: attendee.specialistName,
+      purchaseKind: attendee.purchaseKind,
+      saleAmount: attendee.saleAmount,
+    })),
+    [
+      {
+        name: saved.body.data.visitors[0].name,
+        specialistName: specialists[0].name,
+        purchaseKind: "FULL",
+        saleAmount: 1750,
+      },
+      {
+        name: saved.body.data.visitors[1].name,
+        specialistName: specialists[1].name,
+        purchaseKind: "NONE",
+        saleAmount: 0,
+      },
+    ],
+  );
+  assert.deepEqual(
     contexts.body.data[appointmentId].attendingSpecialistProfileIds,
     [],
   );
