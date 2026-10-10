@@ -49,6 +49,8 @@ import type {
   DesignCustomerAdvancedFilters,
   DesignCustomerAdvancedPage,
   DesignCustomerDuplicateCandidate,
+  DesignCustomerRecoveryCase,
+  DesignCustomerRecoveryStatus,
   DesignCustomerLayawaySummary,
   DesignLayawayPayment,
   DesignMovementRecord,
@@ -416,6 +418,7 @@ function operationPurpose(value: unknown): DesignOperationPurpose {
     "SCHEDULE_BLOCK_UPDATE",
     "SCHEDULE_BLOCK_DELETE",
     "CUSTOMER_UPDATE",
+    "CUSTOMER_RECOVERY_STATUS_CHANGE",
     "PURCHASE_CAPTURE",
     "PURCHASE_CORRECTION",
     "APPOINTMENT_COMMENT_CREATE",
@@ -452,7 +455,7 @@ function requireOperationAuthorization(
   ) {
     fail(403, "Este movimiento requiere un código personal autorizado.");
   }
-  return agent;
+  return agent!;
 }
 function authorizeRequest(state: DesignState, request: DesignRequest) {
   const path = request.url.pathname;
@@ -1842,6 +1845,24 @@ function customerDuplicateCandidates(
   );
 }
 
+function customerRecoveryCases(
+  state: DesignState,
+  branchIds: string[],
+): DesignCustomerRecoveryCase[] {
+  const allowedBranchIds = new Set(
+    branchIds.length ? branchIds : designBootstrap(state).authorizedBranchIds,
+  );
+  for (const branchId of allowedBranchIds) inScope(state, branchId);
+  return state.customerRecoveryCases
+    .filter((item) => allowedBranchIds.has(item.branchId))
+    .map((item) => structuredClone(item))
+    .sort(
+      (left, right) =>
+        right.eligibilityAt.localeCompare(left.eligibilityAt) ||
+        left.customerName.localeCompare(right.customerName, "es-MX"),
+    );
+}
+
 function dispatch(state: DesignState, request: DesignRequest): unknown {
   const { body, url, headers, method } = request;
   const path = url.pathname,
@@ -2423,6 +2444,63 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         page: Number(input.page) || 1,
         pageSize: Number(input.pageSize) || 25,
       });
+    }
+    if (id === "customers" && action === "recovery") {
+      if (!parts[5]) {
+        if (method !== "POST") {
+          fail(405, "Usa POST para consultar recuperación de clientes.");
+        }
+        return customerRecoveryCases(
+          state,
+          Array.isArray(body.branchIds) ? body.branchIds.map(String) : [],
+        );
+      }
+      if (method !== "PUT") {
+        fail(405, "Usa PUT para actualizar el resultado de recuperación.");
+      }
+      const recoveryCase =
+        state.customerRecoveryCases.find((item) => item.id === parts[5]) ??
+        fail(404, "Caso de recuperación no encontrado.");
+      inScope(state, recoveryCase.branchId);
+      const validStatuses: DesignCustomerRecoveryStatus[] = [
+        "PENDING",
+        "RECOVERED",
+        "LOST",
+      ];
+      const status = String(body.status) as DesignCustomerRecoveryStatus;
+      const notes = String(body.notes ?? "").trim();
+      if (!validStatuses.includes(status)) {
+        fail(400, "Selecciona un resultado de recuperación válido.");
+      }
+      if (status === recoveryCase.status) {
+        fail(409, "El caso ya tiene ese status de recuperación.");
+      }
+      if (notes.length < 5) {
+        fail(
+          400,
+          "Describe el resultado de la gestión en al menos 5 caracteres.",
+        );
+      }
+      const agent = requireOperationAuthorization(
+        state,
+        body.authorizationToken,
+        "CUSTOMER_RECOVERY_STATUS_CHANGE",
+        recoveryCase.id,
+      );
+      const previousStatus = recoveryCase.status;
+      const updatedAt = new Date().toISOString();
+      recoveryCase.status = status;
+      recoveryCase.updatedAt = updatedAt;
+      recoveryCase.history.unshift({
+        id: designId("design-recovery-history"),
+        fromStatus: previousStatus,
+        toStatus: status,
+        notes,
+        actorName: agent.name,
+        actorRole: agent.role,
+        createdAt: updatedAt,
+      });
+      return structuredClone(recoveryCase);
     }
     if (id === "customers" && action === "duplicates") {
       if (method !== "POST") fail(405, "Usa POST para revisar duplicados.");

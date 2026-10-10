@@ -906,3 +906,18 @@ No se ha creado ni configurado un proyecto de Vercel. Un Preview posterior debe
 usar un proyecto dedicado, el comando `build:design`, el directorio `.next-design`
 y ninguna variable o credencial operativa. `VERCEL_ENV=production` bloquea el
 modo de diseño.
+
+El 10 de octubre de 2026, **Clientes → Recuperación** agregó una cartera
+operativa separada del expediente general. Identifica casos por tres motivos:
+cliente que nunca asistió, membresía terminada y tratamiento terminado. La
+herramienta filtra por texto, motivo y status; muestra sucursal, representante,
+última cita y asistencias, y permite clasificar el seguimiento como **Por
+recuperar**, **Recuperado** o **Cliente perdido**. Cada transición exige un
+código con propósito `CUSTOMER_RECOVERY_STATUS_CHANGE` y conserva status
+anterior, nuevo status, nota, actor y fecha; nunca reescribe citas, membresías o
+tratamientos históricos. La propuesta usa
+`POST /api/scheduler/design-proposals/customers/recovery` y
+`PUT /api/scheduler/design-proposals/customers/recovery/:id`. Producción deberá
+proyectar la elegibilidad desde Agenda y POS mediante IDs canónicos, persistir
+el historial append-only y registrar autorización y movimiento dentro de una
+sola transacción.

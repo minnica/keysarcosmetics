@@ -32,6 +32,7 @@ import type {
   DesignAppointmentJournalEntry,
   DesignAuthorizationScopeKey,
   DesignBranchCommercialModel,
+  DesignCustomerRecoveryCase,
   DesignCustomerSpecialistPreference,
   DesignLayawayPayment,
   DesignMovementRecord,
@@ -470,6 +471,7 @@ export function createDesignState(
         "SCHEDULE_BLOCK_UPDATE",
         "SCHEDULE_BLOCK_DELETE",
         "CUSTOMER_UPDATE",
+        "CUSTOMER_RECOVERY_STATUS_CHANGE",
         "PURCHASE_CAPTURE",
         "PURCHASE_CORRECTION",
         "APPOINTMENT_COMMENT_CREATE",
@@ -493,6 +495,7 @@ export function createDesignState(
           "APPOINTMENT_STATUS_CHANGE",
           "APPOINTMENT_CANCEL",
           "CUSTOMER_UPDATE",
+          "CUSTOMER_RECOVERY_STATUS_CHANGE",
           "PURCHASE_CAPTURE",
           "PURCHASE_CORRECTION",
           "APPOINTMENT_COMMENT_CREATE",
@@ -624,6 +627,7 @@ export function createDesignState(
       string,
       DesignCustomerSpecialistPreference
     >,
+    customerRecoveryCases: [] as DesignCustomerRecoveryCase[],
     idempotency: new Map<string, { payload: string; result: unknown }>(),
     movements: [] as Array<DesignMovement | DesignMovementRecord>,
   };
@@ -890,6 +894,87 @@ export function createDesignState(
       employeeId: portfolio?.employeeId ?? null,
       ownerName: portfolio?.ownerName ?? "Cartera de la empresa",
     };
+  }
+  const recoverySeed = [
+    {
+      customerId: customers[2]!.id,
+      reason: "NEVER_ATTENDED" as const,
+      reasonDetail: "Tiene citas canceladas, pero nunca registró asistencia.",
+      daysAgo: 18,
+      status: "PENDING" as const,
+    },
+    {
+      customerId: customers[3]!.id,
+      reason: "NEVER_ATTENDED" as const,
+      reasonDetail: "Cliente registrado sin una primera visita atendida.",
+      daysAgo: 42,
+      status: "PENDING" as const,
+    },
+    {
+      customerId: customers[1]!.id,
+      reason: "MEMBERSHIP_ENDED" as const,
+      reasonDetail: "Membresía facial de 6 sesiones finalizada.",
+      daysAgo: 12,
+      status: "RECOVERED" as const,
+    },
+    {
+      customerId: customers[0]!.id,
+      reason: "TREATMENT_ENDED" as const,
+      reasonDetail: "Tratamiento de hidratación concluido.",
+      daysAgo: 30,
+      status: "LOST" as const,
+    },
+  ];
+  for (const [index, seed] of recoverySeed.entries()) {
+    const customerItem = customers.find(
+      (candidate) => candidate.id === seed.customerId,
+    )!;
+    const portfolio = customerItem.currentPortfolios[0]!;
+    const customerAppointments = state.appointments.filter(
+      (appointment) => appointment.customerId === customerItem.id,
+    );
+    const eligibilityDate = new Date(`${controls.date}T18:00:00.000Z`);
+    eligibilityDate.setUTCDate(eligibilityDate.getUTCDate() - seed.daysAgo);
+    const history =
+      seed.status === "PENDING"
+        ? []
+        : [
+            {
+              id: `design-recovery-history-${index + 1}`,
+              fromStatus: "PENDING" as const,
+              toStatus: seed.status,
+              notes:
+                seed.status === "RECOVERED"
+                  ? "Agendó una nueva sesión de seguimiento."
+                  : "No desea continuar por el momento.",
+              actorName: operationAgents[0]!.name,
+              actorRole: operationAgents[0]!.role,
+              createdAt: eligibilityDate.toISOString(),
+            },
+          ];
+    state.customerRecoveryCases.push({
+      id: `design-recovery-${index + 1}`,
+      customerId: customerItem.id,
+      customerName: customerItem.displayName,
+      phone: customerItem.phone,
+      branchId: portfolio.branchId!,
+      branchName: portfolio.branchName ?? "Sucursal demo",
+      portfolioOwnerName: portfolio.ownerName ?? "Cartera de la empresa",
+      reason: seed.reason,
+      reasonDetail: seed.reasonDetail,
+      eligibilityAt: eligibilityDate.toISOString(),
+      lastAppointmentAt:
+        customerAppointments
+          .map((appointment) => appointment.startsAt)
+          .sort()
+          .at(-1) ?? null,
+      attendedCount: customerAppointments.filter(
+        (appointment) => appointment.status === "ATTENDED",
+      ).length,
+      status: seed.status,
+      updatedAt: history[0]?.createdAt ?? eligibilityDate.toISOString(),
+      history,
+    });
   }
   return state;
 }

@@ -2265,6 +2265,67 @@ test("la búsqueda avanzada combina agenda, servicios, cumpleaños, vendedor y c
   );
 });
 
+test("recuperación identifica motivos y conserva cada cambio de status autorizado", () => {
+  const { state, request } = session();
+  const listed = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/recovery",
+    { branchIds: state.catalog.branches.map((branch) => branch.branchId) },
+  );
+  assert.equal(listed.status, 201);
+  assert.deepEqual(
+    new Set(listed.body.data.map((item) => item.reason)),
+    new Set(["NEVER_ATTENDED", "MEMBERSHIP_ENDED", "TREATMENT_ENDED"]),
+  );
+  const pending = listed.body.data.find((item) => item.status === "PENDING");
+  assert.ok(pending);
+  assert.equal(
+    request(
+      "PUT",
+      `/api/scheduler/design-proposals/customers/recovery/${pending.id}`,
+      {
+        status: "RECOVERED",
+        notes: "Aceptó una cita nueva.",
+        authorizationToken: "invalid",
+      },
+    ).status,
+    403,
+  );
+
+  const token = operationToken(
+    request,
+    "CUSTOMER_RECOVERY_STATUS_CHANGE",
+    pending.id,
+  );
+  const updated = request(
+    "PUT",
+    `/api/scheduler/design-proposals/customers/recovery/${pending.id}`,
+    {
+      status: "RECOVERED",
+      notes: "Aceptó una cita nueva.",
+      authorizationToken: token,
+    },
+  );
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.data.status, "RECOVERED");
+  assert.equal(updated.body.data.history.length, 1);
+  assert.equal(updated.body.data.history[0].fromStatus, "PENDING");
+  assert.equal(updated.body.data.history[0].actorName, "PO · Master demo");
+
+  const movement = request(
+    "POST",
+    "/api/scheduler/design-proposals/operation-authorizations/commit",
+    {
+      token,
+      action: "Recuperación: Recuperado",
+      targetType: "CUSTOMER_RECOVERY",
+      targetId: pending.id,
+    },
+  );
+  assert.equal(movement.status, 201);
+  assert.equal(movement.body.data.purpose, "CUSTOMER_RECOVERY_STATUS_CHANGE");
+});
+
 test("la especialista preferida se fija por cliente sin impedir otra asignación por cita", () => {
   const { state, request } = session();
   const customerId = state.customers[0].id;

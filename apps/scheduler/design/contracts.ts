@@ -15,6 +15,7 @@ export type DesignOperationPurpose =
   | "SCHEDULE_BLOCK_UPDATE"
   | "SCHEDULE_BLOCK_DELETE"
   | "CUSTOMER_UPDATE"
+  | "CUSTOMER_RECOVERY_STATUS_CHANGE"
   | "PURCHASE_CAPTURE"
   | "PURCHASE_CORRECTION"
   | "APPOINTMENT_COMMENT_CREATE"
@@ -538,6 +539,41 @@ export interface DesignCustomerDuplicateCandidate {
   customers: [SchedulerCustomerSummaryDto, SchedulerCustomerSummaryDto];
 }
 
+export type DesignCustomerRecoveryReason =
+  | "NEVER_ATTENDED"
+  | "MEMBERSHIP_ENDED"
+  | "TREATMENT_ENDED";
+
+export type DesignCustomerRecoveryStatus = "PENDING" | "RECOVERED" | "LOST";
+
+export interface DesignCustomerRecoveryHistoryEntry {
+  id: string;
+  fromStatus: DesignCustomerRecoveryStatus;
+  toStatus: DesignCustomerRecoveryStatus;
+  notes: string;
+  actorName: string;
+  actorRole: string;
+  createdAt: string;
+}
+
+export interface DesignCustomerRecoveryCase {
+  id: string;
+  customerId: string;
+  customerName: string;
+  phone: string | null;
+  branchId: string;
+  branchName: string;
+  portfolioOwnerName: string;
+  reason: DesignCustomerRecoveryReason;
+  reasonDetail: string;
+  eligibilityAt: string;
+  lastAppointmentAt: string | null;
+  attendedCount: number;
+  status: DesignCustomerRecoveryStatus;
+  updatedAt: string;
+  history: DesignCustomerRecoveryHistoryEntry[];
+}
+
 export interface DesignProposalClient {
   available: boolean;
   listBranchCommercialModels(): Promise<DesignBranchCommercialModel[]>;
@@ -592,6 +628,17 @@ export interface DesignProposalClient {
   customerDuplicateCandidates(input: {
     branchIds: string[];
   }): Promise<DesignCustomerDuplicateCandidate[]>;
+  customerRecoveryCases(input: {
+    branchIds: string[];
+  }): Promise<DesignCustomerRecoveryCase[]>;
+  updateCustomerRecoveryStatus(
+    recoveryCaseId: string,
+    input: {
+      status: DesignCustomerRecoveryStatus;
+      notes: string;
+      authorizationToken: string;
+    },
+  ): Promise<DesignCustomerRecoveryCase>;
   appointmentAnswers(appointmentId: string): Promise<DesignAppointmentAnswer[]>;
   saveAppointmentAnswers(
     appointmentId: string,

@@ -42,6 +42,7 @@ import {
   FileDown,
   FileText,
   GitMerge,
+  HeartHandshake,
   History,
   LockKeyhole,
   Mail,
@@ -78,6 +79,7 @@ import { CustomerEngagementPanel } from "@/components/clients/CustomerEngagement
 import { CustomerDuplicateReviewDialog } from "@/components/clients/CustomerDuplicateReviewDialog";
 import { CustomerExportDialog } from "@/components/clients/CustomerExportDialog";
 import { CustomerImportDialog } from "@/components/clients/CustomerImportDialog";
+import { CustomerRecoveryDialog } from "@/components/clients/CustomerRecoveryDialog";
 import {
   SchedulerClientAdvancedFilters,
   type SchedulerClientAdvancedFilterValue,
@@ -413,6 +415,7 @@ export function ApiClientsWorkspace() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [duplicateReviewOpen, setDuplicateReviewOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
 
   const queryPageSize = pageSize === "ALL" ? 5000 : pageSize;
   const canonicalResults = useSchedulerQuery(
@@ -1002,6 +1005,16 @@ export function ApiClientsWorkspace() {
             >
               <FileDown className="mr-2 h-4 w-4" /> Exportar clientes
             </Button>
+            {schedulerDesignProposals.available ? (
+              <Button
+                className="h-11 rounded-xl border-[#d7c1aa] bg-[#fbf6f0] px-4 text-[#8e6c4b] hover:bg-[#f3e8dc]"
+                disabled={!branchId}
+                onClick={() => setRecoveryOpen(true)}
+                variant="outline"
+              >
+                <HeartHandshake className="mr-2 h-4 w-4" /> Recuperación
+              </Button>
+            ) : null}
             {canWrite ? (
               <Button
                 className="h-11 rounded-xl bg-[#263649] px-4 text-white shadow-[0_8px_20px_rgba(38,54,73,0.14)] hover:bg-[#1d2b3a]"
@@ -1497,6 +1510,15 @@ export function ApiClientsWorkspace() {
         onReview={reviewDuplicate}
         open={duplicateReviewOpen}
       />
+
+      {schedulerDesignProposals.available ? (
+        <CustomerRecoveryDialog
+          branchId={branchId}
+          canWrite={canWrite}
+          onOpenChange={setRecoveryOpen}
+          open={recoveryOpen}
+        />
+      ) : null}
 
       <CustomerRecordDialog
         branchId={branchId}
