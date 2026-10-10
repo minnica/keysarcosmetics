@@ -29,6 +29,7 @@ import {
   AlertDialogTrigger,
   Badge,
   Button,
+  cn,
   Input,
   Label,
   Select,
@@ -42,12 +43,15 @@ import {
 import {
   Check,
   CircleHelp,
+  FileImage,
+  FileText,
   KeyRound,
   LockKeyhole,
   Plus,
   Save,
   Settings2,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { schedulerApi } from "@/lib/api";
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
@@ -65,9 +69,13 @@ import {
 } from "@/lib/scheduler-agenda-settings";
 import {
   buildSchedulerSettingLayerDocument,
+  getSchedulerCompanyLogoAsset,
   getSchedulerSettingValue,
   resolveSchedulerSettingDocumentForScope,
   schedulerSettingDefinitions,
+  schedulerCompanyLogoMaxBytes,
+  schedulerCompanyLogoMimeTypes,
+  type SchedulerCompanyLogoAsset,
   type SchedulerSettingFieldDefinition,
   validateSchedulerSettingDocument,
 } from "@/lib/scheduler-settings-presentation";
@@ -80,6 +88,131 @@ import {
 } from "./ApiState";
 
 const SETTINGS_SECTION_CHANGE_EVENT = "scheduler-settings-section-change";
+const companyLogoMimeTypes = new Set<string>(schedulerCompanyLogoMimeTypes);
+
+function CompanyLogoField({
+  disabled,
+  field,
+  value,
+  onChange,
+}: {
+  disabled: boolean;
+  field: SchedulerSettingFieldDefinition;
+  value: unknown;
+  onChange: (value: SchedulerCompanyLogoAsset | null) => void;
+}) {
+  const asset = getSchedulerCompanyLogoAsset(value);
+  const inputId = `setting-${field.path}`;
+
+  function selectFile(file: File | undefined) {
+    if (!file) return;
+    if (!companyLogoMimeTypes.has(file.type)) {
+      toast.error("Usa un archivo PDF, JPG, PNG, WEBP o GIF.");
+      return;
+    }
+    if (file.size > schedulerCompanyLogoMaxBytes) {
+      toast.error("El logotipo debe pesar como máximo 5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => toast.error("No fue posible leer el logotipo.");
+    reader.onload = () => {
+      if (typeof reader.result !== "string") return;
+      onChange({
+        fileName: file.name,
+        mimeType: file.type,
+        dataUrl: reader.result,
+        sizeBytes: file.size,
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div className="space-y-3 md:col-span-2">
+      <div>
+        <Label htmlFor={inputId}>{field.label}</Label>
+        <p className="settings-field-help mt-1">{field.description}</p>
+      </div>
+      <input
+        accept=".pdf,.gif,.jpeg,.jpg,.png,.webp,application/pdf,image/gif,image/jpeg,image/png,image/webp"
+        className="sr-only"
+        disabled={disabled}
+        id={inputId}
+        onChange={(event) => {
+          selectFile(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+        type="file"
+      />
+      <label
+        className={cn(
+          "settings-upload cursor-pointer",
+          disabled && "cursor-not-allowed opacity-60",
+        )}
+        htmlFor={inputId}
+      >
+        <span className="settings-upload-icon">
+          <Upload className="h-5 w-5" />
+        </span>
+        <span className="font-semibold text-slate-700">
+          {asset ? "Reemplazar logotipo" : "Seleccionar logotipo"}
+        </span>
+        <span className="text-center text-xs text-slate-500">
+          PDF, JPG, PNG, WEBP o GIF · máximo 5 MB
+        </span>
+      </label>
+      {asset ? (
+        <div className="rounded-[22px] border border-[#e8ddd4] bg-white p-4">
+          <div className="settings-logo-preview relative overflow-hidden">
+            {asset.mimeType === "application/pdf" ? (
+              <object
+                aria-label={`Vista previa de ${asset.fileName}`}
+                className="h-44 w-full rounded-xl"
+                data={`${asset.dataUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                type="application/pdf"
+              >
+                <div className="flex flex-col items-center gap-2 text-slate-500">
+                  <FileText className="h-9 w-9" />
+                  <span>PDF listo para guardar</span>
+                </div>
+              </object>
+            ) : (
+              <div
+                aria-label={`Vista previa de ${asset.fileName}`}
+                className="h-40 w-full bg-contain bg-center bg-no-repeat"
+                role="img"
+                style={{ backgroundImage: `url(${JSON.stringify(asset.dataUrl)})` }}
+              />
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-slate-600">
+              {asset.mimeType === "application/pdf" ? (
+                <FileText className="h-4 w-4 shrink-0" />
+              ) : (
+                <FileImage className="h-4 w-4 shrink-0" />
+              )}
+              <span className="truncate">{asset.fileName}</span>
+              <span className="shrink-0 text-xs text-slate-400">
+                {(asset.sizeBytes / 1024).toFixed(0)} KB
+              </span>
+            </div>
+            <Button
+              disabled={disabled}
+              onClick={() => onChange(null)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Quitar
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const customerFieldTypes: Array<{
   value: SchedulerCustomerFieldType;
@@ -1119,6 +1252,16 @@ function SettingField({
   onChange: (path: string, value: unknown) => void;
 }) {
   const value = getSchedulerSettingValue(document, field.path);
+  if (field.kind === "logo") {
+    return (
+      <CompanyLogoField
+        disabled={disabled}
+        field={field}
+        value={value}
+        onChange={(next) => onChange(field.path, next)}
+      />
+    );
+  }
   if (field.kind === "boolean") {
     return (
       <ToggleField

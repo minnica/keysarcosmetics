@@ -11,6 +11,9 @@ import {
   type SchedulerReportPage,
 } from "@/components/SchedulerPrimaryNav";
 import { useSchedulerSession } from "@/lib/session";
+import { schedulerApi } from "@/lib/api";
+import { getSchedulerCompanyLogoAsset } from "@/lib/scheduler-settings-presentation";
+import { useSchedulerQuery } from "@/components/api/ApiState";
 
 function activeArea(pathname: string): SchedulerNavArea {
   if (pathname.startsWith("/clientes")) return "clients";
@@ -24,6 +27,26 @@ function activeArea(pathname: string): SchedulerNavArea {
 export function SchedulerTopNavigation() {
   const pathname = usePathname();
   const { bootstrap, logout } = useSchedulerSession();
+  const catalog = useSchedulerQuery(
+    () => schedulerApi.operationalCatalog(),
+    [],
+    { queryKey: "navigation:operational-catalog" },
+  );
+  const commerceId = catalog.data?.commerces.find((item) => item.active)?.id ?? "";
+  const company = useSchedulerQuery(
+    () => schedulerApi.resolvedSetting("company", { commerceId }),
+    [commerceId],
+    {
+      enabled: Boolean(commerceId),
+      queryKey: "settings:company",
+    },
+  );
+  const logoAsset = getSchedulerCompanyLogoAsset(
+    company.data?.document["logoAsset"],
+  );
+  const companyName = String(
+    company.data?.document["companyName"] ?? "Keysar Cosmetics",
+  );
   const area = activeArea(pathname);
   const reportPage: SchedulerReportPage = pathname.startsWith("/reportes/seguimiento-citas")
     ? "appointment-journal"
@@ -39,9 +62,27 @@ export function SchedulerTopNavigation() {
           className="flex shrink-0 items-center gap-2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c3a583]"
           href="/"
         >
-          <Image alt="" aria-hidden="true" height={34} src="/logo.svg" width={34} />
+          {logoAsset?.mimeType === "application/pdf" ? (
+            <object
+              aria-hidden="true"
+              className="pointer-events-none h-[34px] w-[34px] overflow-hidden rounded-md bg-white object-contain"
+              data={`${logoAsset.dataUrl}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=Fit`}
+              tabIndex={-1}
+              type="application/pdf"
+            >
+              <Image alt="" aria-hidden="true" height={34} src="/logo.svg" width={34} />
+            </object>
+          ) : logoAsset ? (
+            <span
+              aria-hidden="true"
+              className="h-[34px] w-[34px] rounded-md bg-contain bg-center bg-no-repeat"
+              style={{ backgroundImage: `url(${JSON.stringify(logoAsset.dataUrl)})` }}
+            />
+          ) : (
+            <Image alt="" aria-hidden="true" height={34} src="/logo.svg" width={34} />
+          )}
           <span className="hidden text-sm font-semibold uppercase tracking-[0.12em] text-white lg:inline">
-            Keysar
+            {companyName}
           </span>
         </Link>
         <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

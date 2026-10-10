@@ -18,6 +18,7 @@ export const schedulerSettingsRv5Documents: Record<
   company: {
     companyName: "Keysar Cosmetics",
     description: "Cuidado facial con atención personalizada.",
+    logoAsset: null,
     address: "Polanco, Ciudad de México",
   },
   website: {

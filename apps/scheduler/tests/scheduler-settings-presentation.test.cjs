@@ -30,6 +30,7 @@ const {
   buildSchedulerSettingLayerDocument,
   resolveSchedulerSettingDocumentForScope,
   schedulerSettingDefinitions,
+  getSchedulerCompanyLogoAsset,
   setSchedulerSettingValue,
   validateSchedulerSettingDocument,
 } = exported;
@@ -123,5 +124,40 @@ test("validates URLs, numeric ranges, e-mails and the public CLABE reference", (
       bankClabe: "012345678901234567",
     }),
     null,
+  );
+});
+
+test("validates and resolves a company logo without stretching its document shape", () => {
+  const logo = {
+    fileName: "keysar.png",
+    mimeType: "image/png",
+    dataUrl: "data:image/png;base64,AAAA",
+    sizeBytes: 4,
+  };
+  assert.deepEqual(plain(getSchedulerCompanyLogoAsset(logo)), logo);
+  assert.equal(
+    validateSchedulerSettingDocument(schedulerSettingDefinitions.company, {
+      ...schedulerSettingDefinitions.company.defaults,
+      logoAsset: logo,
+    }),
+    null,
+  );
+  assert.match(
+    validateSchedulerSettingDocument(schedulerSettingDefinitions.company, {
+      ...schedulerSettingDefinitions.company.defaults,
+      logoAsset: {
+        ...logo,
+        mimeType: "image/svg+xml",
+        dataUrl: "data:image/svg+xml;base64,AAAA",
+      },
+    }),
+    /PDF, JPG, PNG, WEBP o GIF/,
+  );
+  assert.match(
+    validateSchedulerSettingDocument(schedulerSettingDefinitions.company, {
+      ...schedulerSettingDefinitions.company.defaults,
+      logoAsset: { ...logo, sizeBytes: 5_000_001 },
+    }),
+    /máximo 5 MB/,
   );
 });

@@ -9,6 +9,7 @@ export type SchedulerSettingFieldKind =
   | "color"
   | "email-list"
   | "integer"
+  | "logo"
   | "object-list"
   | "select"
   | "text"
@@ -38,6 +39,22 @@ export interface SchedulerSettingSectionDefinition {
   defaults: Record<string, unknown>;
 }
 
+export const schedulerCompanyLogoMaxBytes = 5_000_000;
+export const schedulerCompanyLogoMimeTypes = [
+  "application/pdf",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
+
+export interface SchedulerCompanyLogoAsset {
+  fileName: string;
+  mimeType: string;
+  dataUrl: string;
+  sizeBytes: number;
+}
+
 const toggle = (
   path: string,
   label: string,
@@ -62,7 +79,12 @@ export const schedulerSettingDefinitions: Record<
       "Mantén la identidad pública que usarán las superficies de reservación cuando exista un consumidor conectado.",
     consumer:
       "Documento versionado sin consumidor operativo conectado. Comercio, sucursales y contacto canónicos se administran en Administración.",
-    defaults: { companyName: "", description: "", logoUrl: "", address: "" },
+    defaults: {
+      companyName: "",
+      description: "",
+      logoAsset: null,
+      address: "",
+    },
     fields: [
       {
         path: "companyName",
@@ -79,13 +101,12 @@ export const schedulerSettingDefinitions: Record<
         group: "Identidad",
       },
       {
-        path: "logoUrl",
-        label: "URL del logotipo",
+        path: "logoAsset",
+        label: "Logotipo de la empresa",
         description:
-          "Referencia pública; este formulario no carga archivos privados.",
-        kind: "url",
+          "Carga un PDF o una imagen. La vista previa se ajusta al espacio disponible sin deformarse.",
+        kind: "logo",
         group: "Identidad",
-        placeholder: "https://…",
       },
       {
         path: "address",
@@ -706,6 +727,19 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+export function getSchedulerCompanyLogoAsset(
+  value: unknown,
+): SchedulerCompanyLogoAsset | null {
+  if (!isObject(value)) return null;
+  const asset = {
+    fileName: String(value["fileName"] ?? ""),
+    mimeType: String(value["mimeType"] ?? ""),
+    dataUrl: String(value["dataUrl"] ?? ""),
+    sizeBytes: Number(value["sizeBytes"] ?? 0),
+  };
+  return asset.fileName && asset.dataUrl ? asset : null;
+}
+
 export function mergeSchedulerSettingDocuments(
   ...documents: Array<Record<string, unknown> | undefined>
 ): Record<string, unknown> {
@@ -815,6 +849,25 @@ export function validateSchedulerSettingDocument(
       } catch {
         return `${field.label} debe ser una URL http o https válida.`;
       }
+    }
+    if (field.kind === "logo" && value !== null && value !== undefined) {
+      if (!isObject(value)) return `${field.label} contiene un archivo inválido.`;
+      const mimeType = String(value["mimeType"] ?? "");
+      const dataUrl = String(value["dataUrl"] ?? "");
+      const sizeBytes = Number(value["sizeBytes"] ?? 0);
+      const supportedMimeTypes = new Set<string>(
+        schedulerCompanyLogoMimeTypes,
+      );
+      if (!supportedMimeTypes.has(mimeType))
+        return `${field.label} debe ser PDF, JPG, PNG, WEBP o GIF.`;
+      if (
+        !Number.isFinite(sizeBytes) ||
+        sizeBytes <= 0 ||
+        sizeBytes > schedulerCompanyLogoMaxBytes
+      )
+        return `${field.label} debe pesar como máximo 5 MB.`;
+      if (!dataUrl.startsWith(`data:${mimeType};base64,`))
+        return `${field.label} contiene un archivo inválido.`;
     }
     if (field.kind === "email-list" && Array.isArray(value)) {
       const invalid = value.some((item) => {

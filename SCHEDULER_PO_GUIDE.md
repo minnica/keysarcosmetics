@@ -193,6 +193,16 @@ guarda también en su expediente ficticio. Las respuestas propias de la cita se
 relacionan por `appointmentId`; no se crea otro catálogo de clientes, empleados
 o vendedores.
 
+En **Configuraciones → Empresa** el logotipo se selecciona desde un archivo
+PDF, JPG/JPEG, PNG, WEBP o GIF de hasta 5 MB. La vista previa usa contención
+proporcional para aprovechar el espacio sin estirar ni recortar el diseño; el
+encabezado superior refleja el nombre y el activo efectivo del comercio y
+conserva el logo estándar como fallback. En esta demo el archivo se almacena
+como `data:` dentro del documento ficticio y nunca se transmite a un proveedor.
+Producción deberá sustituirlo por un `assetId` de almacenamiento privado,
+validar el contenido por firma real, generar una variante web optimizada y
+convertir la primera página de un PDF a imagen antes de publicarla.
+
 En **Configuraciones → Códigos personales** master asigna códigos ficticios a
 identidades que provienen de Scheduler o del catálogo externo POS/CRM. No se
 crean vendedores paralelos para sucursales vinculadas: sus representantes se
