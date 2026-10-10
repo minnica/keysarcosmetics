@@ -903,7 +903,7 @@ export function ApiClientsWorkspace() {
           aria-label="Búsqueda y filtros de clientes"
         >
           <form
-            className="grid gap-4 p-5 lg:grid-cols-[minmax(280px,1fr)_minmax(210px,0.35fr)_minmax(190px,0.3fr)_auto] lg:items-end"
+            className="grid gap-4 p-5 lg:grid-cols-[minmax(280px,1fr)_minmax(210px,0.35fr)_minmax(190px,0.3fr)_auto] lg:items-start"
             onSubmit={submitSearch}
           >
             <FormField
@@ -970,7 +970,7 @@ export function ApiClientsWorkspace() {
               </Select>
             </FormField>
             <Button
-              className="h-11 rounded-xl bg-[#263649] px-5 text-white hover:bg-[#1d2b3a]"
+              className="h-11 rounded-xl bg-[#263649] px-5 text-white hover:bg-[#1d2b3a] lg:mt-7"
               disabled={
                 queryInput.trim().length === 1 ||
                 (queryInput.trim().length < 2 &&

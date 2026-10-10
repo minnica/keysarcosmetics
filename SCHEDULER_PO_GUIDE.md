@@ -816,6 +816,12 @@ El 10 de octubre de 2026 el botón café **Nuevo cliente** se alineó con el cam
 de búsqueda de Cliente y comparte su altura visual. El texto de confirmación de
 un cliente vinculado permanece debajo del campo sin desplazar la acción.
 
+El 10 de octubre de 2026 la barra de búsqueda de **Base de clientes** alineó
+desde el borde superior las etiquetas y controles de texto, sucursal y
+procedencia. El texto de ayuda permanece debajo de la búsqueda sin desplazar
+los selectores; el botón **Buscar** conserva la misma altura y línea base que
+los controles.
+
 Cuando se selecciona o guarda un cliente, **Nuevo cliente** queda deshabilitado
 y la acción también se protege dentro del componente. Para registrar otro
 perfil primero se debe limpiar o cambiar la búsqueda; así no se reemplaza por
