@@ -2326,6 +2326,45 @@ test("recuperación identifica motivos y conserva cada cambio de status autoriza
   assert.equal(movement.body.data.purpose, "CUSTOMER_RECOVERY_STATUS_CHANGE");
 });
 
+test("recuperación configura por sucursal el plazo que activa cada alerta", () => {
+  const { state, request } = session();
+  const pending = state.customerRecoveryCases.find(
+    (item) => item.status === "PENDING" && item.reason === "NEVER_ATTENDED",
+  );
+  assert.ok(pending);
+
+  const current = request(
+    "GET",
+    `/api/scheduler/design-proposals/customers/recovery-settings?branchId=${pending.branchId}`,
+  );
+  assert.equal(current.status, 200);
+  assert.equal(current.body.data.neverAttendedDays, 15);
+
+  const saved = request(
+    "PUT",
+    "/api/scheduler/design-proposals/customers/recovery-settings",
+    {
+      ...current.body.data,
+      neverAttendedDays: 3650,
+    },
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.data.neverAttendedDays, 3650);
+
+  const listed = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/recovery",
+    { branchIds: [pending.branchId] },
+  );
+  assert.equal(listed.status, 201);
+  assert.ok(
+    listed.body.data.every(
+      (item) =>
+        item.status !== "PENDING" || item.reason !== "NEVER_ATTENDED",
+    ),
+  );
+});
+
 test("la especialista preferida se fija por cliente sin impedir otra asignación por cita", () => {
   const { state, request } = session();
   const customerId = state.customers[0].id;

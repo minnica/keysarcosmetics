@@ -50,6 +50,8 @@ import type {
   DesignCustomerAdvancedPage,
   DesignCustomerDuplicateCandidate,
   DesignCustomerRecoveryCase,
+  DesignCustomerRecoveryReason,
+  DesignCustomerRecoverySettings,
   DesignCustomerRecoveryStatus,
   DesignCustomerLayawaySummary,
   DesignLayawayPayment,
@@ -1853,8 +1855,28 @@ function customerRecoveryCases(
     branchIds.length ? branchIds : designBootstrap(state).authorizedBranchIds,
   );
   for (const branchId of allowedBranchIds) inScope(state, branchId);
+  const thresholdByReason = (
+    settings: DesignCustomerRecoverySettings,
+    reason: DesignCustomerRecoveryReason,
+  ) =>
+    ({
+      NEVER_ATTENDED: settings.neverAttendedDays,
+      MEMBERSHIP_ENDED: settings.membershipEndedDays,
+      TREATMENT_ENDED: settings.treatmentEndedDays,
+    })[reason];
+  const now = new Date(`${state.controls.date}T23:59:59.999Z`).getTime();
   return state.customerRecoveryCases
-    .filter((item) => allowedBranchIds.has(item.branchId))
+    .filter((item) => {
+      if (!allowedBranchIds.has(item.branchId)) return false;
+      if (item.status !== "PENDING") return true;
+      const settings = state.customerRecoverySettings[item.branchId];
+      if (!settings) return true;
+      const elapsedDays = Math.max(
+        0,
+        Math.floor((now - new Date(item.eligibilityAt).getTime()) / 86_400_000),
+      );
+      return elapsedDays >= thresholdByReason(settings, item.reason);
+    })
     .map((item) => structuredClone(item))
     .sort(
       (left, right) =>
@@ -2501,6 +2523,37 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         createdAt: updatedAt,
       });
       return structuredClone(recoveryCase);
+    }
+    if (id === "customers" && action === "recovery-settings") {
+      const branchId = String(
+        method === "GET" ? query.get("branchId") ?? "" : body.branchId ?? "",
+      );
+      inScope(state, branchId);
+      const current = state.customerRecoverySettings[branchId];
+      if (!current) fail(404, "Configuración de recuperación no encontrada.");
+      if (method === "GET") return structuredClone(current);
+      if (method !== "PUT") {
+        fail(405, "Usa GET o PUT para configurar recuperación.");
+      }
+      const values = {
+        neverAttendedDays: Number(body.neverAttendedDays),
+        membershipEndedDays: Number(body.membershipEndedDays),
+        treatmentEndedDays: Number(body.treatmentEndedDays),
+      };
+      if (
+        Object.values(values).some(
+          (value) => !Number.isInteger(value) || value < 1 || value > 3650,
+        )
+      ) {
+        fail(400, "Cada plazo debe ser un número entre 1 y 3650 días.");
+      }
+      const updated: DesignCustomerRecoverySettings = {
+        branchId,
+        ...values,
+        updatedAt: new Date().toISOString(),
+      };
+      state.customerRecoverySettings[branchId] = updated;
+      return structuredClone(updated);
     }
     if (id === "customers" && action === "duplicates") {
       if (method !== "POST") fail(405, "Usa POST para revisar duplicados.");

@@ -574,6 +574,14 @@ export interface DesignCustomerRecoveryCase {
   history: DesignCustomerRecoveryHistoryEntry[];
 }
 
+export interface DesignCustomerRecoverySettings {
+  branchId: string;
+  neverAttendedDays: number;
+  membershipEndedDays: number;
+  treatmentEndedDays: number;
+  updatedAt: string;
+}
+
 export interface DesignProposalClient {
   available: boolean;
   listBranchCommercialModels(): Promise<DesignBranchCommercialModel[]>;
@@ -631,6 +639,12 @@ export interface DesignProposalClient {
   customerRecoveryCases(input: {
     branchIds: string[];
   }): Promise<DesignCustomerRecoveryCase[]>;
+  customerRecoverySettings(
+    branchId: string,
+  ): Promise<DesignCustomerRecoverySettings>;
+  saveCustomerRecoverySettings(
+    input: DesignCustomerRecoverySettings,
+  ): Promise<DesignCustomerRecoverySettings>;
   updateCustomerRecoveryStatus(
     recoveryCaseId: string,
     input: {

@@ -33,6 +33,7 @@ import type {
   DesignAuthorizationScopeKey,
   DesignBranchCommercialModel,
   DesignCustomerRecoveryCase,
+  DesignCustomerRecoverySettings,
   DesignCustomerSpecialistPreference,
   DesignLayawayPayment,
   DesignMovementRecord,
@@ -628,6 +629,18 @@ export function createDesignState(
       DesignCustomerSpecialistPreference
     >,
     customerRecoveryCases: [] as DesignCustomerRecoveryCase[],
+    customerRecoverySettings: Object.fromEntries(
+      catalog.branches.map((branch) => [
+        branch.branchId,
+        {
+          branchId: branch.branchId,
+          neverAttendedDays: 15,
+          membershipEndedDays: 7,
+          treatmentEndedDays: 7,
+          updatedAt: new Date().toISOString(),
+        } satisfies DesignCustomerRecoverySettings,
+      ]),
+    ) as Record<string, DesignCustomerRecoverySettings>,
     idempotency: new Map<string, { payload: string; result: unknown }>(),
     movements: [] as Array<DesignMovement | DesignMovementRecord>,
   };

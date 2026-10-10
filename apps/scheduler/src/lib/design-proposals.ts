@@ -28,6 +28,8 @@ export const schedulerDesignProposals: DesignProposalClient = {
   searchCustomersAdvanced: unavailable,
   customerDuplicateCandidates: unavailable,
   customerRecoveryCases: unavailable,
+  customerRecoverySettings: unavailable,
+  saveCustomerRecoverySettings: unavailable,
   updateCustomerRecoveryStatus: unavailable,
   appointmentAnswers: unavailable,
   saveAppointmentAnswers: unavailable,

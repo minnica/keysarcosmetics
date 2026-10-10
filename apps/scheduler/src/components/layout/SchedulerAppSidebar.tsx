@@ -88,7 +88,10 @@ const primaryItems: NavigationItem[] = [
 
 const clientItems: NavigationItem[] = clientNavigationItems.map((item) => ({
   ...item,
-  screenId: item.href === "/clientes" ? "clients" : "reports.summary",
+  screenId:
+    item.href === "/clientes" || item.href === "/clientes/recuperacion"
+      ? "clients"
+      : "reports.summary",
 }));
 
 const reportItems: NavigationItem[] = [

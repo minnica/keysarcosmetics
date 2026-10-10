@@ -43,6 +43,13 @@ const ApiClientsWorkspace = dynamic(
     ),
   { loading: SchedulerEntryFallback },
 );
+const CustomerRecoveryWorkspace = dynamic(
+  () =>
+    import("@/components/clients/CustomerRecoveryWorkspace").then(
+      (module) => module.CustomerRecoveryWorkspace,
+    ),
+  { loading: SchedulerEntryFallback },
+);
 const ApiReportsWorkspace = dynamic(
   () =>
     import("./ApiReportsWorkspace").then(
@@ -111,8 +118,9 @@ export function SchedulerReservationReportsEntry({
 export function SchedulerClientSectionEntry({
   section,
 }: {
-  section: "reporte-de-encuestas" | "recordatorios";
+  section: "recuperacion" | "reporte-de-encuestas" | "recordatorios";
 }) {
+  if (section === "recuperacion") return <CustomerRecoveryWorkspace />;
   return (
     <ApiReportsWorkspace
       view={section === "reporte-de-encuestas" ? "surveys" : "reminders"}

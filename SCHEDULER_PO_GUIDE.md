@@ -921,3 +921,17 @@ tratamientos históricos. La propuesta usa
 proyectar la elegibilidad desde Agenda y POS mediante IDs canónicos, persistir
 el historial append-only y registrar autorización y movimiento dentro de una
 sola transacción.
+
+El mismo 10 de octubre de 2026, Recuperación dejó de ser un diálogo de la base
+de clientes y se convirtió en el submódulo independiente **Clientes →
+Recuperación de clientes** (`/clientes/recuperacion`). Cada sucursal configura
+en días cuándo activa las alertas por cliente que nunca asistió, membresía
+terminada o tratamiento terminado. Cambiar esos plazos sólo recalcula casos
+pendientes; los recuperados y perdidos siguen visibles para conservar el
+historial. El tablero cuenta clientes sin recuperar, recuperados y perdidos,
+genera una alerta de seguimiento e identifica al vendedor de cartera con más
+clientes perdidos. La tabla permite seleccionar registros individualmente o
+por el filtro visible; PDF, Excel e impresión incluyen exclusivamente esa
+selección. La configuración usa `GET/PUT
+/api/scheduler/design-proposals/customers/recovery-settings` y mantiene alcance
+por sucursal.

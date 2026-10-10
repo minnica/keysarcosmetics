@@ -20,7 +20,9 @@ export default function ClientSectionPage({
   return (
     <SchedulerClientSectionEntry
       section={
-        params.section === "reporte-de-encuestas"
+        params.section === "recuperacion"
+          ? "recuperacion"
+          : params.section === "reporte-de-encuestas"
           ? "reporte-de-encuestas"
           : "recordatorios"
       }

@@ -42,7 +42,7 @@ function getRequiredScreen(
   pathname: string,
   section: string | null,
 ): SchedulerScreenKey | null {
-  if (pathname === "/clientes") {
+  if (pathname === "/clientes" || pathname === "/clientes/recuperacion") {
     return schedulerScreenKeyById.clients;
   }
   if (pathname.startsWith("/clientes/")) {
