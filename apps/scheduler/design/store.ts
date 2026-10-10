@@ -960,6 +960,9 @@ export function createDesignState(
                 seed.status === "RECOVERED"
                   ? "Agendó una nueva sesión de seguimiento."
                   : "No desea continuar por el momento.",
+              recoveryAgentId: operationAgents[0]!.id,
+              recoveryAgentName: operationAgents[0]!.name,
+              recoveryAgentRole: operationAgents[0]!.role,
               actorName: operationAgents[0]!.name,
               actorRole: operationAgents[0]!.role,
               createdAt: eligibilityDate.toISOString(),

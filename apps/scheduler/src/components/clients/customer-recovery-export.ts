@@ -24,6 +24,7 @@ const columns = [
   "Asistencias",
   "Vendedor de cartera",
   "Status",
+  "Agente de recuperación",
   "Última gestión",
 ] as const;
 
@@ -38,6 +39,7 @@ function rowValues(item: DesignCustomerRecoveryCase) {
     item.attendedCount,
     item.portfolioOwnerName,
     statusLabels[item.status],
+    item.history[0]?.recoveryAgentName ?? "Sin agente asignado",
     item.history[0]?.notes ?? "Sin gestión registrada",
   ];
 }
@@ -70,6 +72,7 @@ export async function exportCustomerRecoverySelection(
       { wch: 12 },
       { wch: 24 },
       { wch: 18 },
+      { wch: 28 },
       { wch: 42 },
     ];
     XLSX.utils.book_append_sheet(workbook, sheet, "Clientes seleccionados");

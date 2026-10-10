@@ -2303,6 +2303,7 @@ test("recuperación identifica motivos y conserva cada cambio de status autoriza
     {
       status: "RECOVERED",
       notes: "Aceptó una cita nueva.",
+      recoveryAgentId: state.operationAgents[1].id,
       authorizationToken: token,
     },
   );
@@ -2311,6 +2312,14 @@ test("recuperación identifica motivos y conserva cada cambio de status autoriza
   assert.equal(updated.body.data.history.length, 1);
   assert.equal(updated.body.data.history[0].fromStatus, "PENDING");
   assert.equal(updated.body.data.history[0].actorName, "PO · Master demo");
+  assert.equal(
+    updated.body.data.history[0].recoveryAgentName,
+    state.operationAgents[1].name,
+  );
+  assert.notEqual(
+    updated.body.data.history[0].recoveryAgentId,
+    state.operationAgents[0].id,
+  );
 
   const movement = request(
     "POST",

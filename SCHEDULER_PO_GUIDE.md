@@ -935,3 +935,11 @@ por el filtro visible; PDF, Excel e impresión incluyen exclusivamente esa
 selección. La configuración usa `GET/PUT
 /api/scheduler/design-proposals/customers/recovery-settings` y mantiene alcance
 por sucursal.
+
+En cada cambio de status de recuperación ahora se elige obligatoriamente el
+**agente que realizó la gestión**. Ese responsable puede ser distinto del actor
+que introduce el código y autoriza el movimiento: ambos se guardan por separado
+como snapshots históricos. El submódulo incluye un **Reporte de recuperaciones
+por agente** con número de gestiones, recuperados, perdidos, tasa de
+recuperación y última actividad. Las exportaciones seleccionadas también
+incluyen el agente asociado a la gestión más reciente.

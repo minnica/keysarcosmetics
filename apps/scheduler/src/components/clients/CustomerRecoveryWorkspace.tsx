@@ -42,6 +42,7 @@ import type {
   DesignCustomerRecoveryReason,
   DesignCustomerRecoverySettings,
   DesignCustomerRecoveryStatus,
+  DesignOperationAgent,
 } from "../../../design/contracts";
 import {
   exportCustomerRecoverySelection,
@@ -101,6 +102,7 @@ export function CustomerRecoveryWorkspace() {
     bootstrap?.authorizedBranchIds[0] ?? "",
   );
   const [cases, setCases] = useState<DesignCustomerRecoveryCase[]>([]);
+  const [agents, setAgents] = useState<DesignOperationAgent[]>([]);
   const [settings, setSettings] =
     useState<DesignCustomerRecoverySettings>(emptySettings);
   const [settingsDraft, setSettingsDraft] =
@@ -123,6 +125,7 @@ export function CustomerRecoveryWorkspace() {
   const [nextStatus, setNextStatus] =
     useState<DesignCustomerRecoveryStatus>("RECOVERED");
   const [notes, setNotes] = useState("");
+  const [recoveryAgentId, setRecoveryAgentId] = useState("");
   const [code, setCode] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -137,13 +140,21 @@ export function CustomerRecoveryWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [items, currentSettings] = await Promise.all([
+      const [items, currentSettings, operationAgents] = await Promise.all([
         schedulerDesignProposals.customerRecoveryCases({
           branchIds: [branchId],
         }),
         schedulerDesignProposals.customerRecoverySettings(branchId),
+        schedulerDesignProposals.listAuthorizationAgents(),
       ]);
       setCases(items);
+      setAgents(
+        operationAgents.filter(
+          (agent) =>
+            agent.active &&
+            agent.allowedPurposes.includes("CUSTOMER_RECOVERY_STATUS_CHANGE"),
+        ),
+      );
       setSettings(currentSettings);
       setSettingsDraft(currentSettings);
       setSelectedIds((current) => {
@@ -204,6 +215,57 @@ export function CustomerRecoveryWorkspace() {
     };
   }, [cases]);
 
+  const agentReport = useMemo(() => {
+    const rows = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        role: string;
+        actions: number;
+        recovered: number;
+        lost: number;
+        pending: number;
+        lastActionAt: string;
+      }
+    >();
+    for (const item of cases) {
+      for (const movement of item.history) {
+        const current = rows.get(movement.recoveryAgentId) ?? {
+          id: movement.recoveryAgentId,
+          name: movement.recoveryAgentName,
+          role: movement.recoveryAgentRole,
+          actions: 0,
+          recovered: 0,
+          lost: 0,
+          pending: 0,
+          lastActionAt: movement.createdAt,
+        };
+        current.actions += 1;
+        if (movement.toStatus === "RECOVERED") current.recovered += 1;
+        if (movement.toStatus === "LOST") current.lost += 1;
+        if (movement.toStatus === "PENDING") current.pending += 1;
+        if (movement.createdAt > current.lastActionAt) {
+          current.lastActionAt = movement.createdAt;
+        }
+        rows.set(movement.recoveryAgentId, current);
+      }
+    }
+    return [...rows.values()]
+      .map((row) => ({
+        ...row,
+        recoveryRate: row.actions
+          ? Math.round((row.recovered / row.actions) * 100)
+          : 0,
+      }))
+      .sort(
+        (left, right) =>
+          right.recovered - left.recovered ||
+          right.actions - left.actions ||
+          left.name.localeCompare(right.name, "es-MX"),
+      );
+  }, [cases]);
+
   const allFilteredSelected =
     filteredCases.length > 0 &&
     filteredCases.every((item) => selectedIds.has(item.id));
@@ -233,12 +295,14 @@ export function CustomerRecoveryWorkspace() {
     setSelected(item);
     setNextStatus(item.status === "RECOVERED" ? "LOST" : "RECOVERED");
     setNotes("");
+    setRecoveryAgentId("");
     setCode("");
     setError(null);
   }
 
   async function saveStatus() {
-    if (!selected || notes.trim().length < 5 || !code) return;
+    if (!selected || notes.trim().length < 5 || !recoveryAgentId || !code)
+      return;
     setSaving(true);
     setError(null);
     try {
@@ -254,6 +318,7 @@ export function CustomerRecoveryWorkspace() {
           {
             status: nextStatus,
             notes: notes.trim(),
+            recoveryAgentId,
             authorizationToken: grant.token,
           },
         );
@@ -267,6 +332,7 @@ export function CustomerRecoveryWorkspace() {
           reason: selected.reason,
           fromStatus: selected.status,
           toStatus: nextStatus,
+          recoveryAgentId,
         },
       });
       setCases((current) =>
@@ -274,6 +340,7 @@ export function CustomerRecoveryWorkspace() {
       );
       setSelected(null);
       setNotes("");
+      setRecoveryAgentId("");
       setCode("");
       toast.success(`Cliente marcado como ${statusLabels[nextStatus]}.`);
     } catch (cause) {
@@ -558,6 +625,65 @@ export function CustomerRecoveryWorkspace() {
         </section>
 
         <section className="overflow-hidden rounded-[26px] border border-[#e7ddd4] bg-white shadow-[0_18px_50px_rgba(38,54,73,0.06)]">
+          <div className="border-b border-[#eee6df] bg-[#fcfaf8] px-5 py-4">
+            <p className="label-caps">Rendimiento</p>
+            <h2 className="mt-1 text-xl font-semibold">
+              Reporte de recuperaciones por agente
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Cada gestión se atribuye al agente elegido al cambiar el status;
+              el autorizador se conserva por separado en la auditoría.
+            </p>
+          </div>
+          {agentReport.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
+                  <tr>
+                    <th className="px-5 py-3">Agente de recuperación</th>
+                    <th className="px-5 py-3 text-center">Gestiones</th>
+                    <th className="px-5 py-3 text-center">Recuperados</th>
+                    <th className="px-5 py-3 text-center">Perdidos</th>
+                    <th className="px-5 py-3 text-center">Tasa de recuperación</th>
+                    <th className="px-5 py-3">Última gestión</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentReport.map((row, index) => (
+                    <tr className="border-t border-[#f0e8e1]" key={row.id}>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#263649] text-xs font-bold text-white">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <p className="font-semibold">{row.name}</p>
+                            <p className="text-xs text-slate-500">{row.role}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-center font-semibold">{row.actions}</td>
+                      <td className="px-5 py-4 text-center text-emerald-700">{row.recovered}</td>
+                      <td className="px-5 py-4 text-center text-rose-700">{row.lost}</td>
+                      <td className="px-5 py-4 text-center">
+                        <Badge className="rounded-full" variant="outline">
+                          {row.recoveryRate}%
+                        </Badge>
+                      </td>
+                      <td className="px-5 py-4 text-slate-500">{formatDate(row.lastActionAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="px-5 py-8 text-sm text-slate-500">
+              Aún no existen gestiones atribuidas a agentes en esta sucursal.
+            </p>
+          )}
+        </section>
+
+        <section className="overflow-hidden rounded-[26px] border border-[#e7ddd4] bg-white shadow-[0_18px_50px_rgba(38,54,73,0.06)]">
           <div className="grid gap-3 border-b border-[#eee6df] bg-[#fcfaf8] p-4 md:grid-cols-[minmax(220px,1fr)_220px_200px]">
             <span className="relative">
               <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
@@ -671,9 +797,12 @@ export function CustomerRecoveryWorkspace() {
                       <td className="px-4 py-4">
                         <RecoveryStatusBadge status={item.status} />
                         {item.history[0] ? (
-                          <p className="mt-2 max-w-[220px] text-xs text-slate-500">
-                            {item.history[0].notes}
-                          </p>
+                          <div className="mt-2 max-w-[220px] text-xs text-slate-500">
+                            <p>{item.history[0].notes}</p>
+                            <p className="mt-1 font-medium text-[#526273]">
+                              Agente: {item.history[0].recoveryAgentName}
+                            </p>
+                          </div>
                         ) : null}
                       </td>
                       <td className="px-4 py-4 text-right">
@@ -757,6 +886,26 @@ export function CustomerRecoveryWorkspace() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="recovery-agent">
+                Agente que realizó la recuperación
+              </Label>
+              <Select value={recoveryAgentId} onValueChange={setRecoveryAgentId}>
+                <SelectTrigger id="recovery-agent" className="h-11 rounded-xl">
+                  <SelectValue placeholder="Selecciona al responsable" />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      {agent.name} · {agent.role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                Puede ser distinto de la persona que autoriza el cambio.
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="recovery-code">Código de autorización</Label>
               <Input
                 autoComplete="one-time-code"
@@ -783,6 +932,7 @@ export function CustomerRecoveryWorkspace() {
               disabled={
                 saving ||
                 !code ||
+                !recoveryAgentId ||
                 notes.trim().length < 5 ||
                 nextStatus === selected?.status
               }

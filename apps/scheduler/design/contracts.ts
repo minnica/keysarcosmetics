@@ -551,6 +551,9 @@ export interface DesignCustomerRecoveryHistoryEntry {
   fromStatus: DesignCustomerRecoveryStatus;
   toStatus: DesignCustomerRecoveryStatus;
   notes: string;
+  recoveryAgentId: string;
+  recoveryAgentName: string;
+  recoveryAgentRole: string;
   actorName: string;
   actorRole: string;
   createdAt: string;
@@ -650,6 +653,7 @@ export interface DesignProposalClient {
     input: {
       status: DesignCustomerRecoveryStatus;
       notes: string;
+      recoveryAgentId: string;
       authorizationToken: string;
     },
   ): Promise<DesignCustomerRecoveryCase>;

@@ -2509,6 +2509,12 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         "CUSTOMER_RECOVERY_STATUS_CHANGE",
         recoveryCase.id,
       );
+      const recoveryAgent =
+        state.operationAgents.find(
+          (candidate) =>
+            candidate.id === String(body.recoveryAgentId ?? "") &&
+            candidate.active,
+        ) ?? fail(400, "Selecciona un agente de recuperación activo.");
       const previousStatus = recoveryCase.status;
       const updatedAt = new Date().toISOString();
       recoveryCase.status = status;
@@ -2518,6 +2524,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         fromStatus: previousStatus,
         toStatus: status,
         notes,
+        recoveryAgentId: recoveryAgent.id,
+        recoveryAgentName: recoveryAgent.name,
+        recoveryAgentRole: recoveryAgent.role,
         actorName: agent.name,
         actorRole: agent.role,
         createdAt: updatedAt,
