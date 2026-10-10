@@ -812,6 +812,10 @@ reserva sólo continúa cuando existe `customerId`. La revisión de duplicados s
 mantiene antes del alta y seleccionar un perfil existente también vuelve al
 segundo paso sin crear una cita. No se agregó un contrato productivo nuevo.
 
+El 10 de octubre de 2026 el botón café **Nuevo cliente** se alineó con el campo
+de búsqueda de Cliente y comparte su altura visual. El texto de confirmación de
+un cliente vinculado permanece debajo del campo sin desplazar la acción.
+
 El 4 de octubre de 2026 se compactó la composición de Agenda para escritorio.
 Desde 1280 px el encabezado distribuye rango, fecha y acciones en una sola fila
 de 56 px; la cuadrícula y el panel izquierdo reciben el alto restante. El

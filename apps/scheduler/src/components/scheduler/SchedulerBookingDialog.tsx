@@ -911,7 +911,7 @@ export function SchedulerBookingDialog({
                 )}
 
                 <div className="mt-6 grid gap-5">
-                  <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                     <div className="space-y-2">
                       <label className="scheduler-modal-label">Cliente</label>
                       <Popover
@@ -979,9 +979,9 @@ export function SchedulerBookingDialog({
                       ) : null}
                     </div>
                     {canCreateClient && !appointmentDetailsLocked ? (
-                      <div className="flex items-end">
+                      <div className="flex items-start lg:pt-[1.75rem]">
                         <Button
-                          className="scheduler-modal-cta px-5"
+                          className="scheduler-modal-cta h-12 px-5"
                           onClick={openNewClientForm}
                           type="button"
                         >
