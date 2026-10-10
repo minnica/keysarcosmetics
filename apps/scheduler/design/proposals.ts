@@ -9,6 +9,7 @@ import type {
   DesignCabinSalesReport,
   DesignSalesProjectionReport,
   DesignCustomerAdvancedPage,
+  DesignCustomerDuplicateCandidate,
   DesignCustomerLayawaySummary,
   DesignCustomerSpecialistPreference,
   DesignDemoAccountOption,
@@ -115,6 +116,11 @@ export const schedulerDesignProposals: DesignProposalClient = {
   searchCustomersAdvanced: (input) =>
     request<DesignCustomerAdvancedPage>(
       "/api/scheduler/design-proposals/customers/advanced-search",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  customerDuplicateCandidates: (input) =>
+    request<DesignCustomerDuplicateCandidate[]>(
+      "/api/scheduler/design-proposals/customers/duplicates",
       { method: "POST", body: JSON.stringify(input) },
     ),
   appointmentAnswers: (appointmentId) =>

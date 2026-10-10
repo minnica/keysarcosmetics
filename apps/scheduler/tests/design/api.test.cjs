@@ -154,16 +154,12 @@ test("el historial de visitas separa la compra de cada clienta en una cabina dob
   assert.equal(cabinVisit.visitors.length, 2);
   cabinVisit.visitors[1].customerId = companionCustomer.id;
 
-  const authorization = request(
-    "POST",
-    "/api/scheduler/authorizations",
-    {
-      secret: "0000",
-      purpose: "CLIENT_VISIT_HISTORY_VIEW",
-      screenKey: "scheduler/clients",
-      targetId: attendedAppointment.customerId,
-    },
-  );
+  const authorization = request("POST", "/api/scheduler/authorizations", {
+    secret: "0000",
+    purpose: "CLIENT_VISIT_HISTORY_VIEW",
+    screenKey: "scheduler/clients",
+    targetId: attendedAppointment.customerId,
+  });
   assert.equal(authorization.status, 201);
 
   const visits = request(
@@ -259,7 +255,10 @@ test("el historial de visitas separa la compra de cada clienta en una cabina dob
   assert.equal(partial.body.data.paidAmount, 1100);
   assert.equal(partial.body.data.balanceAmount, 1300);
   assert.equal(partial.body.data.settlementStatus, "OPEN");
-  assert.equal(partial.body.data.payments[0].visitAppointmentId, currentAppointment.id);
+  assert.equal(
+    partial.body.data.payments[0].visitAppointmentId,
+    currentAppointment.id,
+  );
 
   const partialCommit = request(
     "POST",
@@ -549,6 +548,83 @@ test("los ajustes conservan capas independientes y las descargas reflejan client
   );
   assert.ok(
     state.movements.every((item) => !JSON.stringify(item).includes("0000")),
+  );
+});
+
+test("la exportación de clientes acepta rol o código autorizado", () => {
+  const master = session();
+  const direct = master.request(
+    "GET",
+    `/api/scheduler/exports/CUSTOMERS?branchIds=${master.state.catalog.branches[0].branchId}`,
+  );
+  assert.equal(direct.status, 200);
+  assert.ok(direct.body.data.columns.includes("Teléfono"));
+  assert.ok(direct.body.data.columns.includes("Cartera vigente"));
+
+  const limited = session("normal", "specialist");
+  assert.equal(
+    limited.request("GET", "/api/scheduler/exports/CUSTOMERS").status,
+    403,
+  );
+  const token = limited.request("POST", "/api/scheduler/authorizations", {
+    secret: "4444",
+    purpose: "SENSITIVE_EXPORT",
+    screenKey: "scheduler/clients",
+    targetType: "SchedulerReport",
+    targetId: "CUSTOMERS",
+  }).body.data.token;
+  assert.equal(
+    limited.request(
+      "GET",
+      "/api/scheduler/exports/CUSTOMERS",
+      {},
+      { "x-scheduler-authorization": token },
+    ).status,
+    200,
+  );
+});
+
+test("detecta duplicados por teléfono o nombre y reutiliza la fusión protegida", () => {
+  const { state, request } = session();
+  const branchId = state.catalog.branches[0].branchId;
+  const candidates = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/duplicates",
+    { branchIds: [branchId] },
+  ).body.data;
+  const candidate = candidates.find((item) =>
+    item.reasons.some((reason) => reason.kind === "PHONE"),
+  );
+  assert.ok(candidate);
+  assert.equal(candidate.customers.length, 2);
+  assert.equal(candidate.confidence, "HIGH");
+
+  const authorizationToken = request("POST", "/api/scheduler/authorizations", {
+    secret: "0000",
+    purpose: "CLIENT_MERGE",
+    screenKey: "scheduler/clients",
+    targetType: "CustomerMerge",
+    targetId: `${candidate.customers[0].id}:${candidate.customers[1].id}`,
+  }).body.data.token;
+  assert.equal(
+    request("POST", "/api/scheduler/clients/merge", {
+      sourceCustomerId: candidate.customers[1].id,
+      targetCustomerId: candidate.customers[0].id,
+      expectedSourceVersion: candidate.customers[1].version,
+      expectedTargetVersion: candidate.customers[0].version,
+      reason: "Unificación de coincidencia revisada en clientes.",
+      authorizationToken,
+    }).status,
+    201,
+  );
+  const refreshed = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/duplicates",
+    { branchIds: [branchId] },
+  ).body.data;
+  assert.equal(
+    refreshed.some((item) => item.id === candidate.id),
+    false,
   );
 });
 
@@ -2158,9 +2234,13 @@ test("la búsqueda avanzada combina agenda, servicios, cumpleaños, vendedor y c
       pageSize: 25,
     },
   ).body.data;
-  assert.equal(inactive.total, 1);
-  assert.equal(inactive.items[0].displayName, "Sofía Mendoza Lara");
-  assert.equal(inactive.items[0].agenda.lastAppointmentAt, null);
+  assert.equal(inactive.total, 2);
+  const inactiveNames = inactive.items.map((item) => item.displayName);
+  assert.ok(inactiveNames.includes("Sofía Mendoza Lara"));
+  assert.ok(inactiveNames.includes("Maria Camila Celis"));
+  assert.ok(
+    inactive.items.every((item) => item.agenda.lastAppointmentAt === null),
+  );
 });
 
 test("la especialista preferida se fija por cliente sin impedir otra asignación por cita", () => {

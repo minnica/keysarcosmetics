@@ -505,25 +505,25 @@ almacenan ni se exportan.
 
 Contratos propuestos, exclusivos de `apps/scheduler/design`:
 
-| Método         | Ruta                                                                  | Uso propuesto                                                                 |
-| -------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `GET/POST/PUT` | `/api/scheduler/design-proposals/authorization-agents[/:id]`          | Consultar identidades externas y asignar un código ficticio único.            |
-| `GET/PUT`      | `/api/scheduler/design-proposals/authorization-policy`                | Versionar puestos permitidos por status o captura de compra.                  |
-| `POST`         | `/api/scheduler/design-proposals/operation-authorizations`            | Resolver el agente por código y emitir un token de un solo movimiento.        |
-| `POST`         | `/api/scheduler/design-proposals/operation-authorizations/commit`     | Consumir el token y agregar la bitácora redactada.                            |
-| `GET`          | `/api/scheduler/design-proposals/movements`                           | Consultar la bitácora por agente.                                             |
-| `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`           | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
-| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`            | Leer o guardar respuestas relacionadas con una cita.                          |
-| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`        | Guardar cabina bloqueada, representante, visitantes, especialistas y compra.  |
-| `POST`         | `/api/scheduler/design-proposals/appointments/contexts`               | Resolver por lote representante, snapshot de cartera, compra y próxima cita.  |
-| `GET/POST`     | `/api/scheduler/design-proposals/appointments/:id/journal`            | Consultar o agregar comentarios, postventa y motivos append-only.             |
-| `GET/PUT`      | `/api/scheduler/design-proposals/customers/:id/specialist-preference` | Proponer o retirar la especialista fija de futuras citas.                     |
-| `GET/POST`     | `/api/scheduler/design-proposals/customers/:id/layaways[/:sourceAppointmentId/payments]` | Consultar apartados abiertos y registrar abonos o liquidaciones autorizadas. |
-| `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`                 | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
-| `POST`         | `/api/scheduler/design-proposals/reports/appointment-journal`         | Exportar seguimiento y comentarios desde una población filtrada única.        |
-| `POST`         | `/api/scheduler/design-proposals/reports/sales-projections`           | Comparar meses históricos y calcular la proyección demo por sucursal.         |
-| `GET/POST/PUT` | `/api/scheduler/design-proposals/status-definitions[/:id]`            | Consultar, crear y versionar status; la baja es sólo inactivación lógica.     |
-| `GET/POST`     | `/api/scheduler/design-proposals/branch-commercial-models`            | Vincular sucursal POS o independiente, renta propuesta y cabinas contratadas. |
+| Método         | Ruta                                                                                     | Uso propuesto                                                                 |
+| -------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET/POST/PUT` | `/api/scheduler/design-proposals/authorization-agents[/:id]`                             | Consultar identidades externas y asignar un código ficticio único.            |
+| `GET/PUT`      | `/api/scheduler/design-proposals/authorization-policy`                                   | Versionar puestos permitidos por status o captura de compra.                  |
+| `POST`         | `/api/scheduler/design-proposals/operation-authorizations`                               | Resolver el agente por código y emitir un token de un solo movimiento.        |
+| `POST`         | `/api/scheduler/design-proposals/operation-authorizations/commit`                        | Consumir el token y agregar la bitácora redactada.                            |
+| `GET`          | `/api/scheduler/design-proposals/movements`                                              | Consultar la bitácora por agente.                                             |
+| `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`                              | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
+| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`                               | Leer o guardar respuestas relacionadas con una cita.                          |
+| `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`                           | Guardar cabina bloqueada, representante, visitantes, especialistas y compra.  |
+| `POST`         | `/api/scheduler/design-proposals/appointments/contexts`                                  | Resolver por lote representante, snapshot de cartera, compra y próxima cita.  |
+| `GET/POST`     | `/api/scheduler/design-proposals/appointments/:id/journal`                               | Consultar o agregar comentarios, postventa y motivos append-only.             |
+| `GET/PUT`      | `/api/scheduler/design-proposals/customers/:id/specialist-preference`                    | Proponer o retirar la especialista fija de futuras citas.                     |
+| `GET/POST`     | `/api/scheduler/design-proposals/customers/:id/layaways[/:sourceAppointmentId/payments]` | Consultar apartados abiertos y registrar abonos o liquidaciones autorizadas.  |
+| `POST`         | `/api/scheduler/design-proposals/reports/cabin-sales`                                    | Construir indicadores, desgloses y detalle filtrado de ventas por cabina.     |
+| `POST`         | `/api/scheduler/design-proposals/reports/appointment-journal`                            | Exportar seguimiento y comentarios desde una población filtrada única.        |
+| `POST`         | `/api/scheduler/design-proposals/reports/sales-projections`                              | Comparar meses históricos y calcular la proyección demo por sucursal.         |
+| `GET/POST/PUT` | `/api/scheduler/design-proposals/status-definitions[/:id]`                               | Consultar, crear y versionar status; la baja es sólo inactivación lógica.     |
+| `GET/POST`     | `/api/scheduler/design-proposals/branch-commercial-models`                               | Vincular sucursal POS o independiente, renta propuesta y cabinas contratadas. |
 
 Estos endpoints no existen en el runtime productivo. El alias
 `@scheduler/design-proposals` selecciona el cliente MSW sólo con
@@ -821,6 +821,46 @@ desde el borde superior las etiquetas y controles de texto, sucursal y
 procedencia. El texto de ayuda permanece debajo de la búsqueda sin desplazar
 los selectores; el botón **Buscar** conserva la misma altura y línea base que
 los controles.
+
+La acción **Importar clientes** abre un flujo en dos pasos. Primero descarga una
+plantilla Excel vinculada a la sucursal elegida, con hojas de instrucciones,
+clientes y catálogos; los encabezados respetan el orden vigente de identidad,
+contacto, procedencia y campos configurables. Después acepta `.xlsx`, `.xls` o
+`.csv`, muestra una vista previa y valida campos obligatorios, correo, teléfono,
+fechas, selecciones y teléfonos repetidos dentro del archivo. Sólo habilita la
+importación cuando no existen errores; las coincidencias de nombre se presentan
+como advertencias. La demo reutiliza `POST /api/scheduler/clients` por registro y
+reporta filas rechazadas sin ocultar las ya creadas. Producción requiere un
+endpoint de prevalidación y confirmación por lote, idempotente y transaccional,
+que devuelva errores por fila y aplique el alcance de sucursal del operador.
+
+**Exportar clientes** descarga Excel desde el dataset canónico `CUSTOMERS` y
+respeta la sucursal seleccionada y la búsqueda de texto aplicada. El archivo
+incluye identidad, contacto, procedencia, cartera vigente, campos configurables
+y métricas de agenda; no se exporta un recorte de la página visible. Un rol con
+`scheduler/clients:EXPORT` descarga directamente. Sin ese permiso, la acción
+solicita una autorización de propósito `SENSITIVE_EXPORT`, ligada a la pantalla,
+sucursal y dataset, y el código se descarta después del intento. Producción debe
+registrar una auditoría de exportación con actor, alcance, filtros y número de
+filas, sin persistir el código personal.
+
+En **Combinar duplicados**, la acción **Ver repetidos** analiza el alcance de la
+sucursal y presenta pares con teléfono, correo o nombre completo normalizado en
+común. Teléfono idéntico se marca como coincidencia alta; correo o nombre y
+apellidos se presentan para revisión humana. Cada resultado muestra ambos
+perfiles y abre el flujo existente de fusión para elegir la identidad principal,
+capturar motivo y autorizar con `CLIENT_MERGE`. La fusión conserva el historial,
+inactiva el origen y vuelve a calcular candidatos. Producción requiere
+`POST /api/scheduler/clients/duplicate-candidates` (alcance por sucursal,
+paginación y evidencias sin exponer datos fuera del permiso); la mutación
+canónica de merge no cambia.
+
+La validación del 10 de octubre de 2026 quedó en 93 pruebas totales y 30 de
+diseño, además de TypeScript, lint y `build:design`. La revisión React confirmó
+que los diálogos permanecen fuera del componente principal, los módulos pesados
+de Excel se cargan de forma dinámica, los controles conservan nombre accesible y
+las consultas se invalidan por el prefijo compartido de Clientes. Lint conserva
+los tres avisos previos de `<img>` fuera de este cambio.
 
 Cuando se selecciona o guarda un cliente, **Nuevo cliente** queda deshabilitado
 y la acción también se protege dentro del componente. Para registrar otro

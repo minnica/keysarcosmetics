@@ -47,6 +47,7 @@ import type {
   DesignCabinServiceAnalytics,
   DesignCustomerAdvancedFilters,
   DesignCustomerAdvancedPage,
+  DesignCustomerDuplicateCandidate,
   DesignCustomerLayawaySummary,
   DesignLayawayPayment,
   DesignMovementRecord,
@@ -93,6 +94,13 @@ const textKey = (value: unknown) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+const reportCellValue = (value: unknown): string | number | boolean | null =>
+  value === null ||
+  typeof value === "string" ||
+  typeof value === "number" ||
+  typeof value === "boolean"
+    ? value
+    : String(value ?? "");
 const rows = (value: unknown): DesignRow[] =>
   Array.isArray(value) ? (value as DesignRow[]) : [];
 const record = (value: unknown): DesignRow =>
@@ -863,27 +871,55 @@ function buildReport(
           item.currentPortfolios.some(
             (portfolio) =>
               portfolio.branchId && selected.includes(portfolio.branchId),
-          ),
+          ) &&
+          (!query.get("search") ||
+            [item.displayName, item.phone, item.email, ...item.aliases].some(
+              (value) => textKey(value).includes(textKey(query.get("search"))),
+            )),
       )
-      .map((item) => ({
-        customer_id: item.id,
-        Cliente: item.displayName,
-        Procedencia: item.source?.name ?? "",
-        Citas: appointments.filter((entry) => entry.customerId === item.id)
-          .length,
-        Atendidas: appointments.filter(
-          (entry) =>
-            entry.customerId === item.id && entry.status === "ATTENDED",
-        ).length,
-        Canceladas: appointments.filter(
-          (entry) =>
-            entry.customerId === item.id && entry.status === "CANCELED",
-        ).length,
-        "No show": appointments.filter(
-          (entry) => entry.customerId === item.id && entry.status === "NO_SHOW",
-        ).length,
-        Venta: "0.00",
-      }));
+      .map((item) => {
+        const portfolios = item.currentPortfolios.filter(
+          (portfolio) =>
+            portfolio.branchId && selected.includes(portfolio.branchId),
+        );
+        return {
+          customer_id: item.id,
+          Cliente: item.displayName,
+          "Nombre preferido": item.preferredName ?? "",
+          Teléfono: item.phone ?? "",
+          Correo: item.email ?? "",
+          Procedencia: item.source?.name ?? "",
+          Sucursal: portfolios
+            .map((portfolio) => portfolio.branchName)
+            .join(", "),
+          "Cartera vigente": portfolios
+            .map((portfolio) => portfolio.ownerName)
+            .join(", "),
+          Estado: item.active ? "Activo" : "Inactivo",
+          Alias: item.aliases.join(", "),
+          ...Object.fromEntries(
+            item.customFields.map((field) => [
+              field.label,
+              reportCellValue(field.value),
+            ]),
+          ),
+          Citas: appointments.filter((entry) => entry.customerId === item.id)
+            .length,
+          Atendidas: appointments.filter(
+            (entry) =>
+              entry.customerId === item.id && entry.status === "ATTENDED",
+          ).length,
+          Canceladas: appointments.filter(
+            (entry) =>
+              entry.customerId === item.id && entry.status === "CANCELED",
+          ).length,
+          "No show": appointments.filter(
+            (entry) =>
+              entry.customerId === item.id && entry.status === "NO_SHOW",
+          ).length,
+          Venta: "0.00",
+        };
+      });
   }
   if (state.controls.scenario === "empty") resultRows = [];
   const total = resultRows.length;
@@ -915,6 +951,8 @@ function buildReport(
       selected.map((id) => [id, "America/Mexico_City"]),
     ),
     generatedAt: new Date().toISOString(),
+    columns:
+      key === "CUSTOMERS" ? Object.keys(resultRows[0] ?? {}) : fixture.columns,
     rows: exporting ? resultRows : paged.items,
     summary,
     total,
@@ -1724,6 +1762,85 @@ function advancedCustomerSearch(
   };
 }
 
+function customerDuplicateCandidates(
+  state: DesignState,
+  branchIds: string[],
+): DesignCustomerDuplicateCandidate[] {
+  const allowedBranchIds = new Set(
+    branchIds.length ? branchIds : designBootstrap(state).authorizedBranchIds,
+  );
+  for (const branchId of allowedBranchIds) inScope(state, branchId);
+  const candidates = visibleCustomers(state).filter(
+    (item) =>
+      item.active &&
+      item.currentPortfolios.some(
+        (portfolio) =>
+          portfolio.branchId && allowedBranchIds.has(portfolio.branchId),
+      ),
+  );
+  const pairs: DesignCustomerDuplicateCandidate[] = [];
+  for (let leftIndex = 0; leftIndex < candidates.length; leftIndex += 1) {
+    for (
+      let rightIndex = leftIndex + 1;
+      rightIndex < candidates.length;
+      rightIndex += 1
+    ) {
+      const left = candidates[leftIndex]!;
+      const right = candidates[rightIndex]!;
+      const reasons: DesignCustomerDuplicateCandidate["reasons"] = [];
+      const leftPhone = phoneKey(left.phone);
+      const rightPhone = phoneKey(right.phone);
+      if (leftPhone && leftPhone === rightPhone) {
+        reasons.push({
+          kind: "PHONE",
+          label: "Mismo teléfono",
+          value: leftPhone,
+        });
+      }
+      const leftEmail = textKey(left.email).trim();
+      const rightEmail = textKey(right.email).trim();
+      if (leftEmail && leftEmail === rightEmail) {
+        reasons.push({
+          kind: "EMAIL",
+          label: "Mismo correo",
+          value: left.email!,
+        });
+      }
+      const leftName = textKey(left.displayName).trim().replace(/\s+/g, " ");
+      const rightName = textKey(right.displayName).trim().replace(/\s+/g, " ");
+      if (
+        leftName === rightName &&
+        leftName.split(" ").filter(Boolean).length >= 2
+      ) {
+        reasons.push({
+          kind: "FULL_NAME",
+          label: "Mismo nombre y apellidos",
+          value: left.displayName,
+        });
+      }
+      if (!reasons.length) continue;
+      pairs.push({
+        id: `${left.id}:${right.id}`,
+        confidence: reasons.some((reason) => reason.kind === "PHONE")
+          ? "HIGH"
+          : "REVIEW",
+        reasons,
+        customers: [left, right],
+      });
+    }
+  }
+  return pairs.sort((left, right) =>
+    left.confidence === right.confidence
+      ? left.customers[0].displayName.localeCompare(
+          right.customers[0].displayName,
+          "es-MX",
+        )
+      : left.confidence === "HIGH"
+        ? -1
+        : 1,
+  );
+}
+
 function dispatch(state: DesignState, request: DesignRequest): unknown {
   const { body, url, headers, method } = request;
   const path = url.pathname,
@@ -2306,6 +2423,13 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         pageSize: Number(input.pageSize) || 25,
       });
     }
+    if (id === "customers" && action === "duplicates") {
+      if (method !== "POST") fail(405, "Usa POST para revisar duplicados.");
+      return customerDuplicateCandidates(
+        state,
+        Array.isArray(body.branchIds) ? body.branchIds.map(String) : [],
+      );
+    }
     if (id === "customers" && parts[5] === "specialist-preference") {
       const customerId = String(action ?? "");
       customer(state, customerId);
@@ -2580,19 +2704,16 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           currentAppointment.startsAt,
         ).filter((layaway) => layaway.balanceAmount > 0);
       }
-      if (
-        method !== "POST" ||
-        !parts[6] ||
-        parts[7] !== "payments"
-      ) {
+      if (method !== "POST" || !parts[6] || parts[7] !== "payments") {
         fail(405, "Usa GET para consultar o POST para registrar un abono.");
       }
       if (
-        !["ARRIVED", "WAITING", "ATTENDED"].includes(
-          currentAppointment.status,
-        )
+        !["ARRIVED", "WAITING", "ATTENDED"].includes(currentAppointment.status)
       ) {
-        fail(409, "El abono sólo se registra durante una visita de la clienta.");
+        fail(
+          409,
+          "El abono sólo se registra durante una visita de la clienta.",
+        );
       }
       const sourceAppointmentId = String(parts[6]);
       const sourceAppointment = appointment(state, sourceAppointmentId);
@@ -2623,11 +2744,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         authorization.targetId !== sourceAppointmentId ||
         authorization.expiresAt < Date.now() ||
         !authorizedAgent.active ||
-        !agentCanAuthorizeScope(
-          state,
-          authorizedAgent,
-          authorization.scopeKey,
-        )
+        !agentCanAuthorizeScope(state, authorizedAgent, authorization.scopeKey)
       ) {
         fail(403, "El abono requiere un código personal autorizado.");
       }
@@ -2663,8 +2780,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const nextPaidAmount = paidAmount + amount;
       visitor.depositAmount = nextPaidAmount;
       visitor.purchaseAmount = saleAmount;
-      visitor.settlementStatus =
-        nextPaidAmount >= saleAmount ? "PAID" : "OPEN";
+      visitor.settlementStatus = nextPaidAmount >= saleAmount ? "PAID" : "OPEN";
       visitor.settledAt = nextPaidAmount >= saleAmount ? createdAt : null;
       sourceVisit.updatedAt = createdAt;
       return (
@@ -2734,9 +2850,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             )[0];
           const context: DesignAppointmentContext = {
             appointmentId,
-            attendeeNames:
-              visit?.visitors.map((visitor) => visitor.name) ??
-              [appointmentItem.customerName],
+            attendeeNames: visit?.visitors.map((visitor) => visitor.name) ?? [
+              appointmentItem.customerName,
+            ],
             attendingSpecialistProfileIds: [
               "ARRIVED",
               "WAITING",
@@ -3533,10 +3649,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                         purchaseKind,
                         saleAmount,
                         depositAmount,
-                        balanceAmount: Math.max(
-                          0,
-                          saleAmount - depositAmount,
-                        ),
+                        balanceAmount: Math.max(0, saleAmount - depositAmount),
                         settlementStatus:
                           visitor?.settlementStatus ?? "NOT_APPLICABLE",
                         payments: state.layawayPayments.filter(
@@ -3832,12 +3945,20 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
   if (resource === "reports" || resource === "exports") {
     if (!schedulerReportKeys.includes(id as SchedulerReportKey))
       fail(404, "Dataset no encontrado.");
-    if (resource === "exports" && id === "CUSTOMERS")
-      consumeAuthorization(
-        state,
-        headers.get("x-scheduler-authorization"),
-        "SENSITIVE_EXPORT",
+    if (resource === "exports" && id === "CUSTOMERS") {
+      const roleCanExport = designBootstrap(state).permissions.some(
+        (permission) =>
+          permission.screenKey === "scheduler/clients" &&
+          permission.capabilities.includes("EXPORT"),
       );
+      if (!roleCanExport) {
+        consumeAuthorization(
+          state,
+          headers.get("x-scheduler-authorization"),
+          "SENSITIVE_EXPORT",
+        );
+      }
+    }
     return buildReport(
       state,
       id as SchedulerReportKey,

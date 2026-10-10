@@ -39,6 +39,7 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  FileDown,
   FileText,
   GitMerge,
   History,
@@ -75,6 +76,9 @@ import {
   useSchedulerQuery,
 } from "./ApiState";
 import { CustomerEngagementPanel } from "@/components/clients/CustomerEngagementPanel";
+import { CustomerDuplicateReviewDialog } from "@/components/clients/CustomerDuplicateReviewDialog";
+import { CustomerExportDialog } from "@/components/clients/CustomerExportDialog";
+import { CustomerImportDialog } from "@/components/clients/CustomerImportDialog";
 import {
   SchedulerClientAdvancedFilters,
   type SchedulerClientAdvancedFilterValue,
@@ -82,8 +86,11 @@ import {
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import type {
   DesignCustomerAdvancedResult,
+  DesignCustomerDuplicateCandidate,
   DesignCustomerVisitHistoryDto,
 } from "../../../design/contracts";
+import type { SchedulerCustomerImportRow } from "@/lib/scheduler-customer-import";
+import { exportSchedulerReport } from "@/lib/scheduler-report-export";
 
 type SensitiveSection = "profile" | "visits" | "financial";
 
@@ -158,7 +165,9 @@ const emptyAdvancedFilters: SchedulerClientAdvancedFilterValue = {
   customFields: {},
 };
 
-function advancedFilterCount(value: SchedulerClientAdvancedFilterValue): number {
+function advancedFilterCount(
+  value: SchedulerClientAdvancedFilterValue,
+): number {
   return (
     Number(value.noAppointmentWithinDays !== null) +
     value.appointmentStatuses.length +
@@ -195,6 +204,11 @@ function formatMoney(value: string | number): string {
         currency: "MXN",
       }).format(amount)
     : String(value);
+}
+
+function currentDateInput(): string {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function hasAgendaInsights(
@@ -345,6 +359,7 @@ export function ApiClientsWorkspace() {
   const { bootstrap, canAccess } = useSchedulerSession();
   const canWrite = canAccess("clients", "WRITE");
   const canAdmin = canAccess("clients", "ADMIN");
+  const canExportByRole = canAccess("clients", "EXPORT");
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const [branchId, setBranchId] = useState(
@@ -394,6 +409,10 @@ export function ApiClientsWorkspace() {
   const [mergeSecret, setMergeSecret] = useState("");
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [duplicateReviewOpen, setDuplicateReviewOpen] = useState(false);
 
   const canonicalResults = useSchedulerQuery(
     () =>
@@ -415,7 +434,9 @@ export function ApiClientsWorkspace() {
     },
   );
   const advancedFilterKey = JSON.stringify(appliedAdvancedFilters);
-  const appliedAdvancedFilterCount = advancedFilterCount(appliedAdvancedFilters);
+  const appliedAdvancedFilterCount = advancedFilterCount(
+    appliedAdvancedFilters,
+  );
   const advancedResults = useSchedulerQuery(
     () =>
       schedulerDesignProposals.searchCustomersAdvanced({
@@ -472,6 +493,19 @@ export function ApiClientsWorkspace() {
     [],
     { queryKey: `${schedulerCustomerQueryPrefix}:operational-catalog` },
   );
+  const duplicateCandidates = useSchedulerQuery(
+    () =>
+      schedulerDesignProposals.customerDuplicateCandidates({
+        branchIds: branchId ? [branchId] : [],
+      }),
+    [branchId],
+    {
+      queryKey: `${schedulerCustomerQueryPrefix}:duplicates`,
+      branchId,
+      enabled:
+        schedulerDesignProposals.available && canAdmin && Boolean(branchId),
+    },
+  );
 
   const totalPages = Math.max(
     1,
@@ -496,8 +530,9 @@ export function ApiClientsWorkspace() {
         ...(operationalCatalog.data?.professionals ?? [])
           .filter((professional) => professional.active)
           .map((professional) => professional.name),
-        ...(activeDefinitions.find((definition) => definition.key === "salesOwner")
-          ?.options ?? []),
+        ...(activeDefinitions.find(
+          (definition) => definition.key === "salesOwner",
+        )?.options ?? []),
       ]),
     ],
     [activeDefinitions, operationalCatalog.data?.professionals],
@@ -845,6 +880,7 @@ export function ApiClientsWorkspace() {
         authorizationToken: authorization.token,
       });
       invalidateSchedulerQueries(schedulerCustomerQueryPrefix);
+      void duplicateCandidates.reload();
       setMergeOpen(false);
       setMergeSelection([]);
       toast.success(
@@ -856,6 +892,82 @@ export function ApiClientsWorkspace() {
       setMerging(false);
       setMergeSecret("");
     }
+  }
+
+  async function importCustomers(rows: SchedulerCustomerImportRow[]) {
+    if (!branchId)
+      throw new Error("Selecciona una sucursal antes de importar.");
+    let imported = 0;
+    const failures: string[] = [];
+    for (const row of rows) {
+      try {
+        await schedulerApi.createCustomer({ ...row.input, branchId });
+        imported += 1;
+      } catch (cause) {
+        failures.push(
+          `Fila ${row.rowNumber}: ${schedulerApiErrorMessage(cause, "No fue posible crear el cliente.")}`,
+        );
+      }
+    }
+    invalidateSchedulerQueries(schedulerCustomerQueryPrefix);
+    if (failures.length) {
+      toast.error(
+        `${imported} clientes importados y ${failures.length} rechazados. ${failures.slice(0, 2).join(" ")}`,
+      );
+    } else {
+      toast.success(
+        `${imported} clientes importados en la sucursal seleccionada.`,
+      );
+    }
+    if (hasSearchRequest) void results.reload();
+  }
+
+  async function exportCustomers(secret?: string) {
+    if (!branchId) throw new Error("Selecciona una sucursal para exportar.");
+    setExporting(true);
+    try {
+      let authorizationToken: string | undefined;
+      if (!canExportByRole) {
+        if (!secret) throw new Error("Ingresa un código autorizado.");
+        const authorization = await schedulerApi.createAuthorization({
+          secret,
+          purpose: "SENSITIVE_EXPORT",
+          screenKey: "scheduler/clients",
+          branchId,
+          targetType: "SchedulerReport",
+          targetId: "CUSTOMERS",
+        });
+        authorizationToken = authorization.token;
+      }
+      const dataset = await schedulerApi.exportReport(
+        "CUSTOMERS",
+        {
+          dateFrom: "2000-01-01",
+          dateTo: currentDateInput(),
+          branchIds: [branchId],
+          ...(query.trim() ? { search: query.trim() } : {}),
+        },
+        authorizationToken,
+      );
+      await exportSchedulerReport(dataset, "xlsx");
+      toast.success(
+        `Se exportaron ${dataset.rows.length} clientes del alcance autorizado.`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function reviewDuplicate(candidate: DesignCustomerDuplicateCandidate) {
+    setMergeSelection([...candidate.customers]);
+    setMergeTargetId(candidate.customers[1].id);
+    setMergeReason(
+      `Unificación revisada por ${candidate.reasons.map((reason) => reason.label.toLocaleLowerCase("es-MX")).join(" y ")}.`,
+    );
+    setMergeSecret("");
+    setMergeError(null);
+    setDuplicateReviewOpen(false);
+    setMergeOpen(true);
   }
 
   return (
@@ -875,11 +987,25 @@ export function ApiClientsWorkspace() {
           <div className="flex flex-wrap items-center gap-3">
             <Button
               className="h-11 rounded-xl border-[#e7ddd4] bg-white px-4 text-[#ad8b67] disabled:opacity-65"
-              disabled
-              title="La importación masiva requiere un contrato de validación y conciliación (B03)."
+              disabled={!canWrite || !branchId || definitions.loading}
+              onClick={() => setImportOpen(true)}
+              title="Importar con una plantilla validada para la sucursal seleccionada."
               variant="outline"
             >
               <Upload className="mr-2 h-4 w-4" /> Importar clientes
+            </Button>
+            <Button
+              className="h-11 rounded-xl border-[#e7ddd4] bg-white px-4 text-[#ad8b67] disabled:opacity-65"
+              disabled={
+                !branchId ||
+                (!canExportByRole &&
+                  !bootstrap?.secondaryAuthorizationConfigured)
+              }
+              onClick={() => setExportOpen(true)}
+              title="Descargar clientes con permiso de rol o código autorizado."
+              variant="outline"
+            >
+              <FileDown className="mr-2 h-4 w-4" /> Exportar clientes
             </Button>
             {canWrite ? (
               <Button
@@ -1019,6 +1145,19 @@ export function ApiClientsWorkspace() {
               <span className="text-xs font-semibold text-[#8e6c4b]">
                 {mergeSelection.length}/2 seleccionados
               </span>
+              {schedulerDesignProposals.available ? (
+                <Button
+                  className="rounded-xl"
+                  onClick={() => setDuplicateReviewOpen(true)}
+                  size="sm"
+                  variant="outline"
+                >
+                  Ver repetidos
+                  {duplicateCandidates.data?.length
+                    ? ` (${duplicateCandidates.data.length})`
+                    : ""}
+                </Button>
+              ) : null}
               <Button
                 className="rounded-xl"
                 disabled={mergeSelection.length !== 2}
@@ -1062,8 +1201,8 @@ export function ApiClientsWorkspace() {
                 Busca o combina filtros avanzados
               </h3>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                Usa texto, actividad en agenda, estatus, servicios,
-                cumpleaños, vendedor o cualquier campo personalizado.
+                Usa texto, actividad en agenda, estatus, servicios, cumpleaños,
+                vendedor o cualquier campo personalizado.
               </p>
             </div>
           ) : (
@@ -1197,29 +1336,33 @@ export function ApiClientsWorkspace() {
                           ) : null}
                           <td className="px-5 py-4 text-right">
                             <div className="flex justify-end gap-2">
-                            {bootstrap?.canManageAccess && bootstrap.mockModeEnabled && canWrite ? (
+                              {bootstrap?.canManageAccess &&
+                              bootstrap.mockModeEnabled &&
+                              canWrite ? (
+                                <Button
+                                  className="rounded-xl border-[#dfd5cc]"
+                                  onClick={() =>
+                                    void openMasterEdit(customer.id)
+                                  }
+                                  size="sm"
+                                  variant="outline"
+                                >
+                                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                                  Editar
+                                </Button>
+                              ) : null}
                               <Button
                                 className="rounded-xl border-[#dfd5cc]"
-                                onClick={() => void openMasterEdit(customer.id)}
+                                onClick={() => {
+                                  closeRecord();
+                                  setRecordCustomer(customer);
+                                }}
                                 size="sm"
                                 variant="outline"
                               >
-                                <Pencil className="mr-2 h-3.5 w-3.5" />
-                                Editar
+                                <FileText className="mr-2 h-3.5 w-3.5" />
+                                Expediente
                               </Button>
-                            ) : null}
-                            <Button
-                              className="rounded-xl border-[#dfd5cc]"
-                              onClick={() => {
-                                closeRecord();
-                                setRecordCustomer(customer);
-                              }}
-                              size="sm"
-                              variant="outline"
-                            >
-                              <FileText className="mr-2 h-3.5 w-3.5" />
-                              Expediente
-                            </Button>
                             </div>
                           </td>
                         </tr>
@@ -1287,10 +1430,9 @@ export function ApiClientsWorkspace() {
         </section>
 
         <aside className="rounded-2xl border border-dashed border-[#d9c9bb] bg-white/60 px-5 py-4 text-xs leading-5 text-slate-500">
-          Audiencias, importación masiva y reporte de fichas permanecen visibles
-          como brecha B03: no se simulan ni se generan archivos parciales hasta
-          contar con contratos canónicos. Recordatorios y encuestas conservan
-          sus rutas para RV6/RV7.
+          Audiencias y reporte de fichas permanecen como brecha B03. La
+          importación usa el alta canónica por registro en la demo; producción
+          deberá confirmar el lote en una transacción idempotente.
         </aside>
       </main>
 
@@ -1326,6 +1468,41 @@ export function ApiClientsWorkspace() {
         open={editorOpen}
         saving={saving}
         sources={sources.data ?? []}
+      />
+
+      <CustomerImportDialog
+        branchName={
+          bootstrap?.authorizedBranches.find((branch) => branch.id === branchId)
+            ?.name ?? "Sucursal seleccionada"
+        }
+        definitions={activeDefinitions}
+        disabled={!canWrite || !branchId || definitions.loading}
+        onImport={importCustomers}
+        onOpenChange={setImportOpen}
+        open={importOpen}
+        sources={sources.data ?? []}
+      />
+
+      <CustomerExportDialog
+        branchName={
+          bootstrap?.authorizedBranches.find((branch) => branch.id === branchId)
+            ?.name ?? "Sucursal seleccionada"
+        }
+        exporting={exporting}
+        onExport={exportCustomers}
+        onOpenChange={setExportOpen}
+        open={exportOpen}
+        requiresCode={!canExportByRole}
+      />
+
+      <CustomerDuplicateReviewDialog
+        candidates={duplicateCandidates.data ?? []}
+        error={duplicateCandidates.error}
+        loading={duplicateCandidates.loading}
+        onOpenChange={setDuplicateReviewOpen}
+        onRetry={() => void duplicateCandidates.reload()}
+        onReview={reviewDuplicate}
+        open={duplicateReviewOpen}
       />
 
       <CustomerRecordDialog
@@ -2089,8 +2266,8 @@ function VisitHistory({
                   {visit.purchase.purchaseKind === "LAYAWAY" ? (
                     <>
                       <p className="mt-1 tabular-nums text-slate-500">
-                        Abono {formatMoney(visit.purchase.depositAmount)} · Saldo{" "}
-                        {formatMoney(visit.purchase.balanceAmount)}
+                        Abono {formatMoney(visit.purchase.depositAmount)} ·
+                        Saldo {formatMoney(visit.purchase.balanceAmount)}
                       </p>
                       {visit.purchase.payments.length ? (
                         <div className="mt-2 space-y-1 border-t border-[#e4d5c7] pt-2">

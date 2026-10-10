@@ -508,6 +508,17 @@ export interface DesignCustomerAdvancedPage {
   total: number;
 }
 
+export interface DesignCustomerDuplicateCandidate {
+  id: string;
+  confidence: "HIGH" | "REVIEW";
+  reasons: Array<{
+    kind: "PHONE" | "EMAIL" | "FULL_NAME";
+    label: string;
+    value: string;
+  }>;
+  customers: [SchedulerCustomerSummaryDto, SchedulerCustomerSummaryDto];
+}
+
 export interface DesignProposalClient {
   available: boolean;
   listBranchCommercialModels(): Promise<DesignBranchCommercialModel[]>;
@@ -559,6 +570,9 @@ export interface DesignProposalClient {
   searchCustomersAdvanced(
     input: DesignCustomerAdvancedFilters,
   ): Promise<DesignCustomerAdvancedPage>;
+  customerDuplicateCandidates(input: {
+    branchIds: string[];
+  }): Promise<DesignCustomerDuplicateCandidate[]>;
   appointmentAnswers(appointmentId: string): Promise<DesignAppointmentAnswer[]>;
   saveAppointmentAnswers(
     appointmentId: string,

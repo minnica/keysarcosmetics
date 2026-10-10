@@ -359,6 +359,23 @@ export function createDesignState(
       };
     },
   );
+  const originalCustomer = customers[0]!;
+  customers.push({
+    ...originalCustomer,
+    id: "design-customer-duplicate-1",
+    displayName: "Maria Camila Celis",
+    phone: "55 5000 0001",
+    email: "maria.celis.alterno@example.test",
+    version: 1,
+    aliases: [],
+    currentPortfolios: originalCustomer.currentPortfolios.map((portfolio) => ({
+      ...portfolio,
+      id: "design-portfolio-duplicate-1",
+    })),
+    emails: [],
+    customFields: originalCustomer.customFields.map((field) => ({ ...field })),
+    mergeHistory: [],
+  });
   const fields: SchedulerCustomerFieldDefinitionDto[] = [
     {
       id: "design-field-birthday",
