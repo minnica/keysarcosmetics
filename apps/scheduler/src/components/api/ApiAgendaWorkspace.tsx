@@ -362,6 +362,8 @@ export function ApiAgendaWorkspace() {
   const [resourcePanelOpen, setResourcePanelOpen] = useState(true);
   const [displayMode, setDisplayMode] =
     useState<SchedulerDisplayMode>("calendar");
+  const [lastAgendaUpdatedAt, setLastAgendaUpdatedAt] =
+    useState<Date | null>(null);
   const [columnMode, setColumnMode] =
     useState<SchedulerAgendaColumnMode>("ALL");
   const [columnFitOverride, setColumnFitOverride] = useState<boolean | null>(
@@ -846,6 +848,40 @@ export function ApiAgendaWorkspace() {
         schedulerDesignProposals.available && appointmentContextIds.length > 0,
     },
   );
+  const currentAgendaData = agenda.data;
+  const agendaIsLoading = agenda.loading;
+  const reloadAgenda = agenda.reload;
+  const appointmentContextsAreLoading = appointmentContexts.loading;
+  const reloadAppointmentContexts = appointmentContexts.reload;
+  useEffect(() => {
+    if (currentAgendaData) setLastAgendaUpdatedAt(new Date());
+  }, [currentAgendaData]);
+  useEffect(() => {
+    function refreshVisibleAgenda() {
+      if (
+        document.visibilityState !== "visible" ||
+        agendaIsLoading ||
+        appointmentContextsAreLoading ||
+        bookingSaving
+      ) {
+        return;
+      }
+      void reloadAgenda().then(reloadAppointmentContexts);
+    }
+
+    const intervalId = window.setInterval(refreshVisibleAgenda, 30_000);
+    document.addEventListener("visibilitychange", refreshVisibleAgenda);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshVisibleAgenda);
+    };
+  }, [
+    agendaIsLoading,
+    appointmentContextsAreLoading,
+    bookingSaving,
+    reloadAgenda,
+    reloadAppointmentContexts,
+  ]);
   const displayPresentation = useMemo(() => {
     if (!presentation || !schedulerDesignProposals.available)
       return presentation;
@@ -2413,6 +2449,7 @@ export function ApiAgendaWorkspace() {
       setAttendanceTargetStatus(null);
       setCustomerRegistrationReview(null);
       setClientSearchInput("");
+      setDisplayMode("calendar");
       delete createdCustomerByIntentRef.current[bookingIntentKey];
       await agenda.reload();
       await appointmentContexts.reload();
@@ -3050,6 +3087,13 @@ export function ApiAgendaWorkspace() {
   const agendaAppointmentCount = Object.values(
     agenda.data?.byBranch ?? {},
   ).reduce((total, entry) => total + entry.appointments.length, 0);
+  const agendaUpdatedTime = lastAgendaUpdatedAt
+    ? lastAgendaUpdatedAt.toLocaleTimeString("es-MX", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "pendiente";
   const sensitiveBooking = sensitiveRequest?.booking ?? null;
   const financialProfiles = Object.fromEntries(
     Object.entries(financialRecords).map(([id, record]) => [
@@ -3098,6 +3142,7 @@ export function ApiAgendaWorkspace() {
         onRefresh={() => {
           void catalog.reload();
           void agenda.reload();
+          void appointmentContexts.reload();
           if (canReadStatusColors) void administrationCatalog.reload();
         }}
         onViewChange={setCurrentView}
@@ -3110,7 +3155,7 @@ export function ApiAgendaWorkspace() {
         selectedBranchName={selectedBranchName}
         selectedCommerceName={selectedCommerceName}
         selectedDate={selectedDate}
-        updatedLabel={`${agendaAppointmentCount} citas · ${viewBranchIds.length} sucursales`}
+        updatedLabel={`${agendaAppointmentCount} citas · Actualizado ${agendaUpdatedTime}`}
         weekDays={weekDays}
       />
 
@@ -3217,7 +3262,7 @@ export function ApiAgendaWorkspace() {
           />
           <div className={conflict ? "mt-4 min-h-0 flex-1" : "min-h-0 flex-1"}>
             <QueryBoundary
-              loading={catalog.loading || agenda.loading}
+              loading={catalog.loading || (!agenda.data && agenda.loading)}
               error={catalog.error ?? agenda.error}
               onRetry={() => {
                 void catalog.reload();

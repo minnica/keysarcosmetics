@@ -148,7 +148,12 @@ export function SchedulerHeader({
               </PopoverContent>
             </Popover>
 
-            <p className="scheduler-agenda-updated text-sm italic text-slate-400">{updatedLabel}</p>
+            <p
+              aria-live="polite"
+              className="scheduler-agenda-updated text-sm italic text-slate-400"
+            >
+              {updatedLabel}
+            </p>
             <div className="hidden h-6 w-px bg-slate-200 md:block" />
             <button aria-label="Actualizar agenda" className="scheduler-toolbar-button" disabled={refreshing} onClick={onRefresh} type="button">
               <RefreshCcw className={refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />

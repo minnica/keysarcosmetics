@@ -821,6 +821,14 @@ y la acción también se protege dentro del componente. Para registrar otro
 perfil primero se debe limpiar o cambiar la búsqueda; así no se reemplaza por
 accidente el `customerId` ya vinculado al borrador de la reserva.
 
+Al guardar una reserva, Agenda cierra el formulario, vuelve a la vista de
+calendario y recarga citas y contextos antes de continuar. Con la pestaña
+visible también realiza una actualización silenciosa cada 30 segundos y al
+regresar desde otra pestaña; durante esas recargas conserva la cuadrícula en
+pantalla. El encabezado publica con `aria-live` la hora local exacta de la
+última respuesta aceptada, y el botón manual actualiza también los contextos de
+atención y compra.
+
 El 4 de octubre de 2026 se compactó la composición de Agenda para escritorio.
 Desde 1280 px el encabezado distribuye rango, fecha y acciones en una sola fila
 de 56 px; la cuadrícula y el panel izquierdo reciben el alto restante. El
