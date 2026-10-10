@@ -816,6 +816,11 @@ El 10 de octubre de 2026 el botón café **Nuevo cliente** se alineó con el cam
 de búsqueda de Cliente y comparte su altura visual. El texto de confirmación de
 un cliente vinculado permanece debajo del campo sin desplazar la acción.
 
+Cuando se selecciona o guarda un cliente, **Nuevo cliente** queda deshabilitado
+y la acción también se protege dentro del componente. Para registrar otro
+perfil primero se debe limpiar o cambiar la búsqueda; así no se reemplaza por
+accidente el `customerId` ya vinculado al borrador de la reserva.
+
 El 4 de octubre de 2026 se compactó la composición de Agenda para escritorio.
 Desde 1280 px el encabezado distribuye rango, fecha y acciones en una sola fila
 de 56 px; la cuadrícula y el panel izquierdo reciben el alto restante. El

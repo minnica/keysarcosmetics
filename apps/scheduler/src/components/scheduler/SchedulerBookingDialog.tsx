@@ -491,6 +491,8 @@ export function SchedulerBookingDialog({
   }
 
   function openNewClientForm() {
+    if (draft.clientId) return;
+
     const nextOpen = !isNewClientOpen;
     setIsNewClientOpen(nextOpen);
     if (!nextOpen) return;
@@ -982,7 +984,13 @@ export function SchedulerBookingDialog({
                       <div className="flex items-start lg:pt-[1.75rem]">
                         <Button
                           className="scheduler-modal-cta h-12 px-5"
+                          disabled={Boolean(draft.clientId)}
                           onClick={openNewClientForm}
+                          title={
+                            draft.clientId
+                              ? "El cliente ya está vinculado a la reserva"
+                              : "Registrar un nuevo cliente"
+                          }
                           type="button"
                         >
                           <UserRoundPlus className="mr-2 h-5 w-5" />
