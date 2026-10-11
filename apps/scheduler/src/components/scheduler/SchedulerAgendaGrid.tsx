@@ -326,9 +326,9 @@ function SchedulerAppointmentSummary({
   const hasMultipleAttendees = attendeeNames.length > 1;
 
   return (
-    <div className="scheduler-appointment-summary flex h-full min-w-0 flex-col items-center justify-center">
+    <div className="scheduler-appointment-summary flex h-full w-full min-w-0 flex-col items-center justify-center gap-px">
       <SchedulerStatusBadge
-        className="scheduler-appointment-status-badge max-w-[88%]"
+        className="scheduler-appointment-status-badge max-w-full"
         color={statusColor}
         compact
         hasPurchase={
@@ -340,7 +340,7 @@ function SchedulerAppointmentSummary({
       />
       <div
         className={cn(
-          "scheduler-appointment-attendees mt-0.5 grid w-full min-w-0 flex-1 overflow-hidden",
+          "scheduler-appointment-attendees grid w-full min-w-0 flex-1 overflow-hidden",
           hasMultipleAttendees ? "items-stretch gap-0" : "items-center",
         )}
         style={{
@@ -353,7 +353,7 @@ function SchedulerAppointmentSummary({
               "scheduler-appointment-attendee min-w-0 items-center justify-center overflow-hidden px-1 text-center font-semibold",
               hasMultipleAttendees
                 ? "flex border-l border-current/20 text-[0.58rem] leading-none first:border-l-0"
-                : "block truncate text-[0.82rem] leading-[1.05]",
+                : "block truncate text-[clamp(0.58rem,0.72vw,0.82rem)] leading-[1.05]",
             )}
             key={`${name}-${index}`}
             title={name}
@@ -527,7 +527,6 @@ export function SchedulerAgendaGrid({
     currentView === "day" ? dayCalendarRange : weekCalendarRange;
   const activeTimeSlotCount =
     currentView === "day" ? dayTimeSlots.length : weekTimeSlots.length;
-  const calendarNeedsVerticalScroll = false;
   const agendaLayout = useMemo(() => {
     if (gridViewportHeight <= 0 || activeTimeSlotCount <= 0)
       return baseAgendaLayout;
@@ -542,10 +541,14 @@ export function SchedulerAgendaGrid({
       ...baseAgendaLayout,
       rowHeight: Math.min(
         baseAgendaLayout.maxRowHeight,
-        Math.max(12, fittedRowHeight),
+        Math.max(baseAgendaLayout.minRowHeight, fittedRowHeight),
       ),
     };
   }, [activeTimeSlotCount, baseAgendaLayout, gridViewportHeight]);
+  const calendarNeedsVerticalScroll =
+    gridViewportHeight > 0 &&
+    agendaLayout.headerOffset + activeTimeSlotCount * agendaLayout.rowHeight >
+      gridViewportHeight;
 
   useEffect(() => {
     const viewport = gridViewportRef.current;

@@ -29,9 +29,9 @@ export function shouldFitSchedulerAgendaColumns(
 
   const horizontalChrome = sidebarVisible ? 448 : 112;
   const availableWidth = Math.max(280, viewportWidth - horizontalChrome);
-  const minimumReadableColumnWidth = viewportWidth < 768 ? 220 : 224;
+  const minimumVisibleColumnWidth = 24;
 
-  return availableWidth / columnCount >= minimumReadableColumnWidth;
+  return availableWidth / columnCount >= minimumVisibleColumnWidth;
 }
 
 export interface SchedulerBookingOverlapInput {
