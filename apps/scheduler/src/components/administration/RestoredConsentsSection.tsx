@@ -41,6 +41,7 @@ import {
 import { schedulerApi, schedulerApiErrorMessage } from "@/lib/api";
 import { formatSchedulerFileSize } from "@/lib/scheduler-engagement-presentation";
 import { useSchedulerSession } from "@/lib/session";
+import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
 import {
   QueryBoundary,
   invalidateSchedulerQueries,
@@ -355,6 +356,8 @@ function ConsentRecordsDialog({
   templates: SchedulerConsentTemplateDto[];
   canWrite: boolean;
 }) {
+  const { canAccess } = useSchedulerSession();
+  const canViewCustomerPhone = canAccess("clients", "EXCEPTION");
   const [branchId, setBranchId] = useState(
     catalog.branches.find((branch) => branch.active)?.branchId ?? "",
   );
@@ -515,7 +518,11 @@ function ConsentRecordsDialog({
                   {customer.displayName}
                 </span>
                 <span className="text-xs text-slate-500">
-                  {customer.phone ?? customer.email ?? "Sin contacto"}
+                  <SchedulerProtectedPhone
+                    canView={canViewCustomerPhone}
+                    fallback={customer.email ?? "Sin contacto"}
+                    phone={customer.phone}
+                  />
                 </span>
               </button>
             ))}

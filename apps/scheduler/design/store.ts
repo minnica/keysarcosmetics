@@ -114,17 +114,17 @@ export const designDemoAccounts: readonly DesignDemoAccount[] = [
     positionName: "Recepción Polanco",
     accessLabel: "Acceso limitado",
   },
+  {
+    id: "read-only-legacy",
+    email: "read-only@example.test",
+    password: "demo",
+    authorizationCode: "2222",
+    role: "read-only",
+    name: "Consulta demo",
+    positionName: "Solo consulta",
+    accessLabel: "Solo lectura · teléfonos protegidos",
+  },
 ] as const;
-const legacyReadOnlyAccount: DesignDemoAccount = {
-  id: "read-only-legacy",
-  email: "read-only@example.test",
-  password: "demo",
-  authorizationCode: "2222",
-  role: "read-only",
-  name: "Consulta demo",
-  positionName: "Solo consulta",
-  accessLabel: "Solo lectura",
-};
 export type DesignScenario = "normal" | "empty" | "slow" | "error" | "conflict";
 export type DesignRow = Record<string, unknown>;
 export interface DesignControls {
@@ -188,7 +188,6 @@ export function designAccountForControls(
   return (
     designDemoAccounts.find((account) => account.id === controls.accountId) ??
     designDemoAccounts.find((account) => account.role === controls.role) ??
-    (controls.role === "read-only" ? legacyReadOnlyAccount : undefined) ??
     designDemoAccounts[0]!
   );
 }
@@ -1216,7 +1215,9 @@ export function designBootstrap(state: DesignState): SchedulerBootstrapDto {
         ? [...SCHEDULER_CAPABILITIES]
         : role === "read-only"
           ? ["READ"]
-          : ["READ", "WRITE"],
+          : screenKey === "scheduler/clients"
+            ? ["READ", "WRITE", "EXCEPTION"]
+            : ["READ", "WRITE"],
     })),
     authorizedBranches: branches.map((branch) => ({
       id: branch.branchId,

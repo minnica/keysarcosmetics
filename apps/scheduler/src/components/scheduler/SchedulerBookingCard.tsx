@@ -55,6 +55,7 @@ import {
   type ClientPurchaseAccount,
   type ClientPaymentHistoryEntry,
 } from "./scheduler-utils";
+import { SchedulerProtectedPhone } from "./SchedulerProtectedPhone";
 
 interface SchedulerBookingCardProps {
   booking: Booking;
@@ -88,6 +89,7 @@ interface SchedulerBookingCardProps {
   ) => void;
   onDeletePaymentHistory: (paymentBookingId: string) => void;
   canWrite?: boolean;
+  canViewCustomerPhone?: boolean;
   enableCabinVisitFlow?: boolean;
   showSellerComments?: boolean;
   showPostSaleComments?: boolean;
@@ -144,6 +146,7 @@ export function SchedulerBookingCard({
   onUpdatePaymentHistory,
   onDeletePaymentHistory,
   canWrite = true,
+  canViewCustomerPhone = false,
   enableCabinVisitFlow = false,
   showSellerComments = false,
   showPostSaleComments = false,
@@ -286,15 +289,23 @@ export function SchedulerBookingCard({
           </div>
           <div className="min-w-0 flex-1">
             <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[0.9rem]">
-              <span>{booking.phone || "Sin información"}</span>
-              <span className="text-slate-300">|</span>
-              <button
-                className="inline-flex items-center gap-1 text-[var(--scheduler-ink-strong)] underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
-                type="button"
-              >
-                <MessageCircle className="h-3.5 w-3.5" />
-                Hablar por WhatsApp
-              </button>
+              <SchedulerProtectedPhone
+                canView={canViewCustomerPhone}
+                fallback="Sin información"
+                phone={booking.phone}
+              />
+              {canViewCustomerPhone && booking.phone ? (
+                <>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    className="inline-flex items-center gap-1 text-[var(--scheduler-ink-strong)] underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
+                    type="button"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Hablar por WhatsApp
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
         </div>

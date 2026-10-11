@@ -58,7 +58,7 @@ function operationToken(request, purpose, targetId, code = "0000", scopeKey) {
   return response.body.data.token;
 }
 
-test("las tres cuentas demo conservan identidad, alcance y códigos personales", () => {
+test("las cuentas demo conservan identidad, alcance y códigos personales", () => {
   const { state, request } = session();
   const expectations = [
     {
@@ -79,9 +79,15 @@ test("las tres cuentas demo conservan identidad, alcance y códigos personales",
       code: "4444",
       fullAccess: false,
     },
+    {
+      email: "read-only@example.test",
+      accountId: "read-only-legacy",
+      code: "2222",
+      fullAccess: false,
+    },
   ];
 
-  assert.equal(designDemoAccounts.length, 3);
+  assert.equal(designDemoAccounts.length, 4);
   for (const expected of expectations) {
     const login = request("POST", "/api/auth/login", {
       email: expected.email,
@@ -471,6 +477,50 @@ test("el cliente Axios real funciona con MSW sin servidor ni credenciales reales
 
 test("los perfiles restringen escrituras y sucursales también en el mock HTTP", () => {
   const { state, request } = session("normal", "read-only");
+  const customerWithPhone = state.customers.find((item) => item.phone);
+  assert.ok(customerWithPhone);
+  assert.equal(
+    designBootstrap(state).permissions.some(
+      (permission) =>
+        permission.screenKey === "scheduler/clients" &&
+        permission.capabilities.includes("EXCEPTION"),
+    ),
+    false,
+  );
+  const protectedCustomer = request(
+    "GET",
+    `/api/scheduler/clients/search?query=${encodeURIComponent(customerWithPhone.displayName)}&page=1&pageSize=20`,
+  ).body.data.items.find((item) => item.id === customerWithPhone.id);
+  assert.ok(protectedCustomer);
+  assert.notEqual(protectedCustomer.phone, customerWithPhone.phone);
+  assert.equal(
+    request(
+      "GET",
+      `/api/scheduler/clients/search?query=${encodeURIComponent(customerWithPhone.phone)}&page=1&pageSize=20`,
+    ).body.data.total,
+    0,
+  );
+  const protectedAdvancedSearch = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/advanced-search",
+    {
+      query: customerWithPhone.displayName,
+      branchIds: state.catalog.branches.map((branch) => branch.branchId),
+      appointmentStatuses: [],
+      serviceProfileIds: [],
+      sellerNames: [],
+      customFields: [],
+      page: 1,
+      pageSize: 20,
+    },
+  );
+  assert.equal(protectedAdvancedSearch.status, 201);
+  assert.ok(protectedAdvancedSearch.body.data.items.length > 0);
+  assert.ok(
+    protectedAdvancedSearch.body.data.items.every(
+      (item) => item.phone !== customerWithPhone.phone,
+    ),
+  );
   assert.equal(
     request("POST", "/api/scheduler/clients", {
       branchId: state.catalog.branches[0].branchId,
@@ -487,6 +537,21 @@ test("los perfiles restringen escrituras y sucursales también en el mock HTTP",
     403,
   );
   state.controls.role = "specialist";
+  assert.equal(
+    designBootstrap(state).permissions.some(
+      (permission) =>
+        permission.screenKey === "scheduler/clients" &&
+        permission.capabilities.includes("EXCEPTION"),
+    ),
+    true,
+  );
+  assert.equal(
+    request(
+      "GET",
+      `/api/scheduler/clients/search?query=${encodeURIComponent(customerWithPhone.phone)}&page=1&pageSize=20`,
+    ).body.data.items[0].phone,
+    customerWithPhone.phone,
+  );
   const ownId = state.catalog.professionals[0].id;
   const visible = request("GET", "/api/scheduler/appointments").body.data.items;
   assert.ok(

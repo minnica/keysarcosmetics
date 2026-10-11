@@ -13,6 +13,7 @@ import {
 import { SchedulerAvatar } from "./SchedulerAvatar";
 import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
 import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
+import { SchedulerProtectedPhone } from "./SchedulerProtectedPhone";
 
 interface SchedulerAgendaListProps {
   bookings: Booking[];
@@ -23,6 +24,7 @@ interface SchedulerAgendaListProps {
   onOpenBooking: (booking: Booking) => void;
   onOpenNewBooking: () => void;
   canWrite?: boolean;
+  canViewCustomerPhone?: boolean;
 }
 
 export function SchedulerAgendaList({
@@ -34,6 +36,7 @@ export function SchedulerAgendaList({
   onOpenBooking,
   onOpenNewBooking,
   canWrite = true,
+  canViewCustomerPhone = false,
 }: SchedulerAgendaListProps) {
   const orderedBookings = [...bookings].sort((left, right) =>
     left.start.localeCompare(right.start),
@@ -130,7 +133,10 @@ export function SchedulerAgendaList({
 
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                   <Phone className="h-4 w-4 text-[#c3a583]" />
-                  {booking.phone}
+                  <SchedulerProtectedPhone
+                    canView={canViewCustomerPhone}
+                    phone={booking.phone}
+                  />
                 </div>
 
                 <SchedulerStatusBadge

@@ -960,3 +960,21 @@ grupo/persona, vendedor y especialista, y permite descargar PDF o Excel. Los
 endpoints de diseño son `POST /customers/recovery-teams`, `PUT
 /customers/recovery/:id/assignment` y `POST /customers/recovery-purchases`
 bajo el prefijo `/api/scheduler/design-proposals`.
+
+El 10 de octubre de 2026 el teléfono de la clienta quedó protegido por puesto.
+La demo interpreta `scheduler/clients:EXCEPTION` como la capacidad **Ver
+teléfono de clientes**: Master y Recepción Polanco la tienen, mientras **Solo
+consulta** no. Sin esa capacidad, Agenda, lista, ficha, atención, búsqueda de
+clientes, revisión de duplicados, Recuperación, Consentimientos y Mensajería
+sustituyen el número por un ojo tachado y la leyenda **Teléfono confidencial**.
+También se oculta la acción de WhatsApp y las exportaciones de Recuperación
+reemplazan el dato por **Confidencial**. El alta de una clienta nueva conserva
+el campo teléfono porque es captura de un dato nuevo, no lectura de uno
+existente.
+
+Producción deberá nombrar esta capacidad como **Ver teléfono de clientes** en
+el editor de permisos por puesto y aplicar la misma validación en servidor:
+las búsquedas no deben aceptar coincidencia por teléfono, los DTO no deben
+entregar el valor y ninguna exportación debe incluirlo cuando falte el grant.
+El ojo tachado es la representación visual; no sustituye la redacción
+autoritativa del API ni su auditoría.

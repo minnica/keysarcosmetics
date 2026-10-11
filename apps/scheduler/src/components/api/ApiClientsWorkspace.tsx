@@ -78,6 +78,7 @@ import { CustomerEngagementPanel } from "@/components/clients/CustomerEngagement
 import { CustomerDuplicateReviewDialog } from "@/components/clients/CustomerDuplicateReviewDialog";
 import { CustomerExportDialog } from "@/components/clients/CustomerExportDialog";
 import { CustomerImportDialog } from "@/components/clients/CustomerImportDialog";
+import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
 import {
   SchedulerClientAdvancedFilters,
   type SchedulerClientAdvancedFilterValue,
@@ -263,7 +264,7 @@ function FormField({
   hint,
   children,
 }: {
-  htmlFor: string;
+  htmlFor?: string;
   label: string;
   required?: boolean;
   hint?: string;
@@ -360,6 +361,7 @@ export function ApiClientsWorkspace() {
   const canWrite = canAccess("clients", "WRITE");
   const canAdmin = canAccess("clients", "ADMIN");
   const canExportByRole = canAccess("clients", "EXPORT");
+  const canViewCustomerPhone = canAccess("clients", "EXCEPTION");
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const [branchId, setBranchId] = useState(
@@ -1274,7 +1276,10 @@ export function ApiClientsWorkspace() {
                           </td>
                           <td className="px-5 py-4 text-slate-500">
                             <span className="block">
-                              {customer.phone || "Sin teléfono"}
+                              <SchedulerProtectedPhone
+                                canView={canViewCustomerPhone}
+                                phone={customer.phone}
+                              />
                             </span>
                             <span className="mt-1 block text-xs">
                               {customer.email || "Sin correo"}
@@ -1431,6 +1436,7 @@ export function ApiClientsWorkspace() {
 
       <CustomerEditorDialog
         activeDefinitions={activeDefinitions}
+        canViewCustomerPhone={canViewCustomerPhone}
         conflict={conflict}
         definitionsError={definitions.error}
         definitionsLoading={definitions.loading}
@@ -1489,6 +1495,7 @@ export function ApiClientsWorkspace() {
       />
 
       <CustomerDuplicateReviewDialog
+        canViewCustomerPhone={canViewCustomerPhone}
         candidates={duplicateCandidates.data ?? []}
         error={duplicateCandidates.error}
         loading={duplicateCandidates.loading}
@@ -1500,6 +1507,7 @@ export function ApiClientsWorkspace() {
 
       <CustomerRecordDialog
         branchId={branchId}
+        canViewCustomerPhone={canViewCustomerPhone}
         configured={Boolean(bootstrap?.secondaryAuthorizationConfigured)}
         detail={detail}
         financial={financial}
@@ -1567,6 +1575,7 @@ export function ApiClientsWorkspace() {
 
 function CustomerEditorDialog({
   activeDefinitions,
+  canViewCustomerPhone,
   conflict,
   definitionsError,
   definitionsLoading,
@@ -1580,6 +1589,7 @@ function CustomerEditorDialog({
   sources,
 }: {
   activeDefinitions: SchedulerCustomerFieldDefinitionDto[];
+  canViewCustomerPhone: boolean;
   conflict: string | null;
   definitionsError: string | null;
   definitionsLoading: boolean;
@@ -1657,20 +1667,37 @@ function CustomerEditorDialog({
                     value={draft.preferredName}
                   />
                 </FormField>
-                <FormField htmlFor="customer-phone" label="Teléfono">
-                  <Input
-                    autoComplete="tel"
-                    className={controlClass}
-                    id="customer-phone"
-                    inputMode="tel"
-                    onChange={(event) =>
-                      onDraftChange((value) => ({
-                        ...value,
-                        phone: event.target.value,
-                      }))
-                    }
-                    value={draft.phone}
-                  />
+                <FormField
+                  {...(draft.id && !canViewCustomerPhone
+                    ? {}
+                    : { htmlFor: "customer-phone" })}
+                  label="Teléfono"
+                >
+                  {draft.id && !canViewCustomerPhone ? (
+                    <div
+                      className={`${controlClass} flex items-center px-4 text-slate-500`}
+                      id="customer-phone"
+                    >
+                      <SchedulerProtectedPhone
+                        canView={false}
+                        phone={draft.phone || "protected"}
+                      />
+                    </div>
+                  ) : (
+                    <Input
+                      autoComplete="tel"
+                      className={controlClass}
+                      id="customer-phone"
+                      inputMode="tel"
+                      onChange={(event) =>
+                        onDraftChange((value) => ({
+                          ...value,
+                          phone: event.target.value,
+                        }))
+                      }
+                      value={draft.phone}
+                    />
+                  )}
                 </FormField>
                 <FormField htmlFor="customer-email" label="Correo principal">
                   <Input
@@ -1975,6 +2002,7 @@ function CustomerCustomField({
 
 function CustomerRecordDialog({
   branchId,
+  canViewCustomerPhone,
   canWrite,
   configured,
   detail,
@@ -1994,6 +2022,7 @@ function CustomerRecordDialog({
   visitPage,
 }: {
   branchId: string;
+  canViewCustomerPhone: boolean;
   canWrite: boolean;
   configured: boolean;
   detail: SchedulerCustomerDetailDto | null;
@@ -2063,7 +2092,10 @@ function CustomerRecordDialog({
                 title="Autorizar expediente"
               />
             ) : (
-              <CustomerProfile detail={detail} />
+              <CustomerProfile
+                canViewCustomerPhone={canViewCustomerPhone}
+                detail={detail}
+              />
             )}
           </section>
 
@@ -2134,7 +2166,13 @@ function CustomerRecordDialog({
   );
 }
 
-function CustomerProfile({ detail }: { detail: SchedulerCustomerDetailDto }) {
+function CustomerProfile({
+  canViewCustomerPhone,
+  detail,
+}: {
+  canViewCustomerPhone: boolean;
+  detail: SchedulerCustomerDetailDto;
+}) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -2152,7 +2190,12 @@ function CustomerProfile({ detail }: { detail: SchedulerCustomerDetailDto }) {
           <p className="mt-2 text-xs uppercase tracking-[0.14em] text-slate-400">
             Teléfono
           </p>
-          <p className="mt-1 font-medium">{detail.phone || "Sin teléfono"}</p>
+          <p className="mt-1 font-medium">
+            <SchedulerProtectedPhone
+              canView={canViewCustomerPhone}
+              phone={detail.phone}
+            />
+          </p>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">

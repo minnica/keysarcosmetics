@@ -80,6 +80,7 @@ import type {
   DesignAppointmentContext,
   DesignCustomerLayawaySummary,
 } from "../../../design/contracts";
+import { SchedulerProtectedPhone } from "./SchedulerProtectedPhone";
 
 interface SchedulerAgendaGridProps {
   currentView: SchedulerView;
@@ -131,6 +132,7 @@ interface SchedulerAgendaGridProps {
     paymentBookingId: string,
   ) => void;
   canWrite?: boolean;
+  canViewCustomerPhone?: boolean;
   enableCabinVisitFlow?: boolean;
   showSellerComments?: boolean;
   showPostSaleComments?: boolean;
@@ -209,6 +211,7 @@ interface SchedulerAppointmentTooltipCardProps {
   side: "right" | "top";
   statusColor: string;
   statusLabel: string;
+  canViewCustomerPhone: boolean;
 }
 
 function SchedulerAppointmentTooltipCard({
@@ -220,6 +223,7 @@ function SchedulerAppointmentTooltipCard({
   side,
   statusColor,
   statusLabel,
+  canViewCustomerPhone,
 }: SchedulerAppointmentTooltipCardProps) {
   const attendee = context?.attendees?.[attendeeIndex];
   const attendeeName =
@@ -231,9 +235,10 @@ function SchedulerAppointmentTooltipCard({
     ? ["FULL", "LAYAWAY"].includes(attendee.purchaseKind ?? "") &&
       attendee.saleAmount > 0
     : booking.purchased === true && (booking.purchaseAmount ?? 0) > 0;
-  const contact = attendee
-    ? attendee.phone || attendee.email || "Sin contacto"
-    : booking.phone || booking.customerEmail || "Sin contacto";
+  const phone = attendee ? attendee.phone : booking.phone;
+  const contactFallback = attendee
+    ? attendee.email || "Sin contacto"
+    : booking.customerEmail || "Sin contacto";
 
   return (
     <TooltipContent
@@ -275,7 +280,14 @@ function SchedulerAppointmentTooltipCard({
         <dt>Resultado</dt>
         <dd>{purchaseOutcomeLabel(attendee, booking)}</dd>
         <dt>Contacto</dt>
-        <dd>{contact}</dd>
+        <dd>
+          <SchedulerProtectedPhone
+            canView={canViewCustomerPhone}
+            className="text-white/70"
+            fallback={contactFallback}
+            phone={phone}
+          />
+        </dd>
         <dt>Representante</dt>
         <dd>{context?.representativeName ?? "Por registrar"}</dd>
         <dt>Vendedor cartera</dt>
@@ -470,6 +482,7 @@ export function SchedulerAgendaGrid({
   onUpdatePaymentHistory,
   onDeletePaymentHistory,
   canWrite = true,
+  canViewCustomerPhone = false,
   enableCabinVisitFlow = false,
   showSellerComments = false,
   showPostSaleComments = false,
@@ -1128,6 +1141,7 @@ export function SchedulerAgendaGrid({
                           align="start"
                           attendeeIndex={hoveredAttendeeIndex}
                           booking={booking}
+                          canViewCustomerPhone={canViewCustomerPhone}
                           context={appointmentContexts[booking.id]}
                           fallbackSpecialistName={fallbackSpecialistName}
                           side="right"
@@ -1145,6 +1159,7 @@ export function SchedulerAgendaGrid({
                         <SchedulerBookingCard
                           appointmentContext={appointmentContexts[booking.id]}
                           booking={booking}
+                          canViewCustomerPhone={canViewCustomerPhone}
                           commerceName={commerceName}
                           enableCabinVisitFlow={enableCabinVisitFlow}
                           clientAccount={
@@ -1501,6 +1516,7 @@ export function SchedulerAgendaGrid({
                           align="center"
                           attendeeIndex={hoveredAttendeeIndex}
                           booking={booking}
+                          canViewCustomerPhone={canViewCustomerPhone}
                           context={appointmentContexts[booking.id]}
                           fallbackSpecialistName={fallbackSpecialistName}
                           side="top"
@@ -1518,6 +1534,7 @@ export function SchedulerAgendaGrid({
                         <SchedulerBookingCard
                           appointmentContext={appointmentContexts[booking.id]}
                           booking={booking}
+                          canViewCustomerPhone={canViewCustomerPhone}
                           commerceName={commerceName}
                           enableCabinVisitFlow={enableCabinVisitFlow}
                           clientAccount={

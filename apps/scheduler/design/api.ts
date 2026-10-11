@@ -97,6 +97,26 @@ const fail = (status: number, message: string, code?: string): never => {
   throw new DesignApiError(status, message, code);
 };
 const phoneKey = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+const restrictedPhoneValue = "__SCHEDULER_PHONE_RESTRICTED__";
+
+function canViewCustomerPhone(state: DesignState): boolean {
+  return designBootstrap(state).permissions.some(
+    (permission) =>
+      permission.screenKey === "scheduler/clients" &&
+      permission.capabilities.includes("EXCEPTION"),
+  );
+}
+
+function protectCustomerPhone<T extends { phone?: string | null }>(
+  state: DesignState,
+  item: T,
+): T {
+  if (canViewCustomerPhone(state)) return item;
+  return {
+    ...item,
+    phone: item.phone ? restrictedPhoneValue : null,
+  } as T;
+}
 const textKey = (value: unknown) =>
   String(value ?? "")
     .normalize("NFD")
@@ -464,6 +484,9 @@ function requireOperationAuthorization(
 }
 function authorizeRequest(state: DesignState, request: DesignRequest) {
   const path = request.url.pathname;
+  const isReadOnlyQuery =
+    request.method === "POST" &&
+    path === "/api/scheduler/design-proposals/customers/advanced-search";
   if (path === "/api/auth/login") return;
   if (
     request.headers.get("authorization") !==
@@ -489,7 +512,8 @@ function authorizeRequest(state: DesignState, request: DesignRequest) {
   if (admin && state.controls.role !== "master")
     fail(403, "Esta acción requiere el perfil master demo.");
   if (
-    (isWriting(request.method) || path.includes("/exports/")) &&
+    ((!isReadOnlyQuery && isWriting(request.method)) ||
+      path.includes("/exports/")) &&
     state.controls.role === "read-only"
   )
     fail(403, "El perfil de consulta no puede modificar ni descargar.");
@@ -873,6 +897,7 @@ function buildReport(
         Cobrado: "0.00",
       }));
   } else if (key === "CUSTOMERS") {
+    const canViewPhone = canViewCustomerPhone(state);
     resultRows = visibleCustomers(state)
       .filter(
         (item) =>
@@ -882,7 +907,12 @@ function buildReport(
               portfolio.branchId && selected.includes(portfolio.branchId),
           ) &&
           (!query.get("search") ||
-            [item.displayName, item.phone, item.email, ...item.aliases].some(
+            [
+              item.displayName,
+              canViewPhone ? item.phone : null,
+              item.email,
+              ...item.aliases,
+            ].some(
               (value) => textKey(value).includes(textKey(query.get("search"))),
             )),
       )
@@ -895,7 +925,11 @@ function buildReport(
           customer_id: item.id,
           Cliente: item.displayName,
           "Nombre preferido": item.preferredName ?? "",
-          Teléfono: item.phone ?? "",
+          Teléfono: canViewPhone
+            ? item.phone ?? ""
+            : item.phone
+              ? "Confidencial"
+              : "",
           Correo: item.email ?? "",
           Procedencia: item.source?.name ?? "",
           Sucursal: portfolios
@@ -1630,6 +1664,7 @@ function advancedCustomerSearch(
   state: DesignState,
   input: DesignCustomerAdvancedFilters,
 ): DesignCustomerAdvancedPage {
+  const canViewPhone = canViewCustomerPhone(state);
   const branchIds = new Set(input.branchIds.filter(Boolean));
   const statuses = new Set(input.appointmentStatuses);
   const serviceIds = new Set(input.serviceProfileIds);
@@ -1665,7 +1700,12 @@ function advancedCustomerSearch(
       if (input.sourceId && item.source?.id !== input.sourceId) return false;
       if (
         input.query.trim() &&
-        ![item.displayName, item.phone, item.email, ...item.aliases].some(
+        ![
+          item.displayName,
+          canViewPhone ? item.phone : null,
+          item.email,
+          ...item.aliases,
+        ].some(
           (value) => textKey(value).includes(textKey(input.query)),
         )
       ) {
@@ -1764,7 +1804,9 @@ function advancedCustomerSearch(
   const pageSize = Math.min(5000, Math.max(1, Number(input.pageSize) || 20));
   const offset = (pageNumber - 1) * pageSize;
   return {
-    items: matched.slice(offset, offset + pageSize),
+    items: matched
+      .slice(offset, offset + pageSize)
+      .map((item) => protectCustomerPhone(state, item)),
     page: pageNumber,
     pageSize,
     total: matched.length,
@@ -1833,8 +1875,15 @@ function customerDuplicateCandidates(
         confidence: reasons.some((reason) => reason.kind === "PHONE")
           ? "HIGH"
           : "REVIEW",
-        reasons,
-        customers: [left, right],
+        reasons: reasons.map((reason) =>
+          reason.kind === "PHONE" && !canViewCustomerPhone(state)
+            ? { ...reason, value: "Confidencial" }
+            : reason,
+        ),
+        customers: [
+          protectCustomerPhone(state, left),
+          protectCustomerPhone(state, right),
+        ],
       });
     }
   }
@@ -1880,7 +1929,9 @@ function customerRecoveryCases(
       );
       return elapsedDays >= thresholdByReason(settings, item.reason);
     })
-    .map((item) => customerRecoveryActivity(state, item))
+    .map((item) =>
+      protectCustomerPhone(state, customerRecoveryActivity(state, item)),
+    )
     .sort(
       (left, right) =>
         right.eligibilityAt.localeCompare(left.eligibilityAt) ||
@@ -3270,7 +3321,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                 visitorId: visitor.id,
                 customerId: visitor.customerId,
                 name: visitor.name,
-                phone: attendeeCustomer?.phone ?? null,
+                phone: attendeeCustomer
+                  ? protectCustomerPhone(state, attendeeCustomer).phone ?? null
+                  : null,
                 email: attendeeCustomer?.email ?? null,
                 specialistProfileId: visitor.specialistProfileId || null,
                 specialistName: specialist?.name ?? null,
@@ -3968,10 +4021,15 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               )) &&
             (!query.get("sourceId") ||
               item.source?.id === query.get("sourceId")) &&
-            [item.displayName, item.phone, item.email, ...item.aliases].some(
+            [
+              item.displayName,
+              canViewCustomerPhone(state) ? item.phone : null,
+              item.email,
+              ...item.aliases,
+            ].some(
               (value) => textKey(value).includes(textKey(query.get("query"))),
             ),
-        ),
+        ).map((item) => protectCustomerPhone(state, item)),
         query,
       );
     if (id === "field-definitions") {
@@ -4109,7 +4167,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         };
       if (action === "financial")
         return { ...page([], query), authority: "POS_READ_ONLY" };
-      return item;
+      return protectCustomerPhone(state, item);
     }
     if (method === "POST" || method === "PUT") {
       if (method === "PUT" && id && state.controls.role !== "master") {

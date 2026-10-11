@@ -45,10 +45,13 @@ const columns = [
   "Última gestión",
 ] as const;
 
-function rowValues(item: DesignCustomerRecoveryCase) {
+function rowValues(
+  item: DesignCustomerRecoveryCase,
+  canViewCustomerPhone: boolean,
+) {
   return [
     item.customerName,
-    item.phone ?? "Sin teléfono",
+    canViewCustomerPhone ? item.phone ?? "Sin teléfono" : "Confidencial",
     item.branchName,
     reasonLabels[item.reason],
     item.eligibilityAt.slice(0, 10),
@@ -71,6 +74,7 @@ function fileName(extension: string) {
 export async function exportCustomerRecoverySelection(
   rows: DesignCustomerRecoveryCase[],
   format: RecoveryExportFormat,
+  canViewCustomerPhone: boolean,
 ) {
   if (format === "xlsx") {
     const XLSX = await import("xlsx");
@@ -80,7 +84,7 @@ export async function exportCustomerRecoverySelection(
       ["Registros seleccionados", rows.length],
       [],
       [...columns],
-      ...rows.map(rowValues),
+      ...rows.map((row) => rowValues(row, canViewCustomerPhone)),
     ]);
     sheet["!cols"] = [
       { wch: 28 },
@@ -116,7 +120,7 @@ export async function exportCustomerRecoverySelection(
   autoTable(document, {
     startY: 31,
     head: [[...columns]],
-    body: rows.map(rowValues),
+    body: rows.map((row) => rowValues(row, canViewCustomerPhone)),
     styles: { fontSize: 6.5, cellPadding: 1.7 },
     headStyles: { fillColor: [38, 54, 73] },
     alternateRowStyles: { fillColor: [248, 245, 241] },
@@ -135,13 +139,14 @@ function escapeHtml(value: unknown) {
 
 export function printCustomerRecoverySelection(
   rows: DesignCustomerRecoveryCase[],
+  canViewCustomerPhone: boolean,
 ) {
   const target = window.open("", "_blank", "noopener,noreferrer");
   if (!target) throw new Error("Permite ventanas emergentes para imprimir.");
   const body = rows
     .map(
       (item) =>
-        `<tr>${rowValues(item)
+        `<tr>${rowValues(item, canViewCustomerPhone)
           .map((value) => `<td>${escapeHtml(value)}</td>`)
           .join("")}</tr>`,
     )

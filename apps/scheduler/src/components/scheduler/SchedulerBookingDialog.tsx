@@ -58,6 +58,7 @@ import {
   getAvailableBookingStartTimes,
   type BookingDraft,
 } from "./scheduler-utils";
+import { SchedulerProtectedPhone } from "./SchedulerProtectedPhone";
 
 interface SchedulerBookingDialogProps {
   open: boolean;
@@ -85,6 +86,7 @@ interface SchedulerBookingDialogProps {
   serviceLocked?: boolean;
   saving?: boolean;
   canCreateClient?: boolean;
+  canViewCustomerPhone?: boolean;
   additionalFieldDefinitions?: SchedulerCustomerFieldDefinitionDto[];
   cabinOptions?: Array<{ id: string; name: string; capacity: number }>;
   specialistOptions?: Array<{ id: string; name: string }>;
@@ -224,6 +226,7 @@ export function SchedulerBookingDialog({
   serviceLocked = false,
   saving = false,
   canCreateClient = true,
+  canViewCustomerPhone = false,
   additionalFieldDefinitions = [],
   cabinOptions = [],
   specialistOptions = [],
@@ -960,7 +963,10 @@ export function SchedulerBookingDialog({
                                     {client.fullName}
                                   </span>
                                   <span className="block text-xs text-slate-600">
-                                    {client.phone}
+                                    <SchedulerProtectedPhone
+                                      canView={canViewCustomerPhone}
+                                      phone={client.phone}
+                                    />
                                   </span>
                                 </span>
                                 <span className="shrink-0 text-xs text-slate-500">

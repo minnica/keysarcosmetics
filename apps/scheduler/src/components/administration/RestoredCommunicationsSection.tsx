@@ -48,6 +48,7 @@ import {
   schedulerTemplateWriteInput,
 } from "@/lib/scheduler-engagement-presentation";
 import { useSchedulerSession } from "@/lib/session";
+import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
 import {
   ConflictNotice,
   QueryBoundary,
@@ -335,6 +336,8 @@ function CustomerCommunicationDialog({
   templates: SchedulerMessageTemplateDto[];
   onQueued: () => Promise<void>;
 }) {
+  const { canAccess } = useSchedulerSession();
+  const canViewCustomerPhone = canAccess("clients", "EXCEPTION");
   const firstBranch = catalog.branches.find((branch) => branch.active);
   const [branchId, setBranchId] = useState(firstBranch?.branchId ?? "");
   const [query, setQuery] = useState("");
@@ -525,7 +528,11 @@ function CustomerCommunicationDialog({
                   {customer.displayName}
                 </span>
                 <span className="text-xs text-slate-500">
-                  {customer.phone ?? customer.email ?? "Sin contacto"}
+                  <SchedulerProtectedPhone
+                    canView={canViewCustomerPhone}
+                    fallback={customer.email ?? "Sin contacto"}
+                    phone={customer.phone}
+                  />
                 </span>
               </button>
             ))}

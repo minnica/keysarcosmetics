@@ -18,8 +18,10 @@ import {
   UserRound,
 } from "lucide-react";
 import type { DesignCustomerDuplicateCandidate } from "../../../design/contracts";
+import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
 
 export function CustomerDuplicateReviewDialog({
+  canViewCustomerPhone,
   candidates,
   error,
   loading,
@@ -28,6 +30,7 @@ export function CustomerDuplicateReviewDialog({
   onReview,
   open,
 }: {
+  canViewCustomerPhone: boolean;
   candidates: DesignCustomerDuplicateCandidate[];
   error: string | null;
   loading: boolean;
@@ -113,7 +116,10 @@ export function CustomerDuplicateReviewDialog({
                         {customer.displayName}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {customer.phone || "Sin teléfono"}
+                        <SchedulerProtectedPhone
+                          canView={canViewCustomerPhone}
+                          phone={customer.phone}
+                        />
                       </p>
                       <p className="mt-0.5 truncate text-xs text-slate-500">
                         {customer.email || "Sin correo"}

@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import { useSchedulerSession } from "@/lib/session";
+import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
 import type {
   DesignCustomerRecoveryCase,
   DesignCustomerRecoveryActivityStatus,
@@ -145,6 +146,7 @@ export function CustomerRecoveryWorkspace() {
   const { bootstrap, canAccess } = useSchedulerSession();
   const canWrite = canAccess("clients", "WRITE");
   const canExport = canAccess("clients", "EXPORT");
+  const canViewCustomerPhone = canAccess("clients", "EXCEPTION");
   const [branchId, setBranchId] = useState(
     bootstrap?.authorizedBranchIds[0] ?? "",
   );
@@ -262,12 +264,24 @@ export function CustomerRecoveryWorkspace() {
         (teamFilter === "ALL" || item.assignedTeamId === teamFilter) &&
         (agentFilter === "ALL" || item.assignedAgentId === agentFilter) &&
         (!normalizedQuery ||
-          [item.customerName, item.phone, item.portfolioOwnerName].some(
+          [
+            item.customerName,
+            canViewCustomerPhone ? item.phone : null,
+            item.portfolioOwnerName,
+          ].some(
             (value) =>
               value?.toLocaleLowerCase("es-MX").includes(normalizedQuery),
           )),
     );
-  }, [agentFilter, cases, query, reason, status, teamFilter]);
+  }, [
+    agentFilter,
+    canViewCustomerPhone,
+    cases,
+    query,
+    reason,
+    status,
+    teamFilter,
+  ]);
 
   const selectedRows = useMemo(
     () => cases.filter((item) => selectedIds.has(item.id)),
@@ -552,7 +566,11 @@ export function CustomerRecoveryWorkspace() {
     if (!selectedRows.length) return;
     setExporting(format);
     try {
-      await exportCustomerRecoverySelection(selectedRows, format);
+      await exportCustomerRecoverySelection(
+        selectedRows,
+        format,
+        canViewCustomerPhone,
+      );
       toast.success(
         `${selectedRows.length} registros seleccionados exportados en ${format === "pdf" ? "PDF" : "Excel"}.`,
       );
@@ -568,7 +586,7 @@ export function CustomerRecoveryWorkspace() {
   function printSelection() {
     if (!selectedRows.length) return;
     try {
-      printCustomerRecoverySelection(selectedRows);
+      printCustomerRecoverySelection(selectedRows, canViewCustomerPhone);
     } catch (cause) {
       toast.error(
         cause instanceof Error ? cause.message : "No fue posible imprimir.",
@@ -1138,7 +1156,11 @@ export function CustomerRecoveryWorkspace() {
                       <td className="px-4 py-4">
                         <p className="font-semibold">{item.customerName}</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {item.phone ?? "Sin teléfono"} · {item.branchName}
+                          <SchedulerProtectedPhone
+                            canView={canViewCustomerPhone}
+                            phone={item.phone}
+                          />{" "}
+                          · {item.branchName}
                         </p>
                       </td>
                       <td className="px-4 py-4">

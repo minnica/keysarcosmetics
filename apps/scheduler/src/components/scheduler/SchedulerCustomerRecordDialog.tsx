@@ -10,17 +10,20 @@ import {
 } from "@cosmetics/ui";
 import { Mail, MapPin, Phone, UserRound, X } from "lucide-react";
 import type { Booking } from "@/lib/scheduler-presentation";
+import { SchedulerProtectedPhone } from "./SchedulerProtectedPhone";
 
 export function SchedulerCustomerRecordDialog({
   booking,
   detail,
   open,
   onOpenChange,
+  canViewCustomerPhone = false,
 }: {
   booking: Booking | null;
   detail: SchedulerCustomerDetailDto | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  canViewCustomerPhone?: boolean;
 }) {
   if (!booking || !detail) return null;
   return (
@@ -53,7 +56,11 @@ export function SchedulerCustomerRecordDialog({
                   Teléfono
                 </p>
                 <p className="mt-1 font-medium text-[var(--scheduler-ink-strong)]">
-                  {detail.phone || "Sin información"}
+                  <SchedulerProtectedPhone
+                    canView={canViewCustomerPhone}
+                    fallback="Sin información"
+                    phone={detail.phone}
+                  />
                 </p>
               </div>
               <div className="rounded-xl bg-[var(--scheduler-accent-soft)] p-4">

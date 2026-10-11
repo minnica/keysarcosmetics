@@ -114,6 +114,7 @@ import { SchedulerBlockDialog } from "@/components/scheduler/SchedulerBlockDialo
 import { SchedulerFinancialAccessDialog } from "@/components/scheduler/SchedulerFinancialAccessDialog";
 import { SchedulerClientHistoryDialog } from "@/components/scheduler/SchedulerClientHistoryDialog";
 import { SchedulerCustomerRecordDialog } from "@/components/scheduler/SchedulerCustomerRecordDialog";
+import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
 import { SchedulerOperationAuthorizationDialog } from "@/components/scheduler/SchedulerOperationAuthorizationDialog";
 import {
   SchedulerAppointmentJournalDialog,
@@ -341,6 +342,7 @@ export function ApiAgendaWorkspace() {
   const canWrite = canAccess("agenda", "WRITE");
   const canCreateClient = canAccess("clients", "WRITE");
   const canReadStatusColors = canAccess("administration.status-colors", "READ");
+  const canViewCustomerPhone = canAccess("clients", "EXCEPTION");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [insightsDate, setInsightsDate] = useState(() => new Date());
   const [insightsPinned, setInsightsPinned] = useState(false);
@@ -3354,6 +3356,7 @@ export function ApiAgendaWorkspace() {
                 <SchedulerAgendaGrid
                   allBookings={allBookings}
                   appointmentContexts={appointmentContextByBookingId}
+                  canViewCustomerPhone={canViewCustomerPhone}
                   canWrite={canWrite}
                   columnsFitted={columnsFitted}
                   commerceName={selectedCommerceName}
@@ -3428,6 +3431,7 @@ export function ApiAgendaWorkspace() {
               ) : (
                 <SchedulerAgendaList
                   bookings={listBookings}
+                  canViewCustomerPhone={canViewCustomerPhone}
                   canWrite={canWrite}
                   onOpenBooking={(booking) => openSensitive(booking, "record")}
                   onOpenNewBooking={() => openNewBooking()}
@@ -3497,6 +3501,7 @@ export function ApiAgendaWorkspace() {
           draft={bookingDraft}
           enableCabinVisitFlow={schedulerDesignProposals.available}
           canCreateClient={canCreateClient}
+          canViewCustomerPhone={canViewCustomerPhone}
           onBranchChange={(branchId) => {
             setSelectedBranch(branchId);
             setSelectedBranchIds((current) =>
@@ -3599,6 +3604,7 @@ export function ApiAgendaWorkspace() {
       />
       <SchedulerCustomerRecordDialog
         booking={recordBooking}
+        canViewCustomerPhone={canViewCustomerPhone}
         detail={customerDetail}
         onOpenChange={(open) => {
           if (!open) {
@@ -3667,7 +3673,10 @@ export function ApiAgendaWorkspace() {
                     {customer.fullName}
                   </span>
                   <span className="mt-1 block text-sm text-slate-600">
-                    {customer.phone || "Sin teléfono"}
+                    <SchedulerProtectedPhone
+                      canView={canViewCustomerPhone}
+                      phone={customer.phone}
+                    />
                     {customer.email ? ` · ${customer.email}` : ""}
                   </span>
                 </button>
