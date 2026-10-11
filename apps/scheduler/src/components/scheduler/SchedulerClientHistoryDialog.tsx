@@ -1,17 +1,42 @@
-'use client'
+"use client";
 
-import { Badge, Dialog, DialogContent, DialogHeader, DialogTitle, cn } from '@cosmetics/ui'
-import { CalendarClock, CalendarDays, CheckCircle2, Clock3, ShoppingBag, UserX, X } from 'lucide-react'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
-import { bookingStatuses, type Booking } from '@/lib/scheduler-presentation'
-import { formatMoney, type ClientVisitCategory, type ClientVisitHistoryEntry } from './scheduler-utils'
+import {
+  Badge,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  cn,
+} from "@cosmetics/ui";
+import {
+  CalendarClock,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  ShoppingBag,
+  UserX,
+  X,
+} from "lucide-react";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { useMemo, useState } from "react";
+import { bookingStatuses, type Booking } from "@/lib/scheduler-presentation";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "@/lib/scheduler-report-presentation";
+import {
+  formatMoney,
+  type ClientVisitCategory,
+  type ClientVisitHistoryEntry,
+} from "./scheduler-utils";
 
 interface SchedulerClientHistoryDialogProps {
-  open: boolean
-  booking: Booking | null
-  history: ClientVisitHistoryEntry[]
-  onOpenChange: (open: boolean) => void
+  open: boolean;
+  booking: Booking | null;
+  history: ClientVisitHistoryEntry[];
+  onOpenChange: (open: boolean) => void;
 }
 
 const categoryMeta: Record<
@@ -19,26 +44,26 @@ const categoryMeta: Record<
   { label: string; icon: typeof CheckCircle2; className: string }
 > = {
   attended: {
-    label: 'Asistió',
+    label: "Asistió",
     icon: CheckCircle2,
-    className: 'bg-emerald-50 text-emerald-700',
+    className: "bg-emerald-50 text-emerald-700",
   },
-  'no-show': {
-    label: 'No asistió',
+  "no-show": {
+    label: "No asistió",
     icon: UserX,
-    className: 'bg-rose-50 text-rose-700',
+    className: "bg-rose-50 text-rose-700",
   },
   scheduled: {
-    label: 'Solo agendada',
+    label: "Solo agendada",
     icon: Clock3,
-    className: 'bg-sky-50 text-sky-700',
+    className: "bg-sky-50 text-sky-700",
   },
-}
+};
 
 function formatVisitDate(value: string): string {
-  const date = new Date(`${value}T12:00:00`)
-  if (Number.isNaN(date.getTime())) return value
-  return format(date, "d 'de' MMMM 'de' yyyy", { locale: es })
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return format(date, "d 'de' MMMM 'de' yyyy", { locale: es });
 }
 
 export function SchedulerClientHistoryDialog({
@@ -47,22 +72,35 @@ export function SchedulerClientHistoryDialog({
   history,
   onOpenChange,
 }: SchedulerClientHistoryDialogProps) {
-  if (!booking) return null
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
+  const pagination = useMemo(
+    () => paginateSchedulerReportRows(history, page, pageSize),
+    [history, page, pageSize],
+  );
+  if (!booking) return null;
 
   const counts = history.reduce(
-    (result, entry) => ({ ...result, [entry.category]: result[entry.category] + 1 }),
-    { attended: 0, 'no-show': 0, scheduled: 0 } as Record<ClientVisitCategory, number>,
-  )
+    (result, entry) => ({
+      ...result,
+      [entry.category]: result[entry.category] + 1,
+    }),
+    { attended: 0, "no-show": 0, scheduled: 0 } as Record<
+      ClientVisitCategory,
+      number
+    >,
+  );
   const purchaseSummary = history.reduce(
     (summary, entry) => {
-      if (!entry.purchase || entry.purchase.purchaseKind === 'NONE') return summary
+      if (!entry.purchase || entry.purchase.purchaseKind === "NONE")
+        return summary;
       return {
         count: summary.count + 1,
         total: summary.total + entry.purchase.saleAmount,
-      }
+      };
     },
     { count: 0, total: 0 },
-  )
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -74,7 +112,9 @@ export function SchedulerClientHistoryDialog({
                 <DialogTitle className="text-[1.35rem] font-semibold tracking-[-0.025em] text-[var(--scheduler-ink-strong)]">
                   Historial de citas y visitas
                 </DialogTitle>
-                <p className="mt-1 truncate text-[0.9rem] text-slate-500">{booking.customerName}</p>
+                <p className="mt-1 truncate text-[0.9rem] text-slate-500">
+                  {booking.customerName}
+                </p>
               </div>
               <button
                 aria-label="Cerrar historial"
@@ -89,29 +129,33 @@ export function SchedulerClientHistoryDialog({
 
           <div className="bg-[rgba(255,255,255,0.94)] px-5 py-5 sm:px-6">
             <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white sm:grid-cols-4">
-              {(Object.keys(categoryMeta) as ClientVisitCategory[]).map((category, index) => {
-                const meta = categoryMeta[category]
-                const Icon = meta.icon
-                return (
-                  <div
-                    key={category}
-                    className={cn(
-                      'px-3 py-3',
-                      index % 2 === 1 && 'border-l border-slate-200',
-                      index >= 2 && 'border-t border-slate-200 sm:border-t-0',
-                      index > 0 && 'sm:border-l sm:border-slate-200',
-                    )}
-                  >
-                    <div className="flex items-center gap-1.5 text-slate-500">
-                      <Icon className="h-3.5 w-3.5" />
-                      <span className="truncate text-[0.7rem] font-medium sm:text-[0.76rem]">{meta.label}</span>
+              {(Object.keys(categoryMeta) as ClientVisitCategory[]).map(
+                (category, index) => {
+                  const meta = categoryMeta[category];
+                  const Icon = meta.icon;
+                  return (
+                    <div
+                      key={category}
+                      className={cn(
+                        "px-3 py-3",
+                        index % 2 === 1 && "border-l border-slate-200",
+                        index >= 2 && "border-t border-slate-200 sm:border-t-0",
+                        index > 0 && "sm:border-l sm:border-slate-200",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <Icon className="h-3.5 w-3.5" />
+                        <span className="truncate text-[0.7rem] font-medium sm:text-[0.76rem]">
+                          {meta.label}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[var(--scheduler-ink-strong)]">
+                        {counts[category]}
+                      </p>
                     </div>
-                    <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[var(--scheduler-ink-strong)]">
-                      {counts[category]}
-                    </p>
-                  </div>
-                )
-              })}
+                  );
+                },
+              )}
               <div className="border-l border-t border-slate-200 px-3 py-3 sm:border-t-0">
                 <div className="flex items-center gap-1.5 text-slate-500">
                   <ShoppingBag className="h-3.5 w-3.5" />
@@ -123,17 +167,19 @@ export function SchedulerClientHistoryDialog({
                   {formatMoney(purchaseSummary.total)}
                 </p>
                 <p className="mt-0.5 text-[0.66rem] text-slate-500">
-                  {purchaseSummary.count}{' '}
-                  {purchaseSummary.count === 1 ? 'compra registrada' : 'compras registradas'}
+                  {purchaseSummary.count}{" "}
+                  {purchaseSummary.count === 1
+                    ? "compra registrada"
+                    : "compras registradas"}
                 </p>
               </div>
             </div>
 
             <div className="mt-4 max-h-[430px] space-y-2 overflow-y-auto pr-1">
               {history.length ? (
-                history.map((entry) => {
-                  const category = categoryMeta[entry.category]
-                  const CategoryIcon = category.icon
+                pagination.rows.map((entry) => {
+                  const category = categoryMeta[entry.category];
+                  const CategoryIcon = category.icon;
                   return (
                     <div
                       key={entry.bookingId}
@@ -143,9 +189,13 @@ export function SchedulerClientHistoryDialog({
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 text-[0.78rem] text-slate-500">
                             <CalendarDays className="h-3.5 w-3.5" />
-                            <span className="capitalize">{formatVisitDate(entry.date)}</span>
+                            <span className="capitalize">
+                              {formatVisitDate(entry.date)}
+                            </span>
                             <span aria-hidden="true">·</span>
-                            <span>{entry.start}–{entry.end}</span>
+                            <span>
+                              {entry.start}–{entry.end}
+                            </span>
                           </div>
                           <p className="mt-1.5 truncate text-[0.92rem] font-semibold text-[var(--scheduler-ink-strong)]">
                             {entry.serviceName}
@@ -157,39 +207,55 @@ export function SchedulerClientHistoryDialog({
                             <div className="mt-2 flex items-start gap-2 rounded-lg border border-[#eadfd4] bg-[#fbf7f2] px-3 py-2 text-[#72583f]">
                               <ShoppingBag className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                               <div className="min-w-0 text-[0.74rem] leading-5">
-                                {entry.purchase.purchaseKind === 'FULL' ? (
+                                {entry.purchase.purchaseKind === "FULL" ? (
                                   <p>
-                                    <span className="font-semibold">Compra liquidada</span>
-                                    {' · '}{formatMoney(entry.purchase.saleAmount)}
+                                    <span className="font-semibold">
+                                      Compra liquidada
+                                    </span>
+                                    {" · "}
+                                    {formatMoney(entry.purchase.saleAmount)}
                                   </p>
-                                ) : entry.purchase.purchaseKind === 'LAYAWAY' ? (
+                                ) : entry.purchase.purchaseKind ===
+                                  "LAYAWAY" ? (
                                   <>
                                     <p className="font-semibold">
-                                      {entry.purchase.settlementStatus === 'PAID'
-                                        ? 'Apartado liquidado'
-                                        : 'Apartado registrado'}
+                                      {entry.purchase.settlementStatus ===
+                                      "PAID"
+                                        ? "Apartado liquidado"
+                                        : "Apartado registrado"}
                                     </p>
                                     <p>
-                                      Venta {formatMoney(entry.purchase.saleAmount)} · Abono{' '}
-                                      {formatMoney(entry.purchase.depositAmount)} · Saldo{' '}
-                                      {formatMoney(entry.purchase.balanceAmount)}
+                                      Venta{" "}
+                                      {formatMoney(entry.purchase.saleAmount)} ·
+                                      Abono{" "}
+                                      {formatMoney(
+                                        entry.purchase.depositAmount,
+                                      )}{" "}
+                                      · Saldo{" "}
+                                      {formatMoney(
+                                        entry.purchase.balanceAmount,
+                                      )}
                                     </p>
                                     {entry.purchase.payments.length ? (
                                       <div className="mt-1.5 border-t border-[#e4d5c7] pt-1.5">
-                                        {entry.purchase.payments.map((payment) => (
-                                          <p
-                                            className="flex items-center justify-between gap-3"
-                                            key={payment.id}
-                                          >
-                                            <span>
-                                              {payment.kind === 'SETTLEMENT' ? 'Liquidación' : 'Abono'} ·{' '}
-                                              {payment.actorName}
-                                            </span>
-                                            <span className="font-semibold tabular-nums">
-                                              {formatMoney(payment.amount)}
-                                            </span>
-                                          </p>
-                                        ))}
+                                        {entry.purchase.payments.map(
+                                          (payment) => (
+                                            <p
+                                              className="flex items-center justify-between gap-3"
+                                              key={payment.id}
+                                            >
+                                              <span>
+                                                {payment.kind === "SETTLEMENT"
+                                                  ? "Liquidación"
+                                                  : "Abono"}{" "}
+                                                · {payment.actorName}
+                                              </span>
+                                              <span className="font-semibold tabular-nums">
+                                                {formatMoney(payment.amount)}
+                                              </span>
+                                            </p>
+                                          ),
+                                        )}
                                       </div>
                                     ) : null}
                                   </>
@@ -201,29 +267,52 @@ export function SchedulerClientHistoryDialog({
                           ) : null}
                         </div>
                         <div className="flex flex-col items-end gap-1.5">
-                          <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold', category.className)}>
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold",
+                              category.className,
+                            )}
+                          >
                             <CategoryIcon className="h-3.5 w-3.5" />
                             {category.label}
                           </span>
-                          <Badge className={cn('border text-[0.66rem] font-medium', bookingStatuses[entry.status].badgeClassName)}>
+                          <Badge
+                            className={cn(
+                              "border text-[0.66rem] font-medium",
+                              bookingStatuses[entry.status].badgeClassName,
+                            )}
+                          >
                             {bookingStatuses[entry.status].label}
                           </Badge>
                         </div>
                       </div>
                     </div>
-                  )
+                  );
                 })
               ) : (
                 <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-6 text-center">
                   <CalendarClock className="h-8 w-8 text-slate-400" />
-                  <p className="mt-3 text-[0.92rem] font-semibold text-slate-700">Sin citas registradas</p>
-                  <p className="mt-1 text-[0.8rem] text-slate-500">El historial aparecerá aquí después de agendar.</p>
+                  <p className="mt-3 text-[0.92rem] font-semibold text-slate-700">
+                    Sin citas registradas
+                  </p>
+                  <p className="mt-1 text-[0.8rem] text-slate-500">
+                    El historial aparecerá aquí después de agendar.
+                  </p>
                 </div>
               )}
             </div>
+            {history.length ? (
+              <SchedulerPagination
+                {...pagination}
+                label="visitas"
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                pageSize={pageSize}
+              />
+            ) : null}
           </div>
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

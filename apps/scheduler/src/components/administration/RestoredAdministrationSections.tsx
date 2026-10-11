@@ -56,6 +56,11 @@ import {
   schedulerWeekdayOptions,
 } from "@/lib/scheduler-administration-presentation";
 import { useSchedulerSession } from "@/lib/session";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "@/lib/scheduler-report-presentation";
 import {
   ConflictNotice,
   QueryBoundary,
@@ -624,8 +629,19 @@ export function RestoredCommissionsSection() {
   const [draft, setDraft] = useState<CommissionDraft>(() =>
     emptyCommissionDraft(undefined),
   );
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const data = query.data;
   const onSaved = refreshAdministration(query.reload);
+  const pagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        data?.administration.commissionPolicies ?? [],
+        page,
+        pageSize,
+      ),
+    [data?.administration.commissionPolicies, page, pageSize],
+  );
 
   function edit(
     policy: SchedulerAdministrationCatalogDto["commissionPolicies"][number],
@@ -684,7 +700,7 @@ export function RestoredCommissionsSection() {
         onRetry={() => void query.reload()}
       >
         <div className="grid gap-4 lg:grid-cols-2">
-          {data?.administration.commissionPolicies.map((policy) => (
+          {pagination.rows.map((policy) => (
             <Card key={policy.id} className="admin-card">
               <CardContent className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-4">
@@ -726,6 +742,13 @@ export function RestoredCommissionsSection() {
             </Card>
           ))}
         </div>
+        <SchedulerPagination
+          {...pagination}
+          label="políticas"
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSize={pageSize}
+        />
       </QueryBoundary>
       <AdministrationCoverageNotice title="Nómina conserva la liquidación final">
         Scheduler versiona reglas y escalas, pero no crea pagos, recibos ni
@@ -786,8 +809,19 @@ export function RestoredGiftCardsSection() {
   const [draft, setDraft] = useState<GiftCardDraft>(() => emptyGiftCard());
   const [conflict, setConflict] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const data = query.data;
   const onSaved = refreshAdministration(query.reload);
+  const pagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        data?.administration.giftCards ?? [],
+        page,
+        pageSize,
+      ),
+    [data?.administration.giftCards, page, pageSize],
+  );
 
   function edit(card: SchedulerAdministrationCatalogDto["giftCards"][number]) {
     setDraft({
@@ -882,7 +916,7 @@ export function RestoredGiftCardsSection() {
         onRetry={() => void query.reload()}
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {data?.administration.giftCards.map((card) => (
+          {pagination.rows.map((card) => (
             <Card key={card.id} className="admin-card overflow-hidden">
               <div className="h-24 bg-[radial-gradient(circle_at_top_left,#ead8c7,transparent_62%),linear-gradient(135deg,#263649,#172230)]" />
               <CardContent className="p-5">
@@ -915,6 +949,13 @@ export function RestoredGiftCardsSection() {
             </Card>
           ))}
         </div>
+        <SchedulerPagination
+          {...pagination}
+          label="gift cards"
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSize={pageSize}
+        />
       </QueryBoundary>
       <AdministrationCoverageNotice title="Plantilla, no instrumento financiero">
         El contrato cubre diseño y condiciones. Emisión, venta, saldo y
@@ -1146,6 +1187,8 @@ function DesignStatusColorsSection() {
   const [draft, setDraft] = useState<StatusDefinitionDraft | null>(null);
   const [secret, setSecret] = useState("");
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const selectedCommerceId =
     commerceId || query.data?.operations.commerces[0]?.id || "";
   const statusQuery = useSchedulerQuery(
@@ -1231,6 +1274,15 @@ function DesignStatusColorsSection() {
     (statusQuery.data?.revisions ?? []).filter(
       (revision) => revision.id === definitionId,
     );
+  const statusPagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        statusQuery.data?.items ?? [],
+        page,
+        pageSize,
+      ),
+    [page, pageSize, statusQuery.data?.items],
+  );
 
   return (
     <RestoredAdministrationFrame
@@ -1266,13 +1318,16 @@ function DesignStatusColorsSection() {
                 <h2 className="admin-section-title">Estados de la agenda</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
                   Alta, edición e inactivación lógica. Cada cambio crea una
-                  revisión nueva; las citas y versiones históricas conservan
-                  el nombre, color y vigencia que les correspondía.
+                  revisión nueva; las citas y versiones históricas conservan el
+                  nombre, color y vigencia que les correspondía.
                 </p>
               </div>
               <div className="w-full sm:max-w-xs">
                 <Label>Comercio</Label>
-                <Select value={selectedCommerceId} onValueChange={setCommerceId}>
+                <Select
+                  value={selectedCommerceId}
+                  onValueChange={setCommerceId}
+                >
                   <SelectTrigger className="mt-1.5">
                     <SelectValue />
                   </SelectTrigger>
@@ -1288,7 +1343,7 @@ function DesignStatusColorsSection() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              {(statusQuery.data?.items ?? []).map((definition) => {
+              {statusPagination.rows.map((definition) => {
                 const revisions = revisionsFor(definition.id);
                 return (
                   <article
@@ -1305,7 +1360,11 @@ function DesignStatusColorsSection() {
                           <h3 className="font-semibold text-slate-800">
                             {definition.label}
                           </h3>
-                          <Badge variant={definition.active ? "default" : "secondary"}>
+                          <Badge
+                            variant={
+                              definition.active ? "default" : "secondary"
+                            }
+                          >
                             {definition.active ? "Activo" : "Inactivo"}
                           </Badge>
                           <Badge variant="outline">
@@ -1324,7 +1383,8 @@ function DesignStatusColorsSection() {
                           </Badge>
                         </div>
                         <p className="mt-1 font-mono text-xs text-slate-400">
-                          {definition.key} · {definition.color.toUpperCase()} · v{definition.version}
+                          {definition.key} · {definition.color.toUpperCase()} ·
+                          v{definition.version}
                         </p>
                       </div>
                       {canAdmin ? (
@@ -1340,37 +1400,53 @@ function DesignStatusColorsSection() {
                     </div>
                     <details className="mt-4 border-t border-slate-100 pt-3">
                       <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-slate-600">
-                        <History className="h-4 w-4" /> Historial de versiones ({revisions.length})
+                        <History className="h-4 w-4" /> Historial de versiones (
+                        {revisions.length})
                       </summary>
                       <div className="mt-3 space-y-2">
-                        {revisions.map((revision: DesignStatusDefinitionRevision) => (
-                          <div
-                            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-[#f8f5f1] px-3 py-2 text-xs text-slate-600"
-                            key={`${revision.id}:${revision.version}`}
-                          >
-                            <span className="font-semibold">v{revision.version}</span>
-                            <span>{revision.label}</span>
-                            <span className="font-mono">{revision.color.toUpperCase()}</span>
-                            <span>{revision.active ? "Activo" : "Inactivo"}</span>
-                            <span>
-                              {revision.visibleInAgenda
-                                ? "Visible en agenda"
-                                : "Oculto en agenda"}
-                            </span>
-                            <span className="ml-auto text-slate-400">
-                              {statusRevisionDate(revision.effectiveFrom)}
-                              {revision.effectiveTo
-                                ? ` — ${statusRevisionDate(revision.effectiveTo)}`
-                                : " — vigente"}
-                            </span>
-                          </div>
-                        ))}
+                        {revisions.map(
+                          (revision: DesignStatusDefinitionRevision) => (
+                            <div
+                              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-[#f8f5f1] px-3 py-2 text-xs text-slate-600"
+                              key={`${revision.id}:${revision.version}`}
+                            >
+                              <span className="font-semibold">
+                                v{revision.version}
+                              </span>
+                              <span>{revision.label}</span>
+                              <span className="font-mono">
+                                {revision.color.toUpperCase()}
+                              </span>
+                              <span>
+                                {revision.active ? "Activo" : "Inactivo"}
+                              </span>
+                              <span>
+                                {revision.visibleInAgenda
+                                  ? "Visible en agenda"
+                                  : "Oculto en agenda"}
+                              </span>
+                              <span className="ml-auto text-slate-400">
+                                {statusRevisionDate(revision.effectiveFrom)}
+                                {revision.effectiveTo
+                                  ? ` — ${statusRevisionDate(revision.effectiveTo)}`
+                                  : " — vigente"}
+                              </span>
+                            </div>
+                          ),
+                        )}
                       </div>
                     </details>
                   </article>
                 );
               })}
             </div>
+            <SchedulerPagination
+              {...statusPagination}
+              label="status"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              pageSize={pageSize}
+            />
             <p className="rounded-2xl bg-[#f8f5f1] p-4 text-sm leading-6 text-slate-500">
               Los estados canónicos actualizan su color vigente en Agenda. Los
               estados personalizados quedan listos como propuesta de catálogo;
@@ -1381,10 +1457,15 @@ function DesignStatusColorsSection() {
         </Card>
       </QueryBoundary>
 
-      <Dialog open={Boolean(draft)} onOpenChange={(open) => !open && setDraft(null)}>
+      <Dialog
+        open={Boolean(draft)}
+        onOpenChange={(open) => !open && setDraft(null)}
+      >
         <DialogContent className="admin-dialog max-w-lg overflow-x-hidden">
           <DialogHeader>
-            <DialogTitle>{draft?.id ? "Editar status" : "Agregar status"}</DialogTitle>
+            <DialogTitle>
+              {draft?.id ? "Editar status" : "Agregar status"}
+            </DialogTitle>
           </DialogHeader>
           {draft ? (
             <div className="space-y-4">
@@ -1397,7 +1478,9 @@ function DesignStatusColorsSection() {
                   value={draft.label}
                   onChange={(event) =>
                     setDraft((current) =>
-                      current ? { ...current, label: event.target.value } : current,
+                      current
+                        ? { ...current, label: event.target.value }
+                        : current,
                     )
                   }
                 />
@@ -1411,7 +1494,9 @@ function DesignStatusColorsSection() {
                     value={draft.color}
                     onChange={(event) =>
                       setDraft((current) =>
-                        current ? { ...current, color: event.target.value } : current,
+                        current
+                          ? { ...current, color: event.target.value }
+                          : current,
                       )
                     }
                   />
@@ -1422,10 +1507,16 @@ function DesignStatusColorsSection() {
                     id="status-color-picker"
                     className="mt-1.5 h-10 cursor-pointer p-1"
                     type="color"
-                    value={/^#[0-9a-fA-F]{6}$/.test(draft.color) ? draft.color : "#9a7658"}
+                    value={
+                      /^#[0-9a-fA-F]{6}$/.test(draft.color)
+                        ? draft.color
+                        : "#9a7658"
+                    }
                     onChange={(event) =>
                       setDraft((current) =>
-                        current ? { ...current, color: event.target.value } : current,
+                        current
+                          ? { ...current, color: event.target.value }
+                          : current,
                       )
                     }
                   />
@@ -1437,7 +1528,9 @@ function DesignStatusColorsSection() {
                   value={draft.active ? "ACTIVE" : "INACTIVE"}
                   onValueChange={(value) =>
                     setDraft((current) =>
-                      current ? { ...current, active: value === "ACTIVE" } : current,
+                      current
+                        ? { ...current, active: value === "ACTIVE" }
+                        : current,
                     )
                   }
                 >
@@ -1472,7 +1565,8 @@ function DesignStatusColorsSection() {
                       Mostrar en la agenda
                     </span>
                     <span className="mt-1 block text-xs leading-5 text-slate-500">
-                      Ocultarlo no borra citas, métricas ni versiones históricas.
+                      Ocultarlo no borra citas, métricas ni versiones
+                      históricas.
                     </span>
                   </span>
                   <span
@@ -1500,7 +1594,8 @@ function DesignStatusColorsSection() {
                   onChange={(event) => setSecret(event.target.value)}
                 />
                 <p className="mt-1.5 text-xs text-slate-400">
-                  Autoriza sólo esta versión. El código no se guarda en el historial.
+                  Autoriza sólo esta versión. El código no se guarda en el
+                  historial.
                 </p>
               </div>
               <div className="flex justify-end border-t border-slate-200 pt-4">
@@ -1541,6 +1636,8 @@ function CanonicalStatusColorsSection() {
   const [authorizationOpen, setAuthorizationOpen] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const selectedCommerceId =
     commerceId || query.data?.operations.commerces[0]?.id || "";
   const existing = useMemo(
@@ -1549,6 +1646,15 @@ function CanonicalStatusColorsSection() {
         (item) => item.commerceId === selectedCommerceId,
       )?.colors ?? [],
     [query.data?.administration.statusColors, selectedCommerceId],
+  );
+  const statusPagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        [...SCHEDULER_APPOINTMENT_STATUSES],
+        page,
+        pageSize,
+      ),
+    [page, pageSize],
   );
   useEffect(() => {
     setColors({});
@@ -1657,7 +1763,7 @@ function CanonicalStatusColorsSection() {
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {SCHEDULER_APPOINTMENT_STATUSES.map((status) => {
+              {statusPagination.rows.map((status) => {
                 const color =
                   colors[status] ??
                   existing.find((item) => item.status === status)?.color ??
@@ -1696,6 +1802,13 @@ function CanonicalStatusColorsSection() {
                 );
               })}
             </div>
+            <SchedulerPagination
+              {...statusPagination}
+              label="status"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              pageSize={pageSize}
+            />
             {canAdmin ? (
               <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <button
@@ -1792,8 +1905,44 @@ export function RestoredServiceExtensions() {
     capacity: "1",
   });
   const [saving, setSaving] = useState(false);
+  const [packagePage, setPackagePage] = useState(1);
+  const [packagePageSize, setPackagePageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const [addonPage, setAddonPage] = useState(1);
+  const [addonPageSize, setAddonPageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const [classPage, setClassPage] = useState(1);
+  const [classPageSize, setClassPageSize] =
+    useState<SchedulerReportPageSize>(20);
   const data = query.data;
   const onSaved = refreshAdministration(query.reload);
+  const packagePagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        data?.administration.packages ?? [],
+        packagePage,
+        packagePageSize,
+      ),
+    [data?.administration.packages, packagePage, packagePageSize],
+  );
+  const addonPagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        data?.administration.addons ?? [],
+        addonPage,
+        addonPageSize,
+      ),
+    [addonPage, addonPageSize, data?.administration.addons],
+  );
+  const classPagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        data?.administration.classSchedules ?? [],
+        classPage,
+        classPageSize,
+      ),
+    [classPage, classPageSize, data?.administration.classSchedules],
+  );
 
   async function savePackage() {
     const profile = data?.administration.packages.find(
@@ -2002,7 +2151,7 @@ export function RestoredServiceExtensions() {
                   ) : null}
                 </div>
                 <div className="mt-4 space-y-3">
-                  {data?.administration.packages.map((item) => (
+                  {packagePagination.rows.map((item) => (
                     <button
                       key={item.id}
                       type="button"
@@ -2031,13 +2180,20 @@ export function RestoredServiceExtensions() {
                     </button>
                   ))}
                 </div>
+                <SchedulerPagination
+                  {...packagePagination}
+                  label="paquetes"
+                  onPageChange={setPackagePage}
+                  onPageSizeChange={setPackagePageSize}
+                  pageSize={packagePageSize}
+                />
               </CardContent>
             </Card>
             <Card className="admin-card">
               <CardContent className="p-5">
                 <h3 className="admin-section-title">Complementos</h3>
                 <div className="mt-4 space-y-3">
-                  {data?.administration.addons.map((item) => (
+                  {addonPagination.rows.map((item) => (
                     <button
                       key={item.id}
                       type="button"
@@ -2059,13 +2215,20 @@ export function RestoredServiceExtensions() {
                     </button>
                   ))}
                 </div>
+                <SchedulerPagination
+                  {...addonPagination}
+                  label="complementos"
+                  onPageChange={setAddonPage}
+                  onPageSizeChange={setAddonPageSize}
+                  pageSize={addonPageSize}
+                />
               </CardContent>
             </Card>
             <Card className="admin-card">
               <CardContent className="p-5">
                 <h3 className="admin-section-title">Horarios de clase</h3>
                 <div className="mt-4 space-y-3">
-                  {data?.administration.classSchedules.map((item) => (
+                  {classPagination.rows.map((item) => (
                     <div
                       key={item.id}
                       className="rounded-xl border border-slate-200 p-3 text-sm"
@@ -2096,6 +2259,13 @@ export function RestoredServiceExtensions() {
                     </div>
                   ))}
                 </div>
+                <SchedulerPagination
+                  {...classPagination}
+                  label="horarios"
+                  onPageChange={setClassPage}
+                  onPageSizeChange={setClassPageSize}
+                  pageSize={classPageSize}
+                />
               </CardContent>
             </Card>
           </div>

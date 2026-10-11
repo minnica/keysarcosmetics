@@ -1,6 +1,6 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
+import { useState } from "react";
 import {
   type ColumnDef,
   type SortingState,
@@ -10,53 +10,72 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
-} from '@tanstack/react-table'
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Search } from 'lucide-react'
-import { Button } from './button'
-import { Input } from './input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table'
+} from "@tanstack/react-table";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+} from "lucide-react";
+import { Button } from "./button";
+import { Input } from "./input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./table";
 
 const PAGE_SIZE_OPTIONS = [
-  { label: '10', value: '10' },
-  { label: '20', value: '20' },
-  { label: '50', value: '50' },
-  { label: '100', value: '100' },
-  { label: 'Todos', value: 'all' },
-]
+  { label: "20", value: "20" },
+  { label: "40", value: "40" },
+  { label: "60", value: "60" },
+  { label: "Todos", value: "all" },
+];
 
 interface DataTableLabels {
-  records?: string
-  all?: string
-  results?: (count: number) => string
+  records?: string;
+  all?: string;
+  results?: (count: number) => string;
 }
 
-type ColumnAlignment = 'left' | 'center' | 'right'
+type ColumnAlignment = "left" | "center" | "right";
 
 type ColumnMeta = {
-  align?: ColumnAlignment
-}
+  align?: ColumnAlignment;
+};
 
 interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
-  data: TData[]
-  emptyMessage?: string
-  searchPlaceholder?: string
-  pageSize?: number
-  labels?: DataTableLabels
+  columns: ColumnDef<TData, TValue>[];
+  data: TData[];
+  emptyMessage?: string;
+  searchPlaceholder?: string;
+  pageSize?: number;
+  labels?: DataTableLabels;
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
-  emptyMessage = 'Sin resultados.',
-  searchPlaceholder = 'Buscar...',
+  emptyMessage = "Sin resultados.",
+  searchPlaceholder = "Buscar...",
   pageSize = 20,
   labels,
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [globalFilter, setGlobalFilter] = useState('')
-  const [pageSizeOption, setPageSizeOption] = useState(String(pageSize))
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [globalFilter, setGlobalFilter] = useState("");
+  const [pageSizeOption, setPageSizeOption] = useState(String(pageSize));
 
   const table = useReactTable({
     data,
@@ -70,22 +89,24 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageSize } },
     autoResetPageIndex: true,
-  })
+  });
 
   function handlePageSizeChange(option: string) {
-    setPageSizeOption(option)
-    const size = option === 'all' ? 99999 : parseInt(option)
-    table.setPageSize(size)
-    table.setPageIndex(0)
+    setPageSizeOption(option);
+    const size = option === "all" ? 99999 : parseInt(option);
+    table.setPageSize(size);
+    table.setPageIndex(0);
   }
 
-  const pageCount = table.getPageCount()
-  const pageIndex = table.getState().pagination.pageIndex
-  const totalFiltered = table.getFilteredRowModel().rows.length
-  const showPagination = pageSizeOption !== 'all'
-  const recordsLabel = (labels?.records ?? 'Registros').toUpperCase()
-  const allLabel = (labels?.all ?? 'Todos').toUpperCase()
-  const resultsLabel = labels?.results ?? ((count: number) => `${count} resultado${count !== 1 ? 's' : ''}`)
+  const pageCount = table.getPageCount();
+  const pageIndex = table.getState().pagination.pageIndex;
+  const totalFiltered = table.getFilteredRowModel().rows.length;
+  const showPagination = pageSizeOption !== "all";
+  const recordsLabel = (labels?.records ?? "Registros").toUpperCase();
+  const allLabel = (labels?.all ?? "Todos").toUpperCase();
+  const resultsLabel =
+    labels?.results ??
+    ((count: number) => `${count} resultado${count !== 1 ? "s" : ""}`);
 
   return (
     <div className="space-y-3">
@@ -94,7 +115,7 @@ export function DataTable<TData, TValue>({
         <div className="relative flex-1">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
-            style={{ color: 'var(--text-muted)' }}
+            style={{ color: "var(--text-muted)" }}
           />
           <Input
             placeholder={searchPlaceholder.toUpperCase()}
@@ -104,7 +125,10 @@ export function DataTable<TData, TValue>({
           />
         </div>
         <div className="flex items-center justify-between gap-2 sm:shrink-0 sm:justify-start">
-          <span className="text-[0.82rem] whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+          <span
+            className="text-[0.82rem] whitespace-nowrap"
+            style={{ color: "var(--text-muted)" }}
+          >
             {recordsLabel}
           </span>
           <Select value={pageSizeOption} onValueChange={handlePageSizeChange}>
@@ -114,7 +138,7 @@ export function DataTable<TData, TValue>({
             <SelectContent>
               {PAGE_SIZE_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.value === 'all' ? allLabel : opt.label}
+                  {opt.value === "all" ? allLabel : opt.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -123,17 +147,22 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Tabla */}
-      <div
-        className="overflow-x-auto rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)]"
-      >
+      <div className="overflow-x-auto rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)]">
         <Table>
           <TableHeader className="[&_tr]:border-[color:var(--border-color)]">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
-                  const canSort = header.column.getCanSort()
-                  const align = (header.column.columnDef.meta as ColumnMeta | undefined)?.align
-                  const headAlignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+                  const canSort = header.column.getCanSort();
+                  const align = (
+                    header.column.columnDef.meta as ColumnMeta | undefined
+                  )?.align;
+                  const headAlignClass =
+                    align === "right"
+                      ? "text-right"
+                      : align === "center"
+                        ? "text-center"
+                        : "text-left";
                   return (
                     <TableHead
                       key={header.id}
@@ -141,23 +170,29 @@ export function DataTable<TData, TValue>({
                     >
                       {header.isPlaceholder ? null : canSort ? (
                         <button
-                          className={`flex w-full items-center gap-1 select-none transition-opacity hover:opacity-70 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'}`}
+                          className={`flex w-full items-center gap-1 select-none transition-opacity hover:opacity-70 ${align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start"}`}
                           onClick={() => header.column.toggleSorting()}
                         >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {header.column.getIsSorted() === 'asc' ? (
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                          {header.column.getIsSorted() === "asc" ? (
                             <ArrowUp className="h-3.5 w-3.5 shrink-0" />
-                          ) : header.column.getIsSorted() === 'desc' ? (
+                          ) : header.column.getIsSorted() === "desc" ? (
                             <ArrowDown className="h-3.5 w-3.5 shrink-0" />
                           ) : (
                             <ArrowUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
                           )}
                         </button>
                       ) : (
-                        flexRender(header.column.columnDef.header, header.getContext())
+                        flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )
                       )}
                     </TableHead>
-                  )
+                  );
                 })}
               </TableRow>
             ))}
@@ -167,15 +202,18 @@ export function DataTable<TData, TValue>({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
+                  data-state={row.getIsSelected() && "selected"}
                   className="border-[color:var(--border-color)] hover:bg-[color:var(--table-row-hover)] data-[state=selected]:bg-[color:var(--table-row-selected)]"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                      className={`border-[color:var(--border-color)] text-[0.88rem] text-[color:var(--table-body-text)] ${(cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'right' ? 'text-right' : (cell.column.columnDef.meta as ColumnMeta | undefined)?.align === 'center' ? 'text-center' : 'text-left'}`}
+                      className={`border-[color:var(--border-color)] text-[0.88rem] text-[color:var(--table-body-text)] ${(cell.column.columnDef.meta as ColumnMeta | undefined)?.align === "right" ? "text-right" : (cell.column.columnDef.meta as ColumnMeta | undefined)?.align === "center" ? "text-center" : "text-left"}`}
                     >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -185,7 +223,7 @@ export function DataTable<TData, TValue>({
                 <TableCell
                   colSpan={columns.length}
                   className="h-24 text-center text-[0.9rem]"
-                  style={{ color: 'var(--text-muted)' }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   {emptyMessage.toUpperCase()}
                 </TableCell>
@@ -197,7 +235,7 @@ export function DataTable<TData, TValue>({
 
       {/* Paginación */}
       <div className="flex items-center justify-between">
-        <p className="text-[0.82rem]" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-[0.82rem]" style={{ color: "var(--text-muted)" }}>
           {resultsLabel(totalFiltered).toUpperCase()}
         </p>
         {showPagination && (
@@ -212,8 +250,11 @@ export function DataTable<TData, TValue>({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-[0.82rem]" style={{ color: 'var(--text-muted)' }}>
-              {pageCount > 0 ? `${pageIndex + 1} / ${pageCount}` : '—'}
+            <span
+              className="text-[0.82rem]"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {pageCount > 0 ? `${pageIndex + 1} / ${pageCount}` : "—"}
             </span>
             <Button
               variant="outline"
@@ -229,5 +270,5 @@ export function DataTable<TData, TValue>({
         )}
       </div>
     </div>
-  )
+  );
 }

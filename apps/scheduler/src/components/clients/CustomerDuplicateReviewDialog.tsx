@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
 import {
   Badge,
   Button,
@@ -19,6 +21,11 @@ import {
 } from "lucide-react";
 import type { DesignCustomerDuplicateCandidate } from "../../../design/contracts";
 import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "@/lib/scheduler-report-presentation";
 
 export function CustomerDuplicateReviewDialog({
   canViewCustomerPhone,
@@ -39,6 +46,12 @@ export function CustomerDuplicateReviewDialog({
   onReview: (candidate: DesignCustomerDuplicateCandidate) => void;
   open: boolean;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
+  const pagination = useMemo(
+    () => paginateSchedulerReportRows(candidates, page, pageSize),
+    [candidates, page, pageSize],
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-[820px] overflow-y-auto rounded-[28px] border-[#e7ddd4] bg-white p-0">
@@ -71,7 +84,7 @@ export function CustomerDuplicateReviewDialog({
               </Button>
             </div>
           ) : candidates.length ? (
-            candidates.map((candidate) => (
+            pagination.rows.map((candidate) => (
               <article
                 className="rounded-2xl border border-[#e2d6ca] bg-white p-4 shadow-[0_8px_24px_rgba(38,54,73,0.04)]"
                 key={candidate.id}
@@ -159,6 +172,15 @@ export function CustomerDuplicateReviewDialog({
               </p>
             </div>
           )}
+          {!loading && !error && candidates.length ? (
+            <SchedulerPagination
+              {...pagination}
+              label="coincidencias"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              pageSize={pageSize}
+            />
+          ) : null}
         </div>
 
         <DialogFooter className="border-t border-[#eee6df] bg-white px-6 py-4">

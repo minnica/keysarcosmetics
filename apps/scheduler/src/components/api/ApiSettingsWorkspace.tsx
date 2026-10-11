@@ -54,6 +54,11 @@ import {
   Upload,
 } from "lucide-react";
 import { schedulerApi } from "@/lib/api";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "@/lib/scheduler-report-presentation";
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import type {
   DesignAuthorizationPolicy,
@@ -182,7 +187,9 @@ function CompanyLogoField({
                 aria-label={`Vista previa de ${asset.fileName}`}
                 className="h-40 w-full bg-contain bg-center bg-no-repeat"
                 role="img"
-                style={{ backgroundImage: `url(${JSON.stringify(asset.dataUrl)})` }}
+                style={{
+                  backgroundImage: `url(${JSON.stringify(asset.dataUrl)})`,
+                }}
               />
             )}
           </div>
@@ -249,6 +256,8 @@ function CustomerQuestionSettings({
   const [required, setRequired] = useState(false);
   const [options, setOptions] = useState("");
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const definitions = useSchedulerQuery(
     () => schedulerApi.customerFieldDefinitions({ branchId }),
     [branchId],
@@ -257,6 +266,10 @@ function CustomerQuestionSettings({
       branchId,
       enabled: Boolean(branchId),
     },
+  );
+  const definitionPagination = useMemo(
+    () => paginateSchedulerReportRows(definitions.data ?? [], page, pageSize),
+    [definitions.data, page, pageSize],
   );
 
   async function createQuestion() {
@@ -404,7 +417,7 @@ function CustomerQuestionSettings({
         </div>
       </div>
       <div className="divide-y divide-[#eee6df]">
-        {(definitions.data ?? []).map((definition) => (
+        {definitionPagination.rows.map((definition) => (
           <div
             className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
             key={definition.id}
@@ -446,6 +459,16 @@ function CustomerQuestionSettings({
           </p>
         ) : null}
       </div>
+      <SchedulerPagination
+        {...definitionPagination}
+        label="preguntas"
+        onPageChange={setPage}
+        onPageSizeChange={(value) => {
+          setPageSize(value);
+          setPage(1);
+        }}
+        pageSize={pageSize}
+      />
     </section>
   );
 }
@@ -479,6 +502,8 @@ function SettingsHeader({ section }: { section: string }) {
 
 function AuthorizationAgentsSettings() {
   const [agents, setAgents] = useState<DesignOperationAgent[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const [authorizationPolicy, setAuthorizationPolicy] =
     useState<DesignAuthorizationPolicy | null>(null);
   const [commercialModels, setCommercialModels] = useState<
@@ -517,6 +542,11 @@ function AuthorizationAgentsSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const agentPagination = useMemo(
+    () => paginateSchedulerReportRows(agents, page, pageSize),
+    [agents, page, pageSize],
+  );
 
   function toggleRoleAuthorization(
     scopeKey: DesignAuthorizationScopeKey,
@@ -823,7 +853,7 @@ function AuthorizationAgentsSettings() {
         {loading ? (
           <p className="p-6 text-sm text-slate-500">Cargando agentes…</p>
         ) : null}
-        {agents.map((agent) => (
+        {agentPagination.rows.map((agent) => (
           <div
             className="grid gap-4 px-5 py-4 xl:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)_220px_auto] xl:items-center sm:px-6"
             key={agent.id}
@@ -891,6 +921,16 @@ function AuthorizationAgentsSettings() {
           </div>
         ))}
       </div>
+      <SchedulerPagination
+        {...agentPagination}
+        label="agentes"
+        onPageChange={setPage}
+        onPageSizeChange={(value) => {
+          setPageSize(value);
+          setPage(1);
+        }}
+        pageSize={pageSize}
+      />
     </section>
   );
 }

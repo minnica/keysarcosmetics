@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+} from "react";
 import type {
   SchedulerConsentRecordDto,
   SchedulerConsentTemplateDto,
@@ -42,6 +48,11 @@ import { schedulerApi, schedulerApiErrorMessage } from "@/lib/api";
 import { formatSchedulerFileSize } from "@/lib/scheduler-engagement-presentation";
 import { useSchedulerSession } from "@/lib/session";
 import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "@/lib/scheduler-report-presentation";
 import {
   QueryBoundary,
   invalidateSchedulerQueries,
@@ -365,15 +376,23 @@ function ConsentRecordsDialog({
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [customerPage, setCustomerPage] = useState(1);
+  const [customerPageSize, setCustomerPageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const [recordPage, setRecordPage] = useState(1);
+  const [recordPageSize, setRecordPageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const customerQueryPageSize =
+    customerPageSize === "ALL" ? 5000 : customerPageSize;
   const customers = useSchedulerQuery(
     () =>
       schedulerApi.searchCustomers({
         query: submittedSearch,
         branchId,
-        page: 1,
-        pageSize: 10,
+        page: customerPage,
+        pageSize: customerQueryPageSize,
       }),
-    [submittedSearch, branchId],
+    [submittedSearch, branchId, customerPage, customerQueryPageSize],
     {
       queryKey: "consents:customer-search",
       branchId,
@@ -392,12 +411,40 @@ function ConsentRecordsDialog({
   const selectedTemplate = templates.find(
     (template) => template.id === templateId,
   );
+  const customerTotal = customers.data?.total ?? 0;
+  const customerTotalPages =
+    customerPageSize === "ALL"
+      ? 1
+      : Math.max(1, Math.ceil(customerTotal / customerPageSize));
+  const customerFrom =
+    customerTotal === 0 || customerPageSize === "ALL"
+      ? customerTotal === 0
+        ? 0
+        : 1
+      : (customerPage - 1) * customerPageSize + 1;
+  const customerTo =
+    customerTotal === 0
+      ? 0
+      : customerPageSize === "ALL"
+        ? customerTotal
+        : Math.min(customerPage * customerPageSize, customerTotal);
+  const recordPagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        records.data ?? [],
+        recordPage,
+        recordPageSize,
+      ),
+    [recordPage, recordPageSize, records.data],
+  );
 
   useEffect(() => {
     if (!open) {
       setCustomerId("");
       setSubmittedSearch("");
       setSearch("");
+      setCustomerPage(1);
+      setRecordPage(1);
     }
   }, [open]);
 
@@ -463,6 +510,8 @@ function ConsentRecordsDialog({
                 onValueChange={(value) => {
                   setBranchId(value);
                   setCustomerId("");
+                  setCustomerPage(1);
+                  setRecordPage(1);
                 }}
                 value={branchId}
               >
@@ -486,8 +535,10 @@ function ConsentRecordsDialog({
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                if (search.trim().length >= 2)
+                if (search.trim().length >= 2) {
+                  setCustomerPage(1);
                   setSubmittedSearch(search.trim());
+                }
               }}
             >
               <Label htmlFor="consent-customer-search">Buscar clienta</Label>
@@ -526,6 +577,19 @@ function ConsentRecordsDialog({
                 </span>
               </button>
             ))}
+            {customers.data?.items.length ? (
+              <SchedulerPagination
+                from={customerFrom}
+                label="clientes"
+                onPageChange={setCustomerPage}
+                onPageSizeChange={setCustomerPageSize}
+                page={Math.min(customerPage, customerTotalPages)}
+                pageSize={customerPageSize}
+                to={customerTo}
+                total={customerTotal}
+                totalPages={customerTotalPages}
+              />
+            ) : null}
             {customerId && canWrite ? (
               <div className="border-t border-[#e7ddd4] pt-4">
                 <Label htmlFor="consent-template-version">Consentimiento</Label>
@@ -577,7 +641,7 @@ function ConsentRecordsDialog({
                     Selecciona una clienta para consultar su historial.
                   </p>
                 ) : null}
-                {records.data?.map((record) => (
+                {recordPagination.rows.map((record) => (
                   <article
                     className="rounded-xl border border-[#e7ddd4] bg-white p-4"
                     key={record.id}
@@ -634,6 +698,15 @@ function ConsentRecordsDialog({
                   </article>
                 ))}
               </div>
+              {customerId && records.data?.length ? (
+                <SchedulerPagination
+                  {...recordPagination}
+                  label="consentimientos"
+                  onPageChange={setRecordPage}
+                  onPageSizeChange={setRecordPageSize}
+                  pageSize={recordPageSize}
+                />
+              ) : null}
             </QueryBoundary>
           </section>
         </div>
@@ -674,6 +747,8 @@ export function RestoredConsentsSection() {
   const [commerceId, setCommerceId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
 
   function openEditor(template?: SchedulerConsentTemplateDto) {
     setEditing(template ?? null);
@@ -718,6 +793,10 @@ export function RestoredConsentsSection() {
   const active = (templates.data ?? []).filter(
     (template) => template.active,
   ).length;
+  const templatePagination = useMemo(
+    () => paginateSchedulerReportRows(templates.data ?? [], page, pageSize),
+    [page, pageSize, templates.data],
+  );
 
   return (
     <RestoredAdministrationFrame
@@ -805,7 +884,7 @@ export function RestoredConsentsSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {templates.data?.map((template) => (
+                  {templatePagination.rows.map((template) => (
                     <tr
                       className="border-b border-[#eee7e1] last:border-0"
                       key={template.id}
@@ -866,6 +945,13 @@ export function RestoredConsentsSection() {
                 </tbody>
               </table>
             </div>
+            <SchedulerPagination
+              {...templatePagination}
+              label="documentos"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              pageSize={pageSize}
+            />
           </CardContent>
         </Card>
       </QueryBoundary>

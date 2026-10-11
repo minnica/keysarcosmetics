@@ -49,15 +49,18 @@ import {
 import type { SchedulerReportExportFormat } from "@/lib/scheduler-report-export";
 import {
   groupReportRows,
+  paginateSchedulerReportRows,
   reportCellNumber,
   reportCellText,
   reportMetricCards,
   reportTrend,
   schedulerReportViews,
   type SchedulerReportBundle,
+  type SchedulerReportPageSize,
   type SchedulerReportView,
 } from "@/lib/scheduler-report-presentation";
 import { QueryBoundary } from "@/components/api/ApiState";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
 import { ReportsHeader } from "./ReportsHeader";
 
 const reportLabels: Record<SchedulerReportKey, string> = {
@@ -195,7 +198,10 @@ function TrendPanel({
               className="grid min-w-0 grid-cols-[minmax(0,72px)_minmax(0,1fr)_minmax(0,48px)] items-center gap-2 sm:grid-cols-[88px_minmax(0,1fr)_52px] sm:gap-3"
               key={point.label}
             >
-              <span className="truncate text-xs font-medium text-slate-400" title={point.label}>
+              <span
+                className="truncate text-xs font-medium text-slate-400"
+                title={point.label}
+              >
                 {point.label}
               </span>
               <span className="h-2.5 overflow-hidden rounded-full bg-[#eee8e2]">
@@ -280,8 +286,14 @@ function DatasetTable({
 }: {
   dataset: SchedulerReportDatasetDto | undefined;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const columns = (dataset?.columns ?? []).filter(
     (column) => !technicalColumn.test(column),
+  );
+  const pagination = useMemo(
+    () => paginateSchedulerReportRows(dataset?.rows ?? [], page, pageSize),
+    [dataset?.rows, page, pageSize],
   );
   return (
     <section className="reservation-report-card overflow-hidden">
@@ -309,8 +321,10 @@ function DatasetTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {dataset?.rows.map((row, index) => (
-              <TableRow key={`${dataset.key}-${index}`}>
+            {pagination.rows.map((row, index) => (
+              <TableRow
+                key={`${dataset?.key ?? "dataset"}-${pagination.from + index}`}
+              >
                 {columns.map((column) => (
                   <TableCell className="whitespace-nowrap" key={column}>
                     {formatValue(column, row[column])}
@@ -321,6 +335,13 @@ function DatasetTable({
           </TableBody>
         </Table>
       </div>
+      <SchedulerPagination
+        {...pagination}
+        label="filas"
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        pageSize={pageSize}
+      />
     </section>
   );
 }

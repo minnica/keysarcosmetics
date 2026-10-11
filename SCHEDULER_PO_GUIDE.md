@@ -978,3 +978,18 @@ las búsquedas no deben aceptar coincidencia por teléfono, los DTO no deben
 entregar el valor y ninguna exportación debe incluirlo cuando falte el grant.
 El ojo tachado es la representación visual; no sustituye la redacción
 autoritativa del API ni su auditoría.
+
+El 10 de octubre de 2026 se normalizó la navegación de registros en los
+módulos y submódulos de Scheduler. Las tablas y colecciones operativas de
+Clientes, Recuperación, historiales, duplicados, Consentimientos, Mensajería,
+Movimientos, Configuraciones, Administración y Reportes ofrecen páginas de
+**20, 40, 60 o Todos** los registros, con conteo, rango visible y controles
+anterior/siguiente. Los calendarios, gráficas, indicadores y campos repetibles
+de formularios conservan su navegación propia porque no son tablas de
+registros. Las descargas e impresiones continúan respetando el periodo, los
+filtros o la selección completa aplicada, sin limitarse a la página visible.
+
+En **Clientes → Recuperación**, el reporte **Compras en la primera cita de
+recuperación** muestra ahora la sucursal de origen de cada cliente junto al
+nombre y la fecha de su primera cita. Las tablas de rendimiento, compras y
+casos se paginan por separado para que cambiar una vista no altere las otras.

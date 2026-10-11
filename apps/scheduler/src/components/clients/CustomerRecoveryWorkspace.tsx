@@ -41,6 +41,11 @@ import {
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import { useSchedulerSession } from "@/lib/session";
 import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "@/lib/scheduler-report-presentation";
 import type {
   DesignCustomerRecoveryCase,
   DesignCustomerRecoveryActivityStatus,
@@ -181,6 +186,14 @@ export function CustomerRecoveryWorkspace() {
   const [performanceDimension, setPerformanceDimension] = useState<
     "GROUP" | "SELLER" | "AGENT"
   >("GROUP");
+  const [performancePage, setPerformancePage] = useState(1);
+  const [performancePageSize, setPerformancePageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const [purchasePage, setPurchasePage] = useState(1);
+  const [purchasePageSize, setPurchasePageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const [casePage, setCasePage] = useState(1);
+  const [casePageSize, setCasePageSize] = useState<SchedulerReportPageSize>(20);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<DesignCustomerRecoveryCase | null>(
     null,
@@ -210,8 +223,13 @@ export function CustomerRecoveryWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [items, currentSettings, operationAgents, recoveryTeams, purchases] =
-        await Promise.all([
+      const [
+        items,
+        currentSettings,
+        operationAgents,
+        recoveryTeams,
+        purchases,
+      ] = await Promise.all([
         schedulerDesignProposals.customerRecoveryCases({
           branchIds: [branchId],
         }),
@@ -268,9 +286,8 @@ export function CustomerRecoveryWorkspace() {
             item.customerName,
             canViewCustomerPhone ? item.phone : null,
             item.portfolioOwnerName,
-          ].some(
-            (value) =>
-              value?.toLocaleLowerCase("es-MX").includes(normalizedQuery),
+          ].some((value) =>
+            value?.toLocaleLowerCase("es-MX").includes(normalizedQuery),
           )),
     );
   }, [
@@ -407,6 +424,29 @@ export function CustomerRecoveryWorkspace() {
           left.name.localeCompare(right.name, "es-MX"),
       );
   }, [cases, performanceDimension, purchaseReport]);
+
+  const performancePagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        performanceRows,
+        performancePage,
+        performancePageSize,
+      ),
+    [performancePage, performancePageSize, performanceRows],
+  );
+  const purchasePagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        purchaseReport?.rows ?? [],
+        purchasePage,
+        purchasePageSize,
+      ),
+    [purchasePage, purchasePageSize, purchaseReport?.rows],
+  );
+  const casePagination = useMemo(
+    () => paginateSchedulerReportRows(filteredCases, casePage, casePageSize),
+    [casePage, casePageSize, filteredCases],
+  );
 
   const allFilteredSelected =
     filteredCases.length > 0 &&
@@ -604,9 +644,13 @@ export function CustomerRecoveryWorkspace() {
         AGENT: "Agente",
       }[performanceDimension];
       await exportRecoveryPerformanceReport(performanceRows, label, format);
-      toast.success(`Reporte de rendimiento generado en ${format.toUpperCase()}.`);
+      toast.success(
+        `Reporte de rendimiento generado en ${format.toUpperCase()}.`,
+      );
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "No fue posible exportar.");
+      toast.error(
+        cause instanceof Error ? cause.message : "No fue posible exportar.",
+      );
     } finally {
       setExportingDashboard(null);
     }
@@ -619,7 +663,9 @@ export function CustomerRecoveryWorkspace() {
       await exportRecoveryPurchaseReport(purchaseReport, format);
       toast.success(`Reporte de compras generado en ${format.toUpperCase()}.`);
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "No fue posible exportar.");
+      toast.error(
+        cause instanceof Error ? cause.message : "No fue posible exportar.",
+      );
     } finally {
       setExportingPurchases(null);
     }
@@ -656,7 +702,10 @@ export function CustomerRecoveryWorkspace() {
             <div className="min-w-[220px] space-y-1.5">
               <Label htmlFor="recovery-branch">Sucursal</Label>
               <Select value={branchId} onValueChange={setBranchId}>
-                <SelectTrigger id="recovery-branch" className="h-11 rounded-xl bg-white">
+                <SelectTrigger
+                  id="recovery-branch"
+                  className="h-11 rounded-xl bg-white"
+                >
                   <SelectValue placeholder="Selecciona" />
                 </SelectTrigger>
                 <SelectContent>
@@ -669,7 +718,9 @@ export function CustomerRecoveryWorkspace() {
               </Select>
             </div>
             <Button
-              disabled={!canExport || !selectedRows.length || Boolean(exporting)}
+              disabled={
+                !canExport || !selectedRows.length || Boolean(exporting)
+              }
               onClick={() => void download("pdf")}
               variant="outline"
             >
@@ -677,7 +728,9 @@ export function CustomerRecoveryWorkspace() {
               {exporting === "pdf" ? "Generando…" : "PDF"}
             </Button>
             <Button
-              disabled={!canExport || !selectedRows.length || Boolean(exporting)}
+              disabled={
+                !canExport || !selectedRows.length || Boolean(exporting)
+              }
               onClick={() => void download("xlsx")}
               variant="outline"
             >
@@ -860,12 +913,13 @@ export function CustomerRecoveryWorkspace() {
               <Select
                 value={performanceDimension}
                 onValueChange={(value) =>
-                  setPerformanceDimension(
-                    value as "GROUP" | "SELLER" | "AGENT",
-                  )
+                  setPerformanceDimension(value as "GROUP" | "SELLER" | "AGENT")
                 }
               >
-                <SelectTrigger id="performance-dimension" className="h-11 rounded-xl bg-white">
+                <SelectTrigger
+                  id="performance-dimension"
+                  className="h-11 rounded-xl bg-white"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -877,14 +931,22 @@ export function CustomerRecoveryWorkspace() {
             </div>
             <div className="flex gap-2">
               <Button
-                disabled={!canExport || !performanceRows.length || Boolean(exportingDashboard)}
+                disabled={
+                  !canExport ||
+                  !performanceRows.length ||
+                  Boolean(exportingDashboard)
+                }
                 onClick={() => void downloadPerformance("pdf")}
                 variant="outline"
               >
                 <FileDown className="mr-2 h-4 w-4" /> PDF
               </Button>
               <Button
-                disabled={!canExport || !performanceRows.length || Boolean(exportingDashboard)}
+                disabled={
+                  !canExport ||
+                  !performanceRows.length ||
+                  Boolean(exportingDashboard)
+                }
                 onClick={() => void downloadPerformance("xlsx")}
                 variant="outline"
               >
@@ -893,52 +955,73 @@ export function CustomerRecoveryWorkspace() {
             </div>
           </div>
           {performanceRows.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
-                  <tr>
-                    <th className="px-5 py-3">Responsable</th>
-                    <th className="px-5 py-3 text-center">Cartera</th>
-                    <th className="px-5 py-3 text-center">Recuperados</th>
-                    <th className="px-5 py-3 text-center">Pendientes</th>
-                    <th className="px-5 py-3 text-center">Perdidos</th>
-                    <th className="px-5 py-3 text-center">Conversión</th>
-                    <th className="px-5 py-3 text-right">Venta recuperada</th>
-                    <th className="px-5 py-3">Última actividad</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {performanceRows.map((row, index) => (
-                    <tr className="border-t border-[#f0e8e1]" key={row.id}>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#263649] text-xs font-bold text-white">
-                            {index + 1}
-                          </span>
-                          <div>
-                            <p className="font-semibold">{row.name}</p>
-                            <p className="text-xs text-slate-500">{row.role}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-center font-semibold">{row.actions}</td>
-                      <td className="px-5 py-4 text-center text-emerald-700">{row.recovered}</td>
-                      <td className="px-5 py-4 text-center text-amber-700">{row.pending}</td>
-                      <td className="px-5 py-4 text-center text-rose-700">{row.lost}</td>
-                      <td className="px-5 py-4 text-center">
-                        <Badge className="rounded-full" variant="outline">
-                          {row.recoveryRate}%
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-4 text-right font-semibold">
-                        {money.format(row.saleAmount)}
-                      </td>
-                      <td className="px-5 py-4 text-slate-500">{formatDate(row.lastActionAt)}</td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-left text-sm">
+                  <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
+                    <tr>
+                      <th className="px-5 py-3">Responsable</th>
+                      <th className="px-5 py-3 text-center">Cartera</th>
+                      <th className="px-5 py-3 text-center">Recuperados</th>
+                      <th className="px-5 py-3 text-center">Pendientes</th>
+                      <th className="px-5 py-3 text-center">Perdidos</th>
+                      <th className="px-5 py-3 text-center">Conversión</th>
+                      <th className="px-5 py-3 text-right">Venta recuperada</th>
+                      <th className="px-5 py-3">Última actividad</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {performancePagination.rows.map((row, index) => (
+                      <tr className="border-t border-[#f0e8e1]" key={row.id}>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#263649] text-xs font-bold text-white">
+                              {performancePagination.from + index}
+                            </span>
+                            <div>
+                              <p className="font-semibold">{row.name}</p>
+                              <p className="text-xs text-slate-500">
+                                {row.role}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-center font-semibold">
+                          {row.actions}
+                        </td>
+                        <td className="px-5 py-4 text-center text-emerald-700">
+                          {row.recovered}
+                        </td>
+                        <td className="px-5 py-4 text-center text-amber-700">
+                          {row.pending}
+                        </td>
+                        <td className="px-5 py-4 text-center text-rose-700">
+                          {row.lost}
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <Badge className="rounded-full" variant="outline">
+                            {row.recoveryRate}%
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-4 text-right font-semibold">
+                          {money.format(row.saleAmount)}
+                        </td>
+                        <td className="px-5 py-4 text-slate-500">
+                          {formatDate(row.lastActionAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <SchedulerPagination
+                {...performancePagination}
+                label="responsables"
+                onPageChange={setPerformancePage}
+                onPageSizeChange={setPerformancePageSize}
+                pageSize={performancePageSize}
+              />
+            </>
           ) : (
             <p className="px-5 py-8 text-sm text-slate-500">
               Aún no existen gestiones para esta vista de rendimiento.
@@ -959,14 +1042,22 @@ export function CustomerRecoveryWorkspace() {
             </div>
             <div className="flex gap-2">
               <Button
-                disabled={!canExport || !purchaseReport?.rows.length || Boolean(exportingPurchases)}
+                disabled={
+                  !canExport ||
+                  !purchaseReport?.rows.length ||
+                  Boolean(exportingPurchases)
+                }
                 onClick={() => void downloadPurchases("pdf")}
                 variant="outline"
               >
                 <FileDown className="mr-2 h-4 w-4" /> PDF
               </Button>
               <Button
-                disabled={!canExport || !purchaseReport?.rows.length || Boolean(exportingPurchases)}
+                disabled={
+                  !canExport ||
+                  !purchaseReport?.rows.length ||
+                  Boolean(exportingPurchases)
+                }
                 onClick={() => void downloadPurchases("xlsx")}
                 variant="outline"
               >
@@ -978,61 +1069,100 @@ export function CustomerRecoveryWorkspace() {
             {[
               ["Clientes compradores", purchaseReport?.summary.customers ?? 0],
               ["Venta", money.format(purchaseReport?.summary.saleAmount ?? 0)],
-              ["Recibido", money.format(purchaseReport?.summary.depositAmount ?? 0)],
-              ["Saldo", money.format(purchaseReport?.summary.balanceAmount ?? 0)],
-              ["Ticket promedio", money.format(purchaseReport?.summary.averageTicket ?? 0)],
+              [
+                "Recibido",
+                money.format(purchaseReport?.summary.depositAmount ?? 0),
+              ],
+              [
+                "Saldo",
+                money.format(purchaseReport?.summary.balanceAmount ?? 0),
+              ],
+              [
+                "Ticket promedio",
+                money.format(purchaseReport?.summary.averageTicket ?? 0),
+              ],
             ].map(([label, value]) => (
               <div className="rounded-2xl bg-[#f8f5f1] p-4" key={String(label)}>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  {label}
+                </p>
                 <p className="mt-2 text-xl font-semibold">{value}</p>
               </div>
             ))}
           </div>
           {purchaseReport?.rows.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
-                  <tr>
-                    <th className="px-5 py-3">Cliente / primera cita</th>
-                    <th className="px-5 py-3">Asignación</th>
-                    <th className="px-5 py-3">Vendedor</th>
-                    <th className="px-5 py-3">Especialista</th>
-                    <th className="px-5 py-3">Resultado</th>
-                    <th className="px-5 py-3 text-right">Venta</th>
-                    <th className="px-5 py-3 text-right">Recibido</th>
-                    <th className="px-5 py-3 text-right">Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {purchaseReport.rows.map((row) => (
-                    <tr className="border-t border-[#f0e8e1]" key={row.recoveryCaseId}>
-                      <td className="px-5 py-4">
-                        <p className="font-semibold">{row.customerName}</p>
-                        <p className="mt-1 text-xs text-slate-500">{formatDate(row.appointmentStartsAt)}</p>
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">
-                        {row.assignedTeamName !== "Sin grupo"
-                          ? row.assignedTeamName
-                          : row.assignedAgentName}
-                      </td>
-                      <td className="px-5 py-4">{row.portfolioOwnerName}</td>
-                      <td className="px-5 py-4">{row.specialistName}</td>
-                      <td className="px-5 py-4">
-                        <Badge variant="outline">
-                          {row.purchaseKind === "LAYAWAY" ? "Apartado" : "Compra"}
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-4 text-right font-semibold">{money.format(row.saleAmount)}</td>
-                      <td className="px-5 py-4 text-right">{money.format(row.depositAmount)}</td>
-                      <td className="px-5 py-4 text-right">{money.format(row.balanceAmount)}</td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left text-sm">
+                  <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
+                    <tr>
+                      <th className="px-5 py-3">
+                        Cliente / sucursal / primera cita
+                      </th>
+                      <th className="px-5 py-3">Asignación</th>
+                      <th className="px-5 py-3">Vendedor</th>
+                      <th className="px-5 py-3">Especialista</th>
+                      <th className="px-5 py-3">Resultado</th>
+                      <th className="px-5 py-3 text-right">Venta</th>
+                      <th className="px-5 py-3 text-right">Recibido</th>
+                      <th className="px-5 py-3 text-right">Saldo</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {purchasePagination.rows.map((row) => (
+                      <tr
+                        className="border-t border-[#f0e8e1]"
+                        key={row.recoveryCaseId}
+                      >
+                        <td className="px-5 py-4">
+                          <p className="font-semibold">{row.customerName}</p>
+                          <p className="mt-1 text-xs font-medium text-[#8c6d52]">
+                            {row.branchName}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatDate(row.appointmentStartsAt)}
+                          </p>
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {row.assignedTeamName !== "Sin grupo"
+                            ? row.assignedTeamName
+                            : row.assignedAgentName}
+                        </td>
+                        <td className="px-5 py-4">{row.portfolioOwnerName}</td>
+                        <td className="px-5 py-4">{row.specialistName}</td>
+                        <td className="px-5 py-4">
+                          <Badge variant="outline">
+                            {row.purchaseKind === "LAYAWAY"
+                              ? "Apartado"
+                              : "Compra"}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-4 text-right font-semibold">
+                          {money.format(row.saleAmount)}
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          {money.format(row.depositAmount)}
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          {money.format(row.balanceAmount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <SchedulerPagination
+                {...purchasePagination}
+                label="compras"
+                onPageChange={setPurchasePage}
+                onPageSizeChange={setPurchasePageSize}
+                pageSize={purchasePageSize}
+              />
+            </>
           ) : (
             <p className="px-5 py-8 text-sm text-slate-500">
-              Aún no hay compras en primeras citas posteriores a la recuperación.
+              Aún no hay compras en primeras citas posteriores a la
+              recuperación.
             </p>
           )}
         </section>
@@ -1055,7 +1185,10 @@ export function CustomerRecoveryWorkspace() {
                 setReason(value as DesignCustomerRecoveryReason | "ALL")
               }
             >
-              <SelectTrigger aria-label="Motivo de recuperación" className="h-11 rounded-xl bg-white">
+              <SelectTrigger
+                aria-label="Motivo de recuperación"
+                className="h-11 rounded-xl bg-white"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1073,7 +1206,10 @@ export function CustomerRecoveryWorkspace() {
                 setStatus(value as DesignCustomerRecoveryStatus | "ALL")
               }
             >
-              <SelectTrigger aria-label="Status de recuperación" className="h-11 rounded-xl bg-white">
+              <SelectTrigger
+                aria-label="Status de recuperación"
+                className="h-11 rounded-xl bg-white"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1086,7 +1222,10 @@ export function CustomerRecoveryWorkspace() {
               </SelectContent>
             </Select>
             <Select value={teamFilter} onValueChange={setTeamFilter}>
-              <SelectTrigger aria-label="Grupo de recuperación" className="h-11 rounded-xl bg-white">
+              <SelectTrigger
+                aria-label="Grupo de recuperación"
+                className="h-11 rounded-xl bg-white"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1099,7 +1238,10 @@ export function CustomerRecoveryWorkspace() {
               </SelectContent>
             </Select>
             <Select value={agentFilter} onValueChange={setAgentFilter}>
-              <SelectTrigger aria-label="Persona asignada" className="h-11 rounded-xl bg-white">
+              <SelectTrigger
+                aria-label="Persona asignada"
+                className="h-11 rounded-xl bg-white"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1119,124 +1261,142 @@ export function CustomerRecoveryWorkspace() {
               recuperación…
             </div>
           ) : filteredCases.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1080px] text-left text-sm">
-                <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
-                  <tr>
-                    <th className="w-12 px-4 py-3">
-                      <input
-                        aria-label="Seleccionar todos los registros filtrados"
-                        checked={allFilteredSelected}
-                        className="h-4 w-4 accent-[#263649]"
-                        onChange={toggleAllFiltered}
-                        type="checkbox"
-                      />
-                    </th>
-                    <th className="px-4 py-3">Cliente</th>
-                    <th className="px-4 py-3">Motivo</th>
-                    <th className="px-4 py-3">Asignación</th>
-                    <th className="px-4 py-3">Actividad de Agenda</th>
-                    <th className="px-4 py-3">Vendedor de cartera</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Gestión</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCases.map((item) => (
-                    <tr className="border-t border-[#f0e8e1] odd:bg-[#fcfaf8]" key={item.id}>
-                      <td className="px-4 py-4">
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1080px] text-left text-sm">
+                  <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
+                    <tr>
+                      <th className="w-12 px-4 py-3">
                         <input
-                          aria-label={`Seleccionar ${item.customerName}`}
-                          checked={selectedIds.has(item.id)}
+                          aria-label="Seleccionar todos los registros filtrados"
+                          checked={allFilteredSelected}
                           className="h-4 w-4 accent-[#263649]"
-                          onChange={() => toggleSelection(item.id)}
+                          onChange={toggleAllFiltered}
                           type="checkbox"
                         />
-                      </td>
-                      <td className="px-4 py-4">
-                        <p className="font-semibold">{item.customerName}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          <SchedulerProtectedPhone
-                            canView={canViewCustomerPhone}
-                            phone={item.phone}
-                          />{" "}
-                          · {item.branchName}
-                        </p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <p className="font-medium text-[#526273]">
-                          {reasonLabels[item.reason]}
-                        </p>
-                        <p className="mt-1 max-w-[260px] text-xs leading-5 text-slate-500">
-                          {item.reasonDetail}
-                        </p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-start gap-2">
-                          {item.assignedTeamId ? (
-                            <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-[#ad8b67]" />
-                          ) : (
-                            <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#ad8b67]" />
-                          )}
-                          <div>
-                            <p className="font-medium text-[#526273]">
-                              {item.assignedTeamName ??
-                                item.assignedAgentName ??
-                                "Sin asignación"}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {item.assignedTeamId ? "Grupo" : "Persona"}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-xs leading-5 text-slate-500">
-                        <RecoveryActivityBadge status={item.activityStatus} />
-                        <span className="block">Detectado: {formatDate(item.eligibilityAt)}</span>
-                        <span className="block">Última cita: {formatDate(item.lastAppointmentAt)}</span>
-                        <span className="block">{item.attendedCount} asistencias</span>
-                      </td>
-                      <td className="px-4 py-4 text-slate-600">
-                        {item.portfolioOwnerName}
-                      </td>
-                      <td className="px-4 py-4">
-                        <RecoveryStatusBadge status={item.status} />
-                        {item.history[0] ? (
-                          <div className="mt-2 max-w-[220px] text-xs text-slate-500">
-                            <p>{item.history[0].notes}</p>
-                            <p className="mt-1 font-medium text-[#526273]">
-                              Agente: {item.history[0].recoveryAgentName}
-                            </p>
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            className="rounded-xl"
-                            disabled={!canWrite}
-                            onClick={() => openAssignment(item)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            Asignar
-                          </Button>
-                          <Button
-                            className="rounded-xl"
-                            disabled={!canWrite}
-                            onClick={() => openUpdate(item)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            Actualizar
-                          </Button>
-                        </div>
-                      </td>
+                      </th>
+                      <th className="px-4 py-3">Cliente</th>
+                      <th className="px-4 py-3">Motivo</th>
+                      <th className="px-4 py-3">Asignación</th>
+                      <th className="px-4 py-3">Actividad de Agenda</th>
+                      <th className="px-4 py-3">Vendedor de cartera</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Gestión</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {casePagination.rows.map((item) => (
+                      <tr
+                        className="border-t border-[#f0e8e1] odd:bg-[#fcfaf8]"
+                        key={item.id}
+                      >
+                        <td className="px-4 py-4">
+                          <input
+                            aria-label={`Seleccionar ${item.customerName}`}
+                            checked={selectedIds.has(item.id)}
+                            className="h-4 w-4 accent-[#263649]"
+                            onChange={() => toggleSelection(item.id)}
+                            type="checkbox"
+                          />
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-semibold">{item.customerName}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            <SchedulerProtectedPhone
+                              canView={canViewCustomerPhone}
+                              phone={item.phone}
+                            />{" "}
+                            · {item.branchName}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-medium text-[#526273]">
+                            {reasonLabels[item.reason]}
+                          </p>
+                          <p className="mt-1 max-w-[260px] text-xs leading-5 text-slate-500">
+                            {item.reasonDetail}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-start gap-2">
+                            {item.assignedTeamId ? (
+                              <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-[#ad8b67]" />
+                            ) : (
+                              <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#ad8b67]" />
+                            )}
+                            <div>
+                              <p className="font-medium text-[#526273]">
+                                {item.assignedTeamName ??
+                                  item.assignedAgentName ??
+                                  "Sin asignación"}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {item.assignedTeamId ? "Grupo" : "Persona"}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-xs leading-5 text-slate-500">
+                          <RecoveryActivityBadge status={item.activityStatus} />
+                          <span className="block">
+                            Detectado: {formatDate(item.eligibilityAt)}
+                          </span>
+                          <span className="block">
+                            Última cita: {formatDate(item.lastAppointmentAt)}
+                          </span>
+                          <span className="block">
+                            {item.attendedCount} asistencias
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-slate-600">
+                          {item.portfolioOwnerName}
+                        </td>
+                        <td className="px-4 py-4">
+                          <RecoveryStatusBadge status={item.status} />
+                          {item.history[0] ? (
+                            <div className="mt-2 max-w-[220px] text-xs text-slate-500">
+                              <p>{item.history[0].notes}</p>
+                              <p className="mt-1 font-medium text-[#526273]">
+                                Agente: {item.history[0].recoveryAgentName}
+                              </p>
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              className="rounded-xl"
+                              disabled={!canWrite}
+                              onClick={() => openAssignment(item)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              Asignar
+                            </Button>
+                            <Button
+                              className="rounded-xl"
+                              disabled={!canWrite}
+                              onClick={() => openUpdate(item)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              Actualizar
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <SchedulerPagination
+                {...casePagination}
+                label="clientes"
+                onPageChange={setCasePage}
+                onPageSizeChange={setCasePageSize}
+                pageSize={casePageSize}
+              />
+            </>
           ) : (
             <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
               <BadgeCheck className="h-7 w-7 text-[#ad8b67]" />
@@ -1296,8 +1456,14 @@ export function CustomerRecoveryWorkspace() {
               <Label htmlFor="assignment-target">
                 {assignmentMode === "TEAM" ? "Grupo" : "Persona"}
               </Label>
-              <Select value={assignmentTargetId} onValueChange={setAssignmentTargetId}>
-                <SelectTrigger id="assignment-target" className="h-11 rounded-xl">
+              <Select
+                value={assignmentTargetId}
+                onValueChange={setAssignmentTargetId}
+              >
+                <SelectTrigger
+                  id="assignment-target"
+                  className="h-11 rounded-xl"
+                >
                   <SelectValue
                     placeholder={
                       assignmentMode === "TEAM"
@@ -1307,11 +1473,13 @@ export function CustomerRecoveryWorkspace() {
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {(assignmentMode === "TEAM" ? teams : agents).map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
+                  {(assignmentMode === "TEAM" ? teams : agents).map(
+                    (option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                      </SelectItem>
+                    ),
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -1390,7 +1558,10 @@ export function CustomerRecoveryWorkspace() {
               <Label htmlFor="recovery-agent">
                 Agente que realizó la recuperación
               </Label>
-              <Select value={recoveryAgentId} onValueChange={setRecoveryAgentId}>
+              <Select
+                value={recoveryAgentId}
+                onValueChange={setRecoveryAgentId}
+              >
                 <SelectTrigger id="recovery-agent" className="h-11 rounded-xl">
                   <SelectValue placeholder="Selecciona al responsable" />
                 </SelectTrigger>
@@ -1412,7 +1583,9 @@ export function CustomerRecoveryWorkspace() {
                 autoComplete="one-time-code"
                 id="recovery-code"
                 inputMode="numeric"
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) =>
+                  setCode(event.target.value.replace(/\D/g, ""))
+                }
                 placeholder="Código personal"
                 type="password"
                 value={code}

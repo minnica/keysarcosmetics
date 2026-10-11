@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   SchedulerMessageChannel,
   SchedulerMessageOutboxDto,
@@ -49,6 +49,11 @@ import {
 } from "@/lib/scheduler-engagement-presentation";
 import { useSchedulerSession } from "@/lib/session";
 import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "@/lib/scheduler-report-presentation";
 import {
   ConflictNotice,
   QueryBoundary,
@@ -349,15 +354,20 @@ function CustomerCommunicationDialog({
   const [source, setSource] = useState("");
   const [sending, setSending] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(newKey);
+  const [customerPage, setCustomerPage] = useState(1);
+  const [customerPageSize, setCustomerPageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const customerQueryPageSize =
+    customerPageSize === "ALL" ? 5000 : customerPageSize;
   const customers = useSchedulerQuery(
     () =>
       schedulerApi.searchCustomers({
         query: submittedQuery,
         branchId,
-        page: 1,
-        pageSize: 10,
+        page: customerPage,
+        pageSize: customerQueryPageSize,
       }),
-    [submittedQuery, branchId],
+    [submittedQuery, branchId, customerPage, customerQueryPageSize],
     {
       queryKey: "communications:customer-search",
       branchId,
@@ -384,6 +394,23 @@ function CustomerCommunicationDialog({
   const scopedTemplates = templates.filter(
     (template) => template.active && template.commerceId === branchCommerceId,
   );
+  const customerTotal = customers.data?.total ?? 0;
+  const customerTotalPages =
+    customerPageSize === "ALL"
+      ? 1
+      : Math.max(1, Math.ceil(customerTotal / customerPageSize));
+  const customerFrom =
+    customerTotal === 0 || customerPageSize === "ALL"
+      ? customerTotal === 0
+        ? 0
+        : 1
+      : (customerPage - 1) * customerPageSize + 1;
+  const customerTo =
+    customerTotal === 0
+      ? 0
+      : customerPageSize === "ALL"
+        ? customerTotal
+        : Math.min(customerPage * customerPageSize, customerTotal);
 
   function changeIntent(change: () => void) {
     change();
@@ -473,6 +500,7 @@ function CustomerCommunicationDialog({
                     setBranchId(value);
                     setCustomerId("");
                     setTemplateId("");
+                    setCustomerPage(1);
                   })
                 }
                 value={branchId}
@@ -497,7 +525,10 @@ function CustomerCommunicationDialog({
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                if (query.trim().length >= 2) setSubmittedQuery(query.trim());
+                if (query.trim().length >= 2) {
+                  setCustomerPage(1);
+                  setSubmittedQuery(query.trim());
+                }
               }}
             >
               <Label htmlFor="message-customer">Buscar clienta</Label>
@@ -536,6 +567,19 @@ function CustomerCommunicationDialog({
                 </span>
               </button>
             ))}
+            {customers.data?.items.length ? (
+              <SchedulerPagination
+                from={customerFrom}
+                label="clientes"
+                onPageChange={setCustomerPage}
+                onPageSizeChange={setCustomerPageSize}
+                page={Math.min(customerPage, customerTotalPages)}
+                pageSize={customerPageSize}
+                to={customerTo}
+                total={customerTotal}
+                totalPages={customerTotalPages}
+              />
+            ) : null}
             <div>
               <Label htmlFor="message-template">Plantilla activa</Label>
               <Select
@@ -723,6 +767,8 @@ export function RestoredCommunicationsSection() {
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
   const [view, setView] = useState<"templates" | "outbox">("templates");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
 
   async function saveTemplate() {
     if (!draft.commerceId || draft.name.trim().length < 2 || !draft.body.trim())
@@ -772,6 +818,22 @@ export function RestoredCommunicationsSection() {
       }),
       {},
     ) ?? {};
+  const templatePagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(
+        content.data?.templates ?? [],
+        page,
+        pageSize,
+      ),
+    [content.data?.templates, page, pageSize],
+  );
+  const outboxPagination = useMemo(
+    () =>
+      paginateSchedulerReportRows(content.data?.outbox ?? [], page, pageSize),
+    [content.data?.outbox, page, pageSize],
+  );
+  const activePagination =
+    view === "templates" ? templatePagination : outboxPagination;
 
   return (
     <RestoredAdministrationFrame
@@ -840,14 +902,20 @@ export function RestoredCommunicationsSection() {
       <div className="flex flex-wrap gap-2">
         <Button
           className={view === "templates" ? "admin-primary" : "bg-white"}
-          onClick={() => setView("templates")}
+          onClick={() => {
+            setView("templates");
+            setPage(1);
+          }}
           variant={view === "templates" ? "default" : "outline"}
         >
           <MessageCircle className="mr-2 h-4 w-4" /> Plantillas
         </Button>
         <Button
           className={view === "outbox" ? "admin-primary" : "bg-white"}
-          onClick={() => setView("outbox")}
+          onClick={() => {
+            setView("outbox");
+            setPage(1);
+          }}
           variant={view === "outbox" ? "default" : "outline"}
         >
           <Clock3 className="mr-2 h-4 w-4" /> Outbox
@@ -874,7 +942,7 @@ export function RestoredCommunicationsSection() {
       >
         {view === "templates" ? (
           <div className="whatsapp-message-list">
-            {content.data?.templates.map((template) => (
+            {templatePagination.rows.map((template) => (
               <Card className="whatsapp-message-row" key={template.id}>
                 <CardContent className="whatsapp-message-row-content">
                   <div className="whatsapp-row-icon">
@@ -922,7 +990,7 @@ export function RestoredCommunicationsSection() {
           </div>
         ) : (
           <div className="space-y-3">
-            {content.data?.outbox.map((message) => (
+            {outboxPagination.rows.map((message) => (
               <Card className="admin-card" key={message.id}>
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -977,6 +1045,13 @@ export function RestoredCommunicationsSection() {
             ))}
           </div>
         )}
+        <SchedulerPagination
+          {...activePagination}
+          label={view === "templates" ? "plantillas" : "mensajes"}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSize={pageSize}
+        />
       </QueryBoundary>
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="admin-dialog admin-dialog-wide max-h-[calc(100dvh-2rem)] max-w-5xl overflow-y-auto overflow-x-hidden">

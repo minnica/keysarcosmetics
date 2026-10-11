@@ -20,6 +20,11 @@ import {
   formatMovementTime,
   groupDesignMovements,
 } from "./scheduler-movement-export";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
+import {
+  paginateSchedulerReportRows,
+  type SchedulerReportPageSize,
+} from "@/lib/scheduler-report-presentation";
 
 function formatMovementDate(value: string): string {
   return new Intl.DateTimeFormat("es-MX", {
@@ -36,6 +41,8 @@ export function ApiMovementsWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [actor, setActor] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(),
   );
@@ -87,6 +94,10 @@ export function ApiMovementsWorkspace() {
     );
   }, [actor, movements, query]);
   const groups = useMemo(() => groupDesignMovements(filtered), [filtered]);
+  const pagination = useMemo(
+    () => paginateSchedulerReportRows(groups, page, pageSize),
+    [groups, page, pageSize],
+  );
 
   function toggleGroup(groupId: string) {
     setExpandedGroups((current) => {
@@ -186,14 +197,20 @@ export function ApiMovementsWorkspace() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 className="h-11 rounded-xl pl-9"
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
                 placeholder="Buscar acción, agente o registro"
                 value={query}
               />
             </label>
             <select
               className="h-11 rounded-xl border border-[#dfd5cc] bg-white px-3 text-sm"
-              onChange={(event) => setActor(event.target.value)}
+              onChange={(event) => {
+                setActor(event.target.value);
+                setPage(1);
+              }}
               value={actor}
             >
               <option value="all">Todos los agentes</option>
@@ -230,7 +247,7 @@ export function ApiMovementsWorkspace() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#eee6df]">
-                  {groups.map((group) => {
+                  {pagination.rows.map((group) => {
                     const expanded = expandedGroups.has(group.id);
                     return (
                       <Fragment key={group.id}>
@@ -332,6 +349,15 @@ export function ApiMovementsWorkspace() {
                 </tbody>
               </table>
             </div>
+          ) : null}
+          {groups.length ? (
+            <SchedulerPagination
+              {...pagination}
+              label="grupos"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              pageSize={pageSize}
+            />
           ) : null}
         </section>
       </main>

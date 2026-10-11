@@ -79,6 +79,7 @@ import { CustomerDuplicateReviewDialog } from "@/components/clients/CustomerDupl
 import { CustomerExportDialog } from "@/components/clients/CustomerExportDialog";
 import { CustomerImportDialog } from "@/components/clients/CustomerImportDialog";
 import { SchedulerProtectedPhone } from "@/components/scheduler/SchedulerProtectedPhone";
+import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
 import {
   SchedulerClientAdvancedFilters,
   type SchedulerClientAdvancedFilterValue,
@@ -390,6 +391,9 @@ export function ApiClientsWorkspace() {
     useState<SchedulerCustomerFinancialHistoryDto | null>(null);
   const [visitPage, setVisitPage] = useState(1);
   const [financialPage, setFinancialPage] = useState(1);
+  const [visitPageSize, setVisitPageSize] = useState<CustomerPageSize>(20);
+  const [financialPageSize, setFinancialPageSize] =
+    useState<CustomerPageSize>(20);
   const [secrets, setSecrets] = useState<Record<SensitiveSection, string>>({
     profile: "",
     visits: "",
@@ -790,7 +794,11 @@ export function ApiClientsWorkspace() {
           await schedulerApi.customerVisits(
             recordCustomer.id,
             authorization.token,
-            { branchId, page: visitPage, pageSize: 10 },
+            {
+              branchId,
+              page: visitPage,
+              pageSize: visitPageSize === "ALL" ? 5000 : visitPageSize,
+            },
           ),
         );
         retainSensitive(section, authorization.expiresAt, () =>
@@ -801,7 +809,11 @@ export function ApiClientsWorkspace() {
           await schedulerApi.customerFinancialHistory(
             recordCustomer.id,
             authorization.token,
-            { branchId, page: financialPage, pageSize: 10 },
+            {
+              branchId,
+              page: financialPage,
+              pageSize: financialPageSize === "ALL" ? 5000 : financialPageSize,
+            },
           ),
         );
         retainSensitive(section, authorization.expiresAt, () =>
@@ -827,6 +839,20 @@ export function ApiClientsWorkspace() {
     clearSensitive(section);
     if (section === "visits") setVisitPage(next);
     else setFinancialPage(next);
+  }
+
+  function changeSensitivePageSize(
+    section: "visits" | "financial",
+    next: CustomerPageSize,
+  ) {
+    clearSensitive(section);
+    if (section === "visits") {
+      setVisitPage(1);
+      setVisitPageSize(next);
+    } else {
+      setFinancialPage(1);
+      setFinancialPageSize(next);
+    }
   }
 
   function toggleMergeCustomer(customer: SchedulerCustomerSummaryDto) {
@@ -1512,6 +1538,7 @@ export function ApiClientsWorkspace() {
         detail={detail}
         financial={financial}
         financialPage={financialPage}
+        financialPageSize={financialPageSize}
         loading={sensitiveLoading}
         errors={sensitiveErrors}
         onClose={closeRecord}
@@ -1537,6 +1564,7 @@ export function ApiClientsWorkspace() {
           }, retention);
         }}
         onPageChange={changeSensitivePage}
+        onPageSizeChange={changeSensitivePageSize}
         onSecretChange={(section, value) =>
           setSecrets((current) => ({ ...current, [section]: value }))
         }
@@ -1546,6 +1574,7 @@ export function ApiClientsWorkspace() {
         secrets={secrets}
         visits={visits}
         visitPage={visitPage}
+        visitPageSize={visitPageSize}
         canWrite={canWrite}
       />
 
@@ -2009,10 +2038,12 @@ function CustomerRecordDialog({
   errors,
   financial,
   financialPage,
+  financialPageSize,
   loading,
   onClose,
   onEdit,
   onPageChange,
+  onPageSizeChange,
   onSecretChange,
   onUnlock,
   open,
@@ -2020,6 +2051,7 @@ function CustomerRecordDialog({
   secrets,
   visits,
   visitPage,
+  visitPageSize,
 }: {
   branchId: string;
   canViewCustomerPhone: boolean;
@@ -2029,10 +2061,15 @@ function CustomerRecordDialog({
   errors: Record<SensitiveSection, string | null>;
   financial: SchedulerCustomerFinancialHistoryDto | null;
   financialPage: number;
+  financialPageSize: CustomerPageSize;
   loading: SensitiveSection | null;
   onClose: () => void;
   onEdit: () => void;
   onPageChange: (section: "visits" | "financial", page: number) => void;
+  onPageSizeChange: (
+    section: "visits" | "financial",
+    pageSize: CustomerPageSize,
+  ) => void;
   onSecretChange: (section: SensitiveSection, value: string) => void;
   onUnlock: (section: SensitiveSection) => void;
   open: boolean;
@@ -2040,6 +2077,7 @@ function CustomerRecordDialog({
   secrets: Record<SensitiveSection, string>;
   visits: DesignCustomerVisitHistoryDto | null;
   visitPage: number;
+  visitPageSize: CustomerPageSize;
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -2120,6 +2158,8 @@ function CustomerRecordDialog({
               <VisitHistory
                 data={visits}
                 onPageChange={(next) => onPageChange("visits", next)}
+                onPageSizeChange={(next) => onPageSizeChange("visits", next)}
+                pageSize={visitPageSize}
               />
             )}
           </section>
@@ -2150,6 +2190,8 @@ function CustomerRecordDialog({
               <FinancialHistory
                 data={financial}
                 onPageChange={(next) => onPageChange("financial", next)}
+                onPageSizeChange={(next) => onPageSizeChange("financial", next)}
+                pageSize={financialPageSize}
               />
             )}
           </section>
@@ -2266,10 +2308,28 @@ function CustomerProfile({
 function VisitHistory({
   data,
   onPageChange,
+  onPageSizeChange,
+  pageSize,
 }: {
   data: DesignCustomerVisitHistoryDto;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: CustomerPageSize) => void;
+  pageSize: CustomerPageSize;
 }) {
+  const totalPages =
+    pageSize === "ALL" ? 1 : Math.max(1, Math.ceil(data.total / pageSize));
+  const from =
+    data.total === 0
+      ? 0
+      : pageSize === "ALL"
+        ? 1
+        : (data.page - 1) * pageSize + 1;
+  const to =
+    data.total === 0
+      ? 0
+      : pageSize === "ALL"
+        ? data.total
+        : Math.min(data.page * pageSize, data.total);
   return (
     <div className="space-y-3">
       {data.items.length ? (
@@ -2337,29 +2397,17 @@ function VisitHistory({
           Sin visitas registradas.
         </p>
       )}
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>
-          Página {data.page} · {data.total} visitas
-        </span>
-        <div className="flex gap-2">
-          <Button
-            disabled={data.page <= 1}
-            onClick={() => onPageChange(data.page - 1)}
-            size="sm"
-            variant="outline"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            disabled={data.page * data.pageSize >= data.total}
-            onClick={() => onPageChange(data.page + 1)}
-            size="sm"
-            variant="outline"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      <SchedulerPagination
+        from={from}
+        label="visitas"
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        page={Math.min(data.page, totalPages)}
+        pageSize={pageSize}
+        to={to}
+        total={data.total}
+        totalPages={totalPages}
+      />
     </div>
   );
 }
@@ -2367,10 +2415,28 @@ function VisitHistory({
 function FinancialHistory({
   data,
   onPageChange,
+  onPageSizeChange,
+  pageSize,
 }: {
   data: SchedulerCustomerFinancialHistoryDto;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: CustomerPageSize) => void;
+  pageSize: CustomerPageSize;
 }) {
+  const totalPages =
+    pageSize === "ALL" ? 1 : Math.max(1, Math.ceil(data.total / pageSize));
+  const from =
+    data.total === 0
+      ? 0
+      : pageSize === "ALL"
+        ? 1
+        : (data.page - 1) * pageSize + 1;
+  const to =
+    data.total === 0
+      ? 0
+      : pageSize === "ALL"
+        ? data.total
+        : Math.min(data.page * pageSize, data.total);
   return (
     <div className="space-y-3">
       {data.items.length ? (
@@ -2419,29 +2485,17 @@ function FinancialHistory({
           Sin movimientos financieros.
         </p>
       )}
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>
-          Página {data.page} · {data.total} tickets
-        </span>
-        <div className="flex gap-2">
-          <Button
-            disabled={data.page <= 1}
-            onClick={() => onPageChange(data.page - 1)}
-            size="sm"
-            variant="outline"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            disabled={data.page * data.pageSize >= data.total}
-            onClick={() => onPageChange(data.page + 1)}
-            size="sm"
-            variant="outline"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      <SchedulerPagination
+        from={from}
+        label="tickets"
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        page={Math.min(data.page, totalPages)}
+        pageSize={pageSize}
+        to={to}
+        total={data.total}
+        totalPages={totalPages}
+      />
     </div>
   );
 }
