@@ -12,6 +12,8 @@ import type {
   DesignCustomerDuplicateCandidate,
   DesignCustomerRecoveryCase,
   DesignCustomerRecoverySettings,
+  DesignCustomerRecoveryTeam,
+  DesignCustomerRecoveryPurchaseReport,
   DesignCustomerLayawaySummary,
   DesignCustomerSpecialistPreference,
   DesignDemoAccountOption,
@@ -128,6 +130,21 @@ export const schedulerDesignProposals: DesignProposalClient = {
   customerRecoveryCases: (input) =>
     request<DesignCustomerRecoveryCase[]>(
       "/api/scheduler/design-proposals/customers/recovery",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  customerRecoveryTeams: (input) =>
+    request<DesignCustomerRecoveryTeam[]>(
+      "/api/scheduler/design-proposals/customers/recovery-teams",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  saveCustomerRecoveryAssignment: (recoveryCaseId, input) =>
+    request<DesignCustomerRecoveryCase>(
+      `/api/scheduler/design-proposals/customers/recovery/${recoveryCaseId}/assignment`,
+      { method: "PUT", body: JSON.stringify(input) },
+    ),
+  customerRecoveryPurchaseReport: (input) =>
+    request<DesignCustomerRecoveryPurchaseReport>(
+      "/api/scheduler/design-proposals/customers/recovery-purchases",
       { method: "POST", body: JSON.stringify(input) },
     ),
   customerRecoverySettings: (branchId) =>

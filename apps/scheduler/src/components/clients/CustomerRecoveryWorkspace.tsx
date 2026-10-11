@@ -32,20 +32,28 @@ import {
   Save,
   Search,
   Settings2,
+  ShoppingBag,
   TrendingDown,
+  UserCheck,
+  UsersRound,
   UserRoundX,
 } from "lucide-react";
 import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import { useSchedulerSession } from "@/lib/session";
 import type {
   DesignCustomerRecoveryCase,
+  DesignCustomerRecoveryActivityStatus,
+  DesignCustomerRecoveryPurchaseReport,
   DesignCustomerRecoveryReason,
   DesignCustomerRecoverySettings,
   DesignCustomerRecoveryStatus,
+  DesignCustomerRecoveryTeam,
   DesignOperationAgent,
 } from "../../../design/contracts";
 import {
   exportCustomerRecoverySelection,
+  exportRecoveryPerformanceReport,
+  exportRecoveryPurchaseReport,
   printCustomerRecoverySelection,
 } from "./customer-recovery-export";
 
@@ -59,6 +67,17 @@ const statusLabels: Record<DesignCustomerRecoveryStatus, string> = {
   PENDING: "Por recuperar",
   RECOVERED: "Recuperado",
   LOST: "Cliente perdido",
+};
+
+const activityLabels: Record<DesignCustomerRecoveryActivityStatus, string> = {
+  AWAITING_APPOINTMENT: "Sin próxima cita",
+  SCHEDULED: "Cita programada",
+  RESCHEDULED: "Reagendó",
+  CANCELED: "Canceló",
+  NO_SHOW: "No asistió",
+  ATTENDED: "Asistió",
+  PURCHASED: "Compró",
+  LAYAWAY: "Realizó apartado",
 };
 
 const emptySettings: DesignCustomerRecoverySettings = {
@@ -77,6 +96,12 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
+const money = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+  maximumFractionDigits: 0,
+});
+
 function RecoveryStatusBadge({
   status,
 }: {
@@ -94,6 +119,28 @@ function RecoveryStatusBadge({
   );
 }
 
+function RecoveryActivityBadge({
+  status,
+}: {
+  status: DesignCustomerRecoveryActivityStatus;
+}) {
+  const className = {
+    AWAITING_APPOINTMENT: "border-slate-200 bg-slate-50 text-slate-600",
+    SCHEDULED: "border-sky-200 bg-sky-50 text-sky-700",
+    RESCHEDULED: "border-violet-200 bg-violet-50 text-violet-700",
+    CANCELED: "border-rose-200 bg-rose-50 text-rose-700",
+    NO_SHOW: "border-orange-200 bg-orange-50 text-orange-700",
+    ATTENDED: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    PURCHASED: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    LAYAWAY: "border-amber-200 bg-amber-50 text-amber-800",
+  }[status];
+  return (
+    <Badge className={`rounded-full ${className}`} variant="outline">
+      {activityLabels[status]}
+    </Badge>
+  );
+}
+
 export function CustomerRecoveryWorkspace() {
   const { bootstrap, canAccess } = useSchedulerSession();
   const canWrite = canAccess("clients", "WRITE");
@@ -103,6 +150,9 @@ export function CustomerRecoveryWorkspace() {
   );
   const [cases, setCases] = useState<DesignCustomerRecoveryCase[]>([]);
   const [agents, setAgents] = useState<DesignOperationAgent[]>([]);
+  const [teams, setTeams] = useState<DesignCustomerRecoveryTeam[]>([]);
+  const [purchaseReport, setPurchaseReport] =
+    useState<DesignCustomerRecoveryPurchaseReport | null>(null);
   const [settings, setSettings] =
     useState<DesignCustomerRecoverySettings>(emptySettings);
   const [settingsDraft, setSettingsDraft] =
@@ -110,6 +160,12 @@ export function CustomerRecoveryWorkspace() {
   const [loading, setLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [exporting, setExporting] = useState<"pdf" | "xlsx" | null>(null);
+  const [exportingDashboard, setExportingDashboard] = useState<
+    "pdf" | "xlsx" | null
+  >(null);
+  const [exportingPurchases, setExportingPurchases] = useState<
+    "pdf" | "xlsx" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [reason, setReason] = useState<DesignCustomerRecoveryReason | "ALL">(
@@ -118,6 +174,11 @@ export function CustomerRecoveryWorkspace() {
   const [status, setStatus] = useState<DesignCustomerRecoveryStatus | "ALL">(
     "ALL",
   );
+  const [teamFilter, setTeamFilter] = useState("ALL");
+  const [agentFilter, setAgentFilter] = useState("ALL");
+  const [performanceDimension, setPerformanceDimension] = useState<
+    "GROUP" | "SELLER" | "AGENT"
+  >("GROUP");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<DesignCustomerRecoveryCase | null>(
     null,
@@ -128,6 +189,13 @@ export function CustomerRecoveryWorkspace() {
   const [recoveryAgentId, setRecoveryAgentId] = useState("");
   const [code, setCode] = useState("");
   const [saving, setSaving] = useState(false);
+  const [assignmentCase, setAssignmentCase] =
+    useState<DesignCustomerRecoveryCase | null>(null);
+  const [assignmentMode, setAssignmentMode] = useState<"TEAM" | "AGENT">(
+    "TEAM",
+  );
+  const [assignmentTargetId, setAssignmentTargetId] = useState("");
+  const [savingAssignment, setSavingAssignment] = useState(false);
 
   useEffect(() => {
     if (!bootstrap?.authorizedBranchIds.includes(branchId)) {
@@ -140,12 +208,19 @@ export function CustomerRecoveryWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [items, currentSettings, operationAgents] = await Promise.all([
+      const [items, currentSettings, operationAgents, recoveryTeams, purchases] =
+        await Promise.all([
         schedulerDesignProposals.customerRecoveryCases({
           branchIds: [branchId],
         }),
         schedulerDesignProposals.customerRecoverySettings(branchId),
         schedulerDesignProposals.listAuthorizationAgents(),
+        schedulerDesignProposals.customerRecoveryTeams({
+          branchIds: [branchId],
+        }),
+        schedulerDesignProposals.customerRecoveryPurchaseReport({
+          branchIds: [branchId],
+        }),
       ]);
       setCases(items);
       setAgents(
@@ -155,6 +230,8 @@ export function CustomerRecoveryWorkspace() {
             agent.allowedPurposes.includes("CUSTOMER_RECOVERY_STATUS_CHANGE"),
         ),
       );
+      setTeams(recoveryTeams.filter((team) => team.active));
+      setPurchaseReport(purchases);
       setSettings(currentSettings);
       setSettingsDraft(currentSettings);
       setSelectedIds((current) => {
@@ -182,13 +259,15 @@ export function CustomerRecoveryWorkspace() {
       (item) =>
         (reason === "ALL" || item.reason === reason) &&
         (status === "ALL" || item.status === status) &&
+        (teamFilter === "ALL" || item.assignedTeamId === teamFilter) &&
+        (agentFilter === "ALL" || item.assignedAgentId === agentFilter) &&
         (!normalizedQuery ||
           [item.customerName, item.phone, item.portfolioOwnerName].some(
             (value) =>
               value?.toLocaleLowerCase("es-MX").includes(normalizedQuery),
           )),
     );
-  }, [cases, query, reason, status]);
+  }, [agentFilter, cases, query, reason, status, teamFilter]);
 
   const selectedRows = useMemo(
     () => cases.filter((item) => selectedIds.has(item.id)),
@@ -215,7 +294,7 @@ export function CustomerRecoveryWorkspace() {
     };
   }, [cases]);
 
-  const agentReport = useMemo(() => {
+  const performanceRows = useMemo(() => {
     const rows = new Map<
       string,
       {
@@ -227,28 +306,77 @@ export function CustomerRecoveryWorkspace() {
         lost: number;
         pending: number;
         lastActionAt: string;
+        saleAmount: number;
       }
     >();
-    for (const item of cases) {
-      for (const movement of item.history) {
-        const current = rows.get(movement.recoveryAgentId) ?? {
-          id: movement.recoveryAgentId,
-          name: movement.recoveryAgentName,
-          role: movement.recoveryAgentRole,
+    if (performanceDimension === "AGENT") {
+      for (const item of cases) {
+        for (const movement of item.history) {
+          const current = rows.get(movement.recoveryAgentId) ?? {
+            id: movement.recoveryAgentId,
+            name: movement.recoveryAgentName,
+            role: movement.recoveryAgentRole,
+            actions: 0,
+            recovered: 0,
+            lost: 0,
+            pending: 0,
+            lastActionAt: movement.createdAt,
+            saleAmount: 0,
+          };
+          current.actions += 1;
+          if (movement.toStatus === "RECOVERED") current.recovered += 1;
+          if (movement.toStatus === "LOST") current.lost += 1;
+          if (movement.toStatus === "PENDING") current.pending += 1;
+          if (movement.createdAt > current.lastActionAt) {
+            current.lastActionAt = movement.createdAt;
+          }
+          current.saleAmount +=
+            purchaseReport?.rows
+              .filter(
+                (purchase) =>
+                  purchase.recoveryCaseId === item.id &&
+                  purchase.assignedAgentName === movement.recoveryAgentName,
+              )
+              .reduce((sum, purchase) => sum + purchase.saleAmount, 0) ?? 0;
+          rows.set(movement.recoveryAgentId, current);
+        }
+      }
+    } else {
+      for (const item of cases) {
+        const id =
+          performanceDimension === "GROUP"
+            ? (item.assignedTeamId ?? "UNASSIGNED")
+            : item.portfolioOwnerName;
+        const name =
+          performanceDimension === "GROUP"
+            ? (item.assignedTeamName ?? "Sin grupo asignado")
+            : item.portfolioOwnerName;
+        const current = rows.get(id) ?? {
+          id,
+          name,
+          role:
+            performanceDimension === "GROUP"
+              ? "Grupo de trabajo"
+              : "Vendedor de cartera",
           actions: 0,
           recovered: 0,
           lost: 0,
           pending: 0,
-          lastActionAt: movement.createdAt,
+          lastActionAt: item.updatedAt,
+          saleAmount: 0,
         };
         current.actions += 1;
-        if (movement.toStatus === "RECOVERED") current.recovered += 1;
-        if (movement.toStatus === "LOST") current.lost += 1;
-        if (movement.toStatus === "PENDING") current.pending += 1;
-        if (movement.createdAt > current.lastActionAt) {
-          current.lastActionAt = movement.createdAt;
+        if (item.status === "RECOVERED") current.recovered += 1;
+        if (item.status === "LOST") current.lost += 1;
+        if (item.status === "PENDING") current.pending += 1;
+        if (item.updatedAt > current.lastActionAt) {
+          current.lastActionAt = item.updatedAt;
         }
-        rows.set(movement.recoveryAgentId, current);
+        current.saleAmount +=
+          purchaseReport?.rows
+            .filter((purchase) => purchase.recoveryCaseId === item.id)
+            .reduce((sum, purchase) => sum + purchase.saleAmount, 0) ?? 0;
+        rows.set(id, current);
       }
     }
     return [...rows.values()]
@@ -264,7 +392,7 @@ export function CustomerRecoveryWorkspace() {
           right.actions - left.actions ||
           left.name.localeCompare(right.name, "es-MX"),
       );
-  }, [cases]);
+  }, [cases, performanceDimension, purchaseReport]);
 
   const allFilteredSelected =
     filteredCases.length > 0 &&
@@ -289,6 +417,48 @@ export function CustomerRecoveryWorkspace() {
       else next.add(id);
       return next;
     });
+  }
+
+  function openAssignment(item: DesignCustomerRecoveryCase) {
+    const mode = item.assignedAgentId ? "AGENT" : "TEAM";
+    setAssignmentCase(item);
+    setAssignmentMode(mode);
+    setAssignmentTargetId(
+      mode === "AGENT"
+        ? (item.assignedAgentId ?? "")
+        : (item.assignedTeamId ?? ""),
+    );
+  }
+
+  async function saveAssignment() {
+    if (!assignmentCase || !assignmentTargetId) return;
+    setSavingAssignment(true);
+    setError(null);
+    try {
+      const updated =
+        await schedulerDesignProposals.saveCustomerRecoveryAssignment(
+          assignmentCase.id,
+          { mode: assignmentMode, targetId: assignmentTargetId },
+        );
+      setCases((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setAssignmentCase(null);
+      toast.success(
+        assignmentMode === "TEAM"
+          ? "Cliente asignado al grupo de recuperación."
+          : "Cliente asignado a la persona responsable.",
+      );
+      await loadRecovery();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible guardar la asignación.",
+      );
+    } finally {
+      setSavingAssignment(false);
+    }
   }
 
   function openUpdate(item: DesignCustomerRecoveryCase) {
@@ -403,6 +573,37 @@ export function CustomerRecoveryWorkspace() {
       toast.error(
         cause instanceof Error ? cause.message : "No fue posible imprimir.",
       );
+    }
+  }
+
+  async function downloadPerformance(format: "pdf" | "xlsx") {
+    if (!performanceRows.length) return;
+    setExportingDashboard(format);
+    try {
+      const label = {
+        GROUP: "Grupo de trabajo",
+        SELLER: "Vendedor",
+        AGENT: "Agente",
+      }[performanceDimension];
+      await exportRecoveryPerformanceReport(performanceRows, label, format);
+      toast.success(`Reporte de rendimiento generado en ${format.toUpperCase()}.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "No fue posible exportar.");
+    } finally {
+      setExportingDashboard(null);
+    }
+  }
+
+  async function downloadPurchases(format: "pdf" | "xlsx") {
+    if (!purchaseReport?.rows.length) return;
+    setExportingPurchases(format);
+    try {
+      await exportRecoveryPurchaseReport(purchaseReport, format);
+      toast.success(`Reporte de compras generado en ${format.toUpperCase()}.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "No fue posible exportar.");
+    } finally {
+      setExportingPurchases(null);
     }
   }
 
@@ -625,31 +826,71 @@ export function CustomerRecoveryWorkspace() {
         </section>
 
         <section className="overflow-hidden rounded-[26px] border border-[#e7ddd4] bg-white shadow-[0_18px_50px_rgba(38,54,73,0.06)]">
-          <div className="border-b border-[#eee6df] bg-[#fcfaf8] px-5 py-4">
-            <p className="label-caps">Rendimiento</p>
-            <h2 className="mt-1 text-xl font-semibold">
-              Reporte de recuperaciones por agente
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Cada gestión se atribuye al agente elegido al cambiar el status;
-              el autorizador se conserva por separado en la auditoría.
-            </p>
+          <div className="flex flex-col gap-4 border-b border-[#eee6df] bg-[#fcfaf8] px-5 py-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="label-caps">Rendimiento</p>
+              <h2 className="mt-1 text-xl font-semibold">
+                Dashboard de rendimiento de recuperación
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Compara resultados, conversión y venta atribuida por grupo,
+                vendedor o agente que realizó la gestión.
+              </p>
+            </div>
+            <div className="min-w-[220px] space-y-1.5">
+              <Label htmlFor="performance-dimension">Ver reporte por</Label>
+              <Select
+                value={performanceDimension}
+                onValueChange={(value) =>
+                  setPerformanceDimension(
+                    value as "GROUP" | "SELLER" | "AGENT",
+                  )
+                }
+              >
+                <SelectTrigger id="performance-dimension" className="h-11 rounded-xl bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GROUP">Grupo de trabajo</SelectItem>
+                  <SelectItem value="SELLER">Vendedor de cartera</SelectItem>
+                  <SelectItem value="AGENT">Agente de recuperación</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                disabled={!canExport || !performanceRows.length || Boolean(exportingDashboard)}
+                onClick={() => void downloadPerformance("pdf")}
+                variant="outline"
+              >
+                <FileDown className="mr-2 h-4 w-4" /> PDF
+              </Button>
+              <Button
+                disabled={!canExport || !performanceRows.length || Boolean(exportingDashboard)}
+                onClick={() => void downloadPerformance("xlsx")}
+                variant="outline"
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
+              </Button>
+            </div>
           </div>
-          {agentReport.length ? (
+          {performanceRows.length ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
                   <tr>
-                    <th className="px-5 py-3">Agente de recuperación</th>
-                    <th className="px-5 py-3 text-center">Gestiones</th>
+                    <th className="px-5 py-3">Responsable</th>
+                    <th className="px-5 py-3 text-center">Cartera</th>
                     <th className="px-5 py-3 text-center">Recuperados</th>
+                    <th className="px-5 py-3 text-center">Pendientes</th>
                     <th className="px-5 py-3 text-center">Perdidos</th>
-                    <th className="px-5 py-3 text-center">Tasa de recuperación</th>
-                    <th className="px-5 py-3">Última gestión</th>
+                    <th className="px-5 py-3 text-center">Conversión</th>
+                    <th className="px-5 py-3 text-right">Venta recuperada</th>
+                    <th className="px-5 py-3">Última actividad</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {agentReport.map((row, index) => (
+                  {performanceRows.map((row, index) => (
                     <tr className="border-t border-[#f0e8e1]" key={row.id}>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
@@ -664,11 +905,15 @@ export function CustomerRecoveryWorkspace() {
                       </td>
                       <td className="px-5 py-4 text-center font-semibold">{row.actions}</td>
                       <td className="px-5 py-4 text-center text-emerald-700">{row.recovered}</td>
+                      <td className="px-5 py-4 text-center text-amber-700">{row.pending}</td>
                       <td className="px-5 py-4 text-center text-rose-700">{row.lost}</td>
                       <td className="px-5 py-4 text-center">
                         <Badge className="rounded-full" variant="outline">
                           {row.recoveryRate}%
                         </Badge>
+                      </td>
+                      <td className="px-5 py-4 text-right font-semibold">
+                        {money.format(row.saleAmount)}
                       </td>
                       <td className="px-5 py-4 text-slate-500">{formatDate(row.lastActionAt)}</td>
                     </tr>
@@ -678,13 +923,104 @@ export function CustomerRecoveryWorkspace() {
             </div>
           ) : (
             <p className="px-5 py-8 text-sm text-slate-500">
-              Aún no existen gestiones atribuidas a agentes en esta sucursal.
+              Aún no existen gestiones para esta vista de rendimiento.
             </p>
           )}
         </section>
 
         <section className="overflow-hidden rounded-[26px] border border-[#e7ddd4] bg-white shadow-[0_18px_50px_rgba(38,54,73,0.06)]">
-          <div className="grid gap-3 border-b border-[#eee6df] bg-[#fcfaf8] p-4 md:grid-cols-[minmax(220px,1fr)_220px_200px]">
+          <div className="flex flex-col gap-4 border-b border-[#eee6df] bg-[#fcfaf8] px-5 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2">
+              <ShoppingBag className="h-5 w-5 text-[#ad8b67]" />
+              <div>
+                <p className="label-caps">Conversión comercial</p>
+                <h2 className="mt-1 text-xl font-semibold">
+                  Compras en la primera cita de recuperación
+                </h2>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                disabled={!canExport || !purchaseReport?.rows.length || Boolean(exportingPurchases)}
+                onClick={() => void downloadPurchases("pdf")}
+                variant="outline"
+              >
+                <FileDown className="mr-2 h-4 w-4" /> PDF
+              </Button>
+              <Button
+                disabled={!canExport || !purchaseReport?.rows.length || Boolean(exportingPurchases)}
+                onClick={() => void downloadPurchases("xlsx")}
+                variant="outline"
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
+              </Button>
+            </div>
+          </div>
+          <div className="grid gap-3 border-b border-[#eee6df] p-4 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ["Clientes compradores", purchaseReport?.summary.customers ?? 0],
+              ["Venta", money.format(purchaseReport?.summary.saleAmount ?? 0)],
+              ["Recibido", money.format(purchaseReport?.summary.depositAmount ?? 0)],
+              ["Saldo", money.format(purchaseReport?.summary.balanceAmount ?? 0)],
+              ["Ticket promedio", money.format(purchaseReport?.summary.averageTicket ?? 0)],
+            ].map(([label, value]) => (
+              <div className="rounded-2xl bg-[#f8f5f1] p-4" key={String(label)}>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+                <p className="mt-2 text-xl font-semibold">{value}</p>
+              </div>
+            ))}
+          </div>
+          {purchaseReport?.rows.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead className="bg-[#faf8f5] text-xs font-semibold text-[#526273]">
+                  <tr>
+                    <th className="px-5 py-3">Cliente / primera cita</th>
+                    <th className="px-5 py-3">Asignación</th>
+                    <th className="px-5 py-3">Vendedor</th>
+                    <th className="px-5 py-3">Especialista</th>
+                    <th className="px-5 py-3">Resultado</th>
+                    <th className="px-5 py-3 text-right">Venta</th>
+                    <th className="px-5 py-3 text-right">Recibido</th>
+                    <th className="px-5 py-3 text-right">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchaseReport.rows.map((row) => (
+                    <tr className="border-t border-[#f0e8e1]" key={row.recoveryCaseId}>
+                      <td className="px-5 py-4">
+                        <p className="font-semibold">{row.customerName}</p>
+                        <p className="mt-1 text-xs text-slate-500">{formatDate(row.appointmentStartsAt)}</p>
+                      </td>
+                      <td className="px-5 py-4 text-slate-600">
+                        {row.assignedTeamName !== "Sin grupo"
+                          ? row.assignedTeamName
+                          : row.assignedAgentName}
+                      </td>
+                      <td className="px-5 py-4">{row.portfolioOwnerName}</td>
+                      <td className="px-5 py-4">{row.specialistName}</td>
+                      <td className="px-5 py-4">
+                        <Badge variant="outline">
+                          {row.purchaseKind === "LAYAWAY" ? "Apartado" : "Compra"}
+                        </Badge>
+                      </td>
+                      <td className="px-5 py-4 text-right font-semibold">{money.format(row.saleAmount)}</td>
+                      <td className="px-5 py-4 text-right">{money.format(row.depositAmount)}</td>
+                      <td className="px-5 py-4 text-right">{money.format(row.balanceAmount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="px-5 py-8 text-sm text-slate-500">
+              Aún no hay compras en primeras citas posteriores a la recuperación.
+            </p>
+          )}
+        </section>
+
+        <section className="overflow-hidden rounded-[26px] border border-[#e7ddd4] bg-white shadow-[0_18px_50px_rgba(38,54,73,0.06)]">
+          <div className="grid gap-3 border-b border-[#eee6df] bg-[#fcfaf8] p-4 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_200px_180px_220px_220px]">
             <span className="relative">
               <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
               <Input
@@ -731,6 +1067,32 @@ export function CustomerRecoveryWorkspace() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={teamFilter} onValueChange={setTeamFilter}>
+              <SelectTrigger aria-label="Grupo de recuperación" className="h-11 rounded-xl bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los grupos</SelectItem>
+                {teams.map((team) => (
+                  <SelectItem key={team.id} value={team.id}>
+                    {team.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={agentFilter} onValueChange={setAgentFilter}>
+              <SelectTrigger aria-label="Persona asignada" className="h-11 rounded-xl bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las personas</SelectItem>
+                {agents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {loading ? (
@@ -754,7 +1116,8 @@ export function CustomerRecoveryWorkspace() {
                     </th>
                     <th className="px-4 py-3">Cliente</th>
                     <th className="px-4 py-3">Motivo</th>
-                    <th className="px-4 py-3">Actividad</th>
+                    <th className="px-4 py-3">Asignación</th>
+                    <th className="px-4 py-3">Actividad de Agenda</th>
                     <th className="px-4 py-3">Vendedor de cartera</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Gestión</th>
@@ -786,7 +1149,27 @@ export function CustomerRecoveryWorkspace() {
                           {item.reasonDetail}
                         </p>
                       </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-start gap-2">
+                          {item.assignedTeamId ? (
+                            <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-[#ad8b67]" />
+                          ) : (
+                            <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#ad8b67]" />
+                          )}
+                          <div>
+                            <p className="font-medium text-[#526273]">
+                              {item.assignedTeamName ??
+                                item.assignedAgentName ??
+                                "Sin asignación"}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {item.assignedTeamId ? "Grupo" : "Persona"}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
                       <td className="px-4 py-4 text-xs leading-5 text-slate-500">
+                        <RecoveryActivityBadge status={item.activityStatus} />
                         <span className="block">Detectado: {formatDate(item.eligibilityAt)}</span>
                         <span className="block">Última cita: {formatDate(item.lastAppointmentAt)}</span>
                         <span className="block">{item.attendedCount} asistencias</span>
@@ -806,15 +1189,26 @@ export function CustomerRecoveryWorkspace() {
                         ) : null}
                       </td>
                       <td className="px-4 py-4 text-right">
-                        <Button
-                          className="rounded-xl"
-                          disabled={!canWrite}
-                          onClick={() => openUpdate(item)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          Actualizar
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            className="rounded-xl"
+                            disabled={!canWrite}
+                            onClick={() => openAssignment(item)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            Asignar
+                          </Button>
+                          <Button
+                            className="rounded-xl"
+                            disabled={!canWrite}
+                            onClick={() => openUpdate(item)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            Actualizar
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -838,6 +1232,91 @@ export function CustomerRecoveryWorkspace() {
           </p>
         ) : null}
       </main>
+
+      <Dialog
+        open={Boolean(assignmentCase)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setAssignmentCase(null);
+            setAssignmentTargetId("");
+            setError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl overflow-x-hidden rounded-[24px]">
+          <DialogHeader>
+            <DialogTitle>Asignar recuperación</DialogTitle>
+            <DialogDescription>
+              {assignmentCase?.customerName}. Asigna este cliente a un grupo de
+              trabajo o directamente a una persona.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="assignment-mode">Tipo de asignación</Label>
+              <Select
+                value={assignmentMode}
+                onValueChange={(value) => {
+                  setAssignmentMode(value as "TEAM" | "AGENT");
+                  setAssignmentTargetId("");
+                }}
+              >
+                <SelectTrigger id="assignment-mode" className="h-11 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TEAM">Grupo de trabajo</SelectItem>
+                  <SelectItem value="AGENT">Persona responsable</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assignment-target">
+                {assignmentMode === "TEAM" ? "Grupo" : "Persona"}
+              </Label>
+              <Select value={assignmentTargetId} onValueChange={setAssignmentTargetId}>
+                <SelectTrigger id="assignment-target" className="h-11 rounded-xl">
+                  <SelectValue
+                    placeholder={
+                      assignmentMode === "TEAM"
+                        ? "Selecciona un grupo"
+                        : "Selecciona una persona"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {(assignmentMode === "TEAM" ? teams : agents).map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-2xl border border-[#e8ded5] bg-[#fcfaf8] p-4 text-sm text-slate-600">
+              La asignación alimentará el dashboard de rendimiento y el reporte
+              de compras recuperadas. No cambia el vendedor de cartera.
+            </div>
+            {error ? (
+              <p className="text-sm font-medium text-rose-600" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <Button onClick={() => setAssignmentCase(null)} variant="outline">
+              Cancelar
+            </Button>
+            <Button
+              className="bg-[#263649] text-white hover:bg-[#1d2b3a]"
+              disabled={savingAssignment || !assignmentTargetId}
+              onClick={() => void saveAssignment()}
+            >
+              {savingAssignment ? "Guardando…" : "Guardar asignación"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(selected)}

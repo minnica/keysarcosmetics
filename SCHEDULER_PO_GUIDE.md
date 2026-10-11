@@ -943,3 +943,20 @@ como snapshots históricos. El submódulo incluye un **Reporte de recuperaciones
 por agente** con número de gestiones, recuperados, perdidos, tasa de
 recuperación y última actividad. Las exportaciones seleccionadas también
 incluyen el agente asociado a la gestión más reciente.
+
+Recuperación también admite asignación operativa **por grupo de trabajo o por
+persona** sin cambiar el vendedor de cartera. La sucursal dispone de grupos
+activos y cada caso conserva grupo/persona y fecha de asignación. El dashboard
+puede agrupar y exportar PDF o Excel por grupo, vendedor de cartera o agente;
+muestra cartera, recuperados, pendientes, perdidos, conversión, venta atribuida
+y última actividad.
+
+El estado operativo se deriva de Agenda sin reescribir la clasificación manual:
+**Sin próxima cita**, **Cita programada**, **Reagendó**, **Canceló**, **No
+asistió**, **Asistió**, **Compró** o **Realizó apartado**. La primera cita
+atendida posterior a la asignación alimenta el histórico comercial de clientes
+recuperados. Su reporte separa venta, recibido, saldo y ticket promedio, conserva
+grupo/persona, vendedor y especialista, y permite descargar PDF o Excel. Los
+endpoints de diseño son `POST /customers/recovery-teams`, `PUT
+/customers/recovery/:id/assignment` y `POST /customers/recovery-purchases`
+bajo el prefijo `/api/scheduler/design-proposals`.

@@ -34,6 +34,7 @@ import type {
   DesignBranchCommercialModel,
   DesignCustomerRecoveryCase,
   DesignCustomerRecoverySettings,
+  DesignCustomerRecoveryTeam,
   DesignCustomerSpecialistPreference,
   DesignLayawayPayment,
   DesignMovementRecord,
@@ -629,6 +630,30 @@ export function createDesignState(
       DesignCustomerSpecialistPreference
     >,
     customerRecoveryCases: [] as DesignCustomerRecoveryCase[],
+    customerRecoveryTeams: catalog.branches.flatMap((branch, branchIndex) => [
+      {
+        id: `design-recovery-team-${branchIndex + 1}-reactivation`,
+        branchId: branch.branchId,
+        name: "Reactivación de cartera",
+        memberAgentIds: operationAgents
+          .filter((agent) => agent.active)
+          .slice(0, 3)
+          .map((agent) => agent.id),
+        active: true,
+        updatedAt: now,
+      },
+      {
+        id: `design-recovery-team-${branchIndex + 1}-followup`,
+        branchId: branch.branchId,
+        name: "Seguimiento postratamiento",
+        memberAgentIds: operationAgents
+          .filter((agent) => agent.active)
+          .slice(3, 6)
+          .map((agent) => agent.id),
+        active: true,
+        updatedAt: now,
+      },
+    ]) as DesignCustomerRecoveryTeam[],
     customerRecoverySettings: Object.fromEntries(
       catalog.branches.map((branch) => [
         branch.branchId,
@@ -987,6 +1012,21 @@ export function createDesignState(
       attendedCount: customerAppointments.filter(
         (appointment) => appointment.status === "ATTENDED",
       ).length,
+      assignedTeamId:
+        state.customerRecoveryTeams.find(
+          (team) => team.branchId === portfolio.branchId,
+        )?.id ?? null,
+      assignedTeamName:
+        state.customerRecoveryTeams.find(
+          (team) => team.branchId === portfolio.branchId,
+        )?.name ?? null,
+      assignedAgentId: operationAgents[index % operationAgents.length]!.id,
+      assignedAgentName:
+        operationAgents[index % operationAgents.length]!.name,
+      assignedAt: eligibilityDate.toISOString(),
+      activityStatus: "AWAITING_APPOINTMENT",
+      activityUpdatedAt: eligibilityDate.toISOString(),
+      recoveryAppointmentId: null,
       status: seed.status,
       updatedAt: history[0]?.createdAt ?? eligibilityDate.toISOString(),
       history,

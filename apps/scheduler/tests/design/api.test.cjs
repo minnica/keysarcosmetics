@@ -2374,6 +2374,91 @@ test("recuperación configura por sucursal el plazo que activa cada alerta", () 
   );
 });
 
+test("recuperación asigna grupos o personas y relaciona Agenda con la primera compra", () => {
+  const { state, request } = session();
+  const branchId = state.catalog.branches[0].branchId;
+  const teams = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/recovery-teams",
+    { branchIds: [branchId] },
+  );
+  assert.equal(teams.status, 201);
+  assert.ok(teams.body.data.length >= 2);
+
+  const cases = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/recovery",
+    { branchIds: [branchId] },
+  );
+  const pending = cases.body.data.find((item) => item.status === "PENDING");
+  assert.ok(pending);
+  assert.ok(
+    cases.body.data.some((item) =>
+      ["CANCELED", "PURCHASED", "LAYAWAY", "ATTENDED"].includes(
+        item.activityStatus,
+      ),
+    ),
+  );
+
+  const assignedTeam = request(
+    "PUT",
+    `/api/scheduler/design-proposals/customers/recovery/${pending.id}/assignment`,
+    { mode: "TEAM", targetId: teams.body.data[1].id },
+  );
+  assert.equal(assignedTeam.status, 200);
+  assert.equal(assignedTeam.body.data.assignedTeamId, teams.body.data[1].id);
+  assert.equal(assignedTeam.body.data.assignedAgentId, null);
+
+  const assignedAgent = request(
+    "PUT",
+    `/api/scheduler/design-proposals/customers/recovery/${pending.id}/assignment`,
+    { mode: "AGENT", targetId: state.operationAgents[1].id },
+  );
+  assert.equal(assignedAgent.status, 200);
+  assert.equal(
+    assignedAgent.body.data.assignedAgentName,
+    state.operationAgents[1].name,
+  );
+  assert.equal(assignedAgent.body.data.assignedTeamId, null);
+
+  const caseWithHistoricalPurchase = state.customerRecoveryCases.find(
+    (item) =>
+      Object.values(state.appointmentCabinVisits).some(
+        (visit) =>
+          state.appointments.find(
+            (appointment) =>
+              appointment.id === visit.appointmentId &&
+              appointment.customerId === item.customerId &&
+              appointment.status === "ATTENDED",
+          ) &&
+          visit.visitors.some(
+            (visitor) =>
+              visitor.customerId === item.customerId &&
+              ["FULL", "LAYAWAY"].includes(visitor.purchaseKind),
+          ),
+      ),
+  );
+  assert.ok(caseWithHistoricalPurchase);
+  caseWithHistoricalPurchase.assignedAt = "2026-01-01T00:00:00.000Z";
+
+  const purchases = request(
+    "POST",
+    "/api/scheduler/design-proposals/customers/recovery-purchases",
+    { branchIds: [caseWithHistoricalPurchase.branchId] },
+  );
+  assert.equal(purchases.status, 201);
+  assert.ok(purchases.body.data.rows.length >= 1);
+  assert.equal(
+    purchases.body.data.summary.saleAmount,
+    purchases.body.data.rows.reduce((sum, row) => sum + row.saleAmount, 0),
+  );
+  assert.ok(
+    purchases.body.data.rows.every((row) =>
+      ["FULL", "LAYAWAY"].includes(row.purchaseKind),
+    ),
+  );
+});
+
 test("la especialista preferida se fija por cliente sin impedir otra asignación por cita", () => {
   const { state, request } = session();
   const customerId = state.customers[0].id;

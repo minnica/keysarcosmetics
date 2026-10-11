@@ -50,9 +50,12 @@ import type {
   DesignCustomerAdvancedPage,
   DesignCustomerDuplicateCandidate,
   DesignCustomerRecoveryCase,
+  DesignCustomerRecoveryActivityStatus,
+  DesignCustomerRecoveryPurchaseReport,
   DesignCustomerRecoveryReason,
   DesignCustomerRecoverySettings,
   DesignCustomerRecoveryStatus,
+  DesignCustomerRecoveryTeam,
   DesignCustomerLayawaySummary,
   DesignLayawayPayment,
   DesignMovementRecord,
@@ -1877,12 +1880,182 @@ function customerRecoveryCases(
       );
       return elapsedDays >= thresholdByReason(settings, item.reason);
     })
-    .map((item) => structuredClone(item))
+    .map((item) => customerRecoveryActivity(state, item))
     .sort(
       (left, right) =>
         right.eligibilityAt.localeCompare(left.eligibilityAt) ||
         left.customerName.localeCompare(right.customerName, "es-MX"),
     );
+}
+
+function recoveryReferenceAt(item: DesignCustomerRecoveryCase): string {
+  return (
+    item.assignedAt ??
+    item.history.find((entry) => entry.toStatus === "RECOVERED")?.createdAt ??
+    item.eligibilityAt
+  );
+}
+
+function recoveryAppointments(
+  state: DesignState,
+  item: DesignCustomerRecoveryCase,
+) {
+  const referenceAt = recoveryReferenceAt(item);
+  const referenceDate = referenceAt.slice(0, 10);
+  return visibleAppointments(state)
+    .filter(
+      (appointmentItem) =>
+        appointmentItem.customerId === item.customerId &&
+        appointmentItem.branchId === item.branchId &&
+        appointmentItem.startsAt.slice(0, 10) >= referenceDate,
+    )
+    .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+}
+
+function recoveryPurchaseForAppointment(
+  state: DesignState,
+  item: DesignCustomerRecoveryCase,
+  appointmentId: string,
+) {
+  const visit = state.appointmentCabinVisits[appointmentId];
+  const visitor =
+    visit?.visitors.find((candidate) => candidate.customerId === item.customerId) ??
+    visit?.visitors[0];
+  if (
+    !visitor ||
+    !["FULL", "LAYAWAY"].includes(String(visitor.purchaseKind))
+  ) {
+    return null;
+  }
+  const saleAmount = Number(
+    visitor.saleAmount ?? visitor.purchaseAmount ?? 0,
+  );
+  if (saleAmount <= 0) return null;
+  const depositAmount = Number(
+    visitor.purchaseKind === "FULL"
+      ? saleAmount
+      : (visitor.depositAmount ?? 0),
+  );
+  return {
+    visit: visit!,
+    visitor,
+    purchaseKind: visitor.purchaseKind as "FULL" | "LAYAWAY",
+    saleAmount,
+    depositAmount,
+    balanceAmount: Math.max(0, saleAmount - depositAmount),
+  };
+}
+
+function customerRecoveryActivity(
+  state: DesignState,
+  item: DesignCustomerRecoveryCase,
+): DesignCustomerRecoveryCase {
+  const appointments = recoveryAppointments(state, item);
+  if (!appointments.length) {
+    return structuredClone({
+      ...item,
+      activityStatus: "AWAITING_APPOINTMENT",
+      activityUpdatedAt: item.assignedAt ?? item.updatedAt,
+      recoveryAppointmentId: null,
+    });
+  }
+  const firstAttended = appointments.find(
+    (appointmentItem) => appointmentItem.status === "ATTENDED",
+  );
+  const purchase = firstAttended
+    ? recoveryPurchaseForAppointment(state, item, firstAttended.id)
+    : null;
+  if (firstAttended && purchase) {
+    return structuredClone({
+      ...item,
+      activityStatus:
+        purchase.purchaseKind === "LAYAWAY" ? "LAYAWAY" : "PURCHASED",
+      activityUpdatedAt: purchase.visit.updatedAt,
+      recoveryAppointmentId: firstAttended.id,
+    });
+  }
+  if (firstAttended) {
+    return structuredClone({
+      ...item,
+      activityStatus: "ATTENDED",
+      activityUpdatedAt: firstAttended.updatedAt,
+      recoveryAppointmentId: firstAttended.id,
+    });
+  }
+  const latest = appointments.at(-1)!;
+  const reschedule = state.appointmentJournal
+    .filter(
+      (entry) =>
+        entry.appointmentId === latest.id && entry.kind === "RESCHEDULE_REASON",
+    )
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+  let activityStatus: DesignCustomerRecoveryActivityStatus = "SCHEDULED";
+  if (reschedule) activityStatus = "RESCHEDULED";
+  else if (latest.status === "CANCELED") activityStatus = "CANCELED";
+  else if (latest.status === "NO_SHOW") activityStatus = "NO_SHOW";
+  else if (["ARRIVED", "WAITING"].includes(latest.status))
+    activityStatus = "ATTENDED";
+  return structuredClone({
+    ...item,
+    activityStatus,
+    activityUpdatedAt: reschedule?.createdAt ?? latest.updatedAt,
+    recoveryAppointmentId: latest.id,
+  });
+}
+
+function customerRecoveryPurchaseReport(
+  state: DesignState,
+  branchIds: string[],
+): DesignCustomerRecoveryPurchaseReport {
+  const cases = customerRecoveryCases(state, branchIds);
+  const rows = cases.flatMap((item) => {
+    const firstAttended = recoveryAppointments(state, item).find(
+      (appointmentItem) => appointmentItem.status === "ATTENDED",
+    );
+    if (!firstAttended) return [];
+    const purchase = recoveryPurchaseForAppointment(
+      state,
+      item,
+      firstAttended.id,
+    );
+    if (!purchase) return [];
+    const specialistName =
+      state.catalog.professionals.find(
+        (professional) =>
+          professional.id === purchase.visitor.specialistProfileId,
+      )?.name ?? "Sin especialista";
+    return [
+      {
+        recoveryCaseId: item.id,
+        customerId: item.customerId,
+        customerName: item.customerName,
+        branchId: item.branchId,
+        branchName: item.branchName,
+        appointmentId: firstAttended.id,
+        appointmentStartsAt: firstAttended.startsAt,
+        purchaseKind: purchase.purchaseKind,
+        saleAmount: purchase.saleAmount,
+        depositAmount: purchase.depositAmount,
+        balanceAmount: purchase.balanceAmount,
+        specialistName,
+        portfolioOwnerName: item.portfolioOwnerName,
+        assignedTeamName: item.assignedTeamName ?? "Sin grupo",
+        assignedAgentName: item.assignedAgentName ?? "Sin persona asignada",
+      },
+    ];
+  });
+  const saleAmount = rows.reduce((sum, row) => sum + row.saleAmount, 0);
+  const depositAmount = rows.reduce((sum, row) => sum + row.depositAmount, 0);
+  return {
+    rows,
+    summary: {
+      customers: rows.length,
+      saleAmount,
+      depositAmount,
+      balanceAmount: Math.max(0, saleAmount - depositAmount),
+      averageTicket: rows.length ? Math.round(saleAmount / rows.length) : 0,
+    },
+  };
 }
 
 function dispatch(state: DesignState, request: DesignRequest): unknown {
@@ -2484,6 +2657,40 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         state.customerRecoveryCases.find((item) => item.id === parts[5]) ??
         fail(404, "Caso de recuperación no encontrado.");
       inScope(state, recoveryCase.branchId);
+      if (parts[6] === "assignment") {
+        if (method !== "PUT") {
+          fail(405, "Usa PUT para asignar la recuperación.");
+        }
+        const mode = String(body.mode ?? "");
+        const targetId = String(body.targetId ?? "");
+        if (mode === "TEAM") {
+          const team =
+            state.customerRecoveryTeams.find(
+              (candidate) =>
+                candidate.id === targetId &&
+                candidate.branchId === recoveryCase.branchId &&
+                candidate.active,
+            ) ?? fail(400, "Selecciona un grupo activo de la sucursal.");
+          recoveryCase.assignedTeamId = team.id;
+          recoveryCase.assignedTeamName = team.name;
+          recoveryCase.assignedAgentId = null;
+          recoveryCase.assignedAgentName = null;
+        } else if (mode === "AGENT") {
+          const assignedAgent =
+            state.operationAgents.find(
+              (candidate) => candidate.id === targetId && candidate.active,
+            ) ?? fail(400, "Selecciona una persona activa.");
+          recoveryCase.assignedTeamId = null;
+          recoveryCase.assignedTeamName = null;
+          recoveryCase.assignedAgentId = assignedAgent.id;
+          recoveryCase.assignedAgentName = assignedAgent.name;
+        } else {
+          fail(400, "Selecciona asignación por grupo o persona.");
+        }
+        recoveryCase.assignedAt = new Date().toISOString();
+        recoveryCase.updatedAt = recoveryCase.assignedAt;
+        return customerRecoveryActivity(state, recoveryCase);
+      }
       const validStatuses: DesignCustomerRecoveryStatus[] = [
         "PENDING",
         "RECOVERED",
@@ -2531,7 +2738,31 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         actorRole: agent.role,
         createdAt: updatedAt,
       });
-      return structuredClone(recoveryCase);
+      return customerRecoveryActivity(state, recoveryCase);
+    }
+    if (id === "customers" && action === "recovery-teams") {
+      if (method !== "POST") {
+        fail(405, "Usa POST para consultar grupos de recuperación.");
+      }
+      const branchIds = Array.isArray(body.branchIds)
+        ? body.branchIds.map(String)
+        : [];
+      const allowedBranchIds = new Set(
+        branchIds.length ? branchIds : designBootstrap(state).authorizedBranchIds,
+      );
+      for (const branchId of allowedBranchIds) inScope(state, branchId);
+      return state.customerRecoveryTeams
+        .filter((team) => allowedBranchIds.has(team.branchId))
+        .map((team) => structuredClone(team));
+    }
+    if (id === "customers" && action === "recovery-purchases") {
+      if (method !== "POST") {
+        fail(405, "Usa POST para consultar compras de recuperación.");
+      }
+      return customerRecoveryPurchaseReport(
+        state,
+        Array.isArray(body.branchIds) ? body.branchIds.map(String) : [],
+      );
     }
     if (id === "customers" && action === "recovery-settings") {
       const branchId = String(

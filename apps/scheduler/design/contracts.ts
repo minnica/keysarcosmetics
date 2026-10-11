@@ -546,6 +546,25 @@ export type DesignCustomerRecoveryReason =
 
 export type DesignCustomerRecoveryStatus = "PENDING" | "RECOVERED" | "LOST";
 
+export type DesignCustomerRecoveryActivityStatus =
+  | "AWAITING_APPOINTMENT"
+  | "SCHEDULED"
+  | "RESCHEDULED"
+  | "CANCELED"
+  | "NO_SHOW"
+  | "ATTENDED"
+  | "PURCHASED"
+  | "LAYAWAY";
+
+export interface DesignCustomerRecoveryTeam {
+  id: string;
+  branchId: string;
+  name: string;
+  memberAgentIds: string[];
+  active: boolean;
+  updatedAt: string;
+}
+
 export interface DesignCustomerRecoveryHistoryEntry {
   id: string;
   fromStatus: DesignCustomerRecoveryStatus;
@@ -572,6 +591,14 @@ export interface DesignCustomerRecoveryCase {
   eligibilityAt: string;
   lastAppointmentAt: string | null;
   attendedCount: number;
+  assignedTeamId: string | null;
+  assignedTeamName: string | null;
+  assignedAgentId: string | null;
+  assignedAgentName: string | null;
+  assignedAt: string | null;
+  activityStatus: DesignCustomerRecoveryActivityStatus;
+  activityUpdatedAt: string;
+  recoveryAppointmentId: string | null;
   status: DesignCustomerRecoveryStatus;
   updatedAt: string;
   history: DesignCustomerRecoveryHistoryEntry[];
@@ -583,6 +610,35 @@ export interface DesignCustomerRecoverySettings {
   membershipEndedDays: number;
   treatmentEndedDays: number;
   updatedAt: string;
+}
+
+export interface DesignCustomerRecoveryPurchaseRow {
+  recoveryCaseId: string;
+  customerId: string;
+  customerName: string;
+  branchId: string;
+  branchName: string;
+  appointmentId: string;
+  appointmentStartsAt: string;
+  purchaseKind: "FULL" | "LAYAWAY";
+  saleAmount: number;
+  depositAmount: number;
+  balanceAmount: number;
+  specialistName: string;
+  portfolioOwnerName: string;
+  assignedTeamName: string;
+  assignedAgentName: string;
+}
+
+export interface DesignCustomerRecoveryPurchaseReport {
+  rows: DesignCustomerRecoveryPurchaseRow[];
+  summary: {
+    customers: number;
+    saleAmount: number;
+    depositAmount: number;
+    balanceAmount: number;
+    averageTicket: number;
+  };
 }
 
 export interface DesignProposalClient {
@@ -642,6 +698,19 @@ export interface DesignProposalClient {
   customerRecoveryCases(input: {
     branchIds: string[];
   }): Promise<DesignCustomerRecoveryCase[]>;
+  customerRecoveryTeams(input: {
+    branchIds: string[];
+  }): Promise<DesignCustomerRecoveryTeam[]>;
+  saveCustomerRecoveryAssignment(
+    recoveryCaseId: string,
+    input: {
+      mode: "TEAM" | "AGENT";
+      targetId: string;
+    },
+  ): Promise<DesignCustomerRecoveryCase>;
+  customerRecoveryPurchaseReport(input: {
+    branchIds: string[];
+  }): Promise<DesignCustomerRecoveryPurchaseReport>;
   customerRecoverySettings(
     branchId: string,
   ): Promise<DesignCustomerRecoverySettings>;
