@@ -643,8 +643,8 @@ export function CabinSalesReportWorkspace({
                   <article
                     className={
                       index === 0
-                        ? "report-metric report-metric-featured"
-                        : "report-metric"
+                        ? "report-metric report-metric-featured min-w-0 overflow-hidden"
+                        : "report-metric min-w-0 overflow-hidden"
                     }
                     key={card.label}
                   >
@@ -656,7 +656,7 @@ export function CabinSalesReportWorkspace({
                         <Icon className="h-4 w-4" aria-hidden="true" />
                       </span>
                     </div>
-                    <p className="number-display mt-5 text-[1.75rem] leading-none tracking-[-0.04em]">
+                    <p className="number-display mt-5 break-words text-[clamp(1.2rem,2.3vw,1.75rem)] leading-tight tracking-[-0.04em]">
                       {card.value}
                     </p>
                     <p className={index === 0 ? "mt-4 text-xs text-white/55" : "mt-4 text-xs text-slate-400"}>
@@ -668,7 +668,7 @@ export function CabinSalesReportWorkspace({
             </section>
 
             <section className="grid gap-6 xl:grid-cols-3">
-              <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-5">
                   <p className="label-caps">Consolidado</p>
                   <h2 className="mt-1 text-xl font-semibold">Totales por sucursal</h2>
@@ -704,7 +704,7 @@ export function CabinSalesReportWorkspace({
                 </div>
               </article>
 
-              <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-5">
                   <p className="label-caps">Comparativo</p>
                   <h2 className="mt-1 text-xl font-semibold">Venta por cabina</h2>
@@ -737,7 +737,7 @@ export function CabinSalesReportWorkspace({
                 </div>
               </article>
 
-              <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <p className="label-caps">Evolución</p>
                   <h2 className="mt-1 text-xl font-semibold">
@@ -745,10 +745,11 @@ export function CabinSalesReportWorkspace({
                   </h2>
                 </div>
                 {periodSeries.length ? (
-                  <div>
+                  <div className="min-w-0 overflow-hidden">
                     <svg
                       aria-label="Gráfica de monto vendido por día"
-                      className="h-[210px] w-full overflow-visible"
+                      className="block h-[210px] w-full max-w-full overflow-hidden"
+                      preserveAspectRatio="none"
                       role="img"
                       viewBox="0 0 100 100"
                     >
@@ -783,7 +784,7 @@ export function CabinSalesReportWorkspace({
             </section>
 
             <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-              <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-5">
                   <p className="label-caps">Desempeño comercial</p>
                   <h2 className="mt-1 text-xl font-semibold">Top de especialistas por sucursal</h2>
@@ -791,17 +792,17 @@ export function CabinSalesReportWorkspace({
                 </div>
                 <div className="space-y-3">
                   {report.bySpecialist.map((item, index) => (
-                    <div className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 rounded-2xl border border-slate-100 p-3" key={item.key}>
+                    <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-3 rounded-2xl border border-slate-100 p-3 sm:grid-cols-[2rem_minmax(0,1fr)_auto]" key={item.key}>
                       <span className="number-display text-lg text-[#9a7658]">{index + 1}</span>
-                      <div><p className="font-medium">{item.specialistName}</p><p className="text-xs text-slate-400">{item.branchName} · {item.buyers} compradores · {item.conversionRate}% conversión</p></div>
-                      <div className="text-right"><p className="font-semibold">{money.format(item.saleAmount)}</p><p className="text-xs text-slate-400">{money.format(item.depositAmount)} recibido</p></div>
+                      <div className="min-w-0"><p className="truncate font-medium" title={item.specialistName}>{item.specialistName}</p><p className="text-xs text-slate-400">{item.branchName} · {item.buyers} compradores · {item.conversionRate}% conversión</p></div>
+                      <div className="col-span-2 min-w-0 text-left sm:col-span-1 sm:text-right"><p className="break-words font-semibold">{money.format(item.saleAmount)}</p><p className="break-words text-xs text-slate-400">{money.format(item.depositAmount)} recibido</p></div>
                     </div>
                   ))}
                   {!report.bySpecialist.length ? <p className="text-sm text-slate-500">Sin ventas para construir el ranking.</p> : null}
                 </div>
               </article>
 
-              <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-5"><p className="label-caps">Comportamiento de agenda</p><h2 className="mt-1 text-xl font-semibold">Asistencia y cancelación por servicio</h2><p className="mt-1 text-xs text-slate-400">Índice = citas con el resultado ÷ citas del servicio en la población filtrada.</p></div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div>

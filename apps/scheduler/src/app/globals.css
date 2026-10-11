@@ -6129,6 +6129,8 @@
   }
 
   .report-metric {
+    min-width: 0;
+    overflow: hidden;
     min-height: 12.5rem;
     border: 1px solid #e9e1da;
     border-radius: 1.6rem;

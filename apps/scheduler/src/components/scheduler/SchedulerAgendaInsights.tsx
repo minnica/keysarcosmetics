@@ -125,8 +125,8 @@ export function SchedulerAgendaInsights({
       aria-label="Ocupación y próximas citas"
       className={
         pinned
-          ? "relative z-30 hidden h-full w-[324px] shrink-0 overflow-hidden border-l border-slate-200/80 bg-white xl:flex"
-          : `absolute inset-y-0 right-0 z-40 hidden w-[324px] transition-transform duration-300 ease-out xl:flex ${expanded ? "translate-x-0" : "translate-x-[282px]"}`
+          ? "relative z-30 hidden h-full w-[360px] shrink-0 overflow-hidden border-l border-slate-200/80 bg-white xl:flex"
+          : `absolute inset-y-0 right-0 z-40 hidden w-[360px] transition-transform duration-300 ease-out xl:flex ${expanded ? "translate-x-0" : "translate-x-[318px]"}`
       }
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -197,40 +197,40 @@ export function SchedulerAgendaInsights({
               <h2 id="agenda-occupancy-title" className="text-base font-semibold text-slate-800">Ocupación</h2>
               {loading ? <span className="text-[10px] text-slate-400">Actualizando…</span> : null}
             </div>
-            <div className="mt-3 flex items-center gap-4">
+            <div className="mt-3 grid grid-cols-[88px_minmax(0,1fr)] items-center gap-3">
               <div
                 aria-label={`${totalPercent}% de ocupación`}
-                className="grid h-24 w-24 shrink-0 place-items-center rounded-full"
+                className="grid h-[88px] w-[88px] place-items-center rounded-full"
                 style={{ background: `conic-gradient(#45a866 ${totalPercent}%, #e9eee9 0)` }}
               >
-                <div className="grid h-[72px] w-[72px] place-items-center rounded-full bg-white text-2xl font-semibold text-slate-800">
+                <div className="grid h-16 w-16 place-items-center rounded-full bg-white text-xl font-semibold text-slate-800">
                   {totalPercent}%
                 </div>
               </div>
               <div className="min-w-0 flex-1 space-y-2.5">
                 {occupancyGroups.map((group) => (
-                  <div className="grid grid-cols-[8px_1fr_auto] items-center gap-2 text-[11px]" key={group.id}>
+                  <div className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 text-[11px]" key={group.id}>
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: group.color }} />
-                    <span className="truncate text-slate-500">{group.label}</span>
+                    <span className="min-w-0 leading-tight text-slate-500">{group.label}</span>
                     <strong className="text-slate-700">{group.capacity ? `${group.percent}%` : "—"}</strong>
                   </div>
                 ))}
               </div>
             </div>
             <div className="mt-4 grid grid-cols-3 divide-x divide-slate-200 border-y border-slate-200 py-3 text-center">
-              <div>
+              <div className="min-w-0 px-1">
                 <UsersRound className="mx-auto h-3.5 w-3.5 text-slate-400" />
-                <strong className="mt-1 block text-sm text-slate-800">{activeBookings.length}</strong>
+                <strong className="mt-1 block truncate text-sm text-slate-800">{activeBookings.length}</strong>
                 <span className="text-[9px] uppercase tracking-wide text-slate-400">Citas</span>
               </div>
-              <div>
+              <div className="min-w-0 px-1">
                 <DollarSign className="mx-auto h-3.5 w-3.5 text-slate-400" />
-                <strong className="mt-1 block text-sm text-slate-800">{formatMoney(estimatedRevenue)}</strong>
+                <strong className="mt-1 block truncate text-[clamp(0.65rem,1vw,0.875rem)] text-slate-800" title={formatMoney(estimatedRevenue)}>{formatMoney(estimatedRevenue)}</strong>
                 <span className="text-[9px] uppercase tracking-wide text-slate-400">Ingresos</span>
               </div>
-              <div>
+              <div className="min-w-0 px-1">
                 <BarChart3 className="mx-auto h-3.5 w-3.5 text-slate-400" />
-                <strong className="mt-1 block text-sm text-slate-800">{totalCapacity}</strong>
+                <strong className="mt-1 block truncate text-sm text-slate-800">{totalCapacity}</strong>
                 <span className="text-[9px] uppercase tracking-wide text-slate-400">Capacidad</span>
               </div>
             </div>

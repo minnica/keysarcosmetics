@@ -131,8 +131,8 @@ function MetricGrid({
           <article
             className={
               index === 0
-                ? "report-metric report-metric-featured"
-                : "report-metric"
+                ? "report-metric report-metric-featured min-w-0 overflow-hidden"
+                : "report-metric min-w-0 overflow-hidden"
             }
             key={card.label}
           >
@@ -154,7 +154,7 @@ function MetricGrid({
                 <Icon aria-hidden="true" className="h-4 w-4" />
               </span>
             </div>
-            <p className="number-display mt-5 text-[2rem] leading-none tracking-[-0.04em]">
+            <p className="number-display mt-5 break-words text-[clamp(1.35rem,3vw,2rem)] leading-tight tracking-[-0.04em]">
               {value}
             </p>
             <p
@@ -192,10 +192,10 @@ function TrendPanel({
         <div className="mt-6 space-y-3.5">
           {series.slice(-14).map((point) => (
             <div
-              className="grid grid-cols-[88px_1fr_52px] items-center gap-3"
+              className="grid min-w-0 grid-cols-[minmax(0,72px)_minmax(0,1fr)_minmax(0,48px)] items-center gap-2 sm:grid-cols-[88px_minmax(0,1fr)_52px] sm:gap-3"
               key={point.label}
             >
-              <span className="text-xs font-medium text-slate-400">
+              <span className="truncate text-xs font-medium text-slate-400" title={point.label}>
                 {point.label}
               </span>
               <span className="h-2.5 overflow-hidden rounded-full bg-[#eee8e2]">
