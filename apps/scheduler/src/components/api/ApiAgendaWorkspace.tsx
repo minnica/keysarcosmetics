@@ -108,6 +108,7 @@ import {
   type SchedulerBookingMoveTarget,
 } from "@/components/scheduler/SchedulerAgendaGrid";
 import { SchedulerAgendaList } from "@/components/scheduler/SchedulerAgendaList";
+import { SchedulerAgendaInsights } from "@/components/scheduler/SchedulerAgendaInsights";
 import { SchedulerBookingDialog } from "@/components/scheduler/SchedulerBookingDialog";
 import { SchedulerBlockDialog } from "@/components/scheduler/SchedulerBlockDialog";
 import { SchedulerFinancialAccessDialog } from "@/components/scheduler/SchedulerFinancialAccessDialog";
@@ -341,6 +342,8 @@ export function ApiAgendaWorkspace() {
   const canCreateClient = canAccess("clients", "WRITE");
   const canReadStatusColors = canAccess("administration.status-colors", "READ");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [insightsDate, setInsightsDate] = useState(() => new Date());
+  const [insightsPinned, setInsightsPinned] = useState(false);
   const [monthCursor, setMonthCursor] = useState(() =>
     startOfMonth(new Date()),
   );
@@ -359,7 +362,7 @@ export function ApiAgendaWorkspace() {
   const [quickTimeFilter, setQuickTimeFilter] = useState("all");
   const [selectedColumnIds, setSelectedColumnIds] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [resourcePanelOpen, setResourcePanelOpen] = useState(true);
+  const [resourcePanelOpen, setResourcePanelOpen] = useState(false);
   const [displayMode, setDisplayMode] =
     useState<SchedulerDisplayMode>("calendar");
   const [lastAgendaUpdatedAt, setLastAgendaUpdatedAt] = useState<Date | null>(
@@ -546,6 +549,10 @@ export function ApiAgendaWorkspace() {
   const range = useMemo(
     () => buildSchedulerAgendaRange(selectedDate, currentView),
     [currentView, selectedDate],
+  );
+  const insightsRange = useMemo(
+    () => buildSchedulerAgendaRange(insightsDate, "day"),
+    [insightsDate],
   );
   const catalogBranches = useMemo(
     () =>
@@ -768,6 +775,30 @@ export function ApiAgendaWorkspace() {
     [branchScopeKey, range.from, range.to, statusFilter],
     {
       queryKey: `agenda:${branchScopeKey}`,
+      branchId: branchScopeKey,
+      enabled: viewBranchIds.length > 0,
+    },
+  );
+  const insightsAgenda = useSchedulerQuery(
+    async () => {
+      const entries = await Promise.all(
+        viewBranchIds.map(async (branchId) => {
+          const appointments = await loadAllSchedulerAppointments(
+            (page) => schedulerApi.appointments(page),
+            {
+              branchId,
+              from: insightsRange.from,
+              to: insightsRange.to,
+            },
+          );
+          return [branchId, { appointments, blocks: [] }] as const;
+        }),
+      );
+      return { byBranch: Object.fromEntries(entries) };
+    },
+    [branchScopeKey, insightsRange.from, insightsRange.to],
+    {
+      queryKey: `agenda-insights:${branchScopeKey}`,
       branchId: branchScopeKey,
       enabled: viewBranchIds.length > 0,
     },
@@ -1012,6 +1043,30 @@ export function ApiAgendaWorkspace() {
       };
     });
   }, [appointmentContexts.data, displayPresentation]);
+  const insightBookings = useMemo(() => {
+    if (!catalog.data || !insightsAgenda.data) return [];
+    const dateKey = schedulerLocalDateKey(insightsDate);
+    return viewBranchIds.flatMap((branchId) => {
+      const branchAgenda = insightsAgenda.data?.byBranch[branchId];
+      if (!branchAgenda) return [];
+      const presentation = scopeSchedulerAgendaPresentationColumns(
+        buildSchedulerAgendaPresentation({
+          catalog: catalog.data!,
+          branchId,
+          appointments: branchAgenda.appointments,
+          blocks: [],
+        }),
+        branchId,
+      );
+      return buildSchedulerVisualBookings({
+        ...presentation,
+        appointments: presentation.appointments.filter(
+          (appointment) => appointment.localDate === dateKey,
+        ),
+        blocks: [],
+      });
+    });
+  }, [catalog.data, insightsAgenda.data, insightsDate, viewBranchIds]);
   const allBlocks = useMemo(
     () =>
       catalog.data
@@ -1211,6 +1266,7 @@ export function ApiAgendaWorkspace() {
     });
   }, [visualColumns]);
   useEffect(() => setMonthCursor(startOfMonth(selectedDate)), [selectedDate]);
+  useEffect(() => setInsightsDate(new Date(selectedDate)), [selectedDate]);
   useEffect(() => {
     if (
       quickTimeFilter !== "all" &&
@@ -3232,7 +3288,7 @@ export function ApiAgendaWorkspace() {
         </SheetContent>
       </Sheet>
 
-      <main className="flex min-h-0 min-w-0 flex-1 items-stretch overflow-hidden">
+      <main className="relative flex min-h-0 min-w-0 flex-1 items-stretch overflow-hidden">
         {resourcePanelOpen ? (
           <aside className="scheduler-agenda-sidebar hidden h-full min-h-0 w-[304px] shrink-0 overflow-y-auto overscroll-contain border-r border-[rgba(236,209,200,0.82)] xl:block">
             <SchedulerSidebar
@@ -3384,6 +3440,18 @@ export function ApiAgendaWorkspace() {
             </QueryBoundary>
           </div>
         </section>
+
+        <SchedulerAgendaInsights
+          availableMinutes={12 * 60}
+          bookings={insightBookings}
+          date={insightsDate}
+          loading={insightsAgenda.loading}
+          onDateChange={setInsightsDate}
+          onPinnedChange={setInsightsPinned}
+          pinned={insightsPinned}
+          professionals={visualColumns}
+          statusColors={statusColors}
+        />
       </main>
 
       {bookingDraft ? (
