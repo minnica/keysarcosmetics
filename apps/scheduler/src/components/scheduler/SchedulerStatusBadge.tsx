@@ -10,6 +10,7 @@ interface SchedulerStatusBadgeProps {
   color: string;
   className?: string;
   compact?: boolean;
+  hideLabel?: boolean;
   hasPurchase?: boolean;
   purchaseAmount?: number | undefined;
   label?: string;
@@ -24,6 +25,7 @@ export function SchedulerStatusBadge({
   color,
   className,
   compact = false,
+  hideLabel = false,
   hasPurchase = false,
   purchaseAmount,
   label,
@@ -39,13 +41,16 @@ export function SchedulerStatusBadge({
   const purchaseLabel = visiblePurchaseAmount
     ? `Venta o apartado registrado por $${visiblePurchaseAmount}`
     : "Venta o apartado registrado";
+  const resolvedLabel = label ?? bookingStatuses[status].label;
 
   return (
     <span
       className={cn(
         "inline-flex max-w-full shrink-0 items-center rounded-full border font-semibold",
         compact
-          ? "gap-1 px-1.5 py-0.5 text-[0.56rem] leading-none"
+          ? hideLabel
+            ? "gap-0.5 px-1 py-0.5 text-[0.56rem] leading-none"
+            : "gap-1 px-1.5 py-0.5 text-[0.56rem] leading-none"
           : "gap-2 px-3 py-1.5 text-xs",
         className,
       )}
@@ -63,7 +68,11 @@ export function SchedulerStatusBadge({
         )}
         style={{ backgroundColor: tokens.accent }}
       />
-      <span className="truncate">{label ?? bookingStatuses[status].label}</span>
+      {hideLabel ? (
+        <span className="sr-only">{resolvedLabel}</span>
+      ) : (
+        <span className="truncate">{resolvedLabel}</span>
+      )}
       {hasPurchase ? (
         <span
           aria-label={purchaseLabel}

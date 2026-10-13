@@ -65,8 +65,11 @@ const {
   isSchedulerCabinColumn,
   shouldFitSchedulerAgendaColumns,
 } = loadSource("scheduler-agenda-layout");
-const { buildSchedulerStatusLabels, getSchedulerStatusColorTokens } =
-  loadSource("scheduler-status-presentation");
+const {
+  buildSchedulerStatusLabels,
+  getSchedulerStatusColorTokens,
+  shouldShowSchedulerAgendaStatusLabel,
+} = loadSource("scheduler-status-presentation");
 const { canMoveSchedulerBooking } = loadSource("scheduler-appointment-move");
 const { getSchedulerAppointmentAttendeeIndex } = loadSource(
   "scheduler-appointment-hover",
@@ -139,6 +142,21 @@ test("uses configured status labels without losing canonical fallbacks", () => {
   assert.equal(labels.arrived, "Cliente en sucursal");
   assert.equal(labels.attended, "Atendido");
   assert.equal(labels.canceled, "Cancelado");
+});
+
+test("hides attended text only in compact agenda cards", () => {
+  assert.equal(shouldShowSchedulerAgendaStatusLabel("attended"), false);
+  for (const status of [
+    "pending",
+    "reserved",
+    "confirmed",
+    "arrived",
+    "waiting",
+    "no-show",
+    "canceled",
+  ]) {
+    assert.equal(shouldShowSchedulerAgendaStatusLabel(status), true);
+  }
 });
 const {
   buildSchedulerQueryScope,

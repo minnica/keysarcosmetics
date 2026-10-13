@@ -1004,3 +1004,12 @@ división vertical más visibles. Las vistas exclusivas **Especialistas** y
 **Cabinas** conservan su alcance: en Especialistas cada tarjeta filtra a las
 clientas realmente asignadas a esa facialista; si una cita no tiene cabina, la
 vista Ambos mantiene sus proyecciones por especialista para no ocultarla.
+
+En las tarjetas compactas de **Especialistas**, **Cabinas** y **Ambos**, el
+estado atendido conserva su color configurado mediante el punto visual, pero ya
+no muestra la palabra **Atendida**. Esto libera espacio para clienta,
+facialista y monto; el nombre completo del estado continúa visible en el
+tooltip, el detalle y los controles de autorización. La vista **Ambos** se
+mantiene como supervisión conjunta de capacidad y disponibilidad, mostrando una
+sola tarjeta por cita cuando existe cabina para evitar duplicar personas o
+ventas.

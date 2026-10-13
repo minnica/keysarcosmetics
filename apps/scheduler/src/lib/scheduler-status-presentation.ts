@@ -1,4 +1,7 @@
-import type { BookingStatusLabels } from "./scheduler-presentation";
+import type {
+  BookingStatus,
+  BookingStatusLabels,
+} from "./scheduler-presentation";
 
 const fallbackSchedulerStatusColor = "#94a3b8";
 
@@ -39,4 +42,8 @@ export function buildSchedulerStatusLabels(
   overrides: Partial<BookingStatusLabels> = {},
 ): BookingStatusLabels {
   return { ...defaultSchedulerStatusLabels, ...overrides };
+}
+
+export function shouldShowSchedulerAgendaStatusLabel(status: BookingStatus) {
+  return status !== "attended";
 }

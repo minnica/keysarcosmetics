@@ -68,7 +68,10 @@ import {
 } from "@/lib/scheduler-agenda-presentation";
 import { SchedulerBookingCard } from "./SchedulerBookingCard";
 import { SchedulerStatusBadge } from "./SchedulerStatusBadge";
-import { getSchedulerStatusColorTokens } from "@/lib/scheduler-status-presentation";
+import {
+  getSchedulerStatusColorTokens,
+  shouldShowSchedulerAgendaStatusLabel,
+} from "@/lib/scheduler-status-presentation";
 import { canMoveSchedulerBooking } from "@/lib/scheduler-appointment-move";
 import { getSchedulerAppointmentAttendeeIndex } from "@/lib/scheduler-appointment-hover";
 import {
@@ -401,6 +404,7 @@ function SchedulerAppointmentSummary({
         className="scheduler-appointment-status-badge max-w-full"
         color={statusColor}
         compact
+        hideLabel={!shouldShowSchedulerAgendaStatusLabel(booking.status)}
         hasPurchase={(singlePurchaseAmount ?? 0) > 0}
         label={statusLabel}
         purchaseAmount={singlePurchaseAmount}
