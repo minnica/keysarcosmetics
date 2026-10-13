@@ -202,6 +202,63 @@ function purchaseOutcomeLabel(
   return "Pendiente de registrar";
 }
 
+interface SchedulerDisplayedAttendee {
+  attendee: DesignAppointmentAttendeeContext | undefined;
+  contextIndex: number;
+  name: string;
+}
+
+function displayedAttendeesForColumn(
+  booking: Booking,
+  context: DesignAppointmentContext | undefined,
+  column: Professional | undefined,
+): SchedulerDisplayedAttendee[] {
+  const attendees = context?.attendees ?? [];
+  if (attendees.length) {
+    const indexed = attendees.map((attendee, contextIndex) => ({
+      attendee,
+      contextIndex,
+      name: attendee.name,
+    }));
+    if (column?.kind !== "PROFESSIONAL" || !column.entityId) return indexed;
+
+    const assigned = indexed.filter(
+      ({ attendee }) =>
+        attendee.specialistProfileId === column.entityId,
+    );
+    return assigned.length ? assigned : indexed;
+  }
+
+  const names = context?.attendeeNames.length
+    ? context.attendeeNames
+    : [booking.customerName];
+  return names.map((name, contextIndex) => ({
+    attendee: undefined,
+    contextIndex,
+    name,
+  }));
+}
+
+function attendeePurchaseAmount(
+  entry: SchedulerDisplayedAttendee,
+  booking: Booking,
+  displayedCount: number,
+): number | undefined {
+  if (entry.attendee) {
+    return ["FULL", "LAYAWAY"].includes(entry.attendee.purchaseKind ?? "") &&
+      entry.attendee.saleAmount > 0
+      ? entry.attendee.saleAmount
+      : undefined;
+  }
+  return displayedCount === 1 && booking.purchased === true
+    ? booking.purchaseAmount
+    : undefined;
+}
+
+function specialistFirstName(name?: string | null) {
+  return name?.trim().split(/\s+/)[0] ?? "Sin asignar";
+}
+
 interface SchedulerAppointmentTooltipCardProps {
   align: "start" | "center";
   attendeeIndex: number;
@@ -314,6 +371,7 @@ function SchedulerAppointmentTooltipCard({
 
 interface SchedulerAppointmentSummaryProps {
   booking: Booking;
+  column: Professional | undefined;
   context: DesignAppointmentContext | undefined;
   statusColor: string;
   statusLabel: string;
@@ -321,21 +379,21 @@ interface SchedulerAppointmentSummaryProps {
 
 function SchedulerAppointmentSummary({
   booking,
+  column,
   context,
   statusColor,
   statusLabel,
 }: SchedulerAppointmentSummaryProps) {
-  const attendeeNames = Array.from(
-    new Set(
-      (context?.attendeeNames.length
-        ? context.attendeeNames
-        : [booking.customerName]
-      )
-        .map((name) => name.trim())
-        .filter(Boolean),
-    ),
+  const displayedAttendees = displayedAttendeesForColumn(
+    booking,
+    context,
+    column,
   );
-  const hasMultipleAttendees = attendeeNames.length > 1;
+  const hasMultipleAttendees = displayedAttendees.length > 1;
+  const singlePurchaseAmount =
+    displayedAttendees.length === 1
+      ? attendeePurchaseAmount(displayedAttendees[0]!, booking, 1)
+      : undefined;
 
   return (
     <div className="scheduler-appointment-summary flex h-full w-full min-w-0 flex-col items-center justify-center gap-px">
@@ -343,36 +401,60 @@ function SchedulerAppointmentSummary({
         className="scheduler-appointment-status-badge max-w-full"
         color={statusColor}
         compact
-        hasPurchase={
-          booking.purchased === true && (booking.purchaseAmount ?? 0) > 0
-        }
+        hasPurchase={(singlePurchaseAmount ?? 0) > 0}
         label={statusLabel}
-        purchaseAmount={booking.purchaseAmount}
+        purchaseAmount={singlePurchaseAmount}
         status={booking.status}
       />
       <div
         className={cn(
-          "scheduler-appointment-attendees grid w-full min-w-0 flex-1 overflow-hidden",
-          hasMultipleAttendees ? "items-stretch gap-0" : "items-center",
+          "scheduler-appointment-attendees grid w-full min-w-0 flex-1 overflow-hidden rounded-md",
+          hasMultipleAttendees
+            ? "items-stretch gap-0 border border-[#263649]/30 bg-white/35 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]"
+            : "items-center",
         )}
         style={{
-          gridTemplateColumns: `repeat(${attendeeNames.length}, minmax(0, 1fr))`,
+          gridTemplateColumns: `repeat(${displayedAttendees.length}, minmax(0, 1fr))`,
         }}
       >
-        {attendeeNames.map((name, index) => (
-          <span
-            className={cn(
-              "scheduler-appointment-attendee min-w-0 items-center justify-center overflow-hidden px-1 text-center font-semibold",
-              hasMultipleAttendees
-                ? "flex border-l border-current/20 text-[0.58rem] leading-none first:border-l-0"
-                : "block truncate text-[clamp(0.58rem,0.72vw,0.82rem)] leading-[1.05]",
-            )}
-            key={`${name}-${index}`}
-            title={name}
-          >
-            <span className={cn("block w-full min-w-0 truncate")}>{name}</span>
-          </span>
-        ))}
+        {displayedAttendees.map((entry, index) => {
+          const amount = attendeePurchaseAmount(
+            entry,
+            booking,
+            displayedAttendees.length,
+          );
+          const specialistName = specialistFirstName(
+            entry.attendee?.specialistName,
+          );
+          return (
+            <span
+              className={cn(
+                "scheduler-appointment-attendee min-w-0 items-center justify-center overflow-hidden px-1 text-center",
+                hasMultipleAttendees
+                  ? "flex flex-col border-l-[3px] border-l-[#263649]/45 text-[0.56rem] leading-none first:border-l-0 odd:bg-white/15 even:bg-white/55"
+                  : "block truncate text-[clamp(0.58rem,0.72vw,0.82rem)] leading-[1.05]",
+              )}
+              key={entry.attendee?.visitorId ?? `${entry.name}-${index}`}
+              title={`${entry.name}${entry.attendee?.specialistName ? ` · ${entry.attendee.specialistName}` : ""}${amount ? ` · ${appointmentCurrencyFormatter.format(amount)}` : ""}`}
+            >
+              <span className="block w-full min-w-0 truncate font-semibold">
+                {entry.name}
+              </span>
+              {hasMultipleAttendees ? (
+                <span className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1 text-[0.5rem] font-medium opacity-80">
+                  <span className="min-w-0 truncate">{specialistName}</span>
+                  {amount ? (
+                    <strong className="shrink-0 font-bold">
+                      {appointmentCurrencyFormatter.format(amount)}
+                    </strong>
+                  ) : (
+                    <span className="shrink-0">Sin venta</span>
+                  )}
+                </span>
+              ) : null}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -888,19 +970,23 @@ export function SchedulerAgendaGrid({
   function trackBookingAttendee(
     event: ReactPointerEvent<HTMLButtonElement>,
     booking: Booking,
+    column: Professional | undefined,
   ) {
     const context = appointmentContexts[booking.id];
-    const attendeeCount = Math.max(
-      1,
-      context?.attendees?.length ?? context?.attendeeNames.length ?? 1,
+    const displayedAttendees = displayedAttendeesForColumn(
+      booking,
+      context,
+      column,
     );
     const bounds = event.currentTarget.getBoundingClientRect();
-    const attendeeIndex = getSchedulerAppointmentAttendeeIndex(
+    const displayedIndex = getSchedulerAppointmentAttendeeIndex(
       event.clientX,
       bounds.left,
       bounds.width,
-      attendeeCount,
+      displayedAttendees.length,
     );
+    const attendeeIndex =
+      displayedAttendees[displayedIndex]?.contextIndex ?? 0;
     setHoveredBookingAttendee((current) =>
       current?.bookingId === booking.id &&
       current.attendeeIndex === attendeeIndex
@@ -1086,6 +1172,16 @@ export function SchedulerAgendaGrid({
                     visibleProfessionals.find(
                       (item) => item.id === booking.professionalId,
                     )?.name ?? "Sin asignar";
+                  const bookingColumn = visibleColumnById.get(
+                    booking.professionalId,
+                  );
+                  const bookingAttendeeLabel = displayedAttendeesForColumn(
+                    booking,
+                    appointmentContexts[booking.id],
+                    bookingColumn,
+                  )
+                    .map((entry) => entry.name)
+                    .join(" y ");
 
                   return (
                     <Dialog
@@ -1099,7 +1195,7 @@ export function SchedulerAgendaGrid({
                         <TooltipTrigger asChild>
                           <DialogTrigger asChild>
                             <button
-                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}.${canMoveBooking ? " Puedes arrastrarla a otra hora o columna." : ""}`}
+                              aria-label={`Ver cita de ${bookingAttendeeLabel} a las ${booking.start}.${canMoveBooking ? " Puedes arrastrarla a otra hora o columna." : ""}`}
                               className={cn(
                                 "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
                                 canMoveBooking
@@ -1116,7 +1212,11 @@ export function SchedulerAgendaGrid({
                                 startBookingDrag(event, booking)
                               }
                               onPointerMove={(event) =>
-                                trackBookingAttendee(event, booking)
+                                trackBookingAttendee(
+                                  event,
+                                  booking,
+                                  bookingColumn,
+                                )
                               }
                               style={{
                                 ...style,
@@ -1130,6 +1230,7 @@ export function SchedulerAgendaGrid({
                             >
                               <SchedulerAppointmentSummary
                                 booking={booking}
+                                column={bookingColumn}
                                 context={appointmentContexts[booking.id]}
                                 statusColor={statusColor}
                                 statusLabel={statusLabels[booking.status]}
@@ -1460,6 +1561,16 @@ export function SchedulerAgendaGrid({
                     visibleProfessionals.find(
                       (item) => item.id === booking.professionalId,
                     )?.name ?? "Sin asignar";
+                  const bookingColumn = visibleColumnById.get(
+                    booking.professionalId,
+                  );
+                  const bookingAttendeeLabel = displayedAttendeesForColumn(
+                    booking,
+                    appointmentContexts[booking.id],
+                    bookingColumn,
+                  )
+                    .map((entry) => entry.name)
+                    .join(" y ");
 
                   return (
                     <Dialog
@@ -1473,7 +1584,7 @@ export function SchedulerAgendaGrid({
                         <TooltipTrigger asChild>
                           <DialogTrigger asChild>
                             <button
-                              aria-label={`Ver cita de ${booking.customerName} a las ${booking.start}.${canMoveBooking ? " Puedes arrastrarla a otro día u hora." : ""}`}
+                              aria-label={`Ver cita de ${bookingAttendeeLabel} a las ${booking.start}.${canMoveBooking ? " Puedes arrastrarla a otro día u hora." : ""}`}
                               className={cn(
                                 "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
                                 canMoveBooking
@@ -1490,7 +1601,11 @@ export function SchedulerAgendaGrid({
                                 startBookingDrag(event, booking)
                               }
                               onPointerMove={(event) =>
-                                trackBookingAttendee(event, booking)
+                                trackBookingAttendee(
+                                  event,
+                                  booking,
+                                  bookingColumn,
+                                )
                               }
                               style={{
                                 ...style,
@@ -1505,6 +1620,7 @@ export function SchedulerAgendaGrid({
                             >
                               <SchedulerAppointmentSummary
                                 booking={booking}
+                                column={bookingColumn}
                                 context={appointmentContexts[booking.id]}
                                 statusColor={statusColor}
                                 statusLabel={statusLabels[booking.status]}

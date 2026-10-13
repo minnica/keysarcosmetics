@@ -93,6 +93,7 @@ import {
   type SchedulerAgendaSlotMinutes,
 } from "@/lib/scheduler-agenda-settings";
 import {
+  collapseSchedulerCombinedBookings,
   filterSchedulerAgendaColumns,
   isSchedulerCabinColumn,
   shouldFitSchedulerAgendaColumns,
@@ -1123,8 +1124,8 @@ export function ApiAgendaWorkspace() {
   );
   const columnsFitted = columnFitOverride ?? automaticColumnFit;
   const visibleBookings = useMemo(
-    () =>
-      allBookings.filter((booking) => {
+    () => {
+      const filteredBookings = allBookings.filter((booking) => {
         const matchesStatus =
           statusFilter === "active"
             ? booking.status !== "canceled"
@@ -1137,14 +1138,23 @@ export function ApiAgendaWorkspace() {
           matchesStatus &&
           (quickTimeFilter === "all" || booking.start === quickTimeFilter)
         );
-      }),
+      });
+
+      return collapseSchedulerCombinedBookings(
+        filteredBookings,
+        visibleColumns,
+        columnMode,
+      );
+    },
     [
       allBookings,
+      columnMode,
       quickTimeFilter,
       selectedDate,
       statusFilter,
       statusDefinitions.data,
       visibleBookingStatuses,
+      visibleColumns,
       visibleColumnIds,
     ],
   );
@@ -1202,22 +1212,28 @@ export function ApiAgendaWorkspace() {
     () =>
       currentView === "day"
         ? visibleBookings
-        : allBookings.filter((booking) => {
-            const matchesStatus =
-              statusFilter === "active"
-                ? booking.status !== "canceled"
-                : booking.status === statusFilter;
-            return (
-              visibleColumnIds.has(booking.professionalId) &&
-              range.visibleDateKeys.includes(booking.date ?? "") &&
-              (!statusDefinitions.data ||
-                visibleBookingStatuses.has(booking.status)) &&
-              matchesStatus &&
-              (quickTimeFilter === "all" || booking.start === quickTimeFilter)
-            );
-          }),
+        : collapseSchedulerCombinedBookings(
+            allBookings.filter((booking) => {
+              const matchesStatus =
+                statusFilter === "active"
+                  ? booking.status !== "canceled"
+                  : booking.status === statusFilter;
+              return (
+                visibleColumnIds.has(booking.professionalId) &&
+                range.visibleDateKeys.includes(booking.date ?? "") &&
+                (!statusDefinitions.data ||
+                  visibleBookingStatuses.has(booking.status)) &&
+                matchesStatus &&
+                (quickTimeFilter === "all" ||
+                  booking.start === quickTimeFilter)
+              );
+            }),
+            visibleColumns,
+            columnMode,
+          ),
     [
       allBookings,
+      columnMode,
       currentView,
       quickTimeFilter,
       range.visibleDateKeys,
@@ -1225,6 +1241,7 @@ export function ApiAgendaWorkspace() {
       statusDefinitions.data,
       visibleBookings,
       visibleBookingStatuses,
+      visibleColumns,
       visibleColumnIds,
     ],
   );

@@ -993,3 +993,14 @@ En **Clientes → Recuperación**, el reporte **Compras en la primera cita de
 recuperación** muestra ahora la sucursal de origen de cada cliente junto al
 nombre y la fecha de su primera cita. Las tablas de rendimiento, compras y
 casos se paginan por separado para que cambiar una vista no altere las otras.
+
+El 13 de octubre de 2026 la vista **Ambos** de Agenda dejó de repetir una misma
+cita completa en la columna de la especialista y en la cabina. Cuando una cita
+tiene cabina, se representa una sola vez dentro de esa cabina; ahí cada lugar
+de una cabina doble o triple muestra su propia clienta, la especialista que la
+atendió y el monto individual de su venta. El total de una persona nunca se
+replica en las demás. La separación entre lugares usa borde doble, fondo y
+división vertical más visibles. Las vistas exclusivas **Especialistas** y
+**Cabinas** conservan su alcance: en Especialistas cada tarjeta filtra a las
+clientas realmente asignadas a esa facialista; si una cita no tiene cabina, la
+vista Ambos mantiene sus proyecciones por especialista para no ocultarla.
