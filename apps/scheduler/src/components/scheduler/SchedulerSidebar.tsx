@@ -242,8 +242,8 @@ export function SchedulerSidebar({
               </div>
             </div>
 
-            <div className="scheduler-sidebar-card">
-              <div className="mb-3 flex items-center justify-between">
+            <div className="scheduler-sidebar-card !p-3">
+              <div className="mb-2 flex items-center justify-between">
                 <div>
                   <label className="scheduler-label !mb-0">Columnas de agenda</label>
                   <p className="mt-1 text-[0.78rem] uppercase tracking-[0.14em] text-slate-500">Elige cabinas o especialistas</p>
@@ -253,7 +253,7 @@ export function SchedulerSidebar({
                 </Badge>
               </div>
 
-              <div className="mb-3 grid grid-cols-2 gap-1 rounded-[16px] border border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.92)] p-1">
+              <div className="mb-2 grid grid-cols-2 gap-1 rounded-[14px] border border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.92)] p-1">
                 {([
                   ["CABINS", "Cabinas"],
                   ["SPECIALISTS", "Especialistas"],
@@ -262,8 +262,8 @@ export function SchedulerSidebar({
                     aria-pressed={columnMode === value}
                     className={
                       columnMode === value
-                        ? "rounded-xl bg-[#263649] px-2 py-2 text-[0.68rem] font-semibold text-white shadow-sm"
-                        : "rounded-xl px-2 py-2 text-[0.68rem] font-semibold text-slate-500 transition hover:bg-white"
+                        ? "rounded-[10px] bg-[#263649] px-2 py-1.5 text-[0.68rem] font-semibold text-white shadow-sm"
+                        : "rounded-[10px] px-2 py-1.5 text-[0.68rem] font-semibold text-slate-500 transition hover:bg-white"
                     }
                     key={value}
                     onClick={() => onColumnModeChange(value)}
@@ -274,7 +274,7 @@ export function SchedulerSidebar({
                 ))}
               </div>
 
-              <div className="mb-3 flex items-center gap-2 rounded-[18px] border border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.92)] px-3 py-3">
+              <div className="mb-2 flex items-center gap-2 rounded-[14px] border border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.92)] px-3 py-2">
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
                   className="w-full border-0 bg-transparent text-sm text-slate-600 outline-none placeholder:text-slate-400"
@@ -284,15 +284,20 @@ export function SchedulerSidebar({
                 />
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-1.5">
                 {professionals.map((professional) => {
                   const isSelected = selectedProfessionalIds.includes(professional.id)
+                  const detailLabel = `${
+                    professional.kind === 'RESOURCE'
+                      ? `${professional.resourceKind === "ROOM" ? "Cabina" : "Recurso"}${professional.capacity ? ` · ${professional.capacity} ${professional.capacity === 1 ? "persona" : "personas"}` : ""}`
+                      : 'Especialista'
+                  }${professional.branchName ? ` · ${professional.branchName}` : ""}`
 
                   return (
                     <button
                       key={professional.id}
                       className={[
-                        'flex w-full items-center gap-3 rounded-[20px] border px-3 py-2.5 text-left transition-all duration-200',
+                        'flex min-h-[54px] w-full items-center gap-2.5 rounded-[16px] border px-2.5 py-2 text-left transition-all duration-200',
                         isSelected
                           ? 'border-[rgba(195,165,131,0.34)] bg-[linear-gradient(135deg,rgba(244,234,221,0.95),rgba(255,255,255,0.98))] shadow-[0_12px_28px_rgba(195,165,131,0.12)]'
                           : 'border-[rgba(236,209,200,0.8)] bg-white hover:border-[rgba(195,165,131,0.32)] hover:shadow-sm',
@@ -303,22 +308,21 @@ export function SchedulerSidebar({
                       <SchedulerAvatar
                         accent={professional.accent}
                         avatar={professional.avatar}
+                        className="!h-9 !w-9 !shrink-0 !rounded-xl"
+                        imageClassName="!h-9 !w-9 !rounded-xl"
                         name={professional.name}
                         shortName={professional.shortName}
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[0.94rem] font-semibold tracking-[-0.02em] text-slate-800">{professional.name}</p>
-                        <p className="flex items-center gap-1.5 text-[0.78rem] text-slate-400">
-                          {professional.kind === 'RESOURCE' ? <DoorOpen className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
-                          <span>
-                            {professional.kind === 'RESOURCE'
-                              ? `${professional.resourceKind === "ROOM" ? "Cabina" : "Recurso"}${professional.capacity ? ` · ${professional.capacity} ${professional.capacity === 1 ? "persona" : "personas"}` : ""}`
-                              : 'Especialista'}
-                            {professional.branchName ? ` · ${professional.branchName}` : ""}
+                        <p className="truncate text-[0.84rem] font-semibold leading-tight tracking-[-0.02em] text-slate-800" title={professional.name}>{professional.name}</p>
+                        <p className="mt-1 flex min-w-0 items-center gap-1 text-[0.69rem] leading-none text-slate-400">
+                          {professional.kind === 'RESOURCE' ? <DoorOpen className="h-3 w-3 shrink-0" /> : <UserRound className="h-3 w-3 shrink-0" />}
+                          <span className="truncate" title={detailLabel}>
+                            {detailLabel}
                           </span>
                         </p>
                       </div>
-                      <div className={isSelected ? 'h-3 w-3 rounded-full bg-[var(--scheduler-accent)]' : 'h-3 w-3 rounded-full bg-slate-200'} />
+                      <div className={isSelected ? 'h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--scheduler-accent)]' : 'h-2.5 w-2.5 shrink-0 rounded-full bg-slate-200'} />
                     </button>
                   )
                 })}

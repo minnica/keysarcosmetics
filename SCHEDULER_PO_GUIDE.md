@@ -173,6 +173,10 @@ especialistas usan el mismo encabezado compacto sin avatar, su propia etiqueta y
 acento azul. Ninguna columna se
 reduce por debajo del mínimo operativo: seis o más columnas conservan nombres y
 sucursal legibles, con desplazamiento horizontal cuando el monitor no alcanza.
+La lista de columnas del panel izquierdo utiliza tarjetas compactas de una sola
+línea secundaria para que las cabinas y especialistas visibles requieran menos
+desplazamiento vertical. Nombre, capacidad y sucursal conservan texto completo
+en la ayuda nativa al pasar el cursor cuando el ancho obliga a truncarlos.
 El botón de impresión cambia a día, ajusta columnas y abre la
 impresión horizontal del navegador sin menú ni panel lateral.
 
