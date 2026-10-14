@@ -32,7 +32,8 @@ export function SchedulerTopNavigation() {
     [],
     { queryKey: "navigation:operational-catalog" },
   );
-  const commerceId = catalog.data?.commerces.find((item) => item.active)?.id ?? "";
+  const commerceId =
+    catalog.data?.commerces.find((item) => item.active)?.id ?? "";
   const company = useSchedulerQuery(
     () => schedulerApi.resolvedSetting("company", { commerceId }),
     [commerceId],
@@ -48,11 +49,21 @@ export function SchedulerTopNavigation() {
     company.data?.document["companyName"] ?? "Keysar Cosmetics",
   );
   const area = activeArea(pathname);
-  const reportPage: SchedulerReportPage = pathname.startsWith("/reportes/seguimiento-citas")
+  const reportPage: SchedulerReportPage = pathname.startsWith(
+    "/reportes/seguimiento-citas",
+  )
     ? "appointment-journal"
-    : pathname.startsWith("/reportes/reservas")
-      ? "reservations"
-      : "summary";
+    : pathname.startsWith("/reportes/comisiones")
+      ? "commissions"
+      : pathname.startsWith("/reportes/compras-cabinas")
+        ? "cabin-sales"
+        : pathname.startsWith("/reportes/proyecciones")
+          ? "projections"
+          : pathname.startsWith("/reportes/ventas")
+            ? "sales"
+            : pathname.startsWith("/reportes/reservas")
+              ? "reservations"
+              : "summary";
 
   return (
     <header className="scheduler-top-navigation sticky top-0 z-50 border-b border-white/10 bg-[linear-gradient(90deg,#172230_0%,#1d2937_100%)] text-white shadow-[0_14px_34px_rgba(8,14,24,0.2)]">
@@ -70,16 +81,30 @@ export function SchedulerTopNavigation() {
               tabIndex={-1}
               type="application/pdf"
             >
-              <Image alt="" aria-hidden="true" height={34} src="/logo.svg" width={34} />
+              <Image
+                alt=""
+                aria-hidden="true"
+                height={34}
+                src="/logo.svg"
+                width={34}
+              />
             </object>
           ) : logoAsset ? (
             <span
               aria-hidden="true"
               className="h-[34px] w-[34px] rounded-md bg-contain bg-center bg-no-repeat"
-              style={{ backgroundImage: `url(${JSON.stringify(logoAsset.dataUrl)})` }}
+              style={{
+                backgroundImage: `url(${JSON.stringify(logoAsset.dataUrl)})`,
+              }}
             />
           ) : (
-            <Image alt="" aria-hidden="true" height={34} src="/logo.svg" width={34} />
+            <Image
+              alt=""
+              aria-hidden="true"
+              height={34}
+              src="/logo.svg"
+              width={34}
+            />
           )}
           <span className="hidden text-sm font-semibold uppercase tracking-[0.12em] text-white lg:inline">
             {companyName}

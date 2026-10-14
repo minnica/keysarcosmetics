@@ -2,19 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarCheck2,
-  Download,
-  FileSpreadsheet,
   Gift,
   History,
   Layers3,
   Palette,
   Pencil,
   Plus,
-  Printer,
   Save,
   ShieldCheck,
-  UsersRound,
   WalletCards,
 } from "lucide-react";
 import {
@@ -82,11 +77,6 @@ import {
   AdministrationRefreshButton,
   RestoredAdministrationFrame,
 } from "./RestoredAdministrationFrame";
-import {
-  exportCommissionReport,
-  printCommissionReport,
-  type CommissionReportExportFormat,
-} from "./commission-report-export";
 
 const statusLabels: Record<SchedulerAppointmentStatus, string> = {
   PENDING: "Pendiente",
@@ -183,12 +173,6 @@ const commissionMoney = new Intl.NumberFormat("es-MX", {
   currency: "MXN",
   maximumFractionDigits: 2,
 });
-
-function commissionDate(offsetDays = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  return date.toLocaleDateString("en-CA");
-}
 
 function CommissionDialog({
   open,
@@ -542,8 +526,6 @@ function CommissionDialog({
 export function RestoredCommissionsSection() {
   const { bootstrap, canAccess } = useSchedulerSession();
   const canAdmin = canAccess("administration.commissions", "ADMIN");
-  const canExport =
-    canAdmin || canAccess("administration.commissions", "EXPORT");
   const currentProfileId = bootstrap?.user.id.replace(/^design-/, "") ?? "";
   const catalogQuery = useAdministrationData();
   const schemesQuery = useSchedulerQuery(
@@ -557,61 +539,15 @@ export function RestoredCommissionsSection() {
   );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
-  const [reportPage, setReportPage] = useState(1);
-  const [reportPageSize, setReportPageSize] =
-    useState<SchedulerReportPageSize>(20);
-  const [dateFrom, setDateFrom] = useState(() => commissionDate(-30));
-  const [dateTo, setDateTo] = useState(() => commissionDate());
-  const [branchId, setBranchId] = useState("ALL");
-  const [employeeId, setEmployeeId] = useState("ALL");
-  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
-  const [exporting, setExporting] = useState(false);
   const operations = catalogQuery.data?.operations;
-  const allowedBranchIds =
-    operations?.branches.map((branch) => branch.branchId) ?? [];
-  const reportQuery = useSchedulerQuery(
-    () =>
-      schedulerDesignProposals.commissionReport({
-        dateFrom,
-        dateTo,
-        branchIds: branchId === "ALL" ? allowedBranchIds : [branchId],
-        ...(employeeId === "ALL" ? {} : { employeeIds: [employeeId] }),
-      }),
-    [dateFrom, dateTo, branchId, employeeId, allowedBranchIds.join("|")],
-    {
-      queryKey: "commission-report",
-      enabled: allowedBranchIds.length > 0,
-    },
-  );
   const onSaved = async () => {
     invalidateSchedulerQueries("commission-schemes", "commission-report");
-    await Promise.all([schemesQuery.reload(), reportQuery.reload()]);
+    await schemesQuery.reload();
   };
   const pagination = useMemo(
     () => paginateSchedulerReportRows(schemesQuery.data ?? [], page, pageSize),
     [schemesQuery.data, page, pageSize],
   );
-  const reportPagination = useMemo(
-    () =>
-      paginateSchedulerReportRows(
-        reportQuery.data?.rows ?? [],
-        reportPage,
-        reportPageSize,
-      ),
-    [reportPage, reportPageSize, reportQuery.data?.rows],
-  );
-  const selectedRows = useMemo(
-    () =>
-      reportQuery.data?.rows.filter((row) => selectedRowIds.includes(row.id)) ??
-      [],
-    [reportQuery.data?.rows, selectedRowIds],
-  );
-
-  useEffect(() => {
-    setSelectedRowIds(reportQuery.data?.rows.map((row) => row.id) ?? []);
-    setReportPage(1);
-  }, [reportQuery.data]);
-
   function edit(scheme: DesignCommissionScheme) {
     setDraft({
       id: scheme.id,
@@ -632,29 +568,6 @@ export function RestoredCommissionsSection() {
     setDialogOpen(true);
   }
 
-  async function exportSelected(
-    format: CommissionReportExportFormat | "print",
-  ) {
-    if (!reportQuery.data || selectedRows.length === 0) return;
-    setExporting(true);
-    try {
-      if (format === "print")
-        printCommissionReport(reportQuery.data, selectedRows);
-      else await exportCommissionReport(reportQuery.data, selectedRows, format);
-      toast.success(
-        format === "print"
-          ? "Vista de impresión preparada."
-          : `Reporte ${format === "pdf" ? "PDF" : "Excel"} descargado.`,
-      );
-    } catch (cause) {
-      toast.error(
-        cause instanceof Error ? cause.message : "No fue posible exportar.",
-      );
-    } finally {
-      setExporting(false);
-    }
-  }
-
   return (
     <RestoredAdministrationFrame
       section="commissions"
@@ -665,13 +578,8 @@ export function RestoredCommissionsSection() {
             onClick={() => {
               void catalogQuery.reload();
               void schemesQuery.reload();
-              void reportQuery.reload();
             }}
-            loading={
-              catalogQuery.loading ||
-              schemesQuery.loading ||
-              reportQuery.loading
-            }
+            loading={catalogQuery.loading || schemesQuery.loading}
           />
           {canAdmin ? (
             <Button
@@ -772,261 +680,10 @@ export function RestoredCommissionsSection() {
           pageSize={pageSize}
         />
       </QueryBoundary>
-      <section className="admin-card overflow-hidden rounded-3xl border border-[#eadfd5] bg-white">
-        <div className="flex flex-col gap-4 border-b border-[#eee6df] p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="admin-eyebrow">Cálculo auditable</p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-800">
-              Reporte de comisiones
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Sólo incluye esquemas que tu perfil tiene autorizado consultar.
-            </p>
-          </div>
-          {canExport ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                disabled={exporting || selectedRows.length === 0}
-                onClick={() => void exportSelected("pdf")}
-              >
-                <Download className="mr-2 h-4 w-4" /> PDF
-              </Button>
-              <Button
-                variant="outline"
-                disabled={exporting || selectedRows.length === 0}
-                onClick={() => void exportSelected("xlsx")}
-              >
-                <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
-              </Button>
-              <Button
-                variant="outline"
-                disabled={exporting || selectedRows.length === 0}
-                onClick={() => void exportSelected("print")}
-              >
-                <Printer className="mr-2 h-4 w-4" /> Imprimir
-              </Button>
-            </div>
-          ) : null}
-        </div>
-        <div className="grid gap-3 border-b border-[#eee6df] p-5 sm:grid-cols-2 lg:grid-cols-5">
-          <div>
-            <Label htmlFor="commission-date-from">Desde</Label>
-            <Input
-              id="commission-date-from"
-              className="mt-1.5"
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="commission-date-to">Hasta</Label>
-            <Input
-              id="commission-date-to"
-              className="mt-1.5"
-              type="date"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-            />
-          </div>
-          <div>
-            <Label>Sucursal</Label>
-            <Select value={branchId} onValueChange={setBranchId}>
-              <SelectTrigger className="mt-1.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todas</SelectItem>
-                {operations?.branches.map((branch) => (
-                  <SelectItem key={branch.branchId} value={branch.branchId}>
-                    {branch.branchName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Empleado</Label>
-            <Select value={employeeId} onValueChange={setEmployeeId}>
-              <SelectTrigger className="mt-1.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos</SelectItem>
-                {reportQuery.data?.filterOptions.employees.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id}>
-                    {employee.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={() => void reportQuery.reload()}
-              disabled={reportQuery.loading}
-            >
-              <CalendarCheck2 className="mr-2 h-4 w-4" />{" "}
-              {reportQuery.loading ? "Calculando…" : "Calcular"}
-            </Button>
-          </div>
-        </div>
-        <QueryBoundary
-          loading={reportQuery.loading}
-          error={reportQuery.error}
-          empty={!reportQuery.data?.rows.length}
-          emptyTitle="Sin movimientos de comisión"
-          emptyDescription="No hay citas atendidas o ventas atribuibles en el periodo seleccionado."
-          onRetry={() => void reportQuery.reload()}
-        >
-          {reportQuery.data ? (
-            <>
-              <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
-                {[
-                  {
-                    label: "Sucursales",
-                    value: reportQuery.data.summary.branches,
-                    Icon: Layers3,
-                  },
-                  {
-                    label: "Empleados",
-                    value: reportQuery.data.summary.employees,
-                    Icon: UsersRound,
-                  },
-                  {
-                    label: "Citas atendidas",
-                    value: reportQuery.data.summary.attendedAppointments,
-                    Icon: CalendarCheck2,
-                  },
-                  {
-                    label: "Venta atribuible",
-                    value: commissionMoney.format(
-                      reportQuery.data.summary.salesAmount,
-                    ),
-                    Icon: WalletCards,
-                  },
-                  {
-                    label: "Comisión estimada",
-                    value: commissionMoney.format(
-                      reportQuery.data.summary.totalCommission,
-                    ),
-                    Icon: ShieldCheck,
-                  },
-                ].map(({ label, value, Icon }) => (
-                  <div
-                    key={String(label)}
-                    className="rounded-2xl bg-[#f8f5f1] p-4"
-                  >
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      <Icon className="h-4 w-4" /> {label}
-                    </div>
-                    <p className="mt-2 text-xl font-semibold text-slate-800">
-                      {value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <div className="overflow-x-auto border-t border-[#eee6df]">
-                <table className="min-w-[980px] w-full text-left text-sm">
-                  <thead className="bg-[#fbf9f6] text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3">
-                        <input
-                          aria-label="Seleccionar todos los resultados"
-                          type="checkbox"
-                          checked={
-                            selectedRowIds.length ===
-                              reportQuery.data.rows.length &&
-                            reportQuery.data.rows.length > 0
-                          }
-                          onChange={(event) =>
-                            setSelectedRowIds(
-                              event.target.checked
-                                ? reportQuery.data!.rows.map((row) => row.id)
-                                : [],
-                            )
-                          }
-                        />
-                      </th>
-                      {[
-                        "Esquema",
-                        "Sucursal",
-                        "Empleado",
-                        "Citas asistidas",
-                        "Venta",
-                        "Por cita",
-                        "Por venta",
-                        "Total",
-                      ].map((heading) => (
-                        <th key={heading} className="px-4 py-3">
-                          {heading}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reportPagination.rows.map((row) => (
-                      <tr key={row.id} className="border-t border-[#f0e9e3]">
-                        <td className="px-5 py-3">
-                          <input
-                            aria-label={`Seleccionar ${row.employeeName}`}
-                            type="checkbox"
-                            checked={selectedRowIds.includes(row.id)}
-                            onChange={(event) =>
-                              setSelectedRowIds((current) =>
-                                event.target.checked
-                                  ? [...current, row.id]
-                                  : current.filter((id) => id !== row.id),
-                              )
-                            }
-                          />
-                        </td>
-                        <td className="px-4 py-3 font-medium text-slate-700">
-                          {row.schemeName}
-                        </td>
-                        <td className="px-4 py-3">{row.branchName}</td>
-                        <td className="px-4 py-3">{row.employeeName}</td>
-                        <td className="px-4 py-3">
-                          {row.attendedAppointments}
-                        </td>
-                        <td className="px-4 py-3">
-                          {commissionMoney.format(row.salesAmount)}
-                        </td>
-                        <td className="px-4 py-3">
-                          {commissionMoney.format(row.appointmentCommission)}
-                        </td>
-                        <td className="px-4 py-3">
-                          {commissionMoney.format(row.salesCommission)}
-                        </td>
-                        <td className="px-4 py-3 font-semibold">
-                          {commissionMoney.format(row.totalCommission)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-5 pt-3 text-xs text-slate-500">
-                {selectedRows.length} de {reportQuery.data.rows.length} filas
-                seleccionadas para PDF, Excel o impresión.
-              </div>
-              <SchedulerPagination
-                {...reportPagination}
-                label="resultados"
-                onPageChange={setReportPage}
-                onPageSizeChange={setReportPageSize}
-                pageSize={reportPageSize}
-              />
-            </>
-          ) : null}
-        </QueryBoundary>
-      </section>
       <AdministrationCoverageNotice title="Nómina conserva la liquidación final">
-        Scheduler calcula estimaciones auditables por empleado y sucursal, pero
-        no crea pagos, recibos ni movimientos de nómina.
+        Scheduler configura y versiona esquemas; el cálculo auditable se
+        consulta en Reportes → Comisiones. Nómina conserva la creación de pagos,
+        recibos y movimientos.
       </AdministrationCoverageNotice>
       {operations ? (
         <CommissionDialog

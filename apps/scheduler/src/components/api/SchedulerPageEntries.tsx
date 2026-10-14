@@ -86,7 +86,13 @@ export function SchedulerSettingsEntry() {
 export function SchedulerReportsEntry({
   view = "summary",
 }: {
-  view?: "summary" | "sales" | "cabin-sales" | "projections" | "appointment-journal";
+  view?:
+    | "summary"
+    | "sales"
+    | "cabin-sales"
+    | "projections"
+    | "appointment-journal"
+    | "commissions";
 }) {
   return <ApiReportsWorkspace view={view} />;
 }

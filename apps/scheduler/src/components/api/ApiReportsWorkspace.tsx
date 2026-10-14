@@ -13,6 +13,7 @@ import { RestoredReportsWorkspace } from "@/components/reports/RestoredReportsWo
 import { CabinSalesReportWorkspace } from "@/components/reports/CabinSalesReportWorkspace";
 import { SalesProjectionsWorkspace } from "@/components/reports/SalesProjectionsWorkspace";
 import { AppointmentJournalReportWorkspace } from "@/components/reports/AppointmentJournalReportWorkspace";
+import { CommissionReportWorkspace } from "@/components/reports/CommissionReportWorkspace";
 import { schedulerApi } from "@/lib/api";
 import {
   exportSchedulerReport,
@@ -65,14 +66,17 @@ export function ApiReportsWorkspace({
   view = "summary",
   fixedBranchId,
 }: {
-  view?: SchedulerReportView | "cabin-sales" | "projections" | "appointment-journal";
+  view?:
+    | SchedulerReportView
+    | "cabin-sales"
+    | "projections"
+    | "appointment-journal"
+    | "commissions";
   fixedBranchId?: string;
 }) {
   if (view === "cabin-sales") {
     return schedulerDesignProposals.available ? (
-      <DesignCabinSalesReports
-        {...(fixedBranchId ? { fixedBranchId } : {})}
-      />
+      <DesignCabinSalesReports {...(fixedBranchId ? { fixedBranchId } : {})} />
     ) : (
       <CanonicalReportsWorkspace
         view="sales"
@@ -92,6 +96,13 @@ export function ApiReportsWorkspace({
       <DesignAppointmentJournalReport />
     ) : (
       <CanonicalReportsWorkspace view="history" />
+    );
+  }
+  if (view === "commissions") {
+    return schedulerDesignProposals.available ? (
+      <CommissionReportWorkspace />
+    ) : (
+      <CanonicalReportsWorkspace view="sales" />
     );
   }
   return (
@@ -124,7 +135,11 @@ function DesignSalesProjections() {
   );
 }
 
-function DesignCabinSalesReports({ fixedBranchId }: { fixedBranchId?: string }) {
+function DesignCabinSalesReports({
+  fixedBranchId,
+}: {
+  fixedBranchId?: string;
+}) {
   const { bootstrap, canAccess } = useSchedulerSession();
   const fixedBranch = bootstrap?.authorizedBranches.find(
     (branch) => branch.id === fixedBranchId,

@@ -1038,23 +1038,25 @@ especialista vendedor registrado en la visita y nunca se duplica entre
 empleados.
 
 Cada esquema declara además los perfiles autorizados para ver sus cálculos.
-Aunque un administrador puede mantener la configuración, el reporte sólo
-proyecta esquemas donde el perfil activo está incluido. El informe filtra por
-periodo, sucursal y empleado; resume sucursales, empleados, citas asistidas,
-venta atribuible y comisión estimada. PDF, Excel e impresión contienen
-exclusivamente las filas seleccionadas, no sólo la página visible. Nómina
-continúa siendo responsable de liquidar pagos y recibos.
+**Administración → Comisiones** conserva exclusivamente la configuración y
+versionado de esquemas. El cálculo quedó como pantalla independiente en
+**Reportes → Comisiones** (`/reportes/comisiones`) y sólo proyecta esquemas donde
+el perfil activo está incluido. El informe filtra por periodo, sucursal y
+empleado; resume sucursales, empleados, citas asistidas, venta atribuible y
+comisión estimada. PDF, Excel e impresión contienen exclusivamente las filas
+seleccionadas, no sólo la página visible. Nómina continúa siendo responsable de
+liquidar pagos y recibos.
 
 La propuesta de diseño usa `GET/POST/PUT
 /api/scheduler/design-proposals/commission-schemes` y `POST
 /api/scheduler/design-proposals/reports/commissions`. Producción debe validar
 empleados activos, perfiles existentes, porcentajes de 0 a 100, versiones
-optimistas, alcance de sucursal y permiso `administration.commissions:EXPORT`;
+optimistas, alcance de sucursal y permiso `reports.sales:EXPORT`;
 el servidor debe omitir filas y totales de esquemas no autorizados.
 
 Para revisar el flujo: entra con Master, abre **Nueva comisión**, asigna dos
-empleados, agrega ambas modalidades y limita la visibilidad a Master. Guarda,
-elige un periodo con citas atendidas y verifica la separación por sucursal y
-empleado. Selecciona sólo una fila y comprueba que PDF, Excel e impresión
-incluyen esa misma fila. Después entra con Operaciones y confirma que el esquema
-privado no aparece en el cálculo.
+empleados, agrega ambas modalidades y limita la visibilidad a Master. Guarda y
+abre **Reportes → Comisiones**; elige un periodo con citas atendidas y verifica
+la separación por sucursal y empleado. Selecciona sólo una fila y comprueba que
+PDF, Excel e impresión incluyen esa misma fila. Después entra con Operaciones y
+confirma que el esquema privado no aparece en el cálculo.

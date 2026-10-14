@@ -62,6 +62,7 @@ function getRequiredScreen(
   if (
     pathname.startsWith("/reportes/ventas") ||
     pathname.startsWith("/reportes/compras-cabinas") ||
+    pathname.startsWith("/reportes/comisiones") ||
     pathname.startsWith("/reportes/proyecciones")
   ) {
     return schedulerScreenKeyById["reports.sales"];

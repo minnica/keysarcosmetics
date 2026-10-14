@@ -3,11 +3,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@cosmetics/ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@cosmetics/ui";
 import {
   BarChart3,
   Check,
@@ -23,9 +19,7 @@ import {
   UsersRound,
   WalletCards,
 } from "lucide-react";
-import {
-  type SchedulerScreenId,
-} from "@/lib/scheduler-access";
+import { type SchedulerScreenId } from "@/lib/scheduler-access";
 import { useSchedulerSession } from "@/lib/session";
 import { clientNavigationItems } from "@/lib/client-navigation";
 
@@ -41,6 +35,7 @@ export type SchedulerReportPage =
   | "reservations"
   | "sales"
   | "cabin-sales"
+  | "commissions"
   | "projections"
   | "appointment-journal";
 export type AdministrationSectionId =
@@ -66,20 +61,56 @@ const administrationGroups: Array<{
   {
     label: "Información básica",
     items: [
-      { id: "locals", label: "Sucursales y cabinas", icon: <Globe2 className="h-4 w-4" /> },
-      { id: "professionals", label: "Especialistas", icon: <UsersRound className="h-4 w-4" /> },
-      { id: "services", label: "Servicios", icon: <Sparkles className="h-4 w-4" /> },
+      {
+        id: "locals",
+        label: "Sucursales y cabinas",
+        icon: <Globe2 className="h-4 w-4" />,
+      },
+      {
+        id: "professionals",
+        label: "Especialistas",
+        icon: <UsersRound className="h-4 w-4" />,
+      },
+      {
+        id: "services",
+        label: "Servicios",
+        icon: <Sparkles className="h-4 w-4" />,
+      },
     ],
   },
   {
     label: "Opciones avanzadas",
     items: [
-      { id: "commissions", label: "Comisiones", icon: <WalletCards className="h-4 w-4" /> },
-      { id: "surveys", label: "Encuestas", icon: <FileText className="h-4 w-4" /> },
-      { id: "consents", label: "Consentimientos", icon: <Check className="h-4 w-4" /> },
-      { id: "whatsapp", label: "WhatsApp", icon: <MessageCircle className="h-4 w-4" /> },
-      { id: "gift-cards", label: "Gift cards", icon: <WalletCards className="h-4 w-4" /> },
-      { id: "status-colors", label: "Colores de status", icon: <Palette className="h-4 w-4" /> },
+      {
+        id: "commissions",
+        label: "Comisiones",
+        icon: <WalletCards className="h-4 w-4" />,
+      },
+      {
+        id: "surveys",
+        label: "Encuestas",
+        icon: <FileText className="h-4 w-4" />,
+      },
+      {
+        id: "consents",
+        label: "Consentimientos",
+        icon: <Check className="h-4 w-4" />,
+      },
+      {
+        id: "whatsapp",
+        label: "WhatsApp",
+        icon: <MessageCircle className="h-4 w-4" />,
+      },
+      {
+        id: "gift-cards",
+        label: "Gift cards",
+        icon: <WalletCards className="h-4 w-4" />,
+      },
+      {
+        id: "status-colors",
+        label: "Colores de status",
+        icon: <Palette className="h-4 w-4" />,
+      },
     ],
   },
 ];
@@ -107,7 +138,9 @@ function getAdministrationScreenId(
 
 function triggerClass(active: boolean, compact: boolean) {
   if (compact) return "scheduler-header-button";
-  return active ? "report-nav-active" : "report-nav-link inline-flex items-center gap-1.5";
+  return active
+    ? "report-nav-active"
+    : "report-nav-link inline-flex items-center gap-1.5";
 }
 
 function moduleLinkClass(active: boolean) {
@@ -154,7 +187,9 @@ export function ReportsNavMenu({
               className="scheduler-module-menu-trigger"
               type="button"
             >
-              <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+              />
             </button>
           </PopoverTrigger>
         </div>
@@ -166,26 +201,42 @@ export function ReportsNavMenu({
       >
         {canViewSummary ? (
           <Link
-            className={active === "summary" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+            className={
+              active === "summary"
+                ? "scheduler-nav-menu-item-active"
+                : "scheduler-nav-menu-item"
+            }
             href="/reportes"
             onClick={() => setOpen(false)}
           >
             <span>Resumen</span>
-            {active === "summary" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
+            {active === "summary" ? (
+              <span className="h-2 w-2 rounded-full bg-[#c3a583]" />
+            ) : null}
           </Link>
         ) : null}
         {canViewReservations ? (
           <>
             <Link
-              className={active === "reservations" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              className={
+                active === "reservations"
+                  ? "scheduler-nav-menu-item-active"
+                  : "scheduler-nav-menu-item"
+              }
               href="/reportes/reservas"
               onClick={() => setOpen(false)}
             >
               <span>Reporte de reservas</span>
-              {active === "reservations" ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
+              {active === "reservations" ? (
+                <span className="h-2 w-2 rounded-full bg-[#c3a583]" />
+              ) : null}
             </Link>
             <Link
-              className={active === "appointment-journal" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              className={
+                active === "appointment-journal"
+                  ? "scheduler-nav-menu-item-active"
+                  : "scheduler-nav-menu-item"
+              }
               href="/reportes/seguimiento-citas"
               onClick={() => setOpen(false)}
             >
@@ -196,21 +247,44 @@ export function ReportsNavMenu({
         {canViewSales ? (
           <>
             <Link
-              className={active === "sales" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              className={
+                active === "sales"
+                  ? "scheduler-nav-menu-item-active"
+                  : "scheduler-nav-menu-item"
+              }
               href="/reportes/ventas"
               onClick={() => setOpen(false)}
             >
               <span>Ventas y pagos</span>
             </Link>
             <Link
-              className={active === "cabin-sales" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              className={
+                active === "cabin-sales"
+                  ? "scheduler-nav-menu-item-active"
+                  : "scheduler-nav-menu-item"
+              }
               href="/reportes/compras-cabinas"
               onClick={() => setOpen(false)}
             >
               <span>Compras de agenda o cabinas</span>
             </Link>
             <Link
-              className={active === "projections" ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+              className={
+                active === "commissions"
+                  ? "scheduler-nav-menu-item-active"
+                  : "scheduler-nav-menu-item"
+              }
+              href="/reportes/comisiones"
+              onClick={() => setOpen(false)}
+            >
+              <span>Comisiones</span>
+            </Link>
+            <Link
+              className={
+                active === "projections"
+                  ? "scheduler-nav-menu-item-active"
+                  : "scheduler-nav-menu-item"
+              }
               href="/reportes/proyecciones"
               onClick={() => setOpen(false)}
             >
@@ -276,7 +350,9 @@ export function AdministrationNavMenu({
               className="scheduler-module-menu-trigger"
               type="button"
             >
-              <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+              />
             </button>
           </PopoverTrigger>
         </div>
@@ -287,14 +363,23 @@ export function AdministrationNavMenu({
         className="scheduler-nav-popover w-[19rem] overflow-hidden rounded-[22px] p-2 shadow-[0_24px_70px_rgba(7,12,20,0.36)]"
       >
         {visibleGroups.map((group, groupIndex) => (
-          <div key={group.label} className={groupIndex > 0 ? "mt-2 border-t border-white/10 pt-2" : ""}>
+          <div
+            key={group.label}
+            className={
+              groupIndex > 0 ? "mt-2 border-t border-white/10 pt-2" : ""
+            }
+          >
             <p className="px-3 pb-1.5 pt-1 text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-white/35">
               {group.label}
             </p>
             {group.items.map((item) => (
               <Link
                 key={item.id}
-                className={active === item.id ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+                className={
+                  active === item.id
+                    ? "scheduler-nav-menu-item-active"
+                    : "scheduler-nav-menu-item"
+                }
                 href={`/administracion?section=${item.id}`}
                 onClick={() => {
                   setOpen(false);
@@ -305,7 +390,9 @@ export function AdministrationNavMenu({
                   <span className="text-[#c3a583]">{item.icon}</span>
                   {item.label}
                 </span>
-                {active === item.id ? <span className="h-2 w-2 rounded-full bg-[#c3a583]" /> : null}
+                {active === item.id ? (
+                  <span className="h-2 w-2 rounded-full bg-[#c3a583]" />
+                ) : null}
               </Link>
             ))}
           </div>
@@ -332,19 +419,32 @@ export function ClientsNavMenu() {
           type="button"
         >
           Clientes
-          <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+          />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={10} className="scheduler-nav-popover w-64 rounded-[20px] p-2">
+      <PopoverContent
+        align="start"
+        sideOffset={10}
+        className="scheduler-nav-popover w-64 rounded-[20px] p-2"
+      >
         {clientNavigationItems.map(({ label, href, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             aria-current={pathname === href ? "page" : undefined}
-            className={pathname === href ? "scheduler-nav-menu-item-active" : "scheduler-nav-menu-item"}
+            className={
+              pathname === href
+                ? "scheduler-nav-menu-item-active"
+                : "scheduler-nav-menu-item"
+            }
             onClick={() => setOpen(false)}
           >
-            <span className="flex items-center gap-3"><Icon className="h-4 w-4 text-[#c3a583]" />{label}</span>
+            <span className="flex items-center gap-3">
+              <Icon className="h-4 w-4 text-[#c3a583]" />
+              {label}
+            </span>
           </Link>
         ))}
       </PopoverContent>
@@ -360,7 +460,8 @@ export function SettingsNavMenu() {
     section === "authorizations"
       ? bootstrap?.canManageAccess
       : bootstrap?.permissions.some(
-          (permission) => permission.screenKey === `scheduler/settings/${section}`,
+          (permission) =>
+            permission.screenKey === `scheduler/settings/${section}`,
         ),
   );
 
@@ -375,7 +476,9 @@ export function SettingsNavMenu() {
           type="button"
         >
           Configuraciones
-          <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+          />
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -423,12 +526,19 @@ export function SchedulerPrimaryNav({
       className="flex min-w-max items-center gap-1"
     >
       {canAccess("agenda") ? (
-        <Link className={activeArea === "agenda" ? "report-nav-active" : "report-nav-link"} href="/">
+        <Link
+          className={
+            activeArea === "agenda" ? "report-nav-active" : "report-nav-link"
+          }
+          href="/"
+        >
           Agenda
         </Link>
       ) : null}
       <ClientsNavMenu />
-      <ReportsNavMenu active={activeArea === "reports" ? activeReport : undefined} />
+      <ReportsNavMenu
+        active={activeArea === "reports" ? activeReport : undefined}
+      />
       <AdministrationNavMenu
         active={activeArea === "administration" ? activeAdmin : undefined}
         onSelect={onAdministrationSelect}

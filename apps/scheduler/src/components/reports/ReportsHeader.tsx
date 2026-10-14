@@ -6,6 +6,7 @@ export type ReportsPage =
   | "reservations"
   | "sales"
   | "cabin-sales"
+  | "commissions"
   | "projections"
   | "appointment-journal";
 
@@ -35,11 +36,13 @@ export function ReportsHeader({
                   ? "Ventas y pagos"
                   : active === "cabin-sales"
                     ? "Compras de agenda o cabinas"
-                    : active === "projections"
-                      ? "Proyecciones mensuales"
-                    : active === "appointment-journal"
-                      ? "Seguimiento y comentarios"
-                  : "Resumen"}
+                    : active === "commissions"
+                      ? "Comisiones"
+                      : active === "projections"
+                        ? "Proyecciones mensuales"
+                        : active === "appointment-journal"
+                          ? "Seguimiento y comentarios"
+                          : "Resumen"}
             </p>
           </div>
         </div>

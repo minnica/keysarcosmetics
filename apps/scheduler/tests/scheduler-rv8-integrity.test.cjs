@@ -84,6 +84,7 @@ test("keeps the complete RV0 route inventory mounted", () => {
     "app/(dashboard)/configuraciones/page.tsx",
     "app/(dashboard)/movimientos/page.tsx",
     "app/(dashboard)/page.tsx",
+    "app/(dashboard)/reportes/comisiones/page.tsx",
     "app/(dashboard)/reportes/compras-cabinas/page.tsx",
     "app/(dashboard)/reportes/page.tsx",
     "app/(dashboard)/reportes/proyecciones/page.tsx",
@@ -116,10 +117,16 @@ test("combines commerce and resources into one administration submenu", () => {
     path.join(sourceRoot, "components/api/ApiAdministrationWorkspace.tsx"),
     "utf8",
   );
-  assert.match(primaryNav, /id: "locals", label: "Sucursales y cabinas"/);
+  assert.match(
+    primaryNav,
+    /id: "locals",\s+label: "Sucursales y cabinas"/,
+  );
   assert.doesNotMatch(primaryNav, /id: "resources", label: "Recursos"/);
   assert.match(sidebar, /label: "Sucursales y cabinas"/);
-  assert.doesNotMatch(sidebar, /label: "Recursos"[\s\S]*adminSection: "resources"/);
+  assert.doesNotMatch(
+    sidebar,
+    /label: "Recursos"[\s\S]*adminSection: "resources"/,
+  );
   assert.match(
     administrationEntry,
     /requestedSection === "resources" \? "locals" : requestedSection/,
@@ -199,6 +206,7 @@ test("loads report generators only after the user requests an export", () => {
   for (const relativePath of [
     "lib/scheduler-report-export.ts",
     "components/reports/cabin-sales-report-export.ts",
+    "components/reports/commission-report-export.ts",
   ]) {
     const source = readFileSync(path.join(sourceRoot, relativePath), "utf8");
     assert.match(source, /await import\("xlsx"\)/);
@@ -209,6 +217,24 @@ test("loads report generators only after the user requests an export", () => {
       /^import .* from ["'](?:xlsx|jspdf|jspdf-autotable)["']/m,
     );
   }
+});
+
+test("separates commission configuration from its report route", () => {
+  const administration = readFileSync(
+    path.join(
+      sourceRoot,
+      "components/administration/RestoredAdministrationSections.tsx",
+    ),
+    "utf8",
+  );
+  const report = readFileSync(
+    path.join(sourceRoot, "components/reports/CommissionReportWorkspace.tsx"),
+    "utf8",
+  );
+  assert.doesNotMatch(administration, /Reporte de comisiones/);
+  assert.match(administration, /Configurar esquemas|Nueva comisión/);
+  assert.match(report, /Reporte de comisiones/);
+  assert.match(report, /href="\/administracion\?section=commissions"/);
 });
 
 test("splits each operational workspace into its route module", () => {
