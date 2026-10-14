@@ -332,7 +332,10 @@ export function SchedulerBookingDialog({
           (index === 0 ? draft.customerName.trim() : visitor.name.trim())
             .length >= 2 &&
           Boolean(visitor.specialistProfileId) &&
-          (!appointmentDetailsLocked || visitor.purchaseKind !== null) &&
+          (!appointmentDetailsLocked ||
+            visitor.attendanceStatus !== "PENDING") &&
+          (visitor.attendanceStatus !== "NO_SHOW" ||
+            visitor.purchaseKind === "NONE") &&
           (visitor.purchaseKind === null ||
             visitor.purchaseKind === "NONE" ||
             (Number(visitor.saleAmount) > 0 &&
@@ -415,6 +418,7 @@ export function SchedulerBookingDialog({
           customerId: null,
           name: "",
           specialistProfileId: "",
+          attendanceStatus: "PENDING" as const,
           purchased: null,
           purchaseAmount: "",
           purchaseKind: null,
@@ -1099,14 +1103,15 @@ export function SchedulerBookingDialog({
                           </div>
                           <p className="mt-1 text-sm text-slate-500">
                             {appointmentDetailsLocked
-                              ? "Registra quién atendió a cada visitante y el resultado comercial de la atención."
+                              ? "Registra la asistencia de cada visitante por separado y, cuando aplique, su resultado comercial."
                               : "La capacidad define cuántos visitantes y especialistas asignados requiere la reserva."}
                           </p>
                           {appointmentDetailsLocked ? (
                             <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-                              Para marcar la cita como atendida debes indicar en
-                              cada persona si compró o no. Las compras y
-                              apartados requieren sus montos completos.
+                              La asistencia es obligatoria por persona. La
+                              venta puede quedar pendiente y registrarse
+                              después; compras y apartados sí requieren sus
+                              montos completos.
                             </p>
                           ) : null}
                         </div>
@@ -1194,7 +1199,7 @@ export function SchedulerBookingDialog({
                         <div
                           className={cn(
                             "grid gap-4 rounded-2xl border border-white bg-white/85 p-4 md:grid-cols-2",
-                            appointmentDetailsLocked && "2xl:grid-cols-10",
+                            appointmentDetailsLocked && "2xl:grid-cols-12",
                           )}
                           key={visitor.id}
                         >
@@ -1296,9 +1301,54 @@ export function SchedulerBookingDialog({
                             <>
                               <div className="space-y-2 2xl:col-span-2">
                                 <label className="scheduler-modal-label flex min-h-10 items-end">
+                                  Asistencia
+                                </label>
+                                <Select
+                                  value={visitor.attendanceStatus}
+                                  onValueChange={(value) =>
+                                    patchVisitor(index, {
+                                      attendanceStatus: value as
+                                        | "PENDING"
+                                        | "ARRIVED"
+                                        | "ATTENDED"
+                                        | "NO_SHOW",
+                                      ...(value === "NO_SHOW"
+                                        ? {
+                                            purchaseKind: "NONE",
+                                            purchased: false,
+                                            purchaseAmount: "",
+                                            saleAmount: "",
+                                            depositAmount: "",
+                                          }
+                                        : {}),
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="scheduler-modal-select-trigger">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="scheduler-modal-select-content">
+                                    <SelectItem disabled value="PENDING">
+                                      Pendiente
+                                    </SelectItem>
+                                    <SelectItem value="ARRIVED">
+                                      Llegó
+                                    </SelectItem>
+                                    <SelectItem value="ATTENDED">
+                                      Asistió
+                                    </SelectItem>
+                                    <SelectItem value="NO_SHOW">
+                                      No asistió
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-2 2xl:col-span-2">
+                                <label className="scheduler-modal-label flex min-h-10 items-end">
                                   Resultado de venta
                                 </label>
                                 <Select
+                                  disabled={visitor.attendanceStatus === "NO_SHOW"}
                                   value={visitor.purchaseKind ?? "PENDING"}
                                   onValueChange={(value) =>
                                     patchVisitor(index, {
@@ -1401,7 +1451,7 @@ export function SchedulerBookingDialog({
                             </>
                           ) : null}
                           {visitor.purchaseKind === "LAYAWAY" ? (
-                            <p className="rounded-xl border border-[#e6d8ca] bg-[#fbf7f2] px-3 py-2 text-sm text-[#795f45] md:col-span-2 2xl:col-span-10">
+                            <p className="rounded-xl border border-[#e6d8ca] bg-[#fbf7f2] px-3 py-2 text-sm text-[#795f45] md:col-span-2 2xl:col-span-12">
                               El total de esta venta queda asignado a{" "}
                               <strong>
                                 {specialistOptions.find(
@@ -1422,7 +1472,7 @@ export function SchedulerBookingDialog({
                           role="status"
                         >
                           {appointmentDetailsLocked
-                            ? "Completa el representante, cada visitante y especialista, e indica obligatoriamente si compró o no. Para compra captura el total; si es apartado, el anticipo debe ser mayor a cero y no superar la venta."
+                            ? "Completa el representante, cada visitante y especialista, y marca la asistencia individual. La compra puede quedar pendiente; si registras compra o apartado, captura montos válidos."
                             : "Completa la cabina, el representante, los visitantes y las especialistas asignadas antes de guardar la reserva."}
                         </p>
                       ) : null}

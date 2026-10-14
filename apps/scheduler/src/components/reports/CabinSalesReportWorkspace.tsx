@@ -95,9 +95,10 @@ function periodRange(mode: Exclude<PeriodMode, "CUSTOM">, anchor: string) {
   return { from: formatDate(from), to: formatDate(to) };
 }
 
-function purchaseLabel(kind: "NONE" | "FULL" | "LAYAWAY") {
+function purchaseLabel(kind: "NONE" | "FULL" | "LAYAWAY" | null) {
   if (kind === "FULL") return "Liquidada";
   if (kind === "LAYAWAY") return "Apartado";
+  if (kind === null) return "Pendiente de registrar";
   return "No compró";
 }
 
@@ -803,7 +804,7 @@ export function CabinSalesReportWorkspace({
               </article>
 
               <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-5"><p className="label-caps">Comportamiento de agenda</p><h2 className="mt-1 text-xl font-semibold">Asistencia y cancelación por servicio</h2><p className="mt-1 text-xs text-slate-400">Índice = citas con el resultado ÷ citas del servicio en la población filtrada.</p></div>
+                <div className="mb-5"><p className="label-caps">Comportamiento de agenda</p><h2 className="mt-1 text-xl font-semibold">Asistencia y cancelación por servicio</h2><p className="mt-1 text-xs text-slate-400">Índice = clientes con el resultado ÷ clientes del servicio en la población filtrada.</p></div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Mayor asistencia</p>
@@ -897,7 +898,7 @@ export function CabinSalesReportWorkspace({
                       <th className="px-4 py-3 text-right">Venta</th>
                       <th className="px-4 py-3 text-right">Recibido</th>
                       <th className="px-4 py-3 text-right">Saldo</th>
-                      <th className="px-4 py-3">Estado / origen</th>
+                      <th className="px-4 py-3">Asistencia individual / origen</th>
                       <th className="px-4 py-3">Comentarios</th>
                     </tr>
                   </thead>

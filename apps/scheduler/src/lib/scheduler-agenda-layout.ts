@@ -1,6 +1,6 @@
 import type { Professional } from "./scheduler-presentation";
 
-export type SchedulerAgendaColumnMode = "CABINS" | "SPECIALISTS" | "ALL";
+export type SchedulerAgendaColumnMode = "CABINS" | "SPECIALISTS";
 
 export function isSchedulerCabinColumn(
   column: Pick<Professional, "kind" | "resourceKind">,
@@ -12,52 +12,11 @@ export function filterSchedulerAgendaColumns(
   columns: Professional[],
   mode: SchedulerAgendaColumnMode,
 ): Professional[] {
-  if (mode === "ALL") return columns;
   return columns.filter((column) =>
     mode === "CABINS"
       ? isSchedulerCabinColumn(column)
       : column.kind !== "RESOURCE",
   );
-}
-
-interface SchedulerCombinedBookingProjection {
-  id: string;
-  sourceId?: string;
-  professionalId: string;
-}
-
-/**
- * In the combined agenda, one canonical appointment can be projected into its
- * specialist and cabin columns. Keep a single visual card in its cabin so the
- * same client and sale are not repeated. Appointments without a cabin retain
- * their specialist projections.
- */
-export function collapseSchedulerCombinedBookings<
-  TBooking extends SchedulerCombinedBookingProjection,
->(
-  bookings: TBooking[],
-  columns: Pick<Professional, "id" | "kind" | "resourceKind">[],
-  mode: SchedulerAgendaColumnMode,
-): TBooking[] {
-  if (mode !== "ALL") return bookings;
-
-  const columnById = new Map(columns.map((column) => [column.id, column]));
-  const groups = new Map<string, TBooking[]>();
-
-  for (const booking of bookings) {
-    const sourceId = booking.sourceId ?? booking.id;
-    const group = groups.get(sourceId) ?? [];
-    group.push(booking);
-    groups.set(sourceId, group);
-  }
-
-  return [...groups.values()].flatMap((group) => {
-    const cabinProjection = group.find((booking) => {
-      const column = columnById.get(booking.professionalId);
-      return column ? isSchedulerCabinColumn(column) : false;
-    });
-    return cabinProjection ? [cabinProjection] : group;
-  });
 }
 
 export function shouldFitSchedulerAgendaColumns(

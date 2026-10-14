@@ -86,14 +86,18 @@ import type {
   DesignOperationAgent,
   DesignOperationGrant,
   DesignOperationPurpose,
+  DesignVisitAttendanceStatus,
 } from "../../../design/contracts";
+import {
+  deriveDesignAppointmentAttendanceStatus,
+  resolveDesignVisitAttendanceStatus,
+} from "../../../design/attendance";
 import type { SchedulerFinancialProfile } from "@/lib/scheduler-access";
 import {
   getSchedulerAgendaSlotMinutes,
   type SchedulerAgendaSlotMinutes,
 } from "@/lib/scheduler-agenda-settings";
 import {
-  collapseSchedulerCombinedBookings,
   filterSchedulerAgendaColumns,
   isSchedulerCabinColumn,
   shouldFitSchedulerAgendaColumns,
@@ -372,7 +376,7 @@ export function ApiAgendaWorkspace() {
     null,
   );
   const [columnMode, setColumnMode] =
-    useState<SchedulerAgendaColumnMode>("ALL");
+    useState<SchedulerAgendaColumnMode>("CABINS");
   const [columnFitOverride, setColumnFitOverride] = useState<boolean | null>(
     null,
   );
@@ -386,9 +390,6 @@ export function ApiAgendaWorkspace() {
   const [bookingDraft, setBookingDraft] = useState<BookingDraft | null>(null);
   const [attendanceStatusAppointmentId, setAttendanceStatusAppointmentId] =
     useState<string | null>(null);
-  const [attendanceTargetStatus, setAttendanceTargetStatus] = useState<
-    "arrived" | "attended" | null
-  >(null);
   const [finalizedPurchaseAppointmentIds, setFinalizedPurchaseAppointmentIds] =
     useState<Set<string>>(() => new Set());
   const [bookingSaving, setBookingSaving] = useState(false);
@@ -952,6 +953,14 @@ export function ApiAgendaWorkspace() {
                 email: booking.customerEmail ?? null,
                 specialistProfileId: booking.professionalId || null,
                 specialistName: null,
+                attendanceStatus:
+                  booking.status === "attended"
+                    ? "ATTENDED"
+                    : booking.status === "arrived" || booking.status === "waiting"
+                      ? "ARRIVED"
+                      : booking.status === "no-show"
+                        ? "NO_SHOW"
+                        : "PENDING",
                 purchaseKind:
                   booking.purchased === true
                     ? "FULL"
@@ -1140,21 +1149,15 @@ export function ApiAgendaWorkspace() {
         );
       });
 
-      return collapseSchedulerCombinedBookings(
-        filteredBookings,
-        visibleColumns,
-        columnMode,
-      );
+      return filteredBookings;
     },
     [
       allBookings,
-      columnMode,
       quickTimeFilter,
       selectedDate,
       statusFilter,
       statusDefinitions.data,
       visibleBookingStatuses,
-      visibleColumns,
       visibleColumnIds,
     ],
   );
@@ -1212,8 +1215,7 @@ export function ApiAgendaWorkspace() {
     () =>
       currentView === "day"
         ? visibleBookings
-        : collapseSchedulerCombinedBookings(
-            allBookings.filter((booking) => {
+        : allBookings.filter((booking) => {
               const matchesStatus =
                 statusFilter === "active"
                   ? booking.status !== "canceled"
@@ -1228,12 +1230,8 @@ export function ApiAgendaWorkspace() {
                   booking.start === quickTimeFilter)
               );
             }),
-            visibleColumns,
-            columnMode,
-          ),
     [
       allBookings,
-      columnMode,
       currentView,
       quickTimeFilter,
       range.visibleDateKeys,
@@ -1241,7 +1239,6 @@ export function ApiAgendaWorkspace() {
       statusDefinitions.data,
       visibleBookings,
       visibleBookingStatuses,
-      visibleColumns,
       visibleColumnIds,
     ],
   );
@@ -1310,7 +1307,6 @@ export function ApiAgendaWorkspace() {
   useEffect(() => {
     setBookingDialogOpen(false);
     setAttendanceStatusAppointmentId(null);
-    setAttendanceTargetStatus(null);
     setBlockDialogOpen(false);
     setSensitiveRequest(null);
     setFinancialRecords({});
@@ -1525,6 +1521,7 @@ export function ApiAgendaWorkspace() {
           customerId: null,
           name: "",
           specialistProfileId: targetSpecialists[index]?.id ?? "",
+          attendanceStatus: "PENDING",
           purchased: null,
           purchaseAmount: "",
           purchaseKind: null,
@@ -1540,7 +1537,10 @@ export function ApiAgendaWorkspace() {
     setBookingDialogOpen(true);
   }
 
-  function openEditBooking(booking: Booking) {
+  function openEditBooking(
+    booking: Booking,
+    requestedAttendanceStatus?: DesignVisitAttendanceStatus,
+  ) {
     if (!canWrite) return;
     const appointment = presentation?.appointments.find(
       (item) => item.id === bookingSourceId(booking),
@@ -1600,6 +1600,9 @@ export function ApiAgendaWorkspace() {
             appointmentSpecialists[index]?.id ??
             appointmentSpecialists[0]?.id ??
             "",
+          attendanceStatus:
+            requestedAttendanceStatus ??
+            resolveDesignVisitAttendanceStatus(undefined, appointment.status),
           purchased: null,
           purchaseAmount: "",
           purchaseKind: null,
@@ -1651,6 +1654,16 @@ export function ApiAgendaWorkspace() {
                         representativeId: cabinVisit.representativeId,
                         visitors: cabinVisit.visitors.map((visitor) => ({
                           ...visitor,
+                          attendanceStatus:
+                            resolveDesignVisitAttendanceStatus(
+                              visitor.attendanceStatus,
+                              appointment.status,
+                            ) === "PENDING" && requestedAttendanceStatus
+                              ? requestedAttendanceStatus
+                              : resolveDesignVisitAttendanceStatus(
+                                  visitor.attendanceStatus,
+                                  appointment.status,
+                                ),
                           purchaseAmount:
                             visitor.purchaseAmount === null
                               ? ""
@@ -2046,12 +2059,11 @@ export function ApiAgendaWorkspace() {
           (appointment) => appointment.id === editingId,
         )
       : null;
-    const requiresAttendanceOutcome = Boolean(
-      existingAppointment &&
-      (attendanceStatusAppointmentId === existingAppointment.id ||
-        !["PENDING", "RESERVED", "CONFIRMED"].includes(
-          existingAppointment.status,
-        )),
+    const completesAttendanceCapture = Boolean(
+      editingId && attendanceStatusAppointmentId === editingId,
+    );
+    const derivedAttendanceStatus = deriveDesignAppointmentAttendanceStatus(
+      bookingDraft.visitors.map((visitor) => visitor.attendanceStatus),
     );
     const selectedCabin = cabinOptions.find(
       (cabin) => cabin.id === bookingDraft.cabinResourceId,
@@ -2092,7 +2104,10 @@ export function ApiAgendaWorkspace() {
       if (
         bookingDraft.visitors.some(
           (visitor) =>
-            (requiresAttendanceOutcome && visitor.purchaseKind === null) ||
+            (completesAttendanceCapture &&
+              visitor.attendanceStatus === "PENDING") ||
+            (visitor.attendanceStatus === "NO_SHOW" &&
+              visitor.purchaseKind !== "NONE") ||
             ((visitor.purchaseKind === "FULL" ||
               visitor.purchaseKind === "LAYAWAY") &&
               (!Number.isFinite(Number(visitor.saleAmount)) ||
@@ -2104,7 +2119,7 @@ export function ApiAgendaWorkspace() {
         )
       ) {
         toast.error(
-          "No puedes marcar la asistencia: indica si cada visitante compró o no; las compras y apartados requieren montos válidos.",
+          "Marca la asistencia de cada visitante. Quien no asistió no puede tener compra; las compras y apartados requieren montos válidos.",
         );
         return;
       }
@@ -2115,9 +2130,6 @@ export function ApiAgendaWorkspace() {
         !["PENDING", "RESERVED", "CONFIRMED"].includes(
           existingAppointment.status,
         )),
-    );
-    const completesAttendanceCapture = Boolean(
-      editingId && attendanceStatusAppointmentId === editingId,
     );
     const correctsFinalizedPurchase = Boolean(
       editingId && finalizedPurchaseAppointmentIds.has(editingId),
@@ -2164,14 +2176,16 @@ export function ApiAgendaWorkspace() {
     requestOperationAuthorization(
       {
         title: completesAttendanceCapture
-          ? attendanceTargetStatus === "arrived"
-            ? "Autorizar llegada y atención"
-            : "Autorizar asistencia"
+          ? derivedAttendanceStatus === "NO_SHOW"
+            ? "Autorizar inasistencia"
+            : derivedAttendanceStatus === "ARRIVED"
+              ? "Autorizar llegada"
+              : "Autorizar asistencia"
           : editingId
             ? "Autorizar cambio de cita"
             : "Autorizar nueva reserva",
         description: completesAttendanceCapture
-          ? "Confirma quién registra la llegada o asistencia. El estado sólo cambiará después de guardar atención, representante y compra."
+          ? "Confirma quién registra la asistencia individual. Cada persona puede quedar como llegó, asistió o no asistió, sin obligar a registrar una venta."
           : editingId
             ? "Confirma quién realiza el cambio. El código autoriza sólo este movimiento."
             : "Confirma quién registra la reserva. El código autoriza sólo este movimiento.",
@@ -2183,7 +2197,7 @@ export function ApiAgendaWorkspace() {
         ...(completesAttendanceCapture
           ? {
               scopeKey:
-                `STATUS:${attendanceTargetStatus === "arrived" ? "ARRIVED" : "ATTENDED"}` as DesignAuthorizationScopeKey,
+                `STATUS:${derivedAttendanceStatus}` as DesignAuthorizationScopeKey,
             }
           : {}),
         targetType: "APPOINTMENT",
@@ -2279,6 +2293,9 @@ export function ApiAgendaWorkspace() {
     );
     const completesAttendanceCapture = Boolean(
       existing && attendanceStatusAppointmentId === existing.id,
+    );
+    const derivedAttendanceStatus = deriveDesignAppointmentAttendanceStatus(
+      bookingDraft.visitors.map((visitor) => visitor.attendanceStatus),
     );
     const currentTimeUnchanged = Boolean(
       existing &&
@@ -2434,6 +2451,7 @@ export function ApiAgendaWorkspace() {
                   ? bookingDraft.customerName.trim()
                   : visitor.name.trim(),
               specialistProfileId: visitor.specialistProfileId,
+              attendanceStatus: visitor.attendanceStatus,
               purchased: visitor.purchased,
               purchaseAmount:
                 visitor.purchaseKind === "FULL" ||
@@ -2455,6 +2473,7 @@ export function ApiAgendaWorkspace() {
             })),
           },
           purchaseGrant?.token,
+          completesAttendanceCapture ? (grant?.token ?? undefined) : undefined,
         );
         if (!existing) {
           await schedulerDesignProposals.saveCustomerSpecialistPreference(
@@ -2469,8 +2488,7 @@ export function ApiAgendaWorkspace() {
         savedAppointment = await schedulerApi.changeAppointmentStatus(
           savedAppointment.id,
           {
-            status:
-              attendanceTargetStatus === "arrived" ? "ARRIVED" : "ATTENDED",
+            status: derivedAttendanceStatus,
             expectedVersion: savedAppointment.version,
             ...(grant && schedulerDesignProposals.available
               ? { authorizationToken: grant.token }
@@ -2480,7 +2498,7 @@ export function ApiAgendaWorkspace() {
       }
       await commitAuthorizedOperation(grant, {
         action: completesAttendanceCapture
-          ? `Cambio de estado a ${attendanceTargetStatus ?? "attended"}`
+          ? `Registro de asistencia individual: ${derivedAttendanceStatus}`
           : existing
             ? "Cambio de cita"
             : "Alta de cita",
@@ -2490,6 +2508,25 @@ export function ApiAgendaWorkspace() {
           branchId: selectedBranch,
           customerId,
           serviceId: bookingDraft.serviceId,
+          ...(completesAttendanceCapture
+            ? {
+                attendedCount: String(
+                  bookingDraft.visitors.filter(
+                    (visitor) => visitor.attendanceStatus === "ATTENDED",
+                  ).length,
+                ),
+                arrivedCount: String(
+                  bookingDraft.visitors.filter(
+                    (visitor) => visitor.attendanceStatus === "ARRIVED",
+                  ).length,
+                ),
+                noShowCount: String(
+                  bookingDraft.visitors.filter(
+                    (visitor) => visitor.attendanceStatus === "NO_SHOW",
+                  ).length,
+                ),
+              }
+            : {}),
         },
       });
       if (purchaseGrant) {
@@ -2538,7 +2575,7 @@ export function ApiAgendaWorkspace() {
       }
       toast.success(
         appointmentDetailsLocked
-          ? "Atención y compras registradas."
+          ? "Asistencia individual registrada."
           : existing
             ? "Reserva actualizada."
             : "Reserva creada.",
@@ -2546,7 +2583,6 @@ export function ApiAgendaWorkspace() {
       setBookingDialogOpen(false);
       setBookingDraft(null);
       setAttendanceStatusAppointmentId(null);
-      setAttendanceTargetStatus(null);
       setCustomerRegistrationReview(null);
       setClientSearchInput("");
       setDisplayMode("calendar");
@@ -2901,15 +2937,19 @@ export function ApiAgendaWorkspace() {
     }
     const requiresAttentionCapture =
       schedulerDesignProposals.available &&
-      (status === "arrived" ||
-        (status === "attended" &&
-          !["ARRIVED", "WAITING"].includes(appointment.status)));
+      ["arrived", "attended", "no-show"].includes(status);
     if (requiresAttentionCapture) {
       setAttendanceStatusAppointmentId(appointment.id);
-      setAttendanceTargetStatus(status === "arrived" ? "arrived" : "attended");
-      openEditBooking(booking);
+      openEditBooking(
+        booking,
+        status === "arrived"
+          ? "ARRIVED"
+          : status === "no-show"
+            ? "NO_SHOW"
+            : "ATTENDED",
+      );
       toast.info(
-        "El color no cambiará hasta guardar representante, especialistas y compra o no compra de cada visitante.",
+        "Marca la asistencia de cada cliente por separado. La venta puede registrarse ahora o después.",
       );
       return;
     }
@@ -3527,7 +3567,6 @@ export function ApiAgendaWorkspace() {
             setBookingDialogOpen(false);
             setBookingDraft(null);
             setAttendanceStatusAppointmentId(null);
-            setAttendanceTargetStatus(null);
             setCustomerRegistrationReview(null);
             toast.info(
               "Sucursal actualizada. Abre de nuevo la reserva para consultar su disponibilidad.",
@@ -3541,7 +3580,6 @@ export function ApiAgendaWorkspace() {
               setBookingDraft(null);
               preferredSpecialistLoadedForRef.current = null;
               setAttendanceStatusAppointmentId(null);
-              setAttendanceTargetStatus(null);
               setClientSearchInput("");
               setCustomerRegistrationReview(null);
             }

@@ -21,7 +21,10 @@ import {
   type Professional,
   type ServiceOption,
 } from "@/lib/scheduler-presentation";
-import type { DesignCustomerVisitPurchaseSnapshot } from "../../../design/contracts";
+import type {
+  DesignCustomerVisitPurchaseSnapshot,
+  DesignVisitAttendanceStatus,
+} from "../../../design/contracts";
 
 const fallbackDateKey = "1970-01-01";
 
@@ -159,6 +162,7 @@ export interface BookingVisitorDraft {
   customerId: string | null;
   name: string;
   specialistProfileId: string;
+  attendanceStatus: DesignVisitAttendanceStatus;
   purchased: boolean | null;
   purchaseAmount: string;
   purchaseKind: "NONE" | "FULL" | "LAYAWAY" | null;
@@ -419,6 +423,7 @@ export function createDraft(
         customerId: null,
         name: "",
         specialistProfileId: "",
+        attendanceStatus: "PENDING",
         purchased: null,
         purchaseAmount: "",
         purchaseKind: null,
@@ -464,6 +469,14 @@ export function createDraftFromBooking(
         customerId: booking.clientId ?? null,
         name: booking.customerName,
         specialistProfileId: booking.professionalId,
+        attendanceStatus:
+          booking.status === "attended"
+            ? "ATTENDED"
+            : booking.status === "arrived" || booking.status === "waiting"
+              ? "ARRIVED"
+              : booking.status === "no-show"
+                ? "NO_SHOW"
+                : "PENDING",
         purchased: booking.purchased ?? null,
         purchaseAmount: booking.purchaseAmount
           ? String(booking.purchaseAmount)

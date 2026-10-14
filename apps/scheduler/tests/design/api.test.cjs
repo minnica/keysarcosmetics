@@ -1961,7 +1961,7 @@ test("no permite marcar asistencia antes de que termine la sesión", () => {
   assert.match(result.body.message, /termine el tiempo/);
 });
 
-test("no permite marcar asistencia sin completar compra o no compra", () => {
+test("exige asistencia individual y permite registrar la venta después", () => {
   const { state, request } = session();
   const appointment = state.appointments[0];
   const branch = state.catalog.branches.find(
@@ -1994,25 +1994,7 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
     },
   );
   assert.equal(incomplete.status, 409);
-  assert.match(incomplete.body.message, /Completa para cada visitante/);
-  const arrivalToken = operationToken(
-    request,
-    "APPOINTMENT_STATUS_CHANGE",
-    appointment.id,
-    "0000",
-    "STATUS:ARRIVED",
-  );
-  const arrivalIncomplete = request(
-    "POST",
-    `/api/scheduler/appointments/${appointment.id}/status`,
-    {
-      status: "ARRIVED",
-      expectedVersion: appointment.version,
-      authorizationToken: arrivalToken,
-    },
-  );
-  assert.equal(arrivalIncomplete.status, 409);
-  assert.match(arrivalIncomplete.body.message, /Completa la atención/);
+  assert.match(incomplete.body.message, /asistencia de cada visitante/);
 
   const capture = request(
     "PUT",
@@ -2027,6 +2009,94 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
           customerId: appointment.customerId,
           name: appointment.customerName,
           specialistProfileId: specialist.id,
+          attendanceStatus: "ATTENDED",
+          purchased: null,
+          purchaseAmount: null,
+          purchaseKind: null,
+          saleAmount: null,
+          depositAmount: null,
+        },
+      ],
+    },
+    { "x-design-attendance-authorization": attendedToken },
+  );
+  assert.equal(capture.status, 200);
+  assert.equal(capture.body.data.visitors[0].attendanceStatus, "ATTENDED");
+  assert.equal(capture.body.data.visitors[0].purchaseKind, null);
+  const attendanceContext = request(
+    "POST",
+    "/api/scheduler/design-proposals/appointments/contexts",
+    { appointmentIds: [appointment.id] },
+  );
+  assert.deepEqual(
+    attendanceContext.body.data[appointment.id].attendingSpecialistProfileIds,
+    [specialist.id],
+  );
+  const completed = request(
+    "POST",
+    `/api/scheduler/appointments/${appointment.id}/status`,
+    {
+      status: "ATTENDED",
+      expectedVersion: appointment.version,
+      authorizationToken: attendedToken,
+    },
+  );
+  assert.equal(completed.status, 201);
+  assert.equal(completed.body.data.status, "ATTENDED");
+});
+
+test("una cabina doble conserva asistencia y reporte independientes por cliente", () => {
+  const { state, request } = session();
+  const appointment = state.appointments[0];
+  const branch = state.catalog.branches.find(
+    (item) => item.branchId === appointment.branchId,
+  );
+  const cabin = state.catalog.resources.find(
+    (resource) =>
+      resource.branchProfileId === branch.id && resource.capacity === 2,
+  );
+  const specialists = state.catalog.professionals
+    .filter((candidate) => candidate.branchProfileIds.includes(branch.id))
+    .slice(0, 2);
+  const representative = state.operationAgents.find((agent) => agent.active);
+  const secondCustomer = state.customers.find(
+    (customer) => customer.id !== appointment.customerId,
+  );
+  appointment.endsAt = "2000-01-01T00:00:00.000Z";
+  const attendedToken = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointment.id,
+    "0000",
+    "STATUS:ATTENDED",
+  );
+
+  const capture = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${appointment.id}/cabin-visit`,
+    {
+      cabinResourceId: cabin.id,
+      cabinCapacity: 2,
+      representativeId: representative.id,
+      visitors: [
+        {
+          id: "visitor-primary",
+          customerId: appointment.customerId,
+          name: appointment.customerName,
+          specialistProfileId: specialists[0].id,
+          attendanceStatus: "ATTENDED",
+          purchased: null,
+          purchaseAmount: null,
+          purchaseKind: null,
+          saleAmount: null,
+          depositAmount: null,
+        },
+        {
+          id: "visitor-2",
+          customerId: secondCustomer.id,
+          name: secondCustomer.displayName,
+          specialistProfileId: specialists[1].id,
+          attendanceStatus: "NO_SHOW",
           purchased: false,
           purchaseAmount: null,
           purchaseKind: "NONE",
@@ -2035,59 +2105,51 @@ test("no permite marcar asistencia sin completar compra o no compra", () => {
         },
       ],
     },
+    { "x-design-attendance-authorization": attendedToken },
   );
   assert.equal(capture.status, 200);
-  assert.equal(
-    capture.body.data.visitors[0].settlementStatus,
-    "NOT_APPLICABLE",
-  );
-
-  const completedArrivalToken = operationToken(
-    request,
-    "APPOINTMENT_STATUS_CHANGE",
-    appointment.id,
-    "0000",
-    "STATUS:ARRIVED",
-  );
-  const arrivalCompleted = request(
-    "POST",
-    `/api/scheduler/appointments/${appointment.id}/status`,
-    {
-      status: "ARRIVED",
-      expectedVersion: appointment.version,
-      authorizationToken: completedArrivalToken,
-    },
-  );
-  assert.equal(arrivalCompleted.status, 201);
-  assert.equal(arrivalCompleted.body.data.status, "ARRIVED");
-  const arrivalContext = request(
-    "POST",
-    "/api/scheduler/design-proposals/appointments/contexts",
-    { appointmentIds: [appointment.id] },
-  );
   assert.deepEqual(
-    arrivalContext.body.data[appointment.id].attendingSpecialistProfileIds,
-    [specialist.id],
+    capture.body.data.visitors.map((visitor) => visitor.attendanceStatus),
+    ["ATTENDED", "NO_SHOW"],
   );
 
-  const completedAttendanceToken = operationToken(
-    request,
-    "APPOINTMENT_STATUS_CHANGE",
-    appointment.id,
-    "0000",
-    "STATUS:ATTENDED",
-  );
   const completed = request(
     "POST",
     `/api/scheduler/appointments/${appointment.id}/status`,
     {
       status: "ATTENDED",
-      expectedVersion: arrivalCompleted.body.data.version,
-      authorizationToken: completedAttendanceToken,
+      expectedVersion: appointment.version,
+      authorizationToken: attendedToken,
     },
   );
   assert.equal(completed.status, 201);
-  assert.equal(completed.body.data.status, "ATTENDED");
+
+  const context = request(
+    "POST",
+    "/api/scheduler/design-proposals/appointments/contexts",
+    { appointmentIds: [appointment.id] },
+  ).body.data[appointment.id];
+  assert.deepEqual(context.attendingSpecialistProfileIds, [specialists[0].id]);
+  assert.deepEqual(
+    context.attendees.map((attendee) => attendee.attendanceStatus),
+    ["ATTENDED", "NO_SHOW"],
+  );
+
+  const report = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/cabin-sales",
+    {
+      dateFrom: state.controls.date,
+      dateTo: state.controls.date,
+      branchIds: [appointment.branchId],
+      query: appointment.id,
+    },
+  );
+  assert.equal(report.status, 201);
+  assert.deepEqual(
+    report.body.data.rows.map((row) => row.status).sort(),
+    ["ATTENDED", "NO_SHOW"],
+  );
 });
 
 test("permite corregir un status con código sin borrar el historial anterior", () => {

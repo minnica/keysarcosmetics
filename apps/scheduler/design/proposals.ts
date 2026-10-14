@@ -188,16 +188,32 @@ export const schedulerDesignProposals: DesignProposalClient = {
       `/api/scheduler/design-proposals/customers/${customerId}/layaways/${sourceAppointmentId}/payments`,
       { method: "POST", body: JSON.stringify(input) },
     ),
-  saveAppointmentCabinVisit: (appointmentId, input, authorizationToken) =>
+  saveAppointmentCabinVisit: (
+    appointmentId,
+    input,
+    purchaseAuthorizationToken,
+    attendanceAuthorizationToken,
+  ) =>
     request<DesignAppointmentCabinVisit>(
       `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
       {
         method: "PUT",
         body: JSON.stringify(input),
-        ...(authorizationToken
+        ...(purchaseAuthorizationToken || attendanceAuthorizationToken
           ? {
               headers: {
-                "x-design-operation-authorization": authorizationToken,
+                ...(purchaseAuthorizationToken
+                  ? {
+                      "x-design-operation-authorization":
+                        purchaseAuthorizationToken,
+                    }
+                  : {}),
+                ...(attendanceAuthorizationToken
+                  ? {
+                      "x-design-attendance-authorization":
+                        attendanceAuthorizationToken,
+                    }
+                  : {}),
               },
             }
           : {}),

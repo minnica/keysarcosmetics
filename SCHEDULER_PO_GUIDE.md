@@ -166,7 +166,8 @@ ajuste permite forzar ancho cómodo o todas las columnas dentro de la ventana.
 Sin intervención, Agenda mide el monitor, descuenta el panel lateral y ajusta
 automáticamente las columnas cuando conservan un ancho legible; si no caben,
 mantiene el desplazamiento horizontal dentro de la cuadrícula. El panel ofrece
-los modos **Cabinas**, **Especialistas** y **Ambos**. Las cabinas se distinguen
+los modos **Cabinas** y **Especialistas**. La opción **Ambos** se retiró para
+evitar repetir la misma cita en proyecciones distintas. Las cabinas se distinguen
 por un encabezado compacto sin avatar redundante, capacidad y acento café; los
 especialistas usan el mismo encabezado compacto sin avatar, su propia etiqueta y
 acento azul. Ninguna columna se
@@ -278,9 +279,10 @@ pendiente mientras se agenda. El formulario separa al **representante de esta
 cita** del vendedor de cartera: puede variar entre citas y conserva origen
 POS/CRM o alta local de Agenda. Al editar, la cabina y su capacidad son de sólo
 lectura; el servidor rechaza cambiar el recurso después de la primera
-configuración. Al cambiar la cita a **Llegó** o, cuando corresponda,
-**Atendida**, el mismo
-diálogo exige elegir **No compró**, **Compra liquidada** o **Apartado**. Una
+configuración. Al cambiar la cita a **Llegó**, **Atendida** o **No asistió**, el
+mismo diálogo exige marcar la asistencia de cada persona por separado. La venta
+puede quedar pendiente y registrarse después. Si se elige **No compró**,
+**Compra liquidada** o **Apartado**, una
 compra exige monto de venta mayor a cero; un apartado exige además un anticipo
 mayor a cero que no puede superar la venta. La especialista que atendió queda
 relacionada por persona, no sólo por cita.
@@ -289,8 +291,8 @@ Cabina y especialistas no crean reservas paralelas. Antes de registrar llegada,
 el mismo `appointmentId` se muestra sólo en su cabina aunque exista una
 especialista planeada. Al guardar la atención, el mock expone en el contexto de
 la cita `attendingSpecialistProfileIds` y proyecta la misma cita en cada
-especialista realmente registrada; cambiar entre **Cabinas**, **Especialistas**
-y **Ambos** no duplica conteos ni ventas. Antes de guardar se vuelve a validar
+especialista cuya clienta llegó o asistió; cambiar entre **Cabinas** y
+**Especialistas** no duplica conteos ni ventas. Antes de guardar se vuelve a validar
 que ninguna especialista ni la cabina tengan otra cita activa traslapada. En
 producción, el contexto canónico deberá distinguir asignación planeada de
 atención efectiva y persistir esta asociación de forma atómica y versionada
@@ -308,15 +310,15 @@ registro por visitante documentado arriba.
 El cambio a **Atendida** sólo se habilita cuando el instante actual es igual o
 posterior a `endsAt`; la UI lo informa y el API de diseño vuelve a validar la
 misma regla con `409`, por lo que no depende únicamente del navegador. Al elegir
-**Llegó** se abre directamente la captura de representante, especialista, compra
-y apartado; las preguntas y notas adicionales se ocultan y no se sobrescriben.
-El color y el status no cambian hasta que cada visitante tenga especialista, el
-representante esté seleccionado y exista una
-decisión explícita de **No compró**, **Compra liquidada** o **Apartado**. Compra y
-apartado exigen total válido, y apartado exige además anticipo. El botón queda
-bloqueado mientras falte un dato y el endpoint de status rechaza `ARRIVED` o
-`ATTENDED` con `409` si no existe una captura final completa, incluso si se invoca fuera de la
-pantalla. Primero pide
+**Llegó**, **Atendida** o **No asistió** se abre directamente la captura de
+representante, especialista y asistencia individual; las preguntas y notas
+adicionales se ocultan y no se sobrescriben. El estado general se deriva de las
+personas: si alguna asistió queda `ATTENDED`, si sólo llegaron queda `ARRIVED` y
+si todas faltaron queda `NO_SHOW`. Cada visitante debe tener especialista,
+representante y asistencia; la compra no es obligatoria en ese momento. Compra
+y apartado exigen total válido, y apartado exige además anticipo. El endpoint
+de status rechaza la transición con `409` si falta la asistencia de una persona,
+incluso si se invoca fuera de la pantalla. Primero pide
 una autorización `APPOINTMENT_STATUS_CHANGE` y, cuando existe compra o apartado,
 una segunda autorización `PURCHASE_CAPTURE`. En la propuesta ambas mutaciones
 son secuenciales; el contrato productivo deberá persistir estado, atención,
@@ -356,8 +358,9 @@ series por día/semana/mes, ranking de especialistas por sucursal, tabla,
 impresión, PDF y Excel. Las citas se cuentan por `appointmentId`, mientras los
 montos se suman por visitante una sola vez; el consolidado de sucursal es la suma
 de sus cabinas y no una segunda contabilización. La analítica
-de servicios calcula `asistidas / citas del servicio` y `canceladas / citas del
-servicio`, mostrando los índices mayores y menores sin confundirlos con ventas.
+de servicios calcula `personas asistidas / personas del servicio` y
+`personas canceladas / personas del servicio`, mostrando los índices mayores y
+menores sin confundirlos con ventas.
 El detalle conserva ID de cita, creación,
 confirmación cuando existe historial, horario, sucursal, cabina/capacidad,
 cliente y visitante, servicios, vendedor, especialista, resultado, venta,
@@ -400,7 +403,7 @@ de captura, pero siempre solicita un código con permiso
 ese token. La corrección agrega una nueva transición `fromStatus → toStatus`,
 incrementa la versión y conserva intacto el historial anterior; el commit de la
 autorización registra actor y movimiento sin almacenar el código. Las reglas de
-negocio siguen vigentes: llegada/asistencia requieren atención completa y
+negocio siguen vigentes: llegada/asistencia requieren la asistencia individual completa y
 asistencia no puede registrarse antes de terminar la sesión.
 
 En **Administración → Colores de status** la demo sustituye la paleta fija por
@@ -585,11 +588,12 @@ Recorrido manual recomendado:
    Movimientos que cada acción conserva el actor correcto.
 8. En Administración selecciona una sucursal, crea dos cabinas con capacidad 2
    y confirma la vista previa, numeración y resumen de esa tienda. En Agenda
-   alterna **Cabinas**, **Especialistas** y **Ambos**, y cambia el ancho de la
+   alterna **Cabinas** y **Especialistas**, y cambia el ancho de la
    ventana para comprobar el ajuste automático. Después crea una reserva en
    cabina doble, elige un representante distinto al vendedor de cartera y, al
    cambiarla a **Llegó**,
-   registra dos personas, dos especialistas, una compra liquidada y un apartado.
+   marca una persona como asistida y otra como no asistida, con especialistas
+   independientes; después registra una compra sólo para quien asistió.
    Debe pedir autorización de estado y después un código cuyo puesto pueda
    **Registrar compra o apartado**. Permite a Recepción autorizar sólo **Llegó**
    y a Especialistas registrar compras; confirma que el código de Recepción
@@ -994,22 +998,19 @@ recuperación** muestra ahora la sucursal de origen de cada cliente junto al
 nombre y la fecha de su primera cita. Las tablas de rendimiento, compras y
 casos se paginan por separado para que cambiar una vista no altere las otras.
 
-El 13 de octubre de 2026 la vista **Ambos** de Agenda dejó de repetir una misma
-cita completa en la columna de la especialista y en la cabina. Cuando una cita
-tiene cabina, se representa una sola vez dentro de esa cabina; ahí cada lugar
+El 13 de octubre de 2026 se retiró la vista **Ambos** de Agenda porque duplicaba
+la lectura de la misma cita entre especialista y cabina. La persona usuaria
+elige **Cabinas** o **Especialistas**; dentro de Cabinas, cada lugar
 de una cabina doble o triple muestra su propia clienta, la especialista que la
 atendió y el monto individual de su venta. El total de una persona nunca se
 replica en las demás. La separación entre lugares usa borde doble, fondo y
-división vertical más visibles. Las vistas exclusivas **Especialistas** y
-**Cabinas** conservan su alcance: en Especialistas cada tarjeta filtra a las
-clientas realmente asignadas a esa facialista; si una cita no tiene cabina, la
-vista Ambos mantiene sus proyecciones por especialista para no ocultarla.
+división vertical más visibles. En **Especialistas** cada tarjeta filtra a las
+clientas que llegaron o fueron atendidas por esa facialista.
 
-En las tarjetas compactas de **Especialistas**, **Cabinas** y **Ambos**, el
+En las tarjetas compactas de **Especialistas** y **Cabinas**, el
 estado atendido conserva su color configurado mediante el punto visual, pero ya
 no muestra la palabra **Atendida**. Esto libera espacio para clienta,
 facialista y monto; el nombre completo del estado continúa visible en el
-tooltip, el detalle y los controles de autorización. La vista **Ambos** se
-mantiene como supervisión conjunta de capacidad y disponibilidad, mostrando una
-sola tarjeta por cita cuando existe cabina para evitar duplicar personas o
-ventas.
+tooltip, el detalle y los controles de autorización. En cabinas dobles o triples
+cada segmento usa el color y estado de su propia clienta; una inasistencia no
+cambia ni oculta la asistencia o venta de las demás.

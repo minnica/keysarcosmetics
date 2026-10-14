@@ -67,7 +67,13 @@ import type {
   DesignSalesProjectionReport,
   DesignStatusDefinition,
   DesignStatusDefinitionRevision,
+  DesignVisitAttendanceStatus,
 } from "./contracts";
+import {
+  deriveDesignAppointmentAttendanceStatus,
+  reportStatusForDesignVisitor,
+  resolveDesignVisitAttendanceStatus,
+} from "./attendance";
 import {
   schedulerReportRv7Fixture,
   schedulerReportKeys,
@@ -1058,7 +1064,9 @@ function cabinSalesBreakdown(
       label: group.label,
       appointments: new Set(group.rows.map((row) => row.appointmentId)).size,
       visitors: group.rows.length,
-      buyers: group.rows.filter((row) => row.purchaseKind !== "NONE").length,
+      buyers: group.rows.filter(
+        (row) => row.purchaseKind === "FULL" || row.purchaseKind === "LAYAWAY",
+      ).length,
       saleAmount: group.rows.reduce((sum, row) => sum + row.saleAmount, 0),
       depositAmount: group.rows.reduce(
         (sum, row) => sum + row.depositAmount,
@@ -1146,8 +1154,12 @@ function buildCabinSalesReport(
           ? "FULL"
           : visitor.purchased === false
             ? "NONE"
-            : "NONE");
-      if (visitor.purchaseKind === null && visitor.purchased === null) {
+            : null);
+      const visitorAttendanceStatus = resolveDesignVisitAttendanceStatus(
+        visitor.attendanceStatus,
+        appointmentItem.status,
+      );
+      if (visitorAttendanceStatus === "PENDING" && purchaseKind === null) {
         continue;
       }
       const reportSpecialistProfileId =
@@ -1198,9 +1210,13 @@ function buildCabinSalesReport(
         attendingSpecialistName,
         saleOwnerSpecialistProfileId:
           visitor.saleOwnerSpecialistProfileId ??
-          (purchaseKind === "NONE" ? null : visitor.specialistProfileId),
+          (purchaseKind === "FULL" || purchaseKind === "LAYAWAY"
+            ? visitor.specialistProfileId
+            : null),
         saleOwnerSpecialistName:
-          purchaseKind === "NONE" ? "No aplica" : reportSpecialistName,
+          purchaseKind === "FULL" || purchaseKind === "LAYAWAY"
+            ? reportSpecialistName
+            : "No aplica",
         settlementStatus:
           visitor.settlementStatus ??
           (purchaseKind === "LAYAWAY"
@@ -1214,7 +1230,10 @@ function buildCabinSalesReport(
         depositAmount,
         balanceAmount: Math.max(0, saleAmount - depositAmount),
         notes: appointmentItem.notes ?? "",
-        status: appointmentItem.status,
+        status: reportStatusForDesignVisitor(
+          visitorAttendanceStatus,
+          appointmentItem.status,
+        ),
         origin: appointmentItem.origin,
         cancellationReason: appointmentItem.cancellationReason ?? "",
         updatedAt: appointmentItem.updatedAt,
@@ -1272,38 +1291,9 @@ function buildCabinSalesReport(
   const rowsSorted = reportRows.sort((left, right) =>
     right.appointmentStartsAt.localeCompare(left.appointmentStartsAt),
   );
-  const buyers = rowsSorted.filter((row) => row.purchaseKind !== "NONE");
-  const rowAppointmentIds = new Set(rowsSorted.map((row) => row.appointmentId));
-  const salesOnlyFiltersActive = Boolean(
-    input.cabinResourceId ||
-    input.purchaseKind ||
-    input.specialistProfileId ||
-    input.sellerName ||
-    input.minSaleAmount !== undefined ||
-    input.maxSaleAmount !== undefined,
+  const buyers = rowsSorted.filter(
+    (row) => row.purchaseKind === "FULL" || row.purchaseKind === "LAYAWAY",
   );
-  const analyticsAppointments = baseAppointments.filter((appointmentItem) => {
-    if (input.status && appointmentItem.status !== input.status) return false;
-    if (
-      input.serviceProfileId &&
-      !appointmentItem.services.some(
-        (service) => service.serviceProfileId === input.serviceProfileId,
-      )
-    )
-      return false;
-    if (salesOnlyFiltersActive && !rowAppointmentIds.has(appointmentItem.id))
-      return false;
-    if (!query) return true;
-    if (rowAppointmentIds.has(appointmentItem.id)) return true;
-    return [
-      appointmentItem.id,
-      appointmentItem.customerName,
-      appointmentItem.branchName,
-      appointmentItem.services.map((service) => service.serviceName).join(" "),
-      appointmentItem.notes ?? "",
-      appointmentItem.status,
-    ].some((value) => textKey(value).includes(query));
-  });
   const serviceGroups = new Map<
     string,
     {
@@ -1312,18 +1302,16 @@ function buildCabinSalesReport(
       statuses: SchedulerAppointmentStatus[];
     }
   >();
-  analyticsAppointments.forEach((appointmentItem) => {
-    appointmentItem.services.forEach((service) => {
-      const group = serviceGroups.get(service.serviceProfileId) ?? {
-        name: service.serviceName,
+  rowsSorted.forEach((row) => {
+    row.serviceProfileIds.forEach((serviceProfileId, serviceIndex) => {
+      const group = serviceGroups.get(serviceProfileId) ?? {
+        name: row.serviceNames[serviceIndex] ?? "Servicio",
         appointments: new Set<string>(),
         statuses: [],
       };
-      if (!group.appointments.has(appointmentItem.id)) {
-        group.appointments.add(appointmentItem.id);
-        group.statuses.push(appointmentItem.status);
-      }
-      serviceGroups.set(service.serviceProfileId, group);
+      group.appointments.add(row.appointmentId);
+      group.statuses.push(row.status);
+      serviceGroups.set(serviceProfileId, group);
     });
   });
   const serviceAnalytics: DesignCabinServiceAnalytics[] = [
@@ -1344,11 +1332,12 @@ function buildCabinSalesReport(
         serviceProfileId,
         serviceName: group.name,
         appointments,
+        visitors: group.statuses.length,
         attended,
         canceled,
         noShow,
-        attendanceRate: roundRate(attended, appointments),
-        cancellationRate: roundRate(canceled, appointments),
+        attendanceRate: roundRate(attended, group.statuses.length),
+        cancellationRate: roundRate(canceled, group.statuses.length),
       };
     })
     .sort((left, right) => right.appointments - left.appointments);
@@ -1363,7 +1352,8 @@ function buildCabinSalesReport(
     .map(([key, rows]) => {
       const first = rows[0]!;
       const specialistBuyers = rows.filter(
-        (row) => row.purchaseKind !== "NONE",
+        (row) =>
+          row.purchaseKind === "FULL" || row.purchaseKind === "LAYAWAY",
       ).length;
       return {
         key,
@@ -1516,7 +1506,9 @@ function buildSalesProjectionReport(
       saleAmount: rows.reduce((sum, row) => sum + row.saleAmount, 0),
       depositAmount: rows.reduce((sum, row) => sum + row.depositAmount, 0),
       balanceAmount: rows.reduce((sum, row) => sum + row.balanceAmount, 0),
-      buyers: rows.filter((row) => row.purchaseKind !== "NONE").length,
+      buyers: rows.filter(
+        (row) => row.purchaseKind === "FULL" || row.purchaseKind === "LAYAWAY",
+      ).length,
     };
   });
   const actualRows = base.rows.filter(
@@ -3283,6 +3275,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               customerId: appointmentItem.customerId,
               name: appointmentItem.customerName,
               specialistProfileId: fallbackSpecialistId ?? "",
+              attendanceStatus: resolveDesignVisitAttendanceStatus(
+                undefined,
+                appointmentItem.status,
+              ),
               purchaseKind: null,
               saleAmount: null,
               purchaseAmount: null,
@@ -3327,6 +3323,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                 email: attendeeCustomer?.email ?? null,
                 specialistProfileId: visitor.specialistProfileId || null,
                 specialistName: specialist?.name ?? null,
+                attendanceStatus: resolveDesignVisitAttendanceStatus(
+                  visitor.attendanceStatus,
+                  appointmentItem.status,
+                ),
                 purchaseKind: visitor.purchaseKind,
                 saleAmount: attendeeSaleAmount,
                 depositAmount: attendeeDepositAmount,
@@ -3349,18 +3349,19 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             attendeeNames: attendees.map((attendee) => attendee.name),
             attendees,
             attendingSpecialistProfileIds: [
-              "ARRIVED",
-              "WAITING",
-              "ATTENDED",
-            ].includes(appointmentItem.status)
-              ? [
-                  ...new Set(
-                    (visit?.visitors ?? []).map(
-                      (visitor) => visitor.specialistProfileId,
+              ...new Set(
+                (visit?.visitors ?? [])
+                  .filter((visitor) =>
+                    ["ARRIVED", "ATTENDED"].includes(
+                      resolveDesignVisitAttendanceStatus(
+                        visitor.attendanceStatus,
+                        appointmentItem.status,
+                      ),
                     ),
-                  ),
-                ]
-              : [],
+                  )
+                  .map((visitor) => visitor.specialistProfileId),
+              ),
+            ],
             representativeId: visit?.representativeId ?? null,
             representativeName: visit?.representativeName ?? null,
             representativeRole: visit?.representativeRole ?? null,
@@ -3463,6 +3464,19 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         if (!specialist) {
           fail(400, `Asigna un especialista válido al visitante ${index + 1}.`);
         }
+        const previousVisitor = previousVisit?.visitors.find(
+          (candidate) =>
+            candidate.id === String(visitor.id ?? `visitor-${index + 1}`),
+        );
+        const attendanceStatus = resolveDesignVisitAttendanceStatus(
+          visitor.attendanceStatus,
+          previousVisitor
+            ? resolveDesignVisitAttendanceStatus(
+                previousVisitor.attendanceStatus,
+                appointmentItem.status,
+              )
+            : appointmentItem.status,
+        );
         const purchaseKind: DesignPurchaseKind =
           visitor.purchaseKind === "FULL" ||
           visitor.purchaseKind === "LAYAWAY" ||
@@ -3484,6 +3498,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             : purchaseKind === "LAYAWAY"
               ? Number(visitor.depositAmount)
               : null;
+        if (attendanceStatus === "NO_SHOW" && purchaseKind !== "NONE") {
+          fail(400, `${name} no puede tener una compra si no asistió.`);
+        }
         if (purchased && (!Number.isFinite(saleAmount) || saleAmount! <= 0)) {
           fail(400, `Captura un monto de venta mayor a cero para ${name}.`);
         }
@@ -3498,21 +3515,18 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             `El apartado de ${name} debe ser mayor a cero y no superar la venta.`,
           );
         }
-        const previousVisitor = previousVisit?.visitors.find(
-          (candidate) =>
-            candidate.id === String(visitor.id ?? `visitor-${index + 1}`),
-        );
-        const saleOwnerSpecialistProfileId =
-          purchaseKind === "NONE"
-            ? null
-            : (previousVisitor?.saleOwnerSpecialistProfileId ??
-              specialistProfileId);
+        const hasCommercialResult =
+          purchaseKind === "FULL" || purchaseKind === "LAYAWAY";
+        const saleOwnerSpecialistProfileId = hasCommercialResult
+          ? (previousVisitor?.saleOwnerSpecialistProfileId ??
+            specialistProfileId)
+          : null;
         const settlementStatus: DesignSaleSettlementStatus =
-          purchaseKind === "NONE"
-            ? "NOT_APPLICABLE"
+          purchaseKind === "FULL"
+            ? "PAID"
             : purchaseKind === "LAYAWAY"
               ? "OPEN"
-              : "PAID";
+              : "NOT_APPLICABLE";
         const settledAt =
           settlementStatus === "PAID"
             ? previousVisitor?.settlementStatus === "PAID"
@@ -3527,6 +3541,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               : null,
           name,
           specialistProfileId,
+          attendanceStatus,
           purchased,
           purchaseAmount: saleAmount,
           purchaseKind,
@@ -3544,6 +3559,36 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         fail(
           400,
           "Asigna un especialista diferente a cada visitante de la cabina.",
+        );
+      }
+      const attendanceStatuses = visitors.map(
+        (visitor) => visitor.attendanceStatus,
+      ) as DesignVisitAttendanceStatus[];
+      const derivedAttendanceStatus = deriveDesignAppointmentAttendanceStatus(
+        attendanceStatuses,
+      );
+      const attendanceChanged = visitors.some((visitor, index) => {
+        const previousVisitor = previousVisit?.visitors.find(
+          (candidate) => candidate.id === visitor.id,
+        );
+        const previousAttendanceStatus = previousVisitor
+          ? resolveDesignVisitAttendanceStatus(
+              previousVisitor.attendanceStatus,
+              appointmentItem.status,
+            )
+          : "PENDING";
+        return (
+          attendanceStatuses[index] !== previousAttendanceStatus &&
+          attendanceStatuses[index] !== "PENDING"
+        );
+      });
+      if (attendanceChanged) {
+        requireOperationAuthorization(
+          state,
+          headers.get("x-design-attendance-authorization"),
+          "APPOINTMENT_STATUS_CHANGE",
+          appointmentId,
+          `STATUS:${derivedAttendanceStatus}` as DesignAuthorizationScopeKey,
         );
       }
       const previousCaptureFinalized = Boolean(
@@ -3886,29 +3931,32 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           "La cita sólo puede marcarse como atendida cuando termine el tiempo de la sesión.",
         );
       }
-      if (status === "ARRIVED" || status === "ATTENDED") {
+      if (
+        status === "ARRIVED" ||
+        status === "ATTENDED" ||
+        status === "NO_SHOW"
+      ) {
         const cabinVisit = state.appointmentCabinVisits[existing!.id];
-        const purchaseCaptureComplete = Boolean(
+        const attendanceStatuses = (cabinVisit?.visitors ?? []).map(
+          (visitor) =>
+            resolveDesignVisitAttendanceStatus(
+              visitor.attendanceStatus,
+              existing!.status,
+            ),
+        );
+        const attendanceCaptureComplete = Boolean(
           cabinVisit &&
           cabinVisit.visitors.length === cabinVisit.cabinCapacity &&
-          cabinVisit.visitors.every(
-            (visitor) =>
-              visitor.purchaseKind !== null &&
-              visitor.purchased !== null &&
-              (visitor.purchaseKind === "NONE" ||
-                (Number(visitor.saleAmount) > 0 &&
-                  (visitor.purchaseKind === "FULL" ||
-                    (Number(visitor.depositAmount) > 0 &&
-                      Number(visitor.depositAmount) <=
-                        Number(visitor.saleAmount))))),
-          ),
+          attendanceStatuses.every(
+            (attendanceStatus) => attendanceStatus !== "PENDING",
+          ) &&
+          deriveDesignAppointmentAttendanceStatus(attendanceStatuses) ===
+            status,
         );
-        if (!purchaseCaptureComplete) {
+        if (!attendanceCaptureComplete) {
           fail(
             409,
-            status === "ARRIVED"
-              ? "Completa la atención, compra, representante y especialistas antes de marcar que el cliente llegó."
-              : "Completa para cada visitante si compró, el monto, el apartado y el especialista antes de marcar la cita como atendida.",
+            "Marca la asistencia de cada visitante por separado antes de actualizar el estado general de la cita.",
           );
         }
       }
@@ -4141,7 +4189,15 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                   serviceName: entry.services
                     .map((line) => line.serviceName)
                     .join(", "),
-                  status: entry.status,
+                  status: visitor
+                    ? reportStatusForDesignVisitor(
+                        resolveDesignVisitAttendanceStatus(
+                          visitor.attendanceStatus,
+                          entry.status,
+                        ),
+                        entry.status,
+                      )
+                    : entry.status,
                   scheduledAt: entry.startsAt,
                   createdAt: entry.createdAt,
                   purchase: purchaseKind

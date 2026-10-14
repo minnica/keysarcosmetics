@@ -59,7 +59,6 @@ const {
   schedulerLocalDateTimeToInstant,
 } = loadSource("scheduler-agenda-data");
 const {
-  collapseSchedulerCombinedBookings,
   filterSchedulerAgendaColumns,
   getSchedulerBookingOverlapLayout,
   isSchedulerCabinColumn,
@@ -485,64 +484,8 @@ test("filters agenda columns explicitly by cabins or specialists", () => {
     ),
     ["professional-1"],
   );
-  assert.equal(filterSchedulerAgendaColumns(columns, "ALL").length, 4);
   assert.equal(isSchedulerCabinColumn(columns[1]), true);
   assert.equal(isSchedulerCabinColumn(columns[0]), false);
-});
-
-test("shows one cabin card per appointment in the combined agenda", () => {
-  const columns = [
-    { id: "professional-1", kind: "PROFESSIONAL" },
-    { id: "professional-2", kind: "PROFESSIONAL" },
-    { id: "cabin-double", kind: "RESOURCE", resourceKind: "ROOM" },
-  ];
-  const projections = [
-    {
-      id: "appointment-1:professional-1",
-      sourceId: "appointment-1",
-      professionalId: "professional-1",
-    },
-    {
-      id: "appointment-1:professional-2",
-      sourceId: "appointment-1",
-      professionalId: "professional-2",
-    },
-    {
-      id: "appointment-1:cabin-double",
-      sourceId: "appointment-1",
-      professionalId: "cabin-double",
-    },
-  ];
-
-  assert.deepEqual(
-    Array.from(
-      collapseSchedulerCombinedBookings(projections, columns, "ALL"),
-      (booking) => booking.id,
-    ),
-    ["appointment-1:cabin-double"],
-  );
-  assert.equal(
-    collapseSchedulerCombinedBookings(projections, columns, "SPECIALISTS")
-      .length,
-    3,
-  );
-});
-
-test("keeps specialist cards when an appointment has no cabin", () => {
-  const columns = [
-    { id: "professional-1", kind: "PROFESSIONAL" },
-    { id: "professional-2", kind: "PROFESSIONAL" },
-  ];
-  const projections = columns.map((column) => ({
-    id: `appointment-1:${column.id}`,
-    sourceId: "appointment-1",
-    professionalId: column.id,
-  }));
-
-  assert.equal(
-    collapseSchedulerCombinedBookings(projections, columns, "ALL").length,
-    2,
-  );
 });
 
 test("fits readable agenda columns automatically to the monitor width", () => {

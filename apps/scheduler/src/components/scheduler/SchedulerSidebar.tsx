@@ -253,11 +253,10 @@ export function SchedulerSidebar({
                 </Badge>
               </div>
 
-              <div className="mb-3 grid grid-cols-3 gap-1 rounded-[16px] border border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.92)] p-1">
+              <div className="mb-3 grid grid-cols-2 gap-1 rounded-[16px] border border-[rgba(236,209,200,0.92)] bg-[rgba(248,244,239,0.92)] p-1">
                 {([
                   ["CABINS", "Cabinas"],
                   ["SPECIALISTS", "Especialistas"],
-                  ["ALL", "Ambos"],
                 ] as const).map(([value, label]) => (
                   <button
                     aria-pressed={columnMode === value}
@@ -279,7 +278,7 @@ export function SchedulerSidebar({
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
                   className="w-full border-0 bg-transparent text-sm text-slate-600 outline-none placeholder:text-slate-400"
-                  placeholder={columnMode === "CABINS" ? "Buscar cabina" : columnMode === "SPECIALISTS" ? "Buscar especialista" : "Buscar columna"}
+                  placeholder={columnMode === "CABINS" ? "Buscar cabina" : "Buscar especialista"}
                   value={professionalQuery}
                   onChange={(event) => onProfessionalQueryChange(event.target.value)}
                 />

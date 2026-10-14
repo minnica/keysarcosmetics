@@ -141,12 +141,18 @@ export interface DesignBranchCommercialModelInput {
 
 export type DesignPurchaseKind = "NONE" | "FULL" | "LAYAWAY" | null;
 export type DesignSaleSettlementStatus = "NOT_APPLICABLE" | "OPEN" | "PAID";
+export type DesignVisitAttendanceStatus =
+  | "PENDING"
+  | "ARRIVED"
+  | "ATTENDED"
+  | "NO_SHOW";
 
 export interface DesignCabinVisitPerson {
   id: string;
   customerId: string | null;
   name: string;
   specialistProfileId: string;
+  attendanceStatus?: DesignVisitAttendanceStatus;
   purchased: boolean | null;
   purchaseAmount: number | null;
   purchaseKind: DesignPurchaseKind;
@@ -209,6 +215,7 @@ export interface DesignAppointmentAttendeeContext {
   email: string | null;
   specialistProfileId: string | null;
   specialistName: string | null;
+  attendanceStatus: DesignVisitAttendanceStatus;
   purchaseKind: DesignPurchaseKind | null;
   saleAmount: number;
   depositAmount: number;
@@ -359,7 +366,7 @@ export interface DesignCabinSalesReportRow {
   saleOwnerSpecialistName: string;
   settlementStatus: DesignSaleSettlementStatus;
   settledAt: string | null;
-  purchaseKind: Exclude<DesignPurchaseKind, null>;
+  purchaseKind: DesignPurchaseKind;
   saleAmount: number;
   depositAmount: number;
   balanceAmount: number;
@@ -393,6 +400,7 @@ export interface DesignCabinServiceAnalytics {
   serviceProfileId: string;
   serviceName: string;
   appointments: number;
+  visitors: number;
   attended: number;
   canceled: number;
   noShow: number;
@@ -758,7 +766,8 @@ export interface DesignProposalClient {
       representativeId: string;
       visitors: DesignCabinVisitPersonInput[];
     },
-    authorizationToken?: string,
+    purchaseAuthorizationToken?: string,
+    attendanceAuthorizationToken?: string,
   ): Promise<DesignAppointmentCabinVisit>;
   appointmentJournal(
     appointmentId: string,

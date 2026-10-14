@@ -262,6 +262,19 @@ function specialistFirstName(name?: string | null) {
   return name?.trim().split(/\s+/)[0] ?? "Sin asignar";
 }
 
+function attendeeBookingStatus(
+  attendee: DesignAppointmentAttendeeContext | undefined,
+  fallback: BookingStatus,
+): BookingStatus {
+  if (!attendee) return fallback;
+  return {
+    PENDING: "pending",
+    ARRIVED: "arrived",
+    ATTENDED: "attended",
+    NO_SHOW: "no-show",
+  }[attendee.attendanceStatus] as BookingStatus;
+}
+
 interface SchedulerAppointmentTooltipCardProps {
   align: "start" | "center";
   attendeeIndex: number;
@@ -269,8 +282,8 @@ interface SchedulerAppointmentTooltipCardProps {
   context: DesignAppointmentContext | undefined;
   fallbackSpecialistName: string;
   side: "right" | "top";
-  statusColor: string;
-  statusLabel: string;
+  statusColors: BookingStatusColors;
+  statusLabels: BookingStatusLabels;
   canViewCustomerPhone: boolean;
 }
 
@@ -281,11 +294,12 @@ function SchedulerAppointmentTooltipCard({
   context,
   fallbackSpecialistName,
   side,
-  statusColor,
-  statusLabel,
+  statusColors,
+  statusLabels,
   canViewCustomerPhone,
 }: SchedulerAppointmentTooltipCardProps) {
   const attendee = context?.attendees?.[attendeeIndex];
+  const attendeeStatus = attendeeBookingStatus(attendee, booking.status);
   const attendeeName =
     attendee?.name ??
     context?.attendeeNames[attendeeIndex] ??
@@ -329,12 +343,12 @@ function SchedulerAppointmentTooltipCard({
         <dt>Estado</dt>
         <dd>
           <SchedulerStatusBadge
-            color={statusColor}
+            color={statusColors[attendeeStatus]}
             compact
             hasPurchase={hasPurchase}
-            label={statusLabel}
+            label={statusLabels[attendeeStatus]}
             purchaseAmount={purchaseAmount}
-            status={booking.status}
+            status={attendeeStatus}
           />
         </dd>
         <dt>Resultado</dt>
@@ -376,16 +390,16 @@ interface SchedulerAppointmentSummaryProps {
   booking: Booking;
   column: Professional | undefined;
   context: DesignAppointmentContext | undefined;
-  statusColor: string;
-  statusLabel: string;
+  statusColors: BookingStatusColors;
+  statusLabels: BookingStatusLabels;
 }
 
 function SchedulerAppointmentSummary({
   booking,
   column,
   context,
-  statusColor,
-  statusLabel,
+  statusColors,
+  statusLabels,
 }: SchedulerAppointmentSummaryProps) {
   const displayedAttendees = displayedAttendeesForColumn(
     booking,
@@ -397,19 +411,25 @@ function SchedulerAppointmentSummary({
     displayedAttendees.length === 1
       ? attendeePurchaseAmount(displayedAttendees[0]!, booking, 1)
       : undefined;
+  const singleStatus = attendeeBookingStatus(
+    displayedAttendees[0]?.attendee,
+    booking.status,
+  );
 
   return (
     <div className="scheduler-appointment-summary flex h-full w-full min-w-0 flex-col items-center justify-center gap-px">
-      <SchedulerStatusBadge
-        className="scheduler-appointment-status-badge max-w-full"
-        color={statusColor}
-        compact
-        hideLabel={!shouldShowSchedulerAgendaStatusLabel(booking.status)}
-        hasPurchase={(singlePurchaseAmount ?? 0) > 0}
-        label={statusLabel}
-        purchaseAmount={singlePurchaseAmount}
-        status={booking.status}
-      />
+      {!hasMultipleAttendees ? (
+        <SchedulerStatusBadge
+          className="scheduler-appointment-status-badge max-w-full"
+          color={statusColors[singleStatus]}
+          compact
+          hideLabel={!shouldShowSchedulerAgendaStatusLabel(singleStatus)}
+          hasPurchase={(singlePurchaseAmount ?? 0) > 0}
+          label={statusLabels[singleStatus]}
+          purchaseAmount={singlePurchaseAmount}
+          status={singleStatus}
+        />
+      ) : null}
       <div
         className={cn(
           "scheduler-appointment-attendees grid w-full min-w-0 flex-1 overflow-hidden rounded-md",
@@ -430,6 +450,10 @@ function SchedulerAppointmentSummary({
           const specialistName = specialistFirstName(
             entry.attendee?.specialistName,
           );
+          const attendeeStatus = attendeeBookingStatus(
+            entry.attendee,
+            booking.status,
+          );
           return (
             <span
               className={cn(
@@ -439,8 +463,22 @@ function SchedulerAppointmentSummary({
                   : "block truncate text-[clamp(0.58rem,0.72vw,0.82rem)] leading-[1.05]",
               )}
               key={entry.attendee?.visitorId ?? `${entry.name}-${index}`}
-              title={`${entry.name}${entry.attendee?.specialistName ? ` · ${entry.attendee.specialistName}` : ""}${amount ? ` · ${appointmentCurrencyFormatter.format(amount)}` : ""}`}
+              title={`${entry.name} · ${statusLabels[attendeeStatus]}${entry.attendee?.specialistName ? ` · ${entry.attendee.specialistName}` : ""}${amount ? ` · ${appointmentCurrencyFormatter.format(amount)}` : ""}`}
             >
+              {hasMultipleAttendees ? (
+                <span className="mb-0.5 flex max-w-full items-center justify-center gap-1 text-[0.48rem] font-semibold">
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: statusColors[attendeeStatus] }}
+                  />
+                  {shouldShowSchedulerAgendaStatusLabel(attendeeStatus) ? (
+                    <span className="truncate">
+                      {statusLabels[attendeeStatus]}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
               <span className="block w-full min-w-0 truncate font-semibold">
                 {entry.name}
               </span>
@@ -1236,8 +1274,8 @@ export function SchedulerAgendaGrid({
                                 booking={booking}
                                 column={bookingColumn}
                                 context={appointmentContexts[booking.id]}
-                                statusColor={statusColor}
-                                statusLabel={statusLabels[booking.status]}
+                                statusColors={statusColors}
+                                statusLabels={statusLabels}
                               />
                             </button>
                           </DialogTrigger>
@@ -1250,8 +1288,8 @@ export function SchedulerAgendaGrid({
                           context={appointmentContexts[booking.id]}
                           fallbackSpecialistName={fallbackSpecialistName}
                           side="right"
-                          statusColor={statusColor}
-                          statusLabel={statusLabels[booking.status]}
+                          statusColors={statusColors}
+                          statusLabels={statusLabels}
                         />
                       </Tooltip>
                       <DialogContent
@@ -1626,8 +1664,8 @@ export function SchedulerAgendaGrid({
                                 booking={booking}
                                 column={bookingColumn}
                                 context={appointmentContexts[booking.id]}
-                                statusColor={statusColor}
-                                statusLabel={statusLabels[booking.status]}
+                                statusColors={statusColors}
+                                statusLabels={statusLabels}
                               />
                             </button>
                           </DialogTrigger>
@@ -1640,8 +1678,8 @@ export function SchedulerAgendaGrid({
                           context={appointmentContexts[booking.id]}
                           fallbackSpecialistName={fallbackSpecialistName}
                           side="top"
-                          statusColor={statusColor}
-                          statusLabel={statusLabels[booking.status]}
+                          statusColors={statusColors}
+                          statusLabels={statusLabels}
                         />
                       </Tooltip>
                       <DialogContent
