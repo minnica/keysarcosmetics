@@ -24,6 +24,7 @@ import {
   Mail,
   MessageCircle,
   Phone,
+  ReceiptText,
   ShoppingBag,
   ShieldCheck,
   SquarePen,
@@ -56,10 +57,12 @@ import {
   type ClientPaymentHistoryEntry,
 } from "./scheduler-utils";
 import { SchedulerProtectedPhone } from "./SchedulerProtectedPhone";
+import { SchedulerPosTicketPreview } from "./SchedulerPosTicketPreview";
 
 interface SchedulerBookingCardProps {
   booking: Booking;
   commerceName: string;
+  branchName?: string | undefined;
   clientAccount: ClientPurchaseAccount;
   paymentHistory: ClientPaymentHistoryEntry[];
   financialProfile?: SchedulerFinancialProfile;
@@ -124,6 +127,7 @@ const statusCorrectionOrder: BookingStatus[] = [
 export function SchedulerBookingCard({
   booking,
   commerceName,
+  branchName,
   clientAccount,
   paymentHistory,
   financialProfile,
@@ -324,6 +328,28 @@ export function SchedulerBookingCard({
           </p>
         </div>
       </div>
+
+      {appointmentContext?.attendees.some((attendee) => attendee.posTicket) ? (
+        <section className="space-y-2 rounded-2xl border border-[#d9e5df] bg-[#f7faf8] p-3">
+          <div className="flex items-center gap-2 text-[0.82rem] font-semibold text-[#315f50]">
+            <ReceiptText className="h-4 w-4" /> Tickets de Punto de Venta
+          </div>
+          {appointmentContext.attendees.map((attendee) =>
+            attendee.posTicket ? (
+              <SchedulerPosTicketPreview
+                branchName={branchName ?? null}
+                clientName={attendee.name}
+                key={attendee.posTicket.ticketId}
+                specialistName={
+                  attendee.membershipSellerSpecialistName ??
+                  attendee.specialistName
+                }
+                ticket={attendee.posTicket}
+              />
+            ) : null,
+          )}
+        </section>
+      ) : null}
 
       {canCaptureLayawayPayment && appointmentContext?.openLayaways.length ? (
         <section className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">

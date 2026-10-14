@@ -29,7 +29,6 @@ import {
   Clock3,
   Copy,
   DoorOpen,
-  ReceiptText,
   ShoppingBag,
   Sparkles,
   UserRoundPlus,
@@ -60,6 +59,7 @@ import {
   type BookingDraft,
 } from "./scheduler-utils";
 import { SchedulerProtectedPhone } from "./SchedulerProtectedPhone";
+import { SchedulerPosTicketPreview } from "./SchedulerPosTicketPreview";
 
 interface SchedulerBookingDialogProps {
   open: boolean;
@@ -1525,16 +1525,24 @@ export function SchedulerBookingDialog({
                                 </>
                               ) : null}
                               {visitor.posTicket ? (
-                                <div className="rounded-xl border border-[#d9e5df] bg-[#f3f8f5] px-3 py-3 text-sm text-slate-700 md:col-span-2 2xl:col-span-12">
-                                  <p className="flex items-center gap-2 font-semibold text-[#315f50]">
-                                    <ReceiptText className="h-4 w-4" /> Ticket
-                                    POS {visitor.posTicket.folio}
-                                  </p>
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    Información sincronizada de solo lectura ·{" "}
-                                    {formatMoney(visitor.posTicket.total)}
-                                  </p>
-                                </div>
+                                <SchedulerPosTicketPreview
+                                  branchName={
+                                    branches.find(
+                                      (branch) => branch.id === selectedBranch,
+                                    )?.name ?? null
+                                  }
+                                  className="md:col-span-2 2xl:col-span-12"
+                                  clientName={visitor.name}
+                                  specialistName={
+                                    specialistOptions.find(
+                                      (specialist) =>
+                                        specialist.id ===
+                                        (visitor.membershipSellerSpecialistProfileId ||
+                                          visitor.specialistProfileId),
+                                    )?.name ?? null
+                                  }
+                                  ticket={visitor.posTicket}
+                                />
                               ) : null}
                               <div className="space-y-2 2xl:col-span-2">
                                 <label className="scheduler-modal-label flex min-h-10 items-end">

@@ -1075,6 +1075,14 @@ corresponde, el ticket y la membresía. Una cita originada desde POS conserva
 referencia/snapshot inmutable y nunca copiar PAN, CVV ni datos de pago sensibles.
 El ticket es informativo: no se edita ni se reabre desde Agenda.
 
+El folio POS es un botón accesible desde el tooltip, el resumen de la cita y
+**Atención y compra**. Al seleccionarlo abre una vista térmica equivalente a la
+del POS con comercio, sucursal disponible, cliente, facialista, partidas,
+estatus y total. Esta ventana es siempre de sólo lectura y no ofrece impresión,
+edición, cobro ni cancelación desde Agenda. En el formulario de comisiones, el
+pie con **Guardar esquema** permanece fijo mientras se desplaza el contenido
+para que la acción principal nunca quede fuera de la pantalla.
+
 Para revisar el flujo: entra con Master, abre **Nueva comisión**, asigna dos
 empleados, agrega las modalidades necesarias, elige una base total o individual
 y limita la visibilidad a Master. Guarda y

@@ -26,14 +26,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@cosmetics/ui";
-import {
-  Ban,
-  CalendarDays,
-  DoorOpen,
-  Plus,
-  ReceiptText,
-  UserRound,
-} from "lucide-react";
+import { Ban, CalendarDays, DoorOpen, Plus, UserRound } from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -91,6 +84,7 @@ import type {
   DesignCustomerLayawaySummary,
 } from "../../../design/contracts";
 import { SchedulerProtectedPhone } from "./SchedulerProtectedPhone";
+import { SchedulerPosTicketPreview } from "./SchedulerPosTicketPreview";
 
 interface SchedulerAgendaGridProps {
   currentView: SchedulerView;
@@ -346,43 +340,15 @@ function SchedulerAppointmentTooltipCard({
         </dd>
       </dl>
       {attendee?.posTicket ? (
-        <section className="mt-3 rounded-xl border border-emerald-200/20 bg-emerald-50/10 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="flex items-center gap-1.5 text-[0.72rem] font-semibold text-emerald-100">
-                <ReceiptText className="h-3.5 w-3.5" /> Ticket POS{" "}
-                {attendee.posTicket.folio}
-              </p>
-              <p className="mt-0.5 text-[0.62rem] text-white/45">
-                Sólo lectura · {attendee.posTicket.businessDate}
-              </p>
-            </div>
-            <strong className="text-[0.72rem] text-white">
-              {appointmentCurrencyFormatter.format(attendee.posTicket.total)}
-            </strong>
-          </div>
-          <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
-            {attendee.posTicket.lines.map((line) => (
-              <div
-                className="flex items-start justify-between gap-3 text-[0.66rem] text-white/70"
-                key={line.id}
-              >
-                <span>
-                  {line.name}
-                  {line.kind === "MEMBERSHIP" ? " · Membresía" : ""}
-                </span>
-                <span className="shrink-0">
-                  {appointmentCurrencyFormatter.format(line.total)}
-                </span>
-              </div>
-            ))}
-          </div>
-          {attendee.membershipName ? (
-            <p className="mt-2 border-t border-white/10 pt-2 text-[0.66rem] leading-4 text-white/65">
-              Colocó: {attendee.membershipSellerSpecialistName ?? "Por asignar"}
-            </p>
-          ) : null}
-        </section>
+        <SchedulerPosTicketPreview
+          className="mt-3"
+          clientName={attendeeName}
+          specialistName={
+            attendee.membershipSellerSpecialistName ?? attendee.specialistName
+          }
+          ticket={attendee.posTicket}
+          tone="dark"
+        />
       ) : null}
       {booking.notes ? (
         <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
@@ -1306,6 +1272,7 @@ export function SchedulerAgendaGrid({
                         <SchedulerBookingCard
                           appointmentContext={appointmentContexts[booking.id]}
                           booking={booking}
+                          branchName={bookingColumn?.branchName}
                           canViewCustomerPhone={canViewCustomerPhone}
                           commerceName={commerceName}
                           enableCabinVisitFlow={enableCabinVisitFlow}
@@ -1694,6 +1661,7 @@ export function SchedulerAgendaGrid({
                         <SchedulerBookingCard
                           appointmentContext={appointmentContexts[booking.id]}
                           booking={booking}
+                          branchName={bookingColumn?.branchName}
                           canViewCustomerPhone={canViewCustomerPhone}
                           commerceName={commerceName}
                           enableCabinVisitFlow={enableCabinVisitFlow}

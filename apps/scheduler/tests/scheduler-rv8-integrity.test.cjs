@@ -232,6 +232,8 @@ test("separates commission configuration from its report route", () => {
   assert.match(administration, /Configurar esquemas|Nueva comisión/);
   assert.match(administration, /Listado de esquemas de comisión/);
   assert.match(administration, /MEMBERSHIP_SALES/);
+  assert.match(administration, /grid-rows-\[auto_minmax\(0,1fr\)_auto\]/);
+  assert.match(administration, /Guardar esquema/);
   assert.match(report, /Reporte de comisiones/);
   assert.match(report, /href="\/administracion\?section=commissions"/);
   assert.match(report, /Periodo de corte/);
@@ -247,8 +249,18 @@ test("shows the POS ticket without duplicating attendance and purchase rows", ()
     source.indexOf("function SchedulerAppointmentTooltipCard"),
     source.indexOf("interface SchedulerAppointmentSummaryProps"),
   );
-  assert.match(tooltip, /Ticket POS/);
-  assert.match(tooltip, /Sólo lectura/);
+  const ticketPreview = readFileSync(
+    path.join(sourceRoot, "components/scheduler/SchedulerPosTicketPreview.tsx"),
+    "utf8",
+  );
+  assert.match(tooltip, /SchedulerPosTicketPreview/);
+  assert.match(
+    ticketPreview,
+    /Vista del comprobante emitido por Punto de Venta/,
+  );
+  assert.match(ticketPreview, /DESCRIPCIÓN/);
+  assert.match(ticketPreview, /TOTAL/);
+  assert.match(ticketPreview, /Sólo lectura/);
   assert.doesNotMatch(tooltip, /<dt>Estado<\/dt>/);
   assert.doesNotMatch(tooltip, /<dt>Resultado<\/dt>/);
 });

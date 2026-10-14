@@ -296,305 +296,318 @@ function CommissionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="admin-dialog admin-dialog-wide max-h-[calc(100dvh-2rem)] max-w-4xl overflow-y-auto overflow-x-hidden">
+      <DialogContent className="admin-dialog admin-dialog-wide grid max-h-[calc(100dvh-2rem)] max-w-4xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
         <DialogHeader>
           <DialogTitle>
             {draft.id ? "Editar esquema" : "Nuevo esquema de comisión"}
           </DialogTitle>
         </DialogHeader>
-        <ConflictNotice
-          message={conflict}
-          onReload={() => {
-            setConflict(null);
-            void onSaved();
-          }}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Label>Nombre del esquema</Label>
-            <Input
-              className="mt-1.5"
-              placeholder="Ej. Facialistas · asistencia y venta"
-              value={draft.name}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  name: event.target.value,
-                }))
-              }
-            />
-          </div>
-          <div>
-            <Label>Comercio</Label>
-            <Select
-              value={draft.commerceId}
-              onValueChange={(value) =>
-                setDraft((current) => ({ ...current, commerceId: value }))
-              }
-            >
-              <SelectTrigger className="mt-1.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {operations.commerces.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
+        <div className="min-h-0 space-y-6 overflow-y-auto pr-1">
+          <ConflictNotice
+            message={conflict}
+            onReload={() => {
+              setConflict(null);
+              void onSaved();
+            }}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label>Nombre del esquema</Label>
+              <Input
+                className="mt-1.5"
+                placeholder="Ej. Facialistas · asistencia y venta"
+                value={draft.name}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <Label>Comercio</Label>
+              <Select
+                value={draft.commerceId}
+                onValueChange={(value) =>
+                  setDraft((current) => ({ ...current, commerceId: value }))
+                }
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {operations.commerces.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Periodo</Label>
+              <Select
+                value={draft.period}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    period: value as SchedulerCommissionPeriod,
+                  }))
+                }
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DAY">Diaria</SelectItem>
+                  <SelectItem value="WEEK">Semanal</SelectItem>
+                  <SelectItem value="FORTNIGHT">Quincenal</SelectItem>
+                  <SelectItem value="MONTH">Mensual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Base de cálculo</Label>
+              <Select
+                value={draft.calculationScope}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    calculationScope: value as DesignCommissionCalculationScope,
+                  }))
+                }
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="INDIVIDUAL">
+                    Resultado individual
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  <SelectItem value="BRANCH_TOTAL">
+                    Venta total de la sucursal
+                  </SelectItem>
+                  <SelectItem value="COMPANY_TOTAL">
+                    Venta total de la empresa
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1.5 text-xs text-slate-500">
+                Los totales permiten esquemas para supervisores o socios.
+              </p>
+            </div>
+            <div>
+              <Label>Tipo de cliente</Label>
+              <Select
+                value={draft.customerSegment}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    customerSegment: value as DesignCommissionCustomerSegment,
+                  }))
+                }
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos los clientes</SelectItem>
+                  <SelectItem value="NEW">Clientes nuevos</SelectItem>
+                  <SelectItem value="RETURNING">
+                    Clientes recurrentes
+                  </SelectItem>
+                  <SelectItem value="RECOVERED">
+                    Clientes recuperados
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Empleados que reciben la comisión</Label>
+              <MultiCombobox
+                className="mt-1.5"
+                options={operations.professionals
+                  .filter((item) => item.active)
+                  .map((item) => ({
+                    value: item.employeeId,
+                    label: item.name,
+                  }))}
+                value={draft.employeeIds}
+                onValueChange={(value) =>
+                  setDraft((current) => ({ ...current, employeeIds: value }))
+                }
+                placeholder="Selecciona uno o varios empleados"
+                selectedCountLabel="empleados asignados"
+              />
+              <p className="mt-1.5 text-xs text-slate-500">
+                Cada empleado se calcula por separado, incluso en citas de
+                cabina doble o triple.
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Perfiles autorizados para consultar el cálculo</Label>
+              <MultiCombobox
+                className="mt-1.5"
+                options={profiles.map((profile) => ({
+                  value: profile.id,
+                  label: `${profile.name} · ${profile.access}`,
+                }))}
+                value={draft.viewerProfileIds}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    viewerProfileIds: value,
+                  }))
+                }
+                placeholder="Selecciona perfiles autorizados"
+                selectedCountLabel="perfiles autorizados"
+              />
+            </div>
           </div>
-          <div>
-            <Label>Periodo</Label>
-            <Select
-              value={draft.period}
-              onValueChange={(value) =>
-                setDraft((current) => ({
-                  ...current,
-                  period: value as SchedulerCommissionPeriod,
-                }))
-              }
-            >
-              <SelectTrigger className="mt-1.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DAY">Diaria</SelectItem>
-                <SelectItem value="WEEK">Semanal</SelectItem>
-                <SelectItem value="FORTNIGHT">Quincenal</SelectItem>
-                <SelectItem value="MONTH">Mensual</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Base de cálculo</Label>
-            <Select
-              value={draft.calculationScope}
-              onValueChange={(value) =>
-                setDraft((current) => ({
-                  ...current,
-                  calculationScope: value as DesignCommissionCalculationScope,
-                }))
-              }
-            >
-              <SelectTrigger className="mt-1.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="INDIVIDUAL">Resultado individual</SelectItem>
-                <SelectItem value="BRANCH_TOTAL">
-                  Venta total de la sucursal
-                </SelectItem>
-                <SelectItem value="COMPANY_TOTAL">
-                  Venta total de la empresa
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="mt-1.5 text-xs text-slate-500">
-              Los totales permiten esquemas para supervisores o socios.
-            </p>
-          </div>
-          <div>
-            <Label>Tipo de cliente</Label>
-            <Select
-              value={draft.customerSegment}
-              onValueChange={(value) =>
-                setDraft((current) => ({
-                  ...current,
-                  customerSegment: value as DesignCommissionCustomerSegment,
-                }))
-              }
-            >
-              <SelectTrigger className="mt-1.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos los clientes</SelectItem>
-                <SelectItem value="NEW">Clientes nuevos</SelectItem>
-                <SelectItem value="RETURNING">Clientes recurrentes</SelectItem>
-                <SelectItem value="RECOVERED">Clientes recuperados</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="sm:col-span-2">
-            <Label>Empleados que reciben la comisión</Label>
-            <MultiCombobox
-              className="mt-1.5"
-              options={operations.professionals
-                .filter((item) => item.active)
-                .map((item) => ({ value: item.employeeId, label: item.name }))}
-              value={draft.employeeIds}
-              onValueChange={(value) =>
-                setDraft((current) => ({ ...current, employeeIds: value }))
-              }
-              placeholder="Selecciona uno o varios empleados"
-              selectedCountLabel="empleados asignados"
-            />
-            <p className="mt-1.5 text-xs text-slate-500">
-              Cada empleado se calcula por separado, incluso en citas de cabina
-              doble o triple.
-            </p>
-          </div>
-          <div className="sm:col-span-2">
-            <Label>Perfiles autorizados para consultar el cálculo</Label>
-            <MultiCombobox
-              className="mt-1.5"
-              options={profiles.map((profile) => ({
-                value: profile.id,
-                label: `${profile.name} · ${profile.access}`,
-              }))}
-              value={draft.viewerProfileIds}
-              onValueChange={(value) =>
-                setDraft((current) => ({
-                  ...current,
-                  viewerProfileIds: value,
-                }))
-              }
-              placeholder="Selecciona perfiles autorizados"
-              selectedCountLabel="perfiles autorizados"
-            />
-          </div>
-        </div>
-        <div className="space-y-4">
-          {draft.rules.map((rule, index) => (
-            <Card key={`${rule.mode}-${index}`} className="admin-card">
-              <CardContent className="space-y-4 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold">Modalidad {index + 1}</p>
-                  {draft.rules.length > 1 ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
+          <div className="space-y-4">
+            {draft.rules.map((rule, index) => (
+              <Card key={`${rule.mode}-${index}`} className="admin-card">
+                <CardContent className="space-y-4 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold">
+                      Modalidad {index + 1}
+                    </p>
+                    {draft.rules.length > 1 ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            rules: current.rules.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
+                          }))
+                        }
+                      >
+                        Quitar
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div>
+                    <Label>Tipo</Label>
+                    <Select
+                      value={rule.mode}
+                      onValueChange={(value) =>
                         setDraft((current) => ({
                           ...current,
-                          rules: current.rules.filter(
-                            (_, itemIndex) => itemIndex !== index,
+                          rules: current.rules.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? {
+                                  ...item,
+                                  mode: value as DesignCommissionRuleMode,
+                                  value: "0",
+                                }
+                              : item,
                           ),
                         }))
                       }
                     >
-                      Quitar
-                    </Button>
+                      <SelectTrigger className="mt-1.5">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ATTENDED_APPOINTMENT">
+                          Importe por cita atendida
+                        </SelectItem>
+                        <SelectItem value="SALES_AMOUNT">
+                          Porcentaje de ventas totales
+                        </SelectItem>
+                        <SelectItem value="MEMBERSHIP_SALES">
+                          Porcentaje de membresías vendidas
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {rule.mode === "ATTENDED_APPOINTMENT" ? (
+                    <div>
+                      <Label>Importe por cita atendida</Label>
+                      <Input
+                        className="mt-1.5"
+                        min="0"
+                        step="0.01"
+                        type="number"
+                        value={rule.value}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            rules: current.rules.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, value: event.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                      />
+                    </div>
                   ) : null}
-                </div>
-                <div>
-                  <Label>Tipo</Label>
-                  <Select
-                    value={rule.mode}
-                    onValueChange={(value) =>
-                      setDraft((current) => ({
-                        ...current,
-                        rules: current.rules.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? {
-                                ...item,
-                                mode: value as DesignCommissionRuleMode,
-                                value: "0",
-                              }
-                            : item,
-                        ),
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="mt-1.5">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ATTENDED_APPOINTMENT">
-                        Importe por cita atendida
-                      </SelectItem>
-                      <SelectItem value="SALES_AMOUNT">
-                        Porcentaje de ventas totales
-                      </SelectItem>
-                      <SelectItem value="MEMBERSHIP_SALES">
-                        Porcentaje de membresías vendidas
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {rule.mode === "ATTENDED_APPOINTMENT" ? (
-                  <div>
-                    <Label>Importe por cita atendida</Label>
-                    <Input
-                      className="mt-1.5"
-                      min="0"
-                      step="0.01"
-                      type="number"
-                      value={rule.value}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          rules: current.rules.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, value: event.target.value }
-                              : item,
-                          ),
-                        }))
-                      }
-                    />
-                  </div>
-                ) : null}
-                {rule.mode !== "ATTENDED_APPOINTMENT" ? (
-                  <div>
-                    <Label>
-                      {rule.mode === "MEMBERSHIP_SALES"
-                        ? "Porcentaje sobre membresías"
-                        : "Porcentaje sobre ventas"}
-                    </Label>
-                    <Input
-                      className="mt-1.5"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      type="number"
-                      value={rule.value}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          rules: current.rules.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, value: event.target.value }
-                              : item,
-                          ),
-                        }))
-                      }
-                    />
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
-          {draft.rules.length < 3 ? (
-            <Button
-              variant="outline"
-              onClick={() =>
-                setDraft((current) => ({
-                  ...current,
-                  rules: [
-                    ...current.rules,
-                    {
-                      mode: (
-                        [
-                          "ATTENDED_APPOINTMENT",
-                          "SALES_AMOUNT",
-                          "MEMBERSHIP_SALES",
-                        ] as DesignCommissionRuleMode[]
-                      ).find(
-                        (mode) =>
-                          !current.rules.some((rule) => rule.mode === mode),
-                      )!,
-                      value: "0",
-                    },
-                  ],
-                }))
-              }
-            >
-              <Plus className="mr-2 h-4 w-4" /> Agregar modalidad
-            </Button>
-          ) : null}
+                  {rule.mode !== "ATTENDED_APPOINTMENT" ? (
+                    <div>
+                      <Label>
+                        {rule.mode === "MEMBERSHIP_SALES"
+                          ? "Porcentaje sobre membresías"
+                          : "Porcentaje sobre ventas"}
+                      </Label>
+                      <Input
+                        className="mt-1.5"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        type="number"
+                        value={rule.value}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            rules: current.rules.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, value: event.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+            {draft.rules.length < 3 ? (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    rules: [
+                      ...current.rules,
+                      {
+                        mode: (
+                          [
+                            "ATTENDED_APPOINTMENT",
+                            "SALES_AMOUNT",
+                            "MEMBERSHIP_SALES",
+                          ] as DesignCommissionRuleMode[]
+                        ).find(
+                          (mode) =>
+                            !current.rules.some((rule) => rule.mode === mode),
+                        )!,
+                        value: "0",
+                      },
+                    ],
+                  }))
+                }
+              >
+                <Plus className="mr-2 h-4 w-4" /> Agregar modalidad
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="-mx-6 -mb-6 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_-14px_28px_rgba(15,23,42,0.08)] sm:flex-row sm:items-center sm:justify-between">
           <Button
             variant={draft.active ? "default" : "outline"}
             onClick={() =>
