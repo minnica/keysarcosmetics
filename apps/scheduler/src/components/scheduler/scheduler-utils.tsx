@@ -23,6 +23,8 @@ import {
 } from "@/lib/scheduler-presentation";
 import type {
   DesignCustomerVisitPurchaseSnapshot,
+  DesignPosTicketSnapshot,
+  DesignSaleCategory,
   DesignVisitAttendanceStatus,
 } from "../../../design/contracts";
 
@@ -168,6 +170,10 @@ export interface BookingVisitorDraft {
   purchaseKind: "NONE" | "FULL" | "LAYAWAY" | null;
   saleAmount: string;
   depositAmount: string;
+  saleCategory: DesignSaleCategory;
+  membershipName: string;
+  membershipSellerSpecialistProfileId: string;
+  posTicket: DesignPosTicketSnapshot | null;
 }
 
 export interface EmptySlotAction {
@@ -429,6 +435,10 @@ export function createDraft(
         purchaseKind: null,
         saleAmount: "",
         depositAmount: "",
+        saleCategory: null,
+        membershipName: "",
+        membershipSellerSpecialistProfileId: "",
+        posTicket: null,
       },
     ],
   };
@@ -491,6 +501,10 @@ export function createDraftFromBooking(
           ? String(booking.purchaseAmount)
           : "",
         depositAmount: "",
+        saleCategory: booking.purchased ? "SERVICE" : null,
+        membershipName: "",
+        membershipSellerSpecialistProfileId: "",
+        posTicket: null,
       },
     ],
   };

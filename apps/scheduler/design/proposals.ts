@@ -8,6 +8,7 @@ import type {
   DesignBranchCommercialModel,
   DesignCabinSalesReport,
   DesignCommissionReport,
+  DesignCommissionCut,
   DesignCommissionScheme,
   DesignCommissionSchemeInput,
   DesignSalesProjectionReport,
@@ -271,6 +272,15 @@ export const schedulerDesignProposals: DesignProposalClient = {
   commissionReport: (input) =>
     request<DesignCommissionReport>(
       "/api/scheduler/design-proposals/reports/commissions",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  commissionCuts: () =>
+    request<DesignCommissionCut[]>(
+      "/api/scheduler/design-proposals/commission-cuts",
+    ),
+  createCommissionCut: (input) =>
+    request<DesignCommissionCut>(
+      "/api/scheduler/design-proposals/commission-cuts",
       { method: "POST", body: JSON.stringify(input) },
     ),
 };

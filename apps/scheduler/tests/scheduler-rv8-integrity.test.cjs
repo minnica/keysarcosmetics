@@ -117,10 +117,7 @@ test("combines commerce and resources into one administration submenu", () => {
     path.join(sourceRoot, "components/api/ApiAdministrationWorkspace.tsx"),
     "utf8",
   );
-  assert.match(
-    primaryNav,
-    /id: "locals",\s+label: "Sucursales y cabinas"/,
-  );
+  assert.match(primaryNav, /id: "locals",\s+label: "Sucursales y cabinas"/);
   assert.doesNotMatch(primaryNav, /id: "resources", label: "Recursos"/);
   assert.match(sidebar, /label: "Sucursales y cabinas"/);
   assert.doesNotMatch(
@@ -233,8 +230,27 @@ test("separates commission configuration from its report route", () => {
   );
   assert.doesNotMatch(administration, /Reporte de comisiones/);
   assert.match(administration, /Configurar esquemas|Nueva comisión/);
+  assert.match(administration, /Listado de esquemas de comisión/);
+  assert.match(administration, /MEMBERSHIP_SALES/);
   assert.match(report, /Reporte de comisiones/);
   assert.match(report, /href="\/administracion\?section=commissions"/);
+  assert.match(report, /Periodo de corte/);
+  assert.match(report, /Cerrar periodo/);
+});
+
+test("shows the POS ticket without duplicating attendance and purchase rows", () => {
+  const source = readFileSync(
+    path.join(sourceRoot, "components/scheduler/SchedulerAgendaGrid.tsx"),
+    "utf8",
+  );
+  const tooltip = source.slice(
+    source.indexOf("function SchedulerAppointmentTooltipCard"),
+    source.indexOf("interface SchedulerAppointmentSummaryProps"),
+  );
+  assert.match(tooltip, /Ticket POS/);
+  assert.match(tooltip, /Sólo lectura/);
+  assert.doesNotMatch(tooltip, /<dt>Estado<\/dt>/);
+  assert.doesNotMatch(tooltip, /<dt>Resultado<\/dt>/);
 });
 
 test("splits each operational workspace into its route module", () => {

@@ -943,6 +943,7 @@ export function ApiAgendaWorkspace() {
         contexts[bookingSourceId(booking)] ??
           ({
             appointmentId: bookingSourceId(booking),
+            appointmentOrigin: "SCHEDULER",
             attendeeNames: [booking.customerName],
             attendees: [
               {
@@ -956,7 +957,8 @@ export function ApiAgendaWorkspace() {
                 attendanceStatus:
                   booking.status === "attended"
                     ? "ATTENDED"
-                    : booking.status === "arrived" || booking.status === "waiting"
+                    : booking.status === "arrived" ||
+                        booking.status === "waiting"
                       ? "ARRIVED"
                       : booking.status === "no-show"
                         ? "NO_SHOW"
@@ -970,8 +972,12 @@ export function ApiAgendaWorkspace() {
                 saleAmount: booking.purchaseAmount ?? 0,
                 depositAmount: booking.purchaseAmount ?? 0,
                 balanceAmount: 0,
+                saleCategory: booking.purchased ? "SERVICE" : null,
+                membershipName: null,
+                membershipSellerSpecialistName: null,
                 settlementStatus:
                   booking.purchased === true ? "PAID" : "NOT_APPLICABLE",
+                posTicket: null,
                 portfolioSellerName: null,
                 nextAppointmentId: null,
                 nextAppointmentAt: null,
@@ -1132,35 +1138,32 @@ export function ApiAgendaWorkspace() {
     resourcePanelOpen && viewportWidth >= 1280,
   );
   const columnsFitted = columnFitOverride ?? automaticColumnFit;
-  const visibleBookings = useMemo(
-    () => {
-      const filteredBookings = allBookings.filter((booking) => {
-        const matchesStatus =
-          statusFilter === "active"
-            ? booking.status !== "canceled"
-            : booking.status === statusFilter;
-        return (
-          visibleColumnIds.has(booking.professionalId) &&
-          booking.date === schedulerLocalDateKey(selectedDate) &&
-          (!statusDefinitions.data ||
-            visibleBookingStatuses.has(booking.status)) &&
-          matchesStatus &&
-          (quickTimeFilter === "all" || booking.start === quickTimeFilter)
-        );
-      });
+  const visibleBookings = useMemo(() => {
+    const filteredBookings = allBookings.filter((booking) => {
+      const matchesStatus =
+        statusFilter === "active"
+          ? booking.status !== "canceled"
+          : booking.status === statusFilter;
+      return (
+        visibleColumnIds.has(booking.professionalId) &&
+        booking.date === schedulerLocalDateKey(selectedDate) &&
+        (!statusDefinitions.data ||
+          visibleBookingStatuses.has(booking.status)) &&
+        matchesStatus &&
+        (quickTimeFilter === "all" || booking.start === quickTimeFilter)
+      );
+    });
 
-      return filteredBookings;
-    },
-    [
-      allBookings,
-      quickTimeFilter,
-      selectedDate,
-      statusFilter,
-      statusDefinitions.data,
-      visibleBookingStatuses,
-      visibleColumnIds,
-    ],
-  );
+    return filteredBookings;
+  }, [
+    allBookings,
+    quickTimeFilter,
+    selectedDate,
+    statusFilter,
+    statusDefinitions.data,
+    visibleBookingStatuses,
+    visibleColumnIds,
+  ]);
   const visibleBlocks = useMemo(
     () =>
       allBlocks.filter(
@@ -1216,20 +1219,19 @@ export function ApiAgendaWorkspace() {
       currentView === "day"
         ? visibleBookings
         : allBookings.filter((booking) => {
-              const matchesStatus =
-                statusFilter === "active"
-                  ? booking.status !== "canceled"
-                  : booking.status === statusFilter;
-              return (
-                visibleColumnIds.has(booking.professionalId) &&
-                range.visibleDateKeys.includes(booking.date ?? "") &&
-                (!statusDefinitions.data ||
-                  visibleBookingStatuses.has(booking.status)) &&
-                matchesStatus &&
-                (quickTimeFilter === "all" ||
-                  booking.start === quickTimeFilter)
-              );
-            }),
+            const matchesStatus =
+              statusFilter === "active"
+                ? booking.status !== "canceled"
+                : booking.status === statusFilter;
+            return (
+              visibleColumnIds.has(booking.professionalId) &&
+              range.visibleDateKeys.includes(booking.date ?? "") &&
+              (!statusDefinitions.data ||
+                visibleBookingStatuses.has(booking.status)) &&
+              matchesStatus &&
+              (quickTimeFilter === "all" || booking.start === quickTimeFilter)
+            );
+          }),
     [
       allBookings,
       currentView,
@@ -1527,6 +1529,10 @@ export function ApiAgendaWorkspace() {
           purchaseKind: null,
           saleAmount: "",
           depositAmount: "",
+          saleCategory: null,
+          membershipName: "",
+          membershipSellerSpecialistProfileId: "",
+          posTicket: null,
         }),
       ),
     });
@@ -1608,6 +1614,10 @@ export function ApiAgendaWorkspace() {
           purchaseKind: null,
           saleAmount: "",
           depositAmount: "",
+          saleCategory: null,
+          membershipName: "",
+          membershipSellerSpecialistProfileId: "",
+          posTicket: null,
         }),
       ),
     });
@@ -1685,6 +1695,11 @@ export function ApiAgendaWorkspace() {
                             visitor.depositAmount === null
                               ? ""
                               : String(visitor.depositAmount),
+                          saleCategory: visitor.saleCategory,
+                          membershipName: visitor.membershipName ?? "",
+                          membershipSellerSpecialistProfileId:
+                            visitor.membershipSellerSpecialistProfileId ?? "",
+                          posTicket: visitor.posTicket,
                         })),
                       }
                     : {}),
@@ -2115,11 +2130,13 @@ export function ApiAgendaWorkspace() {
             (visitor.purchaseKind === "LAYAWAY" &&
               (!Number.isFinite(Number(visitor.depositAmount)) ||
                 Number(visitor.depositAmount) <= 0 ||
-                Number(visitor.depositAmount) > Number(visitor.saleAmount))),
+                Number(visitor.depositAmount) > Number(visitor.saleAmount))) ||
+            (visitor.saleCategory === "MEMBERSHIP" &&
+              !visitor.membershipSellerSpecialistProfileId),
         )
       ) {
         toast.error(
-          "Marca la asistencia de cada visitante. Quien no asistió no puede tener compra; las compras y apartados requieren montos válidos.",
+          "Marca la asistencia de cada visitante. Quien no asistió no puede tener compra; las compras y apartados requieren montos válidos y toda membresía debe indicar qué facialista la colocó.",
         );
         return;
       }
@@ -2470,6 +2487,19 @@ export function ApiAgendaWorkspace() {
                   : visitor.purchaseKind === "LAYAWAY"
                     ? Number(visitor.depositAmount)
                     : null,
+              saleCategory:
+                visitor.purchaseKind === "FULL" ||
+                visitor.purchaseKind === "LAYAWAY"
+                  ? visitor.saleCategory || "SERVICE"
+                  : null,
+              membershipName:
+                visitor.saleCategory === "MEMBERSHIP"
+                  ? visitor.membershipName.trim() || "Membresía POS"
+                  : null,
+              membershipSellerSpecialistProfileId:
+                visitor.saleCategory === "MEMBERSHIP"
+                  ? visitor.membershipSellerSpecialistProfileId
+                  : null,
             })),
           },
           purchaseGrant?.token,

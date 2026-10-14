@@ -26,7 +26,14 @@ import {
   TooltipTrigger,
   cn,
 } from "@cosmetics/ui";
-import { Ban, CalendarDays, DoorOpen, Plus, UserRound } from "lucide-react";
+import {
+  Ban,
+  CalendarDays,
+  DoorOpen,
+  Plus,
+  ReceiptText,
+  UserRound,
+} from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -186,25 +193,6 @@ const appointmentCurrencyFormatter = new Intl.NumberFormat("es-MX", {
   maximumFractionDigits: 0,
 });
 
-function purchaseOutcomeLabel(
-  attendee: DesignAppointmentAttendeeContext | undefined,
-  booking: Booking,
-) {
-  if (!attendee) {
-    return booking.purchased === true && (booking.purchaseAmount ?? 0) > 0
-      ? `Compra · ${appointmentCurrencyFormatter.format(booking.purchaseAmount ?? 0)}`
-      : "Pendiente de registrar";
-  }
-  if (attendee.purchaseKind === "NONE") return "Sin compra";
-  if (attendee.purchaseKind === "FULL") {
-    return `Compra liquidada · ${appointmentCurrencyFormatter.format(attendee.saleAmount)}`;
-  }
-  if (attendee.purchaseKind === "LAYAWAY") {
-    return `Apartado · ${appointmentCurrencyFormatter.format(attendee.depositAmount)} de ${appointmentCurrencyFormatter.format(attendee.saleAmount)}`;
-  }
-  return "Pendiente de registrar";
-}
-
 interface SchedulerDisplayedAttendee {
   attendee: DesignAppointmentAttendeeContext | undefined;
   contextIndex: number;
@@ -226,8 +214,7 @@ function displayedAttendeesForColumn(
     if (column?.kind !== "PROFESSIONAL" || !column.entityId) return indexed;
 
     const assigned = indexed.filter(
-      ({ attendee }) =>
-        attendee.specialistProfileId === column.entityId,
+      ({ attendee }) => attendee.specialistProfileId === column.entityId,
     );
     return assigned.length ? assigned : indexed;
   }
@@ -282,8 +269,6 @@ interface SchedulerAppointmentTooltipCardProps {
   context: DesignAppointmentContext | undefined;
   fallbackSpecialistName: string;
   side: "right" | "top";
-  statusColors: BookingStatusColors;
-  statusLabels: BookingStatusLabels;
   canViewCustomerPhone: boolean;
 }
 
@@ -294,21 +279,13 @@ function SchedulerAppointmentTooltipCard({
   context,
   fallbackSpecialistName,
   side,
-  statusColors,
-  statusLabels,
   canViewCustomerPhone,
 }: SchedulerAppointmentTooltipCardProps) {
   const attendee = context?.attendees?.[attendeeIndex];
-  const attendeeStatus = attendeeBookingStatus(attendee, booking.status);
   const attendeeName =
     attendee?.name ??
     context?.attendeeNames[attendeeIndex] ??
     booking.customerName;
-  const purchaseAmount = attendee?.saleAmount ?? booking.purchaseAmount;
-  const hasPurchase = attendee
-    ? ["FULL", "LAYAWAY"].includes(attendee.purchaseKind ?? "") &&
-      attendee.saleAmount > 0
-    : booking.purchased === true && (booking.purchaseAmount ?? 0) > 0;
   const phone = attendee ? attendee.phone : booking.phone;
   const contactFallback = attendee
     ? attendee.email || "Sin contacto"
@@ -340,19 +317,10 @@ function SchedulerAppointmentTooltipCard({
             ? (attendee.specialistName ?? "Sin asignar")
             : fallbackSpecialistName}
         </dd>
-        <dt>Estado</dt>
+        <dt>Origen</dt>
         <dd>
-          <SchedulerStatusBadge
-            color={statusColors[attendeeStatus]}
-            compact
-            hasPurchase={hasPurchase}
-            label={statusLabels[attendeeStatus]}
-            purchaseAmount={purchaseAmount}
-            status={attendeeStatus}
-          />
+          {context?.appointmentOrigin === "POS" ? "Punto de venta" : "Agenda"}
         </dd>
-        <dt>Resultado</dt>
-        <dd>{purchaseOutcomeLabel(attendee, booking)}</dd>
         <dt>Contacto</dt>
         <dd>
           <SchedulerProtectedPhone
@@ -377,6 +345,45 @@ function SchedulerAppointmentTooltipCard({
           )}
         </dd>
       </dl>
+      {attendee?.posTicket ? (
+        <section className="mt-3 rounded-xl border border-emerald-200/20 bg-emerald-50/10 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="flex items-center gap-1.5 text-[0.72rem] font-semibold text-emerald-100">
+                <ReceiptText className="h-3.5 w-3.5" /> Ticket POS{" "}
+                {attendee.posTicket.folio}
+              </p>
+              <p className="mt-0.5 text-[0.62rem] text-white/45">
+                Sólo lectura · {attendee.posTicket.businessDate}
+              </p>
+            </div>
+            <strong className="text-[0.72rem] text-white">
+              {appointmentCurrencyFormatter.format(attendee.posTicket.total)}
+            </strong>
+          </div>
+          <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
+            {attendee.posTicket.lines.map((line) => (
+              <div
+                className="flex items-start justify-between gap-3 text-[0.66rem] text-white/70"
+                key={line.id}
+              >
+                <span>
+                  {line.name}
+                  {line.kind === "MEMBERSHIP" ? " · Membresía" : ""}
+                </span>
+                <span className="shrink-0">
+                  {appointmentCurrencyFormatter.format(line.total)}
+                </span>
+              </div>
+            ))}
+          </div>
+          {attendee.membershipName ? (
+            <p className="mt-2 border-t border-white/10 pt-2 text-[0.66rem] leading-4 text-white/65">
+              Colocó: {attendee.membershipSellerSpecialistName ?? "Por asignar"}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
       {booking.notes ? (
         <p className="mt-3 border-t border-white/10 pt-3 text-[0.72rem] leading-5 text-white/65">
           {booking.notes}
@@ -1027,8 +1034,7 @@ export function SchedulerAgendaGrid({
       bounds.width,
       displayedAttendees.length,
     );
-    const attendeeIndex =
-      displayedAttendees[displayedIndex]?.contextIndex ?? 0;
+    const attendeeIndex = displayedAttendees[displayedIndex]?.contextIndex ?? 0;
     setHoveredBookingAttendee((current) =>
       current?.bookingId === booking.id &&
       current.attendeeIndex === attendeeIndex
@@ -1288,8 +1294,6 @@ export function SchedulerAgendaGrid({
                           context={appointmentContexts[booking.id]}
                           fallbackSpecialistName={fallbackSpecialistName}
                           side="right"
-                          statusColors={statusColors}
-                          statusLabels={statusLabels}
                         />
                       </Tooltip>
                       <DialogContent
@@ -1678,8 +1682,6 @@ export function SchedulerAgendaGrid({
                           context={appointmentContexts[booking.id]}
                           fallbackSpecialistName={fallbackSpecialistName}
                           side="top"
-                          statusColors={statusColors}
-                          statusLabels={statusLabels}
                         />
                       </Tooltip>
                       <DialogContent

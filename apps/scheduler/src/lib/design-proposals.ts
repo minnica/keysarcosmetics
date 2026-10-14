@@ -51,4 +51,6 @@ export const schedulerDesignProposals: DesignProposalClient = {
   commissionSchemes: unavailable,
   saveCommissionScheme: unavailable,
   commissionReport: unavailable,
+  commissionCuts: unavailable,
+  createCommissionCut: unavailable,
 };

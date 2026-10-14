@@ -29,6 +29,7 @@ import {
   Clock3,
   Copy,
   DoorOpen,
+  ReceiptText,
   ShoppingBag,
   Sparkles,
   UserRoundPlus,
@@ -138,9 +139,7 @@ function SchedulerConfiguredFields({
             {definition.type === "SELECT" ? (
               <Select
                 value={typeof value === "string" ? value : ""}
-                onValueChange={(next) =>
-                  onValueChange(definition.id, next)
-                }
+                onValueChange={(next) => onValueChange(definition.id, next)}
               >
                 <SelectTrigger
                   id={`${idPrefix}-${definition.id}`}
@@ -177,9 +176,7 @@ function SchedulerConfiguredFields({
               <Input
                 className="scheduler-modal-input"
                 id={`${idPrefix}-${definition.id}`}
-                inputMode={
-                  definition.type === "NUMBER" ? "decimal" : undefined
-                }
+                inputMode={definition.type === "NUMBER" ? "decimal" : undefined}
                 onChange={(event) =>
                   onValueChange(definition.id, event.target.value)
                 }
@@ -317,9 +314,9 @@ export function SchedulerBookingDialog({
   );
   const newClientFormValid = Boolean(
     newClientFirstName.trim().length >= 2 &&
-      newClientLastName.trim().length >= 2 &&
-      normalizeClientPhone(draft.phone).length >= 10 &&
-      requiredCustomerFieldsComplete,
+    newClientLastName.trim().length >= 2 &&
+    normalizeClientPhone(draft.phone).length >= 10 &&
+    requiredCustomerFieldsComplete,
   );
   const cabinVisitValid =
     !enableCabinVisitFlow ||
@@ -342,7 +339,9 @@ export function SchedulerBookingDialog({
               (visitor.purchaseKind === "FULL" ||
                 (Number(visitor.depositAmount) > 0 &&
                   Number(visitor.depositAmount) <=
-                    Number(visitor.saleAmount))))),
+                    Number(visitor.saleAmount))))) &&
+          (visitor.saleCategory !== "MEMBERSHIP" ||
+            Boolean(visitor.membershipSellerSpecialistProfileId)),
       ) &&
       new Set(draft.visitors.map((visitor) => visitor.specialistProfileId))
         .size === draft.visitors.length,
@@ -424,6 +423,10 @@ export function SchedulerBookingDialog({
           purchaseKind: null,
           saleAmount: "",
           depositAmount: "",
+          saleCategory: null,
+          membershipName: "",
+          membershipSellerSpecialistProfileId: "",
+          posTicket: null,
         },
     );
     patchDraft({
@@ -548,10 +551,7 @@ export function SchedulerBookingDialog({
               required
               value={newClientFirstName}
               onChange={(event) =>
-                handleNewClientNameChange(
-                  event.target.value,
-                  newClientLastName,
-                )
+                handleNewClientNameChange(event.target.value, newClientLastName)
               }
             />
           </div>
@@ -577,10 +577,7 @@ export function SchedulerBookingDialog({
             />
           </div>
           <div className="space-y-2">
-            <label
-              className="scheduler-modal-label"
-              htmlFor="new-client-phone"
-            >
+            <label className="scheduler-modal-label" htmlFor="new-client-phone">
               Teléfono *
             </label>
             <Input
@@ -601,10 +598,7 @@ export function SchedulerBookingDialog({
             ) : null}
           </div>
           <div className="space-y-2">
-            <label
-              className="scheduler-modal-label"
-              htmlFor="new-client-email"
-            >
+            <label className="scheduler-modal-label" htmlFor="new-client-email">
               Email
             </label>
             <Input
@@ -692,19 +686,19 @@ export function SchedulerBookingDialog({
                   {isNewClientOpen
                     ? "Nuevo cliente"
                     : appointmentDetailsLocked
-                    ? "Atención y compra"
-                    : isEditing
-                      ? "Editar reserva"
-                      : "Nueva reserva"}
+                      ? "Atención y compra"
+                      : isEditing
+                        ? "Editar reserva"
+                        : "Nueva reserva"}
                 </DialogTitle>
                 <p className="mt-1 text-[0.92rem] text-slate-500">
                   {isNewClientOpen
                     ? "Primero guarda los datos del cliente para continuar con la reserva."
                     : appointmentDetailsLocked
-                    ? "Registra cabina, visitantes, especialistas y compra sin modificar la cita finalizada."
-                    : isEditing
-                      ? "Ajusta los datos de la cita seleccionada antes de guardarla."
-                      : "Captura rapida para agregar una nueva reserva a la agenda."}
+                      ? "Registra cabina, visitantes, especialistas y compra sin modificar la cita finalizada."
+                      : isEditing
+                        ? "Ajusta los datos de la cita seleccionada antes de guardarla."
+                        : "Captura rapida para agregar una nueva reserva a la agenda."}
                 </p>
               </div>
               <div className="flex items-center gap-3 self-start">
@@ -1108,10 +1102,10 @@ export function SchedulerBookingDialog({
                           </p>
                           {appointmentDetailsLocked ? (
                             <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-                              La asistencia es obligatoria por persona. La
-                              venta puede quedar pendiente y registrarse
-                              después; compras y apartados sí requieren sus
-                              montos completos.
+                              La asistencia es obligatoria por persona. La venta
+                              puede quedar pendiente y registrarse después;
+                              compras y apartados sí requieren sus montos
+                              completos.
                             </p>
                           ) : null}
                         </div>
@@ -1319,6 +1313,10 @@ export function SchedulerBookingDialog({
                                             purchaseAmount: "",
                                             saleAmount: "",
                                             depositAmount: "",
+                                            saleCategory: null,
+                                            membershipName: "",
+                                            membershipSellerSpecialistProfileId:
+                                              "",
                                           }
                                         : {}),
                                     })
@@ -1348,7 +1346,9 @@ export function SchedulerBookingDialog({
                                   Resultado de venta
                                 </label>
                                 <Select
-                                  disabled={visitor.attendanceStatus === "NO_SHOW"}
+                                  disabled={
+                                    visitor.attendanceStatus === "NO_SHOW"
+                                  }
                                   value={visitor.purchaseKind ?? "PENDING"}
                                   onValueChange={(value) =>
                                     patchVisitor(index, {
@@ -1369,9 +1369,18 @@ export function SchedulerBookingDialog({
                                             purchaseAmount: "",
                                             saleAmount: "",
                                             depositAmount: "",
+                                            saleCategory: null,
+                                            membershipName: "",
+                                            membershipSellerSpecialistProfileId:
+                                              "",
                                           }
                                         : value === "FULL"
-                                          ? { depositAmount: "" }
+                                          ? {
+                                              depositAmount: "",
+                                              saleCategory:
+                                                visitor.saleCategory ??
+                                                "SERVICE",
+                                            }
                                           : {}),
                                     })
                                   }
@@ -1391,6 +1400,48 @@ export function SchedulerBookingDialog({
                                     </SelectItem>
                                     <SelectItem value="LAYAWAY">
                                       Apartado
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-2 2xl:col-span-2">
+                                <label className="scheduler-modal-label flex min-h-10 items-end">
+                                  Tipo de venta
+                                </label>
+                                <Select
+                                  disabled={
+                                    visitor.purchaseKind !== "FULL" &&
+                                    visitor.purchaseKind !== "LAYAWAY"
+                                  }
+                                  value={visitor.saleCategory ?? "SERVICE"}
+                                  onValueChange={(value) =>
+                                    patchVisitor(index, {
+                                      saleCategory: value as
+                                        | "SERVICE"
+                                        | "MEMBERSHIP",
+                                      ...(value === "MEMBERSHIP"
+                                        ? {
+                                            membershipSellerSpecialistProfileId:
+                                              visitor.membershipSellerSpecialistProfileId ||
+                                              visitor.specialistProfileId,
+                                          }
+                                        : {
+                                            membershipName: "",
+                                            membershipSellerSpecialistProfileId:
+                                              "",
+                                          }),
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="scheduler-modal-select-trigger">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="scheduler-modal-select-content">
+                                    <SelectItem value="SERVICE">
+                                      Servicio o producto
+                                    </SelectItem>
+                                    <SelectItem value="MEMBERSHIP">
+                                      Membresía
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
@@ -1422,6 +1473,69 @@ export function SchedulerBookingDialog({
                                   />
                                 </div>
                               </div>
+                              {visitor.saleCategory === "MEMBERSHIP" ? (
+                                <>
+                                  <div className="space-y-2 2xl:col-span-3">
+                                    <label className="scheduler-modal-label flex min-h-10 items-end">
+                                      Membresía vendida
+                                    </label>
+                                    <Input
+                                      className="scheduler-modal-input"
+                                      onChange={(event) =>
+                                        patchVisitor(index, {
+                                          membershipName: event.target.value,
+                                        })
+                                      }
+                                      placeholder="Nombre de la membresía"
+                                      readOnly={Boolean(visitor.posTicket)}
+                                      value={visitor.membershipName}
+                                    />
+                                  </div>
+                                  <div className="space-y-2 2xl:col-span-3">
+                                    <label className="scheduler-modal-label flex min-h-10 items-end">
+                                      Facialista que colocó la membresía
+                                    </label>
+                                    <Select
+                                      value={
+                                        visitor.membershipSellerSpecialistProfileId
+                                      }
+                                      onValueChange={(value) =>
+                                        patchVisitor(index, {
+                                          membershipSellerSpecialistProfileId:
+                                            value,
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="scheduler-modal-select-trigger">
+                                        <SelectValue placeholder="Selecciona facialista" />
+                                      </SelectTrigger>
+                                      <SelectContent className="scheduler-modal-select-content">
+                                        {specialistOptions.map((specialist) => (
+                                          <SelectItem
+                                            key={specialist.id}
+                                            className="scheduler-modal-select-item"
+                                            value={specialist.id}
+                                          >
+                                            {specialist.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </>
+                              ) : null}
+                              {visitor.posTicket ? (
+                                <div className="rounded-xl border border-[#d9e5df] bg-[#f3f8f5] px-3 py-3 text-sm text-slate-700 md:col-span-2 2xl:col-span-12">
+                                  <p className="flex items-center gap-2 font-semibold text-[#315f50]">
+                                    <ReceiptText className="h-4 w-4" /> Ticket
+                                    POS {visitor.posTicket.folio}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    Información sincronizada de solo lectura ·{" "}
+                                    {formatMoney(visitor.posTicket.total)}
+                                  </p>
+                                </div>
+                              ) : null}
                               <div className="space-y-2 2xl:col-span-2">
                                 <label className="scheduler-modal-label flex min-h-10 items-end">
                                   Monto apartado
@@ -1660,20 +1774,18 @@ export function SchedulerBookingDialog({
                       !cabinVisitValid ||
                       availabilityLoading)
                 }
-                onClick={() =>
-                  isNewClientOpen ? onSaveNewClient() : onSave()
-                }
+                onClick={() => (isNewClientOpen ? onSaveNewClient() : onSave())}
               >
                 <UserRoundPlus className="mr-2 h-5 w-5" />
                 {saving
                   ? "Guardando…"
                   : isNewClientOpen
                     ? "Guardar cliente"
-                  : appointmentDetailsLocked
-                    ? "Guardar atención"
-                    : isEditing
-                      ? "Guardar cambios"
-                      : "Guardar reserva"}
+                    : appointmentDetailsLocked
+                      ? "Guardar atención"
+                      : isEditing
+                        ? "Guardar cambios"
+                        : "Guardar reserva"}
               </Button>
             </div>
           </div>

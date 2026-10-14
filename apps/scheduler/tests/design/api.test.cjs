@@ -2784,3 +2784,74 @@ test("los esquemas de comisión asignan varios empleados y protegen el cálculo 
     false,
   );
 });
+
+test("comisiones incluyen membresías, alcance total y cortes históricos inmutables", () => {
+  const { state, request } = session();
+  const posAppointment = state.appointments.find(
+    (appointment) => appointment.origin === "POS",
+  );
+  assert.ok(posAppointment);
+
+  const contexts = request(
+    "POST",
+    "/api/scheduler/design-proposals/appointments/contexts",
+    { appointmentIds: [posAppointment.id] },
+  );
+  assert.equal(contexts.status, 201);
+  const membershipAttendee = contexts.body.data[
+    posAppointment.id
+  ].attendees.find((attendee) => attendee.saleCategory === "MEMBERSHIP");
+  assert.equal(membershipAttendee.posTicket.folio, "TKT-MIT-01043");
+  assert.equal(
+    membershipAttendee.membershipSellerSpecialistName,
+    "Camila Torres",
+  );
+
+  const filters = {
+    dateFrom: "2020-01-01",
+    dateTo: "2030-12-31",
+    branchIds: state.catalog.branches.map((branch) => branch.branchId),
+  };
+  const report = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/commissions",
+    filters,
+  );
+  assert.equal(report.status, 201);
+  assert.ok(report.body.data.summary.membershipsSold > 0);
+  assert.ok(report.body.data.summary.membershipSalesAmount > 0);
+  assert.ok(
+    report.body.data.rows.some(
+      (row) =>
+        row.schemeId === "design-commission-memberships" &&
+        row.membershipCommission > 0,
+    ),
+  );
+  assert.ok(
+    report.body.data.rows.some(
+      (row) =>
+        row.schemeId === "design-commission-supervision" &&
+        row.calculationScope === "BRANCH_TOTAL",
+    ),
+  );
+
+  const cut = request(
+    "POST",
+    "/api/scheduler/design-proposals/commission-cuts",
+    filters,
+  );
+  assert.equal(cut.status, 201);
+  assert.deepEqual(cut.body.data.report.filters, report.body.data.filters);
+  assert.deepEqual(cut.body.data.report.summary, report.body.data.summary);
+  assert.deepEqual(cut.body.data.report.rows, report.body.data.rows);
+  const cuts = request(
+    "GET",
+    "/api/scheduler/design-proposals/commission-cuts",
+  );
+  assert.equal(cuts.status, 200);
+  assert.equal(cuts.body.data[0].id, cut.body.data.id);
+  assert.equal(
+    cuts.body.data[0].report.generatedAt,
+    cut.body.data.report.generatedAt,
+  );
+});

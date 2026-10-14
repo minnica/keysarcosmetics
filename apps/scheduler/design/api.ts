@@ -51,6 +51,9 @@ import type {
   DesignCommissionReportRow,
   DesignCommissionRuleMode,
   DesignCommissionScheme,
+  DesignCommissionCut,
+  DesignCommissionCalculationScope,
+  DesignCommissionCustomerSegment,
   DesignCustomerAdvancedFilters,
   DesignCustomerAdvancedPage,
   DesignCustomerDuplicateCandidate,
@@ -67,6 +70,7 @@ import type {
   DesignOperationAgent,
   DesignOperationPurpose,
   DesignPurchaseKind,
+  DesignSaleCategory,
   DesignSaleSettlementStatus,
   DesignSalesProjectionFilters,
   DesignSalesProjectionReport,
@@ -2120,6 +2124,95 @@ function buildCommissionReport(
   );
   const reportRows: DesignCommissionReportRow[] = [];
 
+  const appointmentIncludesAttendedCustomer = (
+    appointmentItem: SchedulerAppointmentDto,
+    customerId: string,
+  ) => {
+    const visit = state.appointmentCabinVisits[appointmentItem.id];
+    if (visit) {
+      return visit.visitors.some(
+        (visitor) =>
+          visitor.customerId === customerId &&
+          resolveDesignVisitAttendanceStatus(
+            visitor.attendanceStatus,
+            appointmentItem.status,
+          ) === "ATTENDED",
+      );
+    }
+    return (
+      appointmentItem.customerId === customerId &&
+      appointmentItem.status === "ATTENDED"
+    );
+  };
+  const segmentFor = (
+    appointmentItem: SchedulerAppointmentDto,
+    customerId: string | null,
+  ): DesignCommissionCustomerSegment => {
+    if (!customerId) return "RETURNING";
+    if (
+      state.customerRecoveryCases.some(
+        (item) => item.customerId === customerId && item.status === "RECOVERED",
+      )
+    ) {
+      return "RECOVERED";
+    }
+    return state.appointments.some(
+      (candidate) =>
+        candidate.id !== appointmentItem.id &&
+        candidate.startsAt < appointmentItem.startsAt &&
+        appointmentIncludesAttendedCustomer(candidate, customerId),
+    )
+      ? "RETURNING"
+      : "NEW";
+  };
+  const facts = state.appointments.flatMap((appointmentItem) => {
+    if (
+      !branchIds.includes(appointmentItem.branchId) ||
+      appointmentItem.startsAt.slice(0, 10) < filters.dateFrom ||
+      appointmentItem.startsAt.slice(0, 10) > filters.dateTo
+    ) {
+      return [];
+    }
+    const visit = state.appointmentCabinVisits[appointmentItem.id];
+    if (!visit) return [];
+    return visit.visitors.map((visitor) => {
+      const membershipLines = visitor.posTicket?.lines.filter(
+        (line) => line.kind === "MEMBERSHIP",
+      );
+      const membershipAmount = membershipLines?.length
+        ? membershipLines.reduce((total, line) => total + line.total, 0)
+        : visitor.saleCategory === "MEMBERSHIP"
+          ? Number(visitor.saleAmount ?? 0)
+          : 0;
+      return {
+        key: `${appointmentItem.id}:${visitor.id}`,
+        appointmentId: appointmentItem.id,
+        branchId: appointmentItem.branchId,
+        customerSegment: segmentFor(appointmentItem, visitor.customerId),
+        attendanceStatus: resolveDesignVisitAttendanceStatus(
+          visitor.attendanceStatus,
+          appointmentItem.status,
+        ),
+        specialistProfileId: visitor.specialistProfileId,
+        saleOwnerSpecialistProfileId:
+          visitor.saleOwnerSpecialistProfileId ?? visitor.specialistProfileId,
+        membershipSellerSpecialistProfileId:
+          visitor.membershipSellerSpecialistProfileId ??
+          visitor.saleOwnerSpecialistProfileId ??
+          visitor.specialistProfileId,
+        salesAmount: ["FULL", "LAYAWAY"].includes(visitor.purchaseKind ?? "")
+          ? Number(visitor.saleAmount ?? 0)
+          : 0,
+        membershipAmount,
+        membershipKey:
+          membershipAmount > 0
+            ? (visitor.posTicket?.ticketId ??
+              `${appointmentItem.id}:${visitor.id}`)
+            : null,
+      };
+    });
+  });
+
   for (const scheme of visibleSchemes) {
     for (const employeeId of scheme.employeeIds) {
       if (requestedEmployees.size && !requestedEmployees.has(employeeId))
@@ -2129,87 +2222,115 @@ function buildCommissionReport(
       );
       if (!professional) continue;
 
-      for (const branchId of branchIds) {
-        const branch = state.catalog.branches.find(
-          (candidate) => candidate.branchId === branchId,
-        );
-        if (!branch) continue;
-        const appointmentsInPeriod = state.appointments.filter(
-          (appointment) =>
-            appointment.branchId === branchId &&
-            appointment.startsAt.slice(0, 10) >= filters.dateFrom &&
-            appointment.startsAt.slice(0, 10) <= filters.dateTo,
-        );
-        const appointmentIds = new Set(
-          appointmentsInPeriod
-            .filter((appointment) => {
-              const visit = state.appointmentCabinVisits[appointment.id];
-              if (visit) {
-                return visit.visitors.some(
-                  (visitor) =>
-                    visitor.specialistProfileId === professional.id &&
-                    resolveDesignVisitAttendanceStatus(
-                      visitor.attendanceStatus,
-                      appointment.status,
-                    ) === "ATTENDED",
-                );
-              }
-              return (
-                appointment.status === "ATTENDED" &&
-                appointment.services.some((service) =>
-                  service.professionals.some(
-                    (assignment) =>
-                      assignment.professionalProfileId === professional.id,
-                  ),
-                )
+      const targets =
+        scheme.calculationScope === "COMPANY_TOTAL"
+          ? [
+              {
+                branchId: "ALL",
+                branchName: "Todas las sucursales",
+                branchIds,
+              },
+            ]
+          : branchIds.flatMap((targetBranchId) => {
+              const branch = state.catalog.branches.find(
+                (candidate) => candidate.branchId === targetBranchId,
               );
-            })
-            .map((appointment) => appointment.id),
+              return branch
+                ? [
+                    {
+                      branchId: targetBranchId,
+                      branchName: branch.branchName,
+                      branchIds: [targetBranchId],
+                    },
+                  ]
+                : [];
+            });
+
+      for (const target of targets) {
+        const segmentedFacts = facts.filter(
+          (fact) =>
+            target.branchIds.includes(fact.branchId) &&
+            (scheme.customerSegment === "ALL" ||
+              fact.customerSegment === scheme.customerSegment),
         );
-        const salesAmount = appointmentsInPeriod.reduce(
-          (total, appointment) => {
-            const visit = state.appointmentCabinVisits[appointment.id];
-            if (!visit) return total;
-            return (
-              total +
-              visit.visitors.reduce((subtotal, visitor) => {
-                const saleOwner =
-                  visitor.saleOwnerSpecialistProfileId ??
-                  visitor.specialistProfileId;
-                return saleOwner === professional.id
-                  ? subtotal + Number(visitor.saleAmount ?? 0)
-                  : subtotal;
-              }, 0)
-            );
-          },
+        const scopedFacts =
+          scheme.calculationScope === "INDIVIDUAL"
+            ? segmentedFacts.filter(
+                (fact) =>
+                  fact.specialistProfileId === professional.id ||
+                  fact.saleOwnerSpecialistProfileId === professional.id ||
+                  fact.membershipSellerSpecialistProfileId === professional.id,
+              )
+            : segmentedFacts;
+        const attendedKeys = new Set(
+          scopedFacts
+            .filter(
+              (fact) =>
+                fact.attendanceStatus === "ATTENDED" &&
+                (scheme.calculationScope !== "INDIVIDUAL" ||
+                  fact.specialistProfileId === professional.id),
+            )
+            .map((fact) => fact.key),
+        );
+        const salesAmount = scopedFacts.reduce(
+          (total, fact) =>
+            total +
+            (scheme.calculationScope !== "INDIVIDUAL" ||
+            fact.saleOwnerSpecialistProfileId === professional.id
+              ? fact.salesAmount
+              : 0),
           0,
         );
+        const membershipFacts = scopedFacts.filter(
+          (fact) =>
+            fact.membershipAmount > 0 &&
+            (scheme.calculationScope !== "INDIVIDUAL" ||
+              fact.membershipSellerSpecialistProfileId === professional.id),
+        );
+        const membershipSalesAmount = membershipFacts.reduce(
+          (total, fact) => total + fact.membershipAmount,
+          0,
+        );
+        const membershipsSold = new Set(
+          membershipFacts.map((fact) => fact.membershipKey).filter(Boolean),
+        ).size;
         const appointmentCommission = scheme.rules
           .filter((rule) => rule.mode === "ATTENDED_APPOINTMENT")
-          .reduce(
-            (total, rule) => total + appointmentIds.size * rule.amount,
-            0,
-          );
+          .reduce((total, rule) => total + attendedKeys.size * rule.amount, 0);
         const salesCommission = scheme.rules
           .filter((rule) => rule.mode === "SALES_AMOUNT")
           .reduce(
             (total, rule) => total + salesAmount * (rule.percentage / 100),
             0,
           );
-        if (!appointmentIds.size && !salesAmount) continue;
+        const membershipCommission = scheme.rules
+          .filter((rule) => rule.mode === "MEMBERSHIP_SALES")
+          .reduce(
+            (total, rule) =>
+              total + membershipSalesAmount * (rule.percentage / 100),
+            0,
+          );
+        if (!attendedKeys.size && !salesAmount && !membershipSalesAmount)
+          continue;
         reportRows.push({
-          id: `${scheme.id}:${branchId}:${employeeId}`,
+          id: `${scheme.id}:${target.branchId}:${employeeId}`,
           schemeId: scheme.id,
           schemeName: scheme.name,
-          branchId,
-          branchName: branch.branchName,
+          calculationScope: scheme.calculationScope,
+          customerSegment: scheme.customerSegment,
+          branchId: target.branchId,
+          branchName: target.branchName,
           employeeId,
           employeeName: professional.name,
-          attendedAppointments: appointmentIds.size,
+          attendedAppointments: attendedKeys.size,
           salesAmount,
+          membershipSalesAmount,
+          membershipsSold,
           appointmentCommission,
           salesCommission,
-          totalCommission: appointmentCommission + salesCommission,
+          membershipCommission,
+          totalCommission:
+            appointmentCommission + salesCommission + membershipCommission,
         });
       }
     }
@@ -2233,6 +2354,14 @@ function buildCommissionReport(
       ),
       salesAmount: reportRows.reduce(
         (total, row) => total + row.salesAmount,
+        0,
+      ),
+      membershipSalesAmount: reportRows.reduce(
+        (total, row) => total + row.membershipSalesAmount,
+        0,
+      ),
+      membershipsSold: reportRows.reduce(
+        (total, row) => total + row.membershipsSold,
         0,
       ),
       totalCommission: reportRows.reduce(
@@ -2358,24 +2487,45 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       if (!["DAY", "WEEK", "FORTNIGHT", "MONTH"].includes(period)) {
         fail(400, "Selecciona un periodo válido.");
       }
+      const calculationScope = String(
+        body.calculationScope ?? "INDIVIDUAL",
+      ) as DesignCommissionCalculationScope;
+      if (
+        !["INDIVIDUAL", "BRANCH_TOTAL", "COMPANY_TOTAL"].includes(
+          calculationScope,
+        )
+      ) {
+        fail(400, "Selecciona una base de cálculo válida.");
+      }
+      const customerSegment = String(
+        body.customerSegment ?? "ALL",
+      ) as DesignCommissionCustomerSegment;
+      if (!["ALL", "NEW", "RETURNING", "RECOVERED"].includes(customerSegment)) {
+        fail(400, "Selecciona un tipo de cliente válido.");
+      }
       const rules = rows(body.rules).map((candidate) => ({
         mode: String(candidate.mode) as DesignCommissionRuleMode,
         amount: Number(candidate.amount ?? 0),
         percentage: Number(candidate.percentage ?? 0),
       }));
-      if (!rules.length || rules.length > 2) {
-        fail(400, "Configura una o dos reglas de comisión.");
+      if (!rules.length || rules.length > 3) {
+        fail(400, "Configura entre una y tres reglas de comisión.");
       }
       if (
         new Set(rules.map((rule) => rule.mode)).size !== rules.length ||
         rules.some(
           (rule) =>
-            !["ATTENDED_APPOINTMENT", "SALES_AMOUNT"].includes(rule.mode) ||
+            ![
+              "ATTENDED_APPOINTMENT",
+              "SALES_AMOUNT",
+              "MEMBERSHIP_SALES",
+            ].includes(rule.mode) ||
             rule.amount < 0 ||
             rule.percentage < 0 ||
             rule.percentage > 100 ||
             (rule.mode === "ATTENDED_APPOINTMENT" && rule.amount <= 0) ||
-            (rule.mode === "SALES_AMOUNT" && rule.percentage <= 0),
+            (["SALES_AMOUNT", "MEMBERSHIP_SALES"].includes(rule.mode) &&
+              rule.percentage <= 0),
         )
       ) {
         fail(400, "Revisa las reglas, importes y porcentajes del esquema.");
@@ -2391,6 +2541,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         commerceId: String(body.commerceId ?? state.catalog.commerces[0]!.id),
         name,
         period,
+        calculationScope,
+        customerSegment,
         active: Boolean(body.active),
         employeeIds,
         employeeNames: employees.map((employee) => employee.name),
@@ -2403,6 +2555,37 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       if (existing) Object.assign(existing, next);
       else state.commissionSchemes.push(next);
       return next;
+    }
+    if (id === "commission-cuts") {
+      if (method === "GET") {
+        return [...state.commissionCuts].sort((left, right) =>
+          right.createdAt.localeCompare(left.createdAt),
+        );
+      }
+      if (method !== "POST") {
+        fail(405, "Usa GET o POST para los cortes de comisión.");
+      }
+      if (!designBootstrap(state).canManageAccess) {
+        fail(403, "Sólo un perfil administrador puede cerrar periodos.");
+      }
+      const report = buildCommissionReport(state, {
+        dateFrom: String(body.dateFrom ?? state.controls.date),
+        dateTo: String(body.dateTo ?? state.controls.date),
+        branchIds: rows(body.branchIds).map(String),
+        ...(rows(body.employeeIds).length
+          ? { employeeIds: rows(body.employeeIds).map(String) }
+          : {}),
+      });
+      const createdAt = new Date().toISOString();
+      const cut: DesignCommissionCut = {
+        id: designId("design-commission-cut"),
+        label: `Corte ${report.filters.dateFrom} al ${report.filters.dateTo}`,
+        createdAt,
+        createdByName: designBootstrap(state).user.name,
+        report: structuredClone(report),
+      };
+      state.commissionCuts.unshift(cut);
+      return cut;
     }
     if (id === "reports" && action === "commissions") {
       if (method !== "POST") fail(405, "Usa POST para calcular comisiones.");
@@ -3547,7 +3730,12 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               saleAmount: null,
               purchaseAmount: null,
               depositAmount: null,
+              saleCategory: null,
+              membershipName: null,
+              membershipSellerSpecialistProfileId: null,
+              saleOwnerSpecialistProfileId: null,
               settlementStatus: "NOT_APPLICABLE" as const,
+              posTicket: null,
             },
           ];
           const attendees: DesignAppointmentAttendeeContext[] =
@@ -3559,6 +3747,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                 : undefined;
               const specialist = state.catalog.professionals.find(
                 (candidate) => candidate.id === visitor.specialistProfileId,
+              );
+              const membershipSeller = state.catalog.professionals.find(
+                (candidate) =>
+                  candidate.id === visitor.membershipSellerSpecialistProfileId,
               );
               const attendeeSaleAmount = Number(
                 visitor.saleAmount ?? visitor.purchaseAmount ?? 0,
@@ -3599,7 +3791,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                   0,
                   attendeeSaleAmount - attendeeDepositAmount,
                 ),
+                saleCategory: visitor.saleCategory,
+                membershipName: visitor.membershipName,
+                membershipSellerSpecialistName: membershipSeller?.name ?? null,
                 settlementStatus: visitor.settlementStatus,
+                posTicket: visitor.posTicket,
                 portfolioSellerName:
                   attendeePortfolio?.ownerName ??
                   (visitor.customerId === appointmentItem.customerId
@@ -3611,6 +3807,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             });
           const context: DesignAppointmentContext = {
             appointmentId,
+            appointmentOrigin: appointmentItem.origin,
             attendeeNames: attendees.map((attendee) => attendee.name),
             attendees,
             attendingSpecialistProfileIds: [
@@ -3782,6 +3979,37 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         }
         const hasCommercialResult =
           purchaseKind === "FULL" || purchaseKind === "LAYAWAY";
+        const saleCategory: DesignSaleCategory = hasCommercialResult
+          ? visitor.saleCategory === "MEMBERSHIP"
+            ? "MEMBERSHIP"
+            : "SERVICE"
+          : null;
+        const membershipSellerSpecialistProfileId =
+          saleCategory === "MEMBERSHIP"
+            ? String(visitor.membershipSellerSpecialistProfileId ?? "")
+            : null;
+        if (
+          saleCategory === "MEMBERSHIP" &&
+          !state.catalog.professionals.some(
+            (professional) =>
+              professional.id === membershipSellerSpecialistProfileId &&
+              professional.active &&
+              professional.branchProfileIds.includes(branchProfile.id),
+          )
+        ) {
+          fail(
+            400,
+            `Selecciona la facialista que colocó la membresía de ${name}.`,
+          );
+        }
+        const membershipName =
+          saleCategory === "MEMBERSHIP"
+            ? String(
+                visitor.membershipName ??
+                  previousVisitor?.membershipName ??
+                  "Membresía POS",
+              ).trim()
+            : null;
         const saleOwnerSpecialistProfileId = hasCommercialResult
           ? (previousVisitor?.saleOwnerSpecialistProfileId ??
             specialistProfileId)
@@ -3812,9 +4040,13 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           purchaseKind,
           saleAmount,
           depositAmount,
+          saleCategory,
+          membershipName,
+          membershipSellerSpecialistProfileId,
           saleOwnerSpecialistProfileId,
           settlementStatus,
           settledAt,
+          posTicket: previousVisitor?.posTicket ?? null,
         };
       });
       if (

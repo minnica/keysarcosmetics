@@ -148,6 +148,27 @@ export type DesignVisitAttendanceStatus =
   | "ATTENDED"
   | "NO_SHOW";
 
+export type DesignSaleCategory = "SERVICE" | "MEMBERSHIP" | null;
+
+export interface DesignPosTicketLineSnapshot {
+  id: string;
+  kind: "SERVICE" | "PRODUCT" | "MEMBERSHIP";
+  name: string;
+  quantity: number;
+  total: number;
+  membershipId: string | null;
+}
+
+export interface DesignPosTicketSnapshot {
+  ticketId: string;
+  folio: string;
+  status: "COMPLETED" | "LAYAWAY";
+  businessDate: string;
+  total: number;
+  appointmentCreatedFromPos: boolean;
+  lines: DesignPosTicketLineSnapshot[];
+}
+
 export interface DesignCabinVisitPerson {
   id: string;
   customerId: string | null;
@@ -159,14 +180,21 @@ export interface DesignCabinVisitPerson {
   purchaseKind: DesignPurchaseKind;
   saleAmount: number | null;
   depositAmount: number | null;
+  saleCategory: DesignSaleCategory;
+  membershipName: string | null;
+  membershipSellerSpecialistProfileId: string | null;
   saleOwnerSpecialistProfileId: string | null;
   settlementStatus: DesignSaleSettlementStatus;
   settledAt: string | null;
+  posTicket: DesignPosTicketSnapshot | null;
 }
 
 export type DesignCabinVisitPersonInput = Omit<
   DesignCabinVisitPerson,
-  "saleOwnerSpecialistProfileId" | "settlementStatus" | "settledAt"
+  | "saleOwnerSpecialistProfileId"
+  | "settlementStatus"
+  | "settledAt"
+  | "posTicket"
 >;
 
 export interface DesignAppointmentCabinVisit {
@@ -221,7 +249,11 @@ export interface DesignAppointmentAttendeeContext {
   saleAmount: number;
   depositAmount: number;
   balanceAmount: number;
+  saleCategory: DesignSaleCategory;
+  membershipName: string | null;
+  membershipSellerSpecialistName: string | null;
   settlementStatus: DesignSaleSettlementStatus;
+  posTicket: DesignPosTicketSnapshot | null;
   portfolioSellerName: string | null;
   nextAppointmentId: string | null;
   nextAppointmentAt: string | null;
@@ -229,6 +261,7 @@ export interface DesignAppointmentAttendeeContext {
 
 export interface DesignAppointmentContext {
   appointmentId: string;
+  appointmentOrigin: "SCHEDULER" | "POS" | "INTERNAL_API" | "IMPORT";
   attendeeNames: string[];
   attendees: DesignAppointmentAttendeeContext[];
   attendingSpecialistProfileIds: string[];
@@ -485,7 +518,21 @@ export interface DesignSalesProjectionReport {
   methodology: string;
 }
 
-export type DesignCommissionRuleMode = "ATTENDED_APPOINTMENT" | "SALES_AMOUNT";
+export type DesignCommissionRuleMode =
+  | "ATTENDED_APPOINTMENT"
+  | "SALES_AMOUNT"
+  | "MEMBERSHIP_SALES";
+
+export type DesignCommissionCalculationScope =
+  | "INDIVIDUAL"
+  | "BRANCH_TOTAL"
+  | "COMPANY_TOTAL";
+
+export type DesignCommissionCustomerSegment =
+  | "ALL"
+  | "NEW"
+  | "RETURNING"
+  | "RECOVERED";
 
 export interface DesignCommissionSchemeRule {
   mode: DesignCommissionRuleMode;
@@ -498,6 +545,8 @@ export interface DesignCommissionScheme {
   commerceId: string;
   name: string;
   period: "DAY" | "WEEK" | "FORTNIGHT" | "MONTH";
+  calculationScope: DesignCommissionCalculationScope;
+  customerSegment: DesignCommissionCustomerSegment;
   active: boolean;
   employeeIds: string[];
   employeeNames: string[];
@@ -513,6 +562,8 @@ export interface DesignCommissionSchemeInput {
   commerceId: string;
   name: string;
   period: DesignCommissionScheme["period"];
+  calculationScope: DesignCommissionCalculationScope;
+  customerSegment: DesignCommissionCustomerSegment;
   active: boolean;
   employeeIds: string[];
   viewerProfileIds: string[];
@@ -531,14 +582,19 @@ export interface DesignCommissionReportRow {
   id: string;
   schemeId: string;
   schemeName: string;
+  calculationScope: DesignCommissionCalculationScope;
+  customerSegment: DesignCommissionCustomerSegment;
   branchId: string;
   branchName: string;
   employeeId: string;
   employeeName: string;
   attendedAppointments: number;
   salesAmount: number;
+  membershipSalesAmount: number;
+  membershipsSold: number;
   appointmentCommission: number;
   salesCommission: number;
+  membershipCommission: number;
   totalCommission: number;
 }
 
@@ -550,6 +606,8 @@ export interface DesignCommissionReport {
     employees: number;
     attendedAppointments: number;
     salesAmount: number;
+    membershipSalesAmount: number;
+    membershipsSold: number;
     totalCommission: number;
   };
   filterOptions: {
@@ -557,6 +615,14 @@ export interface DesignCommissionReport {
     employees: Array<{ id: string; name: string }>;
   };
   rows: DesignCommissionReportRow[];
+}
+
+export interface DesignCommissionCut {
+  id: string;
+  label: string;
+  createdAt: string;
+  createdByName: string;
+  report: DesignCommissionReport;
 }
 
 export interface DesignMovementRecord {
@@ -882,4 +948,8 @@ export interface DesignProposalClient {
   commissionReport(
     input: DesignCommissionReportFilters,
   ): Promise<DesignCommissionReport>;
+  commissionCuts(): Promise<DesignCommissionCut[]>;
+  createCommissionCut(
+    input: DesignCommissionReportFilters,
+  ): Promise<DesignCommissionCut>;
 }

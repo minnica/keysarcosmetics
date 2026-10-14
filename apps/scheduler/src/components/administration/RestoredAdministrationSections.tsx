@@ -48,6 +48,8 @@ import {
   schedulerDesignProposals,
 } from "@scheduler/design-proposals";
 import type {
+  DesignCommissionCalculationScope,
+  DesignCommissionCustomerSegment,
   DesignCommissionRuleMode,
   DesignCommissionScheme,
   DesignStatusDefinition,
@@ -133,6 +135,8 @@ interface CommissionDraft {
   commerceId: string;
   name: string;
   period: SchedulerCommissionPeriod;
+  calculationScope: DesignCommissionCalculationScope;
+  customerSegment: DesignCommissionCustomerSegment;
   active: boolean;
   employeeIds: string[];
   viewerProfileIds: string[];
@@ -154,6 +158,8 @@ function emptyCommissionDraft(
     commerceId: operations?.commerces[0]?.id ?? "",
     name: "",
     period: "MONTH",
+    calculationScope: "INDIVIDUAL",
+    customerSegment: "ALL",
     active: true,
     employeeIds: [],
     viewerProfileIds: currentProfileId ? [currentProfileId] : [],
@@ -166,6 +172,27 @@ const commissionPeriodLabels: Record<SchedulerCommissionPeriod, string> = {
   WEEK: "Semanal",
   FORTNIGHT: "Quincenal",
   MONTH: "Mensual",
+};
+
+const commissionScopeLabels: Record<DesignCommissionCalculationScope, string> =
+  {
+    INDIVIDUAL: "Resultado individual",
+    BRANCH_TOTAL: "Total de sucursal",
+    COMPANY_TOTAL: "Total de la empresa",
+  };
+
+const commissionSegmentLabels: Record<DesignCommissionCustomerSegment, string> =
+  {
+    ALL: "Todos los clientes",
+    NEW: "Clientes nuevos",
+    RETURNING: "Clientes recurrentes",
+    RECOVERED: "Clientes recuperados",
+  };
+
+const commissionRuleLabels: Record<DesignCommissionRuleMode, string> = {
+  ATTENDED_APPOINTMENT: "Importe por cita atendida",
+  SALES_AMOUNT: "Porcentaje de ventas totales",
+  MEMBERSHIP_SALES: "Porcentaje de membresías",
 };
 
 const commissionMoney = new Intl.NumberFormat("es-MX", {
@@ -222,7 +249,8 @@ function CommissionDialog({
     }
     if (
       draft.rules.some(
-        (rule) => rule.mode === "SALES_AMOUNT" && Number(rule.value) > 100,
+        (rule) =>
+          rule.mode !== "ATTENDED_APPOINTMENT" && Number(rule.value) > 100,
       )
     ) {
       toast.warning("El porcentaje de venta no puede superar 100%.");
@@ -236,6 +264,8 @@ function CommissionDialog({
           commerceId: draft.commerceId,
           name: draft.name.trim(),
           period: draft.period,
+          calculationScope: draft.calculationScope,
+          customerSegment: draft.customerSegment,
           active: draft.active,
           employeeIds: draft.employeeIds,
           viewerProfileIds: draft.viewerProfileIds,
@@ -246,7 +276,8 @@ function CommissionDialog({
             mode: rule.mode,
             amount:
               rule.mode === "ATTENDED_APPOINTMENT" ? Number(rule.value) : 0,
-            percentage: rule.mode === "SALES_AMOUNT" ? Number(rule.value) : 0,
+            percentage:
+              rule.mode === "ATTENDED_APPOINTMENT" ? 0 : Number(rule.value),
           })),
         }),
       {
@@ -332,6 +363,56 @@ function CommissionDialog({
                 <SelectItem value="WEEK">Semanal</SelectItem>
                 <SelectItem value="FORTNIGHT">Quincenal</SelectItem>
                 <SelectItem value="MONTH">Mensual</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Base de cálculo</Label>
+            <Select
+              value={draft.calculationScope}
+              onValueChange={(value) =>
+                setDraft((current) => ({
+                  ...current,
+                  calculationScope: value as DesignCommissionCalculationScope,
+                }))
+              }
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="INDIVIDUAL">Resultado individual</SelectItem>
+                <SelectItem value="BRANCH_TOTAL">
+                  Venta total de la sucursal
+                </SelectItem>
+                <SelectItem value="COMPANY_TOTAL">
+                  Venta total de la empresa
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Los totales permiten esquemas para supervisores o socios.
+            </p>
+          </div>
+          <div>
+            <Label>Tipo de cliente</Label>
+            <Select
+              value={draft.customerSegment}
+              onValueChange={(value) =>
+                setDraft((current) => ({
+                  ...current,
+                  customerSegment: value as DesignCommissionCustomerSegment,
+                }))
+              }
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los clientes</SelectItem>
+                <SelectItem value="NEW">Clientes nuevos</SelectItem>
+                <SelectItem value="RETURNING">Clientes recurrentes</SelectItem>
+                <SelectItem value="RECOVERED">Clientes recuperados</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -424,7 +505,10 @@ function CommissionDialog({
                         Importe por cita atendida
                       </SelectItem>
                       <SelectItem value="SALES_AMOUNT">
-                        Porcentaje del monto de venta
+                        Porcentaje de ventas totales
+                      </SelectItem>
+                      <SelectItem value="MEMBERSHIP_SALES">
+                        Porcentaje de membresías vendidas
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -451,9 +535,13 @@ function CommissionDialog({
                     />
                   </div>
                 ) : null}
-                {rule.mode === "SALES_AMOUNT" ? (
+                {rule.mode !== "ATTENDED_APPOINTMENT" ? (
                   <div>
-                    <Label>Porcentaje</Label>
+                    <Label>
+                      {rule.mode === "MEMBERSHIP_SALES"
+                        ? "Porcentaje sobre membresías"
+                        : "Porcentaje sobre ventas"}
+                    </Label>
                     <Input
                       className="mt-1.5"
                       min="0"
@@ -477,7 +565,7 @@ function CommissionDialog({
               </CardContent>
             </Card>
           ))}
-          {draft.rules.length < 2 ? (
+          {draft.rules.length < 3 ? (
             <Button
               variant="outline"
               onClick={() =>
@@ -486,11 +574,16 @@ function CommissionDialog({
                   rules: [
                     ...current.rules,
                     {
-                      mode: current.rules.some(
-                        (rule) => rule.mode === "ATTENDED_APPOINTMENT",
-                      )
-                        ? "SALES_AMOUNT"
-                        : "ATTENDED_APPOINTMENT",
+                      mode: (
+                        [
+                          "ATTENDED_APPOINTMENT",
+                          "SALES_AMOUNT",
+                          "MEMBERSHIP_SALES",
+                        ] as DesignCommissionRuleMode[]
+                      ).find(
+                        (mode) =>
+                          !current.rules.some((rule) => rule.mode === mode),
+                      )!,
                       value: "0",
                     },
                   ],
@@ -554,6 +647,8 @@ export function RestoredCommissionsSection() {
       commerceId: scheme.commerceId,
       name: scheme.name,
       period: scheme.period,
+      calculationScope: scheme.calculationScope,
+      customerSegment: scheme.customerSegment,
       active: scheme.active,
       employeeIds: scheme.employeeIds,
       viewerProfileIds: scheme.viewerProfileIds,
@@ -605,44 +700,51 @@ export function RestoredCommissionsSection() {
           void schemesQuery.reload();
         }}
       >
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-3" aria-label="Listado de esquemas de comisión">
           {pagination.rows.map((scheme) => (
             <Card key={scheme.id} className="admin-card">
-              <CardContent className="p-5 sm:p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
+              <CardContent className="p-5">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 xl:w-64">
                     <p className="admin-eyebrow">
                       {commissionPeriodLabels[scheme.period]}
                     </p>
                     <h2 className="mt-1 text-lg font-semibold">
                       {scheme.name}
                     </h2>
-                  </div>
-                  <Badge variant={scheme.active ? "default" : "secondary"}>
-                    v{scheme.currentVersion} ·{" "}
-                    {scheme.active ? "Activo" : "Inactivo"}
-                  </Badge>
-                </div>
-                <div className="mt-4 space-y-2">
-                  {scheme.rules.map((rule) => (
-                    <div
-                      key={rule.mode}
-                      className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600"
-                    >
-                      {rule.mode === "ATTENDED_APPOINTMENT"
-                        ? `${commissionMoney.format(rule.amount)} por cita atendida`
-                        : `${rule.percentage}% del monto de venta`}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge variant="outline">
+                        {commissionScopeLabels[scheme.calculationScope]}
+                      </Badge>
+                      <Badge variant="secondary">
+                        {commissionSegmentLabels[scheme.customerSegment]}
+                      </Badge>
                     </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                  <div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      Modalidades
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {scheme.rules.map((rule) => (
+                        <div
+                          key={rule.mode}
+                          className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                        >
+                          {rule.mode === "ATTENDED_APPOINTMENT"
+                            ? `${commissionMoney.format(rule.amount)} por cita atendida`
+                            : `${rule.percentage}% · ${commissionRuleLabels[rule.mode]}`}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="min-w-0 text-sm xl:w-56">
                     <p className="font-semibold text-slate-700">Empleados</p>
                     <p className="mt-1 text-slate-500">
                       {scheme.employeeNames.join(", ")}
                     </p>
                   </div>
-                  <div>
+                  <div className="min-w-0 text-sm xl:w-64">
                     <p className="flex items-center gap-1 font-semibold text-slate-700">
                       <ShieldCheck className="h-4 w-4" /> Visibilidad
                     </p>
@@ -657,24 +759,29 @@ export function RestoredCommissionsSection() {
                         .join(", ")}
                     </p>
                   </div>
+                  <div className="flex shrink-0 items-center gap-2 xl:w-40 xl:flex-col xl:items-stretch">
+                    <Badge variant={scheme.active ? "default" : "secondary"}>
+                      v{scheme.currentVersion} ·{" "}
+                      {scheme.active ? "Activo" : "Inactivo"}
+                    </Badge>
+                    {canAdmin ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => edit(scheme)}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" /> Editar
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
-                {canAdmin ? (
-                  <Button
-                    className="mt-4"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => edit(scheme)}
-                  >
-                    <Pencil className="mr-2 h-4 w-4" /> Editar
-                  </Button>
-                ) : null}
               </CardContent>
             </Card>
           ))}
         </div>
         <SchedulerPagination
           {...pagination}
-          label="políticas"
+          label="esquemas"
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
           pageSize={pageSize}

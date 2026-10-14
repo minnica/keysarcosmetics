@@ -14,6 +14,7 @@ import {
   toast,
 } from "@cosmetics/ui";
 import {
+  Archive,
   CalendarCheck2,
   Download,
   FileSpreadsheet,
@@ -59,6 +60,7 @@ export function CommissionReportWorkspace() {
   const [dateTo, setDateTo] = useState(() => commissionDate());
   const [branchId, setBranchId] = useState("ALL");
   const [employeeId, setEmployeeId] = useState("ALL");
+  const [selectedCutId, setSelectedCutId] = useState("LIVE");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
@@ -89,33 +91,40 @@ export function CommissionReportWorkspace() {
         branchIds.length > 0,
     },
   );
+  const cutsQuery = useSchedulerQuery(
+    () => schedulerDesignProposals.commissionCuts(),
+    [],
+    { queryKey: "commission-cuts" },
+  );
+  const selectedCut = useMemo(
+    () => cutsQuery.data?.find((cut) => cut.id === selectedCutId),
+    [cutsQuery.data, selectedCutId],
+  );
+  const report = selectedCut?.report ?? reportQuery.data;
   const pagination = useMemo(
-    () =>
-      paginateSchedulerReportRows(reportQuery.data?.rows ?? [], page, pageSize),
-    [page, pageSize, reportQuery.data?.rows],
+    () => paginateSchedulerReportRows(report?.rows ?? [], page, pageSize),
+    [page, pageSize, report?.rows],
   );
   const selectedRows = useMemo(
-    () =>
-      reportQuery.data?.rows.filter((row) => selectedRowIds.includes(row.id)) ??
-      [],
-    [reportQuery.data?.rows, selectedRowIds],
+    () => report?.rows.filter((row) => selectedRowIds.includes(row.id)) ?? [],
+    [report?.rows, selectedRowIds],
   );
 
   useEffect(() => {
-    setSelectedRowIds(reportQuery.data?.rows.map((row) => row.id) ?? []);
+    setSelectedRowIds(report?.rows.map((row) => row.id) ?? []);
     setPage(1);
-  }, [reportQuery.data]);
+  }, [report]);
 
   async function exportSelected(
     format: CommissionReportExportFormat | "print",
   ) {
-    if (!reportQuery.data || selectedRows.length === 0) return;
+    if (!report || selectedRows.length === 0) return;
     setExporting(true);
     try {
       if (format === "print") {
-        printCommissionReport(reportQuery.data, selectedRows);
+        printCommissionReport(report, selectedRows);
       } else {
-        await exportCommissionReport(reportQuery.data, selectedRows, format);
+        await exportCommissionReport(report, selectedRows, format);
       }
       toast.success(
         format === "print"
@@ -125,6 +134,30 @@ export function CommissionReportWorkspace() {
     } catch (cause) {
       toast.error(
         cause instanceof Error ? cause.message : "No fue posible exportar.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function closeCommissionPeriod() {
+    if (!dateFrom || !dateTo || dateFrom > dateTo || !branchIds.length) return;
+    setExporting(true);
+    try {
+      const cut = await schedulerDesignProposals.createCommissionCut({
+        dateFrom,
+        dateTo,
+        branchIds,
+        ...(employeeId === "ALL" ? {} : { employeeIds: [employeeId] }),
+      });
+      await cutsQuery.reload();
+      setSelectedCutId(cut.id);
+      toast.success("Periodo cerrado y disponible en el histórico de cortes.");
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible cerrar el periodo.",
       );
     } finally {
       setExporting(false);
@@ -151,11 +184,20 @@ export function CommissionReportWorkspace() {
           </div>
           <div className="flex flex-wrap gap-2">
             {canConfigure ? (
-              <Button asChild variant="outline">
-                <Link href="/administracion?section=commissions">
-                  <Settings2 className="mr-2 h-4 w-4" /> Configurar esquemas
-                </Link>
-              </Button>
+              <>
+                <Button asChild variant="outline">
+                  <Link href="/administracion?section=commissions">
+                    <Settings2 className="mr-2 h-4 w-4" /> Configurar esquemas
+                  </Link>
+                </Button>
+                <Button
+                  disabled={exporting || selectedCutId !== "LIVE"}
+                  onClick={() => void closeCommissionPeriod()}
+                  variant="outline"
+                >
+                  <Archive className="mr-2 h-4 w-4" /> Cerrar periodo
+                </Button>
+              </>
             ) : null}
             {canExport ? (
               <>
@@ -186,12 +228,31 @@ export function CommissionReportWorkspace() {
         </div>
 
         <section className="overflow-hidden rounded-3xl border border-[#eadfd5] bg-white shadow-sm">
-          <div className="grid gap-3 border-b border-[#eee6df] p-5 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 border-b border-[#eee6df] p-5 sm:grid-cols-2 lg:grid-cols-6">
+            <div>
+              <Label>Periodo de corte</Label>
+              <Select value={selectedCutId} onValueChange={setSelectedCutId}>
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LIVE">
+                    Periodo actual · dinámico
+                  </SelectItem>
+                  {cutsQuery.data?.map((cut) => (
+                    <SelectItem key={cut.id} value={cut.id}>
+                      {cut.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label htmlFor="commission-date-from">Desde</Label>
               <Input
                 id="commission-date-from"
                 className="mt-1.5"
+                disabled={selectedCutId !== "LIVE"}
                 type="date"
                 value={dateFrom}
                 onChange={(event) => setDateFrom(event.target.value)}
@@ -202,6 +263,7 @@ export function CommissionReportWorkspace() {
               <Input
                 id="commission-date-to"
                 className="mt-1.5"
+                disabled={selectedCutId !== "LIVE"}
                 type="date"
                 value={dateTo}
                 onChange={(event) => setDateTo(event.target.value)}
@@ -209,7 +271,11 @@ export function CommissionReportWorkspace() {
             </div>
             <div>
               <Label>Sucursal</Label>
-              <Select value={branchId} onValueChange={setBranchId}>
+              <Select
+                disabled={selectedCutId !== "LIVE"}
+                value={branchId}
+                onValueChange={setBranchId}
+              >
                 <SelectTrigger className="mt-1.5">
                   <SelectValue />
                 </SelectTrigger>
@@ -225,13 +291,17 @@ export function CommissionReportWorkspace() {
             </div>
             <div>
               <Label>Empleado</Label>
-              <Select value={employeeId} onValueChange={setEmployeeId}>
+              <Select
+                disabled={selectedCutId !== "LIVE"}
+                value={employeeId}
+                onValueChange={setEmployeeId}
+              >
                 <SelectTrigger className="mt-1.5">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">Todos</SelectItem>
-                  {reportQuery.data?.filterOptions.employees.map((employee) => (
+                  {report?.filterOptions.employees.map((employee) => (
                     <SelectItem key={employee.id} value={employee.id}>
                       {employee.name}
                     </SelectItem>
@@ -244,52 +314,76 @@ export function CommissionReportWorkspace() {
                 className="w-full"
                 variant="outline"
                 onClick={() => void reportQuery.reload()}
-                disabled={reportQuery.loading}
+                disabled={reportQuery.loading || selectedCutId !== "LIVE"}
               >
                 <CalendarCheck2 className="mr-2 h-4 w-4" />
-                {reportQuery.loading ? "Calculando…" : "Calcular"}
+                {selectedCutId !== "LIVE"
+                  ? "Corte cerrado"
+                  : reportQuery.loading
+                    ? "Calculando…"
+                    : "Calcular"}
               </Button>
             </div>
           </div>
 
+          {selectedCut ? (
+            <div className="border-b border-[#eee6df] bg-[#f8f5f1] px-5 py-3 text-sm text-slate-600">
+              <strong className="text-slate-800">Corte histórico:</strong>{" "}
+              {selectedCut.label} · cerrado por {selectedCut.createdByName} ·{" "}
+              {new Intl.DateTimeFormat("es-MX", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              }).format(new Date(selectedCut.createdAt))}
+            </div>
+          ) : null}
+
           <QueryBoundary
-            loading={reportQuery.loading}
-            error={reportQuery.error}
-            empty={!reportQuery.data?.rows.length}
+            loading={selectedCutId === "LIVE" && reportQuery.loading}
+            error={
+              selectedCutId === "LIVE" ? reportQuery.error : cutsQuery.error
+            }
+            empty={!report?.rows.length}
             emptyTitle="Sin movimientos de comisión"
             emptyDescription="No hay citas atendidas o ventas atribuibles en el periodo seleccionado."
-            onRetry={() => void reportQuery.reload()}
+            onRetry={() =>
+              void (selectedCutId === "LIVE"
+                ? reportQuery.reload()
+                : cutsQuery.reload())
+            }
           >
-            {reportQuery.data ? (
+            {report ? (
               <>
-                <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                   {[
                     {
                       label: "Sucursales",
-                      value: reportQuery.data.summary.branches,
+                      value: report.summary.branches,
                       Icon: Layers3,
                     },
                     {
                       label: "Empleados",
-                      value: reportQuery.data.summary.employees,
+                      value: report.summary.employees,
                       Icon: UsersRound,
                     },
                     {
                       label: "Citas atendidas",
-                      value: reportQuery.data.summary.attendedAppointments,
+                      value: report.summary.attendedAppointments,
                       Icon: CalendarCheck2,
                     },
                     {
                       label: "Venta atribuible",
-                      value: commissionMoney.format(
-                        reportQuery.data.summary.salesAmount,
-                      ),
+                      value: commissionMoney.format(report.summary.salesAmount),
                       Icon: WalletCards,
+                    },
+                    {
+                      label: "Membresías",
+                      value: `${report.summary.membershipsSold} · ${commissionMoney.format(report.summary.membershipSalesAmount)}`,
+                      Icon: ShieldCheck,
                     },
                     {
                       label: "Comisión estimada",
                       value: commissionMoney.format(
-                        reportQuery.data.summary.totalCommission,
+                        report.summary.totalCommission,
                       ),
                       Icon: ShieldCheck,
                     },
@@ -305,7 +399,7 @@ export function CommissionReportWorkspace() {
                   ))}
                 </div>
                 <div className="overflow-x-auto border-t border-[#eee6df]">
-                  <table className="w-full min-w-[980px] text-left text-sm">
+                  <table className="w-full min-w-[1380px] text-left text-sm">
                     <thead className="bg-[#fbf9f6] text-xs uppercase tracking-wide text-slate-500">
                       <tr>
                         <th className="px-5 py-3">
@@ -313,14 +407,13 @@ export function CommissionReportWorkspace() {
                             aria-label="Seleccionar todos los resultados"
                             type="checkbox"
                             checked={
-                              selectedRowIds.length ===
-                                reportQuery.data.rows.length &&
-                              reportQuery.data.rows.length > 0
+                              selectedRowIds.length === report.rows.length &&
+                              report.rows.length > 0
                             }
                             onChange={(event) =>
                               setSelectedRowIds(
                                 event.target.checked
-                                  ? reportQuery.data!.rows.map((row) => row.id)
+                                  ? report.rows.map((row) => row.id)
                                   : [],
                               )
                             }
@@ -328,12 +421,16 @@ export function CommissionReportWorkspace() {
                         </th>
                         {[
                           "Esquema",
+                          "Base",
                           "Sucursal",
                           "Empleado",
                           "Citas asistidas",
                           "Venta",
+                          "Membresías",
+                          "Venta membresías",
                           "Por cita",
                           "Por venta",
+                          "Por membresías",
                           "Total",
                         ].map((heading) => (
                           <th key={heading} className="px-4 py-3">
@@ -362,6 +459,22 @@ export function CommissionReportWorkspace() {
                           <td className="px-4 py-3 font-medium text-slate-700">
                             {row.schemeName}
                           </td>
+                          <td className="px-4 py-3 text-xs">
+                            {row.calculationScope === "INDIVIDUAL"
+                              ? "Individual"
+                              : row.calculationScope === "BRANCH_TOTAL"
+                                ? "Sucursal"
+                                : "Empresa"}
+                            <span className="mt-0.5 block text-slate-400">
+                              {row.customerSegment === "ALL"
+                                ? "Todos"
+                                : row.customerSegment === "NEW"
+                                  ? "Nuevos"
+                                  : row.customerSegment === "RETURNING"
+                                    ? "Recurrentes"
+                                    : "Recuperados"}
+                            </span>
+                          </td>
                           <td className="px-4 py-3">{row.branchName}</td>
                           <td className="px-4 py-3">{row.employeeName}</td>
                           <td className="px-4 py-3">
@@ -370,11 +483,18 @@ export function CommissionReportWorkspace() {
                           <td className="px-4 py-3">
                             {commissionMoney.format(row.salesAmount)}
                           </td>
+                          <td className="px-4 py-3">{row.membershipsSold}</td>
+                          <td className="px-4 py-3">
+                            {commissionMoney.format(row.membershipSalesAmount)}
+                          </td>
                           <td className="px-4 py-3">
                             {commissionMoney.format(row.appointmentCommission)}
                           </td>
                           <td className="px-4 py-3">
                             {commissionMoney.format(row.salesCommission)}
+                          </td>
+                          <td className="px-4 py-3">
+                            {commissionMoney.format(row.membershipCommission)}
                           </td>
                           <td className="px-4 py-3 font-semibold">
                             {commissionMoney.format(row.totalCommission)}
@@ -385,7 +505,7 @@ export function CommissionReportWorkspace() {
                   </table>
                 </div>
                 <div className="px-5 pt-3 text-xs text-slate-500">
-                  {selectedRows.length} de {reportQuery.data.rows.length} filas
+                  {selectedRows.length} de {report.rows.length} filas
                   seleccionadas para PDF, Excel o impresión.
                 </div>
                 <SchedulerPagination
