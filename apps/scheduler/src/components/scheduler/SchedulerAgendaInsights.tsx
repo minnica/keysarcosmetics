@@ -11,6 +11,7 @@ import {
   DollarSign,
   Pin,
   PinOff,
+  Sparkles,
   UsersRound,
 } from "lucide-react";
 import type {
@@ -119,6 +120,46 @@ export function SchedulerAgendaInsights({
     () => new Map(professionals.map((professional) => [professional.id, professional])),
     [professionals],
   );
+  const leadingSpecialist = useMemo(() => {
+    const specialistColumns = new Map(
+      professionals
+        .filter((professional) => professional.kind === "PROFESSIONAL")
+        .map((professional) => [professional.id, professional]),
+    );
+    const countedAssignments = new Set<string>();
+    const serviceTotals = new Map<
+      string,
+      { name: string; services: number }
+    >();
+
+    for (const booking of activeBookings) {
+      const specialist = specialistColumns.get(booking.professionalId);
+      if (!specialist) continue;
+      const specialistId = specialist.entityId ?? specialist.id;
+      const appointmentId = booking.sourceId ?? booking.id;
+      const assignmentKey = `${appointmentId}:${specialistId}`;
+      if (countedAssignments.has(assignmentKey)) continue;
+      countedAssignments.add(assignmentKey);
+
+      const services = Math.max(
+        1,
+        booking.serviceName
+          .split(" · ")
+          .map((service) => service.trim())
+          .filter(Boolean).length,
+      );
+      const current = serviceTotals.get(specialistId);
+      serviceTotals.set(specialistId, {
+        name: specialist.name,
+        services: (current?.services ?? 0) + services,
+      });
+    }
+
+    return [...serviceTotals.values()].sort(
+      (left, right) =>
+        right.services - left.services || left.name.localeCompare(right.name, "es-MX"),
+    )[0] ?? null;
+  }, [activeBookings, professionals]);
 
   return (
     <aside
@@ -197,24 +238,45 @@ export function SchedulerAgendaInsights({
               <h2 id="agenda-occupancy-title" className="text-base font-semibold text-slate-800">Ocupación</h2>
               {loading ? <span className="text-[10px] text-slate-400">Actualizando…</span> : null}
             </div>
-            <div className="mt-3 grid grid-cols-[88px_minmax(0,1fr)] items-center gap-3">
-              <div
-                aria-label={`${totalPercent}% de ocupación`}
-                className="grid h-[88px] w-[88px] place-items-center rounded-full"
-                style={{ background: `conic-gradient(#45a866 ${totalPercent}%, #e9eee9 0)` }}
-              >
-                <div className="grid h-16 w-16 place-items-center rounded-full bg-white text-xl font-semibold text-slate-800">
-                  {totalPercent}%
+            <div className="mt-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+              <div className="grid grid-cols-[76px_minmax(0,1fr)] items-center gap-3">
+                <div
+                  aria-label={`${totalPercent}% de ocupación`}
+                  className="grid h-[76px] w-[76px] shrink-0 place-items-center rounded-full"
+                  style={{ background: `conic-gradient(#45a866 ${totalPercent}%, #e9eee9 0)` }}
+                >
+                  <div className="grid h-14 w-14 place-items-center rounded-full bg-white text-lg font-semibold text-slate-800">
+                    {totalPercent}%
+                  </div>
+                </div>
+                <div className="min-w-0 space-y-2">
+                  {occupancyGroups.map((group) => (
+                    <div className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 text-[10px]" key={group.id}>
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: group.color }} />
+                      <span className="min-w-0 leading-tight text-slate-500">{group.label}</span>
+                      <strong className="text-slate-700">{group.capacity ? `${group.percent}%` : "—"}</strong>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="min-w-0 flex-1 space-y-2.5">
-                {occupancyGroups.map((group) => (
-                  <div className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 text-[11px]" key={group.id}>
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: group.color }} />
-                    <span className="min-w-0 leading-tight text-slate-500">{group.label}</span>
-                    <strong className="text-slate-700">{group.capacity ? `${group.percent}%` : "—"}</strong>
-                  </div>
-                ))}
+
+              <div className="mt-3 flex min-w-0 items-center gap-3 rounded-xl bg-[linear-gradient(135deg,#f7f1e9_0%,#fbfaf8_100%)] px-3 py-2.5">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#172230] text-white shadow-sm">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#a27e55]">
+                    Especialista con más servicios
+                  </p>
+                  <p className="truncate text-xs font-semibold text-slate-800">
+                    {leadingSpecialist?.name ?? "Sin servicios asignados"}
+                  </p>
+                </div>
+                {leadingSpecialist ? (
+                  <span className="shrink-0 rounded-full border border-[#dcc8ad] bg-white px-2 py-1 text-[10px] font-semibold text-[#765536]">
+                    {leadingSpecialist.services} {leadingSpecialist.services === 1 ? "servicio" : "servicios"}
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="mt-4 grid grid-cols-3 divide-x divide-slate-200 border-y border-slate-200 py-3 text-center">

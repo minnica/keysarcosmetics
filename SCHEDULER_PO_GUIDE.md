@@ -176,6 +176,15 @@ sucursal legibles, con desplazamiento horizontal cuando el monitor no alcanza.
 El botón de impresión cambia a día, ajusta columnas y abre la
 impresión horizontal del navegador sin menú ni panel lateral.
 
+El resumen lateral mantiene la dona de ocupación dentro de una tarjeta compacta
+para que conserve su proporción sin invadir la leyenda. Debajo aprovecha el
+espacio disponible para mostrar la **especialista con más servicios** en la
+fecha propia del panel. El conteo considera servicios de citas activas y
+deduplica la misma asignación por `appointmentId + professionalId`, por lo que
+las proyecciones simultáneas de cabina y especialista no inflan el resultado.
+La integración productiva debe obtener este indicador desde las asignaciones y
+servicios canónicos de la cita.
+
 Clientes incorpora en el entorno de diseño una búsqueda avanzada combinable.
 Los criterios entre grupos se aplican con `AND`; dentro de estatus, servicios y
 vendedores, las selecciones se aplican con `OR`. Permite buscar clientes sin
