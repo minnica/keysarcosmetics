@@ -48,4 +48,7 @@ export const schedulerDesignProposals: DesignProposalClient = {
   saveCustomerSpecialistPreference: unavailable,
   cabinSalesReport: unavailable,
   salesProjectionReport: unavailable,
+  commissionSchemes: unavailable,
+  saveCommissionScheme: unavailable,
+  commissionReport: unavailable,
 };

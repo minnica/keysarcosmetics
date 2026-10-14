@@ -32,6 +32,7 @@ import type {
   DesignAppointmentJournalEntry,
   DesignAuthorizationScopeKey,
   DesignBranchCommercialModel,
+  DesignCommissionScheme,
   DesignCustomerRecoveryCase,
   DesignCustomerRecoverySettings,
   DesignCustomerRecoveryTeam,
@@ -554,6 +555,52 @@ export function createDesignState(
         updatedAt: now,
       };
     });
+  const commissionSchemes: DesignCommissionScheme[] = [
+    {
+      id: "design-commission-attendance",
+      commerceId: catalog.commerces[0]!.id,
+      name: "Asistencia de facialistas",
+      period: "MONTH",
+      active: true,
+      employeeIds: catalog.professionals
+        .slice(0, 2)
+        .map((item) => item.employeeId),
+      employeeNames: catalog.professionals.slice(0, 2).map((item) => item.name),
+      viewerProfileIds: ["full-master", "full-operations"],
+      currentVersion: 1,
+      effectiveFrom: now,
+      effectiveTo: null,
+      rules: [
+        {
+          mode: "ATTENDED_APPOINTMENT",
+          amount: 85,
+          percentage: 0,
+        },
+      ],
+    },
+    {
+      id: "design-commission-sales",
+      commerceId: catalog.commerces[0]!.id,
+      name: "Venta atribuible",
+      period: "FORTNIGHT",
+      active: true,
+      employeeIds: catalog.professionals
+        .slice(1)
+        .map((item) => item.employeeId),
+      employeeNames: catalog.professionals.slice(1).map((item) => item.name),
+      viewerProfileIds: ["full-master", "full-operations"],
+      currentVersion: 1,
+      effectiveFrom: now,
+      effectiveTo: null,
+      rules: [
+        {
+          mode: "SALES_AMOUNT",
+          amount: 0,
+          percentage: 5,
+        },
+      ],
+    },
+  ];
   const state = {
     controls: normalizedControls,
     catalog,
@@ -598,6 +645,7 @@ export function createDesignState(
     operationAgents,
     authorizationPolicy,
     branchCommercialModels,
+    commissionSchemes,
     statusDefinitions,
     statusDefinitionHistory,
     usedAuthorizationCodes: new Set(operationAgents.map((agent) => agent.code)),
@@ -1020,8 +1068,7 @@ export function createDesignState(
           (team) => team.branchId === portfolio.branchId,
         )?.name ?? null,
       assignedAgentId: operationAgents[index % operationAgents.length]!.id,
-      assignedAgentName:
-        operationAgents[index % operationAgents.length]!.name,
+      assignedAgentName: operationAgents[index % operationAgents.length]!.name,
       assignedAt: eligibilityDate.toISOString(),
       activityStatus: "AWAITING_APPOINTMENT",
       activityUpdatedAt: eligibilityDate.toISOString(),

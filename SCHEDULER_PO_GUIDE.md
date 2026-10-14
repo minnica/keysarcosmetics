@@ -1027,3 +1027,34 @@ facialista y monto; el nombre completo del estado continúa visible en el
 tooltip, el detalle y los controles de autorización. En cabinas dobles o triples
 cada segmento usa el color y estado de su propia clienta; una inasistencia no
 cambia ni oculta la asistencia o venta de las demás.
+
+El 13 de octubre de 2026, **Administración → Comisiones** pasó de una política
+general aislada a esquemas versionados. Cada esquema tiene nombre, periodo,
+estado, uno o varios empleados y una o dos modalidades acumulables: importe
+fijo por cita atendida y porcentaje del monto de venta atribuido. La asistencia
+se cuenta por especialista y visitante; en cabinas dobles o triples una persona
+que no asistió no genera comisión para su lugar. La venta se atribuye al
+especialista vendedor registrado en la visita y nunca se duplica entre
+empleados.
+
+Cada esquema declara además los perfiles autorizados para ver sus cálculos.
+Aunque un administrador puede mantener la configuración, el reporte sólo
+proyecta esquemas donde el perfil activo está incluido. El informe filtra por
+periodo, sucursal y empleado; resume sucursales, empleados, citas asistidas,
+venta atribuible y comisión estimada. PDF, Excel e impresión contienen
+exclusivamente las filas seleccionadas, no sólo la página visible. Nómina
+continúa siendo responsable de liquidar pagos y recibos.
+
+La propuesta de diseño usa `GET/POST/PUT
+/api/scheduler/design-proposals/commission-schemes` y `POST
+/api/scheduler/design-proposals/reports/commissions`. Producción debe validar
+empleados activos, perfiles existentes, porcentajes de 0 a 100, versiones
+optimistas, alcance de sucursal y permiso `administration.commissions:EXPORT`;
+el servidor debe omitir filas y totales de esquemas no autorizados.
+
+Para revisar el flujo: entra con Master, abre **Nueva comisión**, asigna dos
+empleados, agrega ambas modalidades y limita la visibilidad a Master. Guarda,
+elige un periodo con citas atendidas y verifica la separación por sucursal y
+empleado. Selecciona sólo una fila y comprueba que PDF, Excel e impresión
+incluyen esa misma fila. Después entra con Operaciones y confirma que el esquema
+privado no aparece en el cálculo.

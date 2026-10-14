@@ -7,6 +7,9 @@ import type {
   DesignAuthorizationPolicy,
   DesignBranchCommercialModel,
   DesignCabinSalesReport,
+  DesignCommissionReport,
+  DesignCommissionScheme,
+  DesignCommissionSchemeInput,
   DesignSalesProjectionReport,
   DesignCustomerAdvancedPage,
   DesignCustomerDuplicateCandidate,
@@ -30,6 +33,7 @@ const apiUrl = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:4000";
 
 export const schedulerDesignDemoAccounts: readonly DesignDemoAccountOption[] =
   designDemoAccounts.map((account) => ({
+    id: account.id,
     email: account.email,
     name: account.name,
     access: account.accessLabel,
@@ -253,6 +257,20 @@ export const schedulerDesignProposals: DesignProposalClient = {
   salesProjectionReport: (input) =>
     request<DesignSalesProjectionReport>(
       "/api/scheduler/design-proposals/reports/sales-projections",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  commissionSchemes: () =>
+    request<DesignCommissionScheme[]>(
+      "/api/scheduler/design-proposals/commission-schemes",
+    ),
+  saveCommissionScheme: (input: DesignCommissionSchemeInput) =>
+    request<DesignCommissionScheme>(
+      `/api/scheduler/design-proposals/commission-schemes${input.id ? `/${input.id}` : ""}`,
+      { method: input.id ? "PUT" : "POST", body: JSON.stringify(input) },
+    ),
+  commissionReport: (input) =>
+    request<DesignCommissionReport>(
+      "/api/scheduler/design-proposals/reports/commissions",
       { method: "POST", body: JSON.stringify(input) },
     ),
 };

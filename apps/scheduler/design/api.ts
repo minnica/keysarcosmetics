@@ -46,6 +46,11 @@ import type {
   DesignCabinSalesReportRow,
   DesignCabinSalesSpecialistBreakdown,
   DesignCabinServiceAnalytics,
+  DesignCommissionReport,
+  DesignCommissionReportFilters,
+  DesignCommissionReportRow,
+  DesignCommissionRuleMode,
+  DesignCommissionScheme,
   DesignCustomerAdvancedFilters,
   DesignCustomerAdvancedPage,
   DesignCustomerDuplicateCandidate,
@@ -918,8 +923,8 @@ function buildReport(
               canViewPhone ? item.phone : null,
               item.email,
               ...item.aliases,
-            ].some(
-              (value) => textKey(value).includes(textKey(query.get("search"))),
+            ].some((value) =>
+              textKey(value).includes(textKey(query.get("search"))),
             )),
       )
       .map((item) => {
@@ -932,7 +937,7 @@ function buildReport(
           Cliente: item.displayName,
           "Nombre preferido": item.preferredName ?? "",
           Teléfono: canViewPhone
-            ? item.phone ?? ""
+            ? (item.phone ?? "")
             : item.phone
               ? "Confidencial"
               : "",
@@ -1352,8 +1357,7 @@ function buildCabinSalesReport(
     .map(([key, rows]) => {
       const first = rows[0]!;
       const specialistBuyers = rows.filter(
-        (row) =>
-          row.purchaseKind === "FULL" || row.purchaseKind === "LAYAWAY",
+        (row) => row.purchaseKind === "FULL" || row.purchaseKind === "LAYAWAY",
       ).length;
       return {
         key,
@@ -1697,9 +1701,7 @@ function advancedCustomerSearch(
           canViewPhone ? item.phone : null,
           item.email,
           ...item.aliases,
-        ].some(
-          (value) => textKey(value).includes(textKey(input.query)),
-        )
+        ].some((value) => textKey(value).includes(textKey(input.query)))
       ) {
         return false;
       }
@@ -1962,22 +1964,16 @@ function recoveryPurchaseForAppointment(
 ) {
   const visit = state.appointmentCabinVisits[appointmentId];
   const visitor =
-    visit?.visitors.find((candidate) => candidate.customerId === item.customerId) ??
-    visit?.visitors[0];
-  if (
-    !visitor ||
-    !["FULL", "LAYAWAY"].includes(String(visitor.purchaseKind))
-  ) {
+    visit?.visitors.find(
+      (candidate) => candidate.customerId === item.customerId,
+    ) ?? visit?.visitors[0];
+  if (!visitor || !["FULL", "LAYAWAY"].includes(String(visitor.purchaseKind))) {
     return null;
   }
-  const saleAmount = Number(
-    visitor.saleAmount ?? visitor.purchaseAmount ?? 0,
-  );
+  const saleAmount = Number(visitor.saleAmount ?? visitor.purchaseAmount ?? 0);
   if (saleAmount <= 0) return null;
   const depositAmount = Number(
-    visitor.purchaseKind === "FULL"
-      ? saleAmount
-      : (visitor.depositAmount ?? 0),
+    visitor.purchaseKind === "FULL" ? saleAmount : (visitor.depositAmount ?? 0),
   );
   return {
     visit: visit!,
@@ -2101,6 +2097,168 @@ function customerRecoveryPurchaseReport(
   };
 }
 
+function buildCommissionReport(
+  state: DesignState,
+  filters: DesignCommissionReportFilters,
+): DesignCommissionReport {
+  if (
+    !filters.dateFrom ||
+    !filters.dateTo ||
+    filters.dateFrom > filters.dateTo
+  ) {
+    fail(400, "Selecciona un periodo válido para calcular comisiones.");
+  }
+  const allowedBranches = new Set(designBootstrap(state).authorizedBranchIds);
+  const branchIds = filters.branchIds.length
+    ? filters.branchIds
+    : [...allowedBranches];
+  branchIds.forEach((branchId) => inScope(state, branchId));
+  const requestedEmployees = new Set(filters.employeeIds ?? []);
+  const accountId = designAccountForControls(state.controls).id;
+  const visibleSchemes = state.commissionSchemes.filter(
+    (scheme) => scheme.active && scheme.viewerProfileIds.includes(accountId),
+  );
+  const reportRows: DesignCommissionReportRow[] = [];
+
+  for (const scheme of visibleSchemes) {
+    for (const employeeId of scheme.employeeIds) {
+      if (requestedEmployees.size && !requestedEmployees.has(employeeId))
+        continue;
+      const professional = state.catalog.professionals.find(
+        (candidate) => candidate.employeeId === employeeId,
+      );
+      if (!professional) continue;
+
+      for (const branchId of branchIds) {
+        const branch = state.catalog.branches.find(
+          (candidate) => candidate.branchId === branchId,
+        );
+        if (!branch) continue;
+        const appointmentsInPeriod = state.appointments.filter(
+          (appointment) =>
+            appointment.branchId === branchId &&
+            appointment.startsAt.slice(0, 10) >= filters.dateFrom &&
+            appointment.startsAt.slice(0, 10) <= filters.dateTo,
+        );
+        const appointmentIds = new Set(
+          appointmentsInPeriod
+            .filter((appointment) => {
+              const visit = state.appointmentCabinVisits[appointment.id];
+              if (visit) {
+                return visit.visitors.some(
+                  (visitor) =>
+                    visitor.specialistProfileId === professional.id &&
+                    resolveDesignVisitAttendanceStatus(
+                      visitor.attendanceStatus,
+                      appointment.status,
+                    ) === "ATTENDED",
+                );
+              }
+              return (
+                appointment.status === "ATTENDED" &&
+                appointment.services.some((service) =>
+                  service.professionals.some(
+                    (assignment) =>
+                      assignment.professionalProfileId === professional.id,
+                  ),
+                )
+              );
+            })
+            .map((appointment) => appointment.id),
+        );
+        const salesAmount = appointmentsInPeriod.reduce(
+          (total, appointment) => {
+            const visit = state.appointmentCabinVisits[appointment.id];
+            if (!visit) return total;
+            return (
+              total +
+              visit.visitors.reduce((subtotal, visitor) => {
+                const saleOwner =
+                  visitor.saleOwnerSpecialistProfileId ??
+                  visitor.specialistProfileId;
+                return saleOwner === professional.id
+                  ? subtotal + Number(visitor.saleAmount ?? 0)
+                  : subtotal;
+              }, 0)
+            );
+          },
+          0,
+        );
+        const appointmentCommission = scheme.rules
+          .filter((rule) => rule.mode === "ATTENDED_APPOINTMENT")
+          .reduce(
+            (total, rule) => total + appointmentIds.size * rule.amount,
+            0,
+          );
+        const salesCommission = scheme.rules
+          .filter((rule) => rule.mode === "SALES_AMOUNT")
+          .reduce(
+            (total, rule) => total + salesAmount * (rule.percentage / 100),
+            0,
+          );
+        if (!appointmentIds.size && !salesAmount) continue;
+        reportRows.push({
+          id: `${scheme.id}:${branchId}:${employeeId}`,
+          schemeId: scheme.id,
+          schemeName: scheme.name,
+          branchId,
+          branchName: branch.branchName,
+          employeeId,
+          employeeName: professional.name,
+          attendedAppointments: appointmentIds.size,
+          salesAmount,
+          appointmentCommission,
+          salesCommission,
+          totalCommission: appointmentCommission + salesCommission,
+        });
+      }
+    }
+  }
+
+  reportRows.sort(
+    (left, right) =>
+      left.branchName.localeCompare(right.branchName, "es-MX") ||
+      left.employeeName.localeCompare(right.employeeName, "es-MX") ||
+      left.schemeName.localeCompare(right.schemeName, "es-MX"),
+  );
+  return {
+    generatedAt: new Date().toISOString(),
+    filters,
+    summary: {
+      branches: new Set(reportRows.map((row) => row.branchId)).size,
+      employees: new Set(reportRows.map((row) => row.employeeId)).size,
+      attendedAppointments: reportRows.reduce(
+        (total, row) => total + row.attendedAppointments,
+        0,
+      ),
+      salesAmount: reportRows.reduce(
+        (total, row) => total + row.salesAmount,
+        0,
+      ),
+      totalCommission: reportRows.reduce(
+        (total, row) => total + row.totalCommission,
+        0,
+      ),
+    },
+    filterOptions: {
+      branches: state.catalog.branches
+        .filter((branch) => allowedBranches.has(branch.branchId))
+        .map((branch) => ({ id: branch.branchId, name: branch.branchName })),
+      employees: state.catalog.professionals
+        .filter((professional) =>
+          visibleSchemes.some((scheme) =>
+            scheme.employeeIds.includes(professional.employeeId),
+          ),
+        )
+        .map((professional) => ({
+          id: professional.employeeId,
+          name: professional.name,
+        })),
+    },
+    rows: reportRows,
+  };
+}
+
 function dispatch(state: DesignState, request: DesignRequest): unknown {
   const { body, url, headers, method } = request;
   const path = url.pathname,
@@ -2155,6 +2313,108 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     };
   }
   if (resource === "design-proposals") {
+    if (id === "commission-schemes") {
+      if (method === "GET") {
+        return [...state.commissionSchemes].sort((left, right) =>
+          left.name.localeCompare(right.name, "es-MX"),
+        );
+      }
+      if (!["POST", "PUT"].includes(method)) {
+        fail(405, "Usa GET, POST o PUT para los esquemas de comisión.");
+      }
+      if (!designBootstrap(state).canManageAccess) {
+        fail(403, "Sólo un perfil administrador puede modificar comisiones.");
+      }
+      const name = String(body.name ?? "").trim();
+      if (name.length < 3 || name.length > 80) {
+        fail(400, "El nombre del esquema debe tener de 3 a 80 caracteres.");
+      }
+      const employeeIds = [...new Set(rows(body.employeeIds).map(String))];
+      if (!employeeIds.length) {
+        fail(400, "Asigna al menos un empleado al esquema.");
+      }
+      const employees = employeeIds.map(
+        (employeeId) =>
+          state.catalog.professionals.find(
+            (professional) =>
+              professional.employeeId === employeeId && professional.active,
+          ) ?? fail(400, "Uno de los empleados asignados no está activo."),
+      );
+      const viewerProfileIds = [
+        ...new Set(rows(body.viewerProfileIds).map(String)),
+      ];
+      if (!viewerProfileIds.length) {
+        fail(400, "Asigna al menos un perfil con acceso al cálculo.");
+      }
+      if (
+        viewerProfileIds.some(
+          (profileId) =>
+            !designDemoAccounts.some((account) => account.id === profileId),
+        )
+      ) {
+        fail(400, "Uno de los perfiles de consulta no existe.");
+      }
+      const period = String(body.period) as DesignCommissionScheme["period"];
+      if (!["DAY", "WEEK", "FORTNIGHT", "MONTH"].includes(period)) {
+        fail(400, "Selecciona un periodo válido.");
+      }
+      const rules = rows(body.rules).map((candidate) => ({
+        mode: String(candidate.mode) as DesignCommissionRuleMode,
+        amount: Number(candidate.amount ?? 0),
+        percentage: Number(candidate.percentage ?? 0),
+      }));
+      if (!rules.length || rules.length > 2) {
+        fail(400, "Configura una o dos reglas de comisión.");
+      }
+      if (
+        new Set(rules.map((rule) => rule.mode)).size !== rules.length ||
+        rules.some(
+          (rule) =>
+            !["ATTENDED_APPOINTMENT", "SALES_AMOUNT"].includes(rule.mode) ||
+            rule.amount < 0 ||
+            rule.percentage < 0 ||
+            rule.percentage > 100 ||
+            (rule.mode === "ATTENDED_APPOINTMENT" && rule.amount <= 0) ||
+            (rule.mode === "SALES_AMOUNT" && rule.percentage <= 0),
+        )
+      ) {
+        fail(400, "Revisa las reglas, importes y porcentajes del esquema.");
+      }
+      const schemeId = action ?? String(body.id ?? "");
+      const existing = schemeId
+        ? state.commissionSchemes.find((scheme) => scheme.id === schemeId)
+        : undefined;
+      if (action && !existing) fail(404, "Esquema no encontrado.");
+      if (existing) versionGuard(existing, body);
+      const next: DesignCommissionScheme = {
+        id: existing?.id ?? designId("design-commission"),
+        commerceId: String(body.commerceId ?? state.catalog.commerces[0]!.id),
+        name,
+        period,
+        active: Boolean(body.active),
+        employeeIds,
+        employeeNames: employees.map((employee) => employee.name),
+        viewerProfileIds,
+        currentVersion: (existing?.currentVersion ?? 0) + 1,
+        effectiveFrom: existing?.effectiveFrom ?? new Date().toISOString(),
+        effectiveTo: null,
+        rules,
+      };
+      if (existing) Object.assign(existing, next);
+      else state.commissionSchemes.push(next);
+      return next;
+    }
+    if (id === "reports" && action === "commissions") {
+      if (method !== "POST") fail(405, "Usa POST para calcular comisiones.");
+      return buildCommissionReport(state, {
+        dateFrom: String(body.dateFrom ?? state.controls.date),
+        dateTo: String(body.dateTo ?? state.controls.date),
+        branchIds: rows(body.branchIds).map(String),
+        ...(rows(body.employeeIds).length
+          ? { employeeIds: rows(body.employeeIds).map(String) }
+          : {}),
+      });
+    }
     if (id === "branch-commercial-models") {
       if (method === "GET") {
         return [...state.branchCommercialModels].sort((left, right) =>
@@ -2791,7 +3051,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         ? body.branchIds.map(String)
         : [];
       const allowedBranchIds = new Set(
-        branchIds.length ? branchIds : designBootstrap(state).authorizedBranchIds,
+        branchIds.length
+          ? branchIds
+          : designBootstrap(state).authorizedBranchIds,
       );
       for (const branchId of allowedBranchIds) inScope(state, branchId);
       return state.customerRecoveryTeams
@@ -2809,7 +3071,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     }
     if (id === "customers" && action === "recovery-settings") {
       const branchId = String(
-        method === "GET" ? query.get("branchId") ?? "" : body.branchId ?? "",
+        method === "GET"
+          ? (query.get("branchId") ?? "")
+          : (body.branchId ?? ""),
       );
       inScope(state, branchId);
       const current = state.customerRecoverySettings[branchId];
@@ -3318,7 +3582,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
                 customerId: visitor.customerId,
                 name: visitor.name,
                 phone: attendeeCustomer
-                  ? protectCustomerPhone(state, attendeeCustomer).phone ?? null
+                  ? (protectCustomerPhone(state, attendeeCustomer).phone ??
+                    null)
                   : null,
                 email: attendeeCustomer?.email ?? null,
                 specialistProfileId: visitor.specialistProfileId || null,
@@ -3564,9 +3829,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const attendanceStatuses = visitors.map(
         (visitor) => visitor.attendanceStatus,
       ) as DesignVisitAttendanceStatus[];
-      const derivedAttendanceStatus = deriveDesignAppointmentAttendanceStatus(
-        attendanceStatuses,
-      );
+      const derivedAttendanceStatus =
+        deriveDesignAppointmentAttendanceStatus(attendanceStatuses);
       const attendanceChanged = visitors.some((visitor, index) => {
         const previousVisitor = previousVisit?.visitors.find(
           (candidate) => candidate.id === visitor.id,
@@ -3937,12 +4201,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         status === "NO_SHOW"
       ) {
         const cabinVisit = state.appointmentCabinVisits[existing!.id];
-        const attendanceStatuses = (cabinVisit?.visitors ?? []).map(
-          (visitor) =>
-            resolveDesignVisitAttendanceStatus(
-              visitor.attendanceStatus,
-              existing!.status,
-            ),
+        const attendanceStatuses = (cabinVisit?.visitors ?? []).map((visitor) =>
+          resolveDesignVisitAttendanceStatus(
+            visitor.attendanceStatus,
+            existing!.status,
+          ),
         );
         const attendanceCaptureComplete = Boolean(
           cabinVisit &&
@@ -4060,24 +4323,26 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     if (id === "sources") return state.sources;
     if (id === "search")
       return page(
-        visibleCustomers(state).filter(
-          (item) =>
-            item.active &&
-            (!query.get("branchId") ||
-              item.currentPortfolios.some(
-                (portfolio) => portfolio.branchId === query.get("branchId"),
-              )) &&
-            (!query.get("sourceId") ||
-              item.source?.id === query.get("sourceId")) &&
-            [
-              item.displayName,
-              canViewCustomerPhone(state) ? item.phone : null,
-              item.email,
-              ...item.aliases,
-            ].some(
-              (value) => textKey(value).includes(textKey(query.get("query"))),
-            ),
-        ).map((item) => protectCustomerPhone(state, item)),
+        visibleCustomers(state)
+          .filter(
+            (item) =>
+              item.active &&
+              (!query.get("branchId") ||
+                item.currentPortfolios.some(
+                  (portfolio) => portfolio.branchId === query.get("branchId"),
+                )) &&
+              (!query.get("sourceId") ||
+                item.source?.id === query.get("sourceId")) &&
+              [
+                item.displayName,
+                canViewCustomerPhone(state) ? item.phone : null,
+                item.email,
+                ...item.aliases,
+              ].some((value) =>
+                textKey(value).includes(textKey(query.get("query"))),
+              ),
+          )
+          .map((item) => protectCustomerPhone(state, item)),
         query,
       );
     if (id === "field-definitions") {

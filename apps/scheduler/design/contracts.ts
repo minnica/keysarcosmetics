@@ -50,6 +50,7 @@ export interface DesignAuthorizationPolicy {
 }
 
 export interface DesignDemoAccountOption {
+  id: string;
   email: string;
   name: string;
   access: string;
@@ -484,6 +485,80 @@ export interface DesignSalesProjectionReport {
   methodology: string;
 }
 
+export type DesignCommissionRuleMode = "ATTENDED_APPOINTMENT" | "SALES_AMOUNT";
+
+export interface DesignCommissionSchemeRule {
+  mode: DesignCommissionRuleMode;
+  amount: number;
+  percentage: number;
+}
+
+export interface DesignCommissionScheme {
+  id: string;
+  commerceId: string;
+  name: string;
+  period: "DAY" | "WEEK" | "FORTNIGHT" | "MONTH";
+  active: boolean;
+  employeeIds: string[];
+  employeeNames: string[];
+  viewerProfileIds: string[];
+  currentVersion: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  rules: DesignCommissionSchemeRule[];
+}
+
+export interface DesignCommissionSchemeInput {
+  id?: string;
+  commerceId: string;
+  name: string;
+  period: DesignCommissionScheme["period"];
+  active: boolean;
+  employeeIds: string[];
+  viewerProfileIds: string[];
+  expectedVersion?: number;
+  rules: DesignCommissionSchemeRule[];
+}
+
+export interface DesignCommissionReportFilters {
+  dateFrom: string;
+  dateTo: string;
+  branchIds: string[];
+  employeeIds?: string[];
+}
+
+export interface DesignCommissionReportRow {
+  id: string;
+  schemeId: string;
+  schemeName: string;
+  branchId: string;
+  branchName: string;
+  employeeId: string;
+  employeeName: string;
+  attendedAppointments: number;
+  salesAmount: number;
+  appointmentCommission: number;
+  salesCommission: number;
+  totalCommission: number;
+}
+
+export interface DesignCommissionReport {
+  generatedAt: string;
+  filters: DesignCommissionReportFilters;
+  summary: {
+    branches: number;
+    employees: number;
+    attendedAppointments: number;
+    salesAmount: number;
+    totalCommission: number;
+  };
+  filterOptions: {
+    branches: Array<{ id: string; name: string }>;
+    employees: Array<{ id: string; name: string }>;
+  };
+  rows: DesignCommissionReportRow[];
+}
+
 export interface DesignMovementRecord {
   id: string;
   actorId: string;
@@ -800,4 +875,11 @@ export interface DesignProposalClient {
   salesProjectionReport(
     input: DesignSalesProjectionFilters,
   ): Promise<DesignSalesProjectionReport>;
+  commissionSchemes(): Promise<DesignCommissionScheme[]>;
+  saveCommissionScheme(
+    input: DesignCommissionSchemeInput,
+  ): Promise<DesignCommissionScheme>;
+  commissionReport(
+    input: DesignCommissionReportFilters,
+  ): Promise<DesignCommissionReport>;
 }

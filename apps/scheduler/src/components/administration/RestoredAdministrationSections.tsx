@@ -2,22 +2,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  CalendarCheck2,
+  Download,
+  FileSpreadsheet,
   Gift,
   History,
   Layers3,
   Palette,
   Pencil,
   Plus,
+  Printer,
   Save,
+  ShieldCheck,
+  UsersRound,
   WalletCards,
 } from "lucide-react";
 import {
   SCHEDULER_APPOINTMENT_STATUSES,
   type SchedulerAdministrationCatalogDto,
   type SchedulerAppointmentStatus,
-  type SchedulerCommissionMode,
   type SchedulerCommissionPeriod,
-  type SchedulerCommissionTargetType,
   type SchedulerGiftCardStatus,
   type SchedulerGiftCardType,
   type SchedulerOperationalCatalogDto,
@@ -44,8 +48,13 @@ import {
   toast,
 } from "@cosmetics/ui";
 import { schedulerApi } from "@/lib/api";
-import { schedulerDesignProposals } from "@scheduler/design-proposals";
+import {
+  schedulerDesignDemoAccounts,
+  schedulerDesignProposals,
+} from "@scheduler/design-proposals";
 import type {
+  DesignCommissionRuleMode,
+  DesignCommissionScheme,
   DesignStatusDefinition,
   DesignStatusDefinitionRevision,
 } from "../../../design/contracts";
@@ -73,6 +82,11 @@ import {
   AdministrationRefreshButton,
   RestoredAdministrationFrame,
 } from "./RestoredAdministrationFrame";
+import {
+  exportCommissionReport,
+  printCommissionReport,
+  type CommissionReportExportFormat,
+} from "./commission-report-export";
 
 const statusLabels: Record<SchedulerAppointmentStatus, string> = {
   PENDING: "Pendiente",
@@ -120,42 +134,60 @@ function refreshAdministration(
 }
 
 interface CommissionRuleDraft {
-  mode: SchedulerCommissionMode;
-  amount: string;
-  percentage: string;
-  tiers: Array<{ fromAmount: string; toAmount: string; percentage: string }>;
+  mode: DesignCommissionRuleMode;
+  value: string;
 }
 
 interface CommissionDraft {
   id: string;
   commerceId: string;
-  targetType: SchedulerCommissionTargetType;
-  targetId: string;
+  name: string;
   period: SchedulerCommissionPeriod;
   active: boolean;
+  employeeIds: string[];
+  viewerProfileIds: string[];
   expectedVersion?: number;
   rules: CommissionRuleDraft[];
 }
 
 const emptyCommissionRule = (): CommissionRuleDraft => ({
   mode: "ATTENDED_APPOINTMENT",
-  amount: "0",
-  percentage: "0",
-  tiers: [{ fromAmount: "0", toAmount: "", percentage: "0" }],
+  value: "0",
 });
 
 function emptyCommissionDraft(
   operations: SchedulerOperationalCatalogDto | undefined,
+  currentProfileId: string,
 ): CommissionDraft {
   return {
     id: "",
     commerceId: operations?.commerces[0]?.id ?? "",
-    targetType: "DEFAULT",
-    targetId: "",
+    name: "",
     period: "MONTH",
     active: true,
+    employeeIds: [],
+    viewerProfileIds: currentProfileId ? [currentProfileId] : [],
     rules: [emptyCommissionRule()],
   };
+}
+
+const commissionPeriodLabels: Record<SchedulerCommissionPeriod, string> = {
+  DAY: "Diario",
+  WEEK: "Semanal",
+  FORTNIGHT: "Quincenal",
+  MONTH: "Mensual",
+};
+
+const commissionMoney = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+  maximumFractionDigits: 2,
+});
+
+function commissionDate(offsetDays = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return date.toLocaleDateString("en-CA");
 }
 
 function CommissionDialog({
@@ -164,6 +196,7 @@ function CommissionDialog({
   draft,
   setDraft,
   operations,
+  profiles,
   onSaved,
 }: {
   open: boolean;
@@ -171,83 +204,70 @@ function CommissionDialog({
   draft: CommissionDraft;
   setDraft: React.Dispatch<React.SetStateAction<CommissionDraft>>;
   operations: SchedulerOperationalCatalogDto;
+  profiles: typeof schedulerDesignDemoAccounts;
   onSaved: () => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
-  const targets =
-    draft.targetType === "PROFESSIONAL"
-      ? operations.professionals.map((item) => ({
-          id: item.id,
-          name: item.name,
-        }))
-      : draft.targetType === "CATALOG_ITEM"
-        ? operations.services.map((item) => ({
-            id: item.catalogItemId,
-            name: item.name,
-          }))
-        : [];
 
   async function save() {
+    if (!draft.name.trim()) {
+      toast.warning("Escribe un nombre para el esquema.");
+      return;
+    }
     if (!draft.commerceId || draft.rules.length === 0) return;
+    if (draft.employeeIds.length === 0) {
+      toast.warning("Asigna al menos un empleado.");
+      return;
+    }
+    if (draft.viewerProfileIds.length === 0) {
+      toast.warning("Asigna al menos un perfil que pueda ver el cálculo.");
+      return;
+    }
     if (
       new Set(draft.rules.map((rule) => rule.mode)).size !== draft.rules.length
     ) {
       toast.warning("Cada modalidad de comisión sólo puede aparecer una vez.");
       return;
     }
-    if (
-      draft.rules.some(
-        (rule) =>
-          rule.mode === "BRANCH_SALES_TIER" &&
-          rule.tiers.slice(0, -1).some((tier) => !tier.toAmount),
-      )
-    ) {
+    if (draft.rules.some((rule) => Number(rule.value) <= 0)) {
       toast.warning(
-        "Todos los niveles salvo el último necesitan un límite final.",
+        "Cada regla necesita un importe o porcentaje mayor a cero.",
       );
       return;
     }
-    if (draft.targetType !== "DEFAULT" && !draft.targetId) {
-      toast.warning("Selecciona el objetivo de la comisión.");
+    if (
+      draft.rules.some(
+        (rule) => rule.mode === "SALES_AMOUNT" && Number(rule.value) > 100,
+      )
+    ) {
+      toast.warning("El porcentaje de venta no puede superar 100%.");
       return;
     }
     setSaving(true);
     await runSchedulerMutation(
       () =>
-        schedulerApi.updateCommissionPolicy({
+        schedulerDesignProposals.saveCommissionScheme({
+          ...(draft.id ? { id: draft.id } : {}),
           commerceId: draft.commerceId,
-          targetType: draft.targetType,
-          ...(draft.targetType === "DEFAULT"
-            ? {}
-            : { targetId: draft.targetId }),
+          name: draft.name.trim(),
           period: draft.period,
           active: draft.active,
+          employeeIds: draft.employeeIds,
+          viewerProfileIds: draft.viewerProfileIds,
           ...(draft.expectedVersion
             ? { expectedVersion: draft.expectedVersion }
             : {}),
           rules: draft.rules.map((rule) => ({
             mode: rule.mode,
-            ...(["APPOINTMENT", "ATTENDED_APPOINTMENT"].includes(rule.mode)
-              ? { amount: rule.amount }
-              : {}),
-            ...(rule.mode === "SALES_PERCENTAGE"
-              ? { percentage: rule.percentage }
-              : {}),
-            ...(rule.mode === "BRANCH_SALES_TIER"
-              ? {
-                  tiers: rule.tiers.map((tier) => ({
-                    fromAmount: tier.fromAmount,
-                    toAmount: tier.toAmount || null,
-                    percentage: tier.percentage,
-                  })),
-                }
-              : {}),
+            amount:
+              rule.mode === "ATTENDED_APPOINTMENT" ? Number(rule.value) : 0,
+            percentage: rule.mode === "SALES_AMOUNT" ? Number(rule.value) : 0,
           })),
         }),
       {
         onSuccess: async () => {
-          toast.success("Política de comisión guardada.");
+          toast.success("Esquema de comisión guardado.");
           await onSaved();
           onOpenChange(false);
         },
@@ -264,7 +284,7 @@ function CommissionDialog({
       <DialogContent className="admin-dialog admin-dialog-wide max-h-[calc(100dvh-2rem)] max-w-4xl overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>
-            {draft.id ? "Editar comisión" : "Nueva comisión"}
+            {draft.id ? "Editar esquema" : "Nuevo esquema de comisión"}
           </DialogTitle>
         </DialogHeader>
         <ConflictNotice
@@ -275,6 +295,20 @@ function CommissionDialog({
           }}
         />
         <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Label>Nombre del esquema</Label>
+            <Input
+              className="mt-1.5"
+              placeholder="Ej. Facialistas · asistencia y venta"
+              value={draft.name}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+            />
+          </div>
           <div>
             <Label>Comercio</Label>
             <Select
@@ -317,52 +351,44 @@ function CommissionDialog({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Objetivo</Label>
-            <Select
-              value={draft.targetType}
+          <div className="sm:col-span-2">
+            <Label>Empleados que reciben la comisión</Label>
+            <MultiCombobox
+              className="mt-1.5"
+              options={operations.professionals
+                .filter((item) => item.active)
+                .map((item) => ({ value: item.employeeId, label: item.name }))}
+              value={draft.employeeIds}
+              onValueChange={(value) =>
+                setDraft((current) => ({ ...current, employeeIds: value }))
+              }
+              placeholder="Selecciona uno o varios empleados"
+              selectedCountLabel="empleados asignados"
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              Cada empleado se calcula por separado, incluso en citas de cabina
+              doble o triple.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Perfiles autorizados para consultar el cálculo</Label>
+            <MultiCombobox
+              className="mt-1.5"
+              options={profiles.map((profile) => ({
+                value: profile.id,
+                label: `${profile.name} · ${profile.access}`,
+              }))}
+              value={draft.viewerProfileIds}
               onValueChange={(value) =>
                 setDraft((current) => ({
                   ...current,
-                  targetType: value as SchedulerCommissionTargetType,
-                  targetId: "",
+                  viewerProfileIds: value,
                 }))
               }
-            >
-              <SelectTrigger className="mt-1.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DEFAULT">Regla general</SelectItem>
-                <SelectItem value="PROFESSIONAL">Especialista</SelectItem>
-                <SelectItem value="CATALOG_ITEM">
-                  Servicio / producto
-                </SelectItem>
-              </SelectContent>
-            </Select>
+              placeholder="Selecciona perfiles autorizados"
+              selectedCountLabel="perfiles autorizados"
+            />
           </div>
-          {draft.targetType !== "DEFAULT" ? (
-            <div>
-              <Label>Registro</Label>
-              <Select
-                value={draft.targetId}
-                onValueChange={(value) =>
-                  setDraft((current) => ({ ...current, targetId: value }))
-                }
-              >
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue placeholder="Selecciona" />
-                </SelectTrigger>
-                <SelectContent>
-                  {targets.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
         </div>
         <div className="space-y-4">
           {draft.rules.map((rule, index) => (
@@ -398,7 +424,8 @@ function CommissionDialog({
                           itemIndex === index
                             ? {
                                 ...item,
-                                mode: value as SchedulerCommissionMode,
+                                mode: value as DesignCommissionRuleMode,
+                                value: "0",
                               }
                             : item,
                         ),
@@ -409,34 +436,30 @@ function CommissionDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="APPOINTMENT">Por cita</SelectItem>
                       <SelectItem value="ATTENDED_APPOINTMENT">
-                        Por cita atendida
+                        Importe por cita atendida
                       </SelectItem>
-                      <SelectItem value="SALES_PERCENTAGE">
-                        Porcentaje de venta
-                      </SelectItem>
-                      <SelectItem value="BRANCH_SALES_TIER">
-                        Escala por venta de sucursal
+                      <SelectItem value="SALES_AMOUNT">
+                        Porcentaje del monto de venta
                       </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                {["APPOINTMENT", "ATTENDED_APPOINTMENT"].includes(rule.mode) ? (
+                {rule.mode === "ATTENDED_APPOINTMENT" ? (
                   <div>
-                    <Label>Importe</Label>
+                    <Label>Importe por cita atendida</Label>
                     <Input
                       className="mt-1.5"
                       min="0"
                       step="0.01"
                       type="number"
-                      value={rule.amount}
+                      value={rule.value}
                       onChange={(event) =>
                         setDraft((current) => ({
                           ...current,
                           rules: current.rules.map((item, itemIndex) =>
                             itemIndex === index
-                              ? { ...item, amount: event.target.value }
+                              ? { ...item, value: event.target.value }
                               : item,
                           ),
                         }))
@@ -444,7 +467,7 @@ function CommissionDialog({
                     />
                   </div>
                 ) : null}
-                {rule.mode === "SALES_PERCENTAGE" ? (
+                {rule.mode === "SALES_AMOUNT" ? (
                   <div>
                     <Label>Porcentaje</Label>
                     <Input
@@ -453,13 +476,13 @@ function CommissionDialog({
                       max="100"
                       step="0.01"
                       type="number"
-                      value={rule.percentage}
+                      value={rule.value}
                       onChange={(event) =>
                         setDraft((current) => ({
                           ...current,
                           rules: current.rules.map((item, itemIndex) =>
                             itemIndex === index
-                              ? { ...item, percentage: event.target.value }
+                              ? { ...item, value: event.target.value }
                               : item,
                           ),
                         }))
@@ -467,137 +490,32 @@ function CommissionDialog({
                     />
                   </div>
                 ) : null}
-                {rule.mode === "BRANCH_SALES_TIER" ? (
-                  <div className="space-y-3">
-                    {rule.tiers.map((tier, tierIndex) => (
-                      <div
-                        key={tierIndex}
-                        className="grid gap-2 sm:grid-cols-3"
-                      >
-                        <Input
-                          aria-label="Desde"
-                          type="number"
-                          value={tier.fromAmount}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              rules: current.rules.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? {
-                                      ...item,
-                                      tiers: item.tiers.map(
-                                        (candidate, candidateIndex) =>
-                                          candidateIndex === tierIndex
-                                            ? {
-                                                ...candidate,
-                                                fromAmount: event.target.value,
-                                              }
-                                            : candidate,
-                                      ),
-                                    }
-                                  : item,
-                              ),
-                            }))
-                          }
-                        />
-                        <Input
-                          aria-label="Hasta"
-                          placeholder="Sin límite"
-                          type="number"
-                          value={tier.toAmount}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              rules: current.rules.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? {
-                                      ...item,
-                                      tiers: item.tiers.map(
-                                        (candidate, candidateIndex) =>
-                                          candidateIndex === tierIndex
-                                            ? {
-                                                ...candidate,
-                                                toAmount: event.target.value,
-                                              }
-                                            : candidate,
-                                      ),
-                                    }
-                                  : item,
-                              ),
-                            }))
-                          }
-                        />
-                        <Input
-                          aria-label="Porcentaje"
-                          type="number"
-                          value={tier.percentage}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              rules: current.rules.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? {
-                                      ...item,
-                                      tiers: item.tiers.map(
-                                        (candidate, candidateIndex) =>
-                                          candidateIndex === tierIndex
-                                            ? {
-                                                ...candidate,
-                                                percentage: event.target.value,
-                                              }
-                                            : candidate,
-                                      ),
-                                    }
-                                  : item,
-                              ),
-                            }))
-                          }
-                        />
-                      </div>
-                    ))}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setDraft((current) => ({
-                          ...current,
-                          rules: current.rules.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? {
-                                  ...item,
-                                  tiers: [
-                                    ...item.tiers,
-                                    {
-                                      fromAmount:
-                                        item.tiers.at(-1)?.toAmount || "0",
-                                      toAmount: "",
-                                      percentage: "0",
-                                    },
-                                  ],
-                                }
-                              : item,
-                          ),
-                        }))
-                      }
-                    >
-                      <Plus className="mr-2 h-4 w-4" /> Agregar nivel
-                    </Button>
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           ))}
-          <Button
-            variant="outline"
-            onClick={() =>
-              setDraft((current) => ({
-                ...current,
-                rules: [...current.rules, emptyCommissionRule()],
-              }))
-            }
-          >
-            <Plus className="mr-2 h-4 w-4" /> Agregar modalidad
-          </Button>
+          {draft.rules.length < 2 ? (
+            <Button
+              variant="outline"
+              onClick={() =>
+                setDraft((current) => ({
+                  ...current,
+                  rules: [
+                    ...current.rules,
+                    {
+                      mode: current.rules.some(
+                        (rule) => rule.mode === "ATTENDED_APPOINTMENT",
+                      )
+                        ? "SALES_AMOUNT"
+                        : "ATTENDED_APPOINTMENT",
+                      value: "0",
+                    },
+                  ],
+                }))
+              }
+            >
+              <Plus className="mr-2 h-4 w-4" /> Agregar modalidad
+            </Button>
+          ) : null}
         </div>
         <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <Button
@@ -606,14 +524,14 @@ function CommissionDialog({
               setDraft((current) => ({ ...current, active: !current.active }))
             }
           >
-            {draft.active ? "Política activa" : "Política inactiva"}
+            {draft.active ? "Esquema activo" : "Esquema inactivo"}
           </Button>
           <Button
             onClick={() => void save()}
             disabled={saving || !draft.commerceId}
           >
             <Save className="mr-2 h-4 w-4" />{" "}
-            {saving ? "Guardando…" : "Guardar comisión"}
+            {saving ? "Guardando…" : "Guardar esquema"}
           </Button>
         </div>
       </DialogContent>
@@ -622,50 +540,119 @@ function CommissionDialog({
 }
 
 export function RestoredCommissionsSection() {
-  const { canAccess } = useSchedulerSession();
+  const { bootstrap, canAccess } = useSchedulerSession();
   const canAdmin = canAccess("administration.commissions", "ADMIN");
-  const query = useAdministrationData();
+  const canExport =
+    canAdmin || canAccess("administration.commissions", "EXPORT");
+  const currentProfileId = bootstrap?.user.id.replace(/^design-/, "") ?? "";
+  const catalogQuery = useAdministrationData();
+  const schemesQuery = useSchedulerQuery(
+    () => schedulerDesignProposals.commissionSchemes(),
+    [],
+    { queryKey: "commission-schemes" },
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<CommissionDraft>(() =>
-    emptyCommissionDraft(undefined),
+    emptyCommissionDraft(undefined, ""),
   );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
-  const data = query.data;
-  const onSaved = refreshAdministration(query.reload);
+  const [reportPage, setReportPage] = useState(1);
+  const [reportPageSize, setReportPageSize] =
+    useState<SchedulerReportPageSize>(20);
+  const [dateFrom, setDateFrom] = useState(() => commissionDate(-30));
+  const [dateTo, setDateTo] = useState(() => commissionDate());
+  const [branchId, setBranchId] = useState("ALL");
+  const [employeeId, setEmployeeId] = useState("ALL");
+  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const operations = catalogQuery.data?.operations;
+  const allowedBranchIds =
+    operations?.branches.map((branch) => branch.branchId) ?? [];
+  const reportQuery = useSchedulerQuery(
+    () =>
+      schedulerDesignProposals.commissionReport({
+        dateFrom,
+        dateTo,
+        branchIds: branchId === "ALL" ? allowedBranchIds : [branchId],
+        ...(employeeId === "ALL" ? {} : { employeeIds: [employeeId] }),
+      }),
+    [dateFrom, dateTo, branchId, employeeId, allowedBranchIds.join("|")],
+    {
+      queryKey: "commission-report",
+      enabled: allowedBranchIds.length > 0,
+    },
+  );
+  const onSaved = async () => {
+    invalidateSchedulerQueries("commission-schemes", "commission-report");
+    await Promise.all([schemesQuery.reload(), reportQuery.reload()]);
+  };
   const pagination = useMemo(
+    () => paginateSchedulerReportRows(schemesQuery.data ?? [], page, pageSize),
+    [schemesQuery.data, page, pageSize],
+  );
+  const reportPagination = useMemo(
     () =>
       paginateSchedulerReportRows(
-        data?.administration.commissionPolicies ?? [],
-        page,
-        pageSize,
+        reportQuery.data?.rows ?? [],
+        reportPage,
+        reportPageSize,
       ),
-    [data?.administration.commissionPolicies, page, pageSize],
+    [reportPage, reportPageSize, reportQuery.data?.rows],
+  );
+  const selectedRows = useMemo(
+    () =>
+      reportQuery.data?.rows.filter((row) => selectedRowIds.includes(row.id)) ??
+      [],
+    [reportQuery.data?.rows, selectedRowIds],
   );
 
-  function edit(
-    policy: SchedulerAdministrationCatalogDto["commissionPolicies"][number],
-  ) {
+  useEffect(() => {
+    setSelectedRowIds(reportQuery.data?.rows.map((row) => row.id) ?? []);
+    setReportPage(1);
+  }, [reportQuery.data]);
+
+  function edit(scheme: DesignCommissionScheme) {
     setDraft({
-      id: policy.id,
-      commerceId: policy.commerceId,
-      targetType: policy.targetType,
-      targetId: policy.targetId ?? "",
-      period: policy.period,
-      active: policy.active,
-      expectedVersion: policy.currentVersion,
-      rules: policy.rules.map((rule) => ({
+      id: scheme.id,
+      commerceId: scheme.commerceId,
+      name: scheme.name,
+      period: scheme.period,
+      active: scheme.active,
+      employeeIds: scheme.employeeIds,
+      viewerProfileIds: scheme.viewerProfileIds,
+      expectedVersion: scheme.currentVersion,
+      rules: scheme.rules.map((rule) => ({
         mode: rule.mode,
-        amount: rule.amount ?? "0",
-        percentage: rule.percentage ?? "0",
-        tiers: rule.tiers.map((tier) => ({
-          fromAmount: tier.fromAmount,
-          toAmount: tier.toAmount ?? "",
-          percentage: tier.percentage,
-        })),
+        value: String(
+          rule.mode === "ATTENDED_APPOINTMENT" ? rule.amount : rule.percentage,
+        ),
       })),
     });
     setDialogOpen(true);
+  }
+
+  async function exportSelected(
+    format: CommissionReportExportFormat | "print",
+  ) {
+    if (!reportQuery.data || selectedRows.length === 0) return;
+    setExporting(true);
+    try {
+      if (format === "print")
+        printCommissionReport(reportQuery.data, selectedRows);
+      else await exportCommissionReport(reportQuery.data, selectedRows, format);
+      toast.success(
+        format === "print"
+          ? "Vista de impresión preparada."
+          : `Reporte ${format === "pdf" ? "PDF" : "Excel"} descargado.`,
+      );
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : "No fue posible exportar.",
+      );
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -675,13 +662,21 @@ export function RestoredCommissionsSection() {
       actions={
         <>
           <AdministrationRefreshButton
-            onClick={() => void query.reload()}
-            loading={query.loading}
+            onClick={() => {
+              void catalogQuery.reload();
+              void schemesQuery.reload();
+              void reportQuery.reload();
+            }}
+            loading={
+              catalogQuery.loading ||
+              schemesQuery.loading ||
+              reportQuery.loading
+            }
           />
           {canAdmin ? (
             <Button
               onClick={() => {
-                setDraft(emptyCommissionDraft(data?.operations));
+                setDraft(emptyCommissionDraft(operations, currentProfileId));
                 setDialogOpen(true);
               }}
             >
@@ -692,48 +687,75 @@ export function RestoredCommissionsSection() {
       }
     >
       <QueryBoundary
-        loading={query.loading}
-        error={query.error}
-        empty={!data?.administration.commissionPolicies.length}
-        emptyTitle="Sin políticas"
-        emptyDescription="Crea la primera regla versionada de comisión."
-        onRetry={() => void query.reload()}
+        loading={catalogQuery.loading || schemesQuery.loading}
+        error={catalogQuery.error || schemesQuery.error}
+        empty={!schemesQuery.data?.length}
+        emptyTitle="Sin esquemas"
+        emptyDescription="Crea el primer esquema y asigna a sus empleados."
+        onRetry={() => {
+          void catalogQuery.reload();
+          void schemesQuery.reload();
+        }}
       >
         <div className="grid gap-4 lg:grid-cols-2">
-          {pagination.rows.map((policy) => (
-            <Card key={policy.id} className="admin-card">
+          {pagination.rows.map((scheme) => (
+            <Card key={scheme.id} className="admin-card">
               <CardContent className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="admin-eyebrow">{policy.period}</p>
+                    <p className="admin-eyebrow">
+                      {commissionPeriodLabels[scheme.period]}
+                    </p>
                     <h2 className="mt-1 text-lg font-semibold">
-                      {policy.targetName}
+                      {scheme.name}
                     </h2>
                   </div>
-                  <Badge variant={policy.active ? "default" : "secondary"}>
-                    v{policy.currentVersion} ·{" "}
-                    {policy.active ? "Activa" : "Inactiva"}
+                  <Badge variant={scheme.active ? "default" : "secondary"}>
+                    v{scheme.currentVersion} ·{" "}
+                    {scheme.active ? "Activo" : "Inactivo"}
                   </Badge>
                 </div>
                 <div className="mt-4 space-y-2">
-                  {policy.rules.map((rule) => (
+                  {scheme.rules.map((rule) => (
                     <div
                       key={rule.mode}
                       className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600"
                     >
-                      {rule.mode} ·{" "}
-                      {rule.amount ??
-                        rule.percentage ??
-                        `${rule.tiers.length} niveles`}
+                      {rule.mode === "ATTENDED_APPOINTMENT"
+                        ? `${commissionMoney.format(rule.amount)} por cita atendida`
+                        : `${rule.percentage}% del monto de venta`}
                     </div>
                   ))}
+                </div>
+                <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="font-semibold text-slate-700">Empleados</p>
+                    <p className="mt-1 text-slate-500">
+                      {scheme.employeeNames.join(", ")}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="flex items-center gap-1 font-semibold text-slate-700">
+                      <ShieldCheck className="h-4 w-4" /> Visibilidad
+                    </p>
+                    <p className="mt-1 text-slate-500">
+                      {scheme.viewerProfileIds
+                        .map(
+                          (id) =>
+                            schedulerDesignDemoAccounts.find(
+                              (profile) => profile.id === id,
+                            )?.name ?? id,
+                        )
+                        .join(", ")}
+                    </p>
+                  </div>
                 </div>
                 {canAdmin ? (
                   <Button
                     className="mt-4"
                     size="sm"
                     variant="outline"
-                    onClick={() => edit(policy)}
+                    onClick={() => edit(scheme)}
                   >
                     <Pencil className="mr-2 h-4 w-4" /> Editar
                   </Button>
@@ -750,17 +772,270 @@ export function RestoredCommissionsSection() {
           pageSize={pageSize}
         />
       </QueryBoundary>
+      <section className="admin-card overflow-hidden rounded-3xl border border-[#eadfd5] bg-white">
+        <div className="flex flex-col gap-4 border-b border-[#eee6df] p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="admin-eyebrow">Cálculo auditable</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-800">
+              Reporte de comisiones
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Sólo incluye esquemas que tu perfil tiene autorizado consultar.
+            </p>
+          </div>
+          {canExport ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={exporting || selectedRows.length === 0}
+                onClick={() => void exportSelected("pdf")}
+              >
+                <Download className="mr-2 h-4 w-4" /> PDF
+              </Button>
+              <Button
+                variant="outline"
+                disabled={exporting || selectedRows.length === 0}
+                onClick={() => void exportSelected("xlsx")}
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
+              </Button>
+              <Button
+                variant="outline"
+                disabled={exporting || selectedRows.length === 0}
+                onClick={() => void exportSelected("print")}
+              >
+                <Printer className="mr-2 h-4 w-4" /> Imprimir
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        <div className="grid gap-3 border-b border-[#eee6df] p-5 sm:grid-cols-2 lg:grid-cols-5">
+          <div>
+            <Label htmlFor="commission-date-from">Desde</Label>
+            <Input
+              id="commission-date-from"
+              className="mt-1.5"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="commission-date-to">Hasta</Label>
+            <Input
+              id="commission-date-to"
+              className="mt-1.5"
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Sucursal</Label>
+            <Select value={branchId} onValueChange={setBranchId}>
+              <SelectTrigger className="mt-1.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas</SelectItem>
+                {operations?.branches.map((branch) => (
+                  <SelectItem key={branch.branchId} value={branch.branchId}>
+                    {branch.branchName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Empleado</Label>
+            <Select value={employeeId} onValueChange={setEmployeeId}>
+              <SelectTrigger className="mt-1.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                {reportQuery.data?.filterOptions.employees.map((employee) => (
+                  <SelectItem key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button
+              className="w-full"
+              variant="outline"
+              onClick={() => void reportQuery.reload()}
+              disabled={reportQuery.loading}
+            >
+              <CalendarCheck2 className="mr-2 h-4 w-4" />{" "}
+              {reportQuery.loading ? "Calculando…" : "Calcular"}
+            </Button>
+          </div>
+        </div>
+        <QueryBoundary
+          loading={reportQuery.loading}
+          error={reportQuery.error}
+          empty={!reportQuery.data?.rows.length}
+          emptyTitle="Sin movimientos de comisión"
+          emptyDescription="No hay citas atendidas o ventas atribuibles en el periodo seleccionado."
+          onRetry={() => void reportQuery.reload()}
+        >
+          {reportQuery.data ? (
+            <>
+              <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
+                {[
+                  {
+                    label: "Sucursales",
+                    value: reportQuery.data.summary.branches,
+                    Icon: Layers3,
+                  },
+                  {
+                    label: "Empleados",
+                    value: reportQuery.data.summary.employees,
+                    Icon: UsersRound,
+                  },
+                  {
+                    label: "Citas atendidas",
+                    value: reportQuery.data.summary.attendedAppointments,
+                    Icon: CalendarCheck2,
+                  },
+                  {
+                    label: "Venta atribuible",
+                    value: commissionMoney.format(
+                      reportQuery.data.summary.salesAmount,
+                    ),
+                    Icon: WalletCards,
+                  },
+                  {
+                    label: "Comisión estimada",
+                    value: commissionMoney.format(
+                      reportQuery.data.summary.totalCommission,
+                    ),
+                    Icon: ShieldCheck,
+                  },
+                ].map(({ label, value, Icon }) => (
+                  <div
+                    key={String(label)}
+                    className="rounded-2xl bg-[#f8f5f1] p-4"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <Icon className="h-4 w-4" /> {label}
+                    </div>
+                    <p className="mt-2 text-xl font-semibold text-slate-800">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="overflow-x-auto border-t border-[#eee6df]">
+                <table className="min-w-[980px] w-full text-left text-sm">
+                  <thead className="bg-[#fbf9f6] text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-5 py-3">
+                        <input
+                          aria-label="Seleccionar todos los resultados"
+                          type="checkbox"
+                          checked={
+                            selectedRowIds.length ===
+                              reportQuery.data.rows.length &&
+                            reportQuery.data.rows.length > 0
+                          }
+                          onChange={(event) =>
+                            setSelectedRowIds(
+                              event.target.checked
+                                ? reportQuery.data!.rows.map((row) => row.id)
+                                : [],
+                            )
+                          }
+                        />
+                      </th>
+                      {[
+                        "Esquema",
+                        "Sucursal",
+                        "Empleado",
+                        "Citas asistidas",
+                        "Venta",
+                        "Por cita",
+                        "Por venta",
+                        "Total",
+                      ].map((heading) => (
+                        <th key={heading} className="px-4 py-3">
+                          {heading}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportPagination.rows.map((row) => (
+                      <tr key={row.id} className="border-t border-[#f0e9e3]">
+                        <td className="px-5 py-3">
+                          <input
+                            aria-label={`Seleccionar ${row.employeeName}`}
+                            type="checkbox"
+                            checked={selectedRowIds.includes(row.id)}
+                            onChange={(event) =>
+                              setSelectedRowIds((current) =>
+                                event.target.checked
+                                  ? [...current, row.id]
+                                  : current.filter((id) => id !== row.id),
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-700">
+                          {row.schemeName}
+                        </td>
+                        <td className="px-4 py-3">{row.branchName}</td>
+                        <td className="px-4 py-3">{row.employeeName}</td>
+                        <td className="px-4 py-3">
+                          {row.attendedAppointments}
+                        </td>
+                        <td className="px-4 py-3">
+                          {commissionMoney.format(row.salesAmount)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {commissionMoney.format(row.appointmentCommission)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {commissionMoney.format(row.salesCommission)}
+                        </td>
+                        <td className="px-4 py-3 font-semibold">
+                          {commissionMoney.format(row.totalCommission)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-5 pt-3 text-xs text-slate-500">
+                {selectedRows.length} de {reportQuery.data.rows.length} filas
+                seleccionadas para PDF, Excel o impresión.
+              </div>
+              <SchedulerPagination
+                {...reportPagination}
+                label="resultados"
+                onPageChange={setReportPage}
+                onPageSizeChange={setReportPageSize}
+                pageSize={reportPageSize}
+              />
+            </>
+          ) : null}
+        </QueryBoundary>
+      </section>
       <AdministrationCoverageNotice title="Nómina conserva la liquidación final">
-        Scheduler versiona reglas y escalas, pero no crea pagos, recibos ni
-        movimientos de nómina.
+        Scheduler calcula estimaciones auditables por empleado y sucursal, pero
+        no crea pagos, recibos ni movimientos de nómina.
       </AdministrationCoverageNotice>
-      {data ? (
+      {operations ? (
         <CommissionDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           draft={draft}
           setDraft={setDraft}
-          operations={data.operations}
+          operations={operations}
+          profiles={schedulerDesignDemoAccounts}
           onSaved={onSaved}
         />
       ) : null}

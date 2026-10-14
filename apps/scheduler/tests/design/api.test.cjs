@@ -2146,10 +2146,10 @@ test("una cabina doble conserva asistencia y reporte independientes por cliente"
     },
   );
   assert.equal(report.status, 201);
-  assert.deepEqual(
-    report.body.data.rows.map((row) => row.status).sort(),
-    ["ATTENDED", "NO_SHOW"],
-  );
+  assert.deepEqual(report.body.data.rows.map((row) => row.status).sort(), [
+    "ATTENDED",
+    "NO_SHOW",
+  ]);
 });
 
 test("permite corregir un status con código sin borrar el historial anterior", () => {
@@ -2495,8 +2495,7 @@ test("recuperación configura por sucursal el plazo que activa cada alerta", () 
   assert.equal(listed.status, 201);
   assert.ok(
     listed.body.data.every(
-      (item) =>
-        item.status !== "PENDING" || item.reason !== "NEVER_ATTENDED",
+      (item) => item.status !== "PENDING" || item.reason !== "NEVER_ATTENDED",
     ),
   );
 });
@@ -2548,22 +2547,21 @@ test("recuperación asigna grupos o personas y relaciona Agenda con la primera c
   );
   assert.equal(assignedAgent.body.data.assignedTeamId, null);
 
-  const caseWithHistoricalPurchase = state.customerRecoveryCases.find(
-    (item) =>
-      Object.values(state.appointmentCabinVisits).some(
-        (visit) =>
-          state.appointments.find(
-            (appointment) =>
-              appointment.id === visit.appointmentId &&
-              appointment.customerId === item.customerId &&
-              appointment.status === "ATTENDED",
-          ) &&
-          visit.visitors.some(
-            (visitor) =>
-              visitor.customerId === item.customerId &&
-              ["FULL", "LAYAWAY"].includes(visitor.purchaseKind),
-          ),
-      ),
+  const caseWithHistoricalPurchase = state.customerRecoveryCases.find((item) =>
+    Object.values(state.appointmentCabinVisits).some(
+      (visit) =>
+        state.appointments.find(
+          (appointment) =>
+            appointment.id === visit.appointmentId &&
+            appointment.customerId === item.customerId &&
+            appointment.status === "ATTENDED",
+        ) &&
+        visit.visitors.some(
+          (visitor) =>
+            visitor.customerId === item.customerId &&
+            ["FULL", "LAYAWAY"].includes(visitor.purchaseKind),
+        ),
+    ),
   );
   assert.ok(caseWithHistoricalPurchase);
   caseWithHistoricalPurchase.assignedAt = "2026-01-01T00:00:00.000Z";
@@ -2713,4 +2711,76 @@ test("comentarios y postventa exigen asistencia, código y conservan snapshots d
   assert.equal(report.body.data.summary.postSaleComments, 1);
   assert.equal(report.body.data.rows[0].customerName, appointment.customerName);
   assert.equal(report.body.data.rows[0].categoryLabel, "Servicio bueno");
+});
+
+test("los esquemas de comisión asignan varios empleados y protegen el cálculo por perfil", () => {
+  const { state, request } = session();
+  const employees = state.catalog.professionals.filter(
+    (employee) => employee.active,
+  );
+  const created = request(
+    "POST",
+    "/api/scheduler/design-proposals/commission-schemes",
+    {
+      commerceId: state.catalog.commerces[0].id,
+      name: "Esquema privado de prueba",
+      period: "MONTH",
+      active: true,
+      employeeIds: employees.map((employee) => employee.employeeId),
+      viewerProfileIds: ["full-master"],
+      rules: [
+        { mode: "ATTENDED_APPOINTMENT", amount: 85, percentage: 0 },
+        { mode: "SALES_AMOUNT", amount: 0, percentage: 5 },
+      ],
+    },
+  );
+  assert.equal(created.status, 201);
+  assert.deepEqual(
+    created.body.data.employeeIds,
+    employees.map((employee) => employee.employeeId),
+  );
+  assert.equal(created.body.data.rules.length, 2);
+
+  const filters = {
+    dateFrom: "2020-01-01",
+    dateTo: "2030-12-31",
+    branchIds: state.catalog.branches.map((branch) => branch.branchId),
+  };
+  const visible = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/commissions",
+    filters,
+  );
+  assert.equal(visible.status, 201);
+  const privateRows = visible.body.data.rows.filter(
+    (row) => row.schemeId === created.body.data.id,
+  );
+  assert.ok(privateRows.length > 0);
+  assert.equal(
+    visible.body.data.summary.totalCommission,
+    visible.body.data.rows.reduce(
+      (total, row) => total + row.totalCommission,
+      0,
+    ),
+  );
+  assert.ok(
+    privateRows.every((row) =>
+      created.body.data.employeeIds.includes(row.employeeId),
+    ),
+  );
+
+  request("POST", "/api/auth/login", {
+    email: "operations@example.test",
+    password: "demo",
+  });
+  const hidden = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/commissions",
+    filters,
+  );
+  assert.equal(hidden.status, 201);
+  assert.equal(
+    hidden.body.data.rows.some((row) => row.schemeId === created.body.data.id),
+    false,
+  );
 });
