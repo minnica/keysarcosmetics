@@ -14,6 +14,7 @@ const administrationSections: Record<string, SchedulerScreenId> = {
   locals: "administration.locals",
   professionals: "administration.professionals",
   services: "administration.services",
+  "smart-pricing": "administration.smart-pricing",
   commissions: "administration.commissions",
   resources: "administration.resources",
   surveys: "administration.surveys",

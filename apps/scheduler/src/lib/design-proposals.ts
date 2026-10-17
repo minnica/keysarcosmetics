@@ -53,4 +53,7 @@ export const schedulerDesignProposals: DesignProposalClient = {
   commissionReport: unavailable,
   commissionCuts: unavailable,
   createCommissionCut: unavailable,
+  smartPricingStrategies: unavailable,
+  smartPricingRecommendations: unavailable,
+  saveSmartPricingStrategy: unavailable,
 };

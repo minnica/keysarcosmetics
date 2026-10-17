@@ -14,6 +14,7 @@ export type SchedulerScreenId =
   | "administration.locals"
   | "administration.professionals"
   | "administration.services"
+  | "administration.smart-pricing"
   | "administration.commissions"
   | "administration.resources"
   | "administration.surveys"
@@ -35,6 +36,7 @@ export const schedulerScreenKeyById: Record<
   "administration.locals": "scheduler/administration/locals",
   "administration.professionals": "scheduler/administration/professionals",
   "administration.services": "scheduler/administration/services",
+  "administration.smart-pricing": "scheduler/administration/services",
   "administration.commissions": "scheduler/administration/commissions",
   "administration.resources": "scheduler/administration/resources",
   "administration.surveys": "scheduler/administration/surveys",

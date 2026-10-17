@@ -42,6 +42,8 @@ import type {
   DesignMovementRecord,
   DesignOperationAgentSource,
   DesignOperationPurpose,
+  DesignSmartPricingRecommendation,
+  DesignSmartPricingStrategy,
   DesignStatusDefinition,
   DesignStatusDefinitionRevision,
 } from "./contracts";
@@ -638,6 +640,105 @@ export function createDesignState(
       rules: [{ mode: "MEMBERSHIP_SALES", amount: 0, percentage: 7 }],
     },
   ];
+  const smartPricingStrategies: DesignSmartPricingStrategy[] = [
+    {
+      id: "design-smart-pricing-polanco-mornings",
+      commerceId: catalog.commerces[0]!.id,
+      branchProfileId: catalog.branches[0]!.id,
+      branchName: catalog.branches[0]!.branchName,
+      name: "Mañanas de baja demanda",
+      active: true,
+      serviceProfileIds: catalog.services.slice(0, 2).map((item) => item.id),
+      serviceNames: catalog.services.slice(0, 2).map((item) => item.name),
+      professionalProfileIds: catalog.professionals
+        .slice(0, 2)
+        .map((item) => item.id),
+      professionalNames: catalog.professionals
+        .slice(0, 2)
+        .map((item) => item.name),
+      windows: [
+        {
+          id: "design-smart-window-tuesday",
+          weekday: "TUESDAY",
+          startMinute: 8 * 60,
+          endMinute: 12 * 60,
+          discountType: "PERCENTAGE",
+          maximumDiscount: 20,
+        },
+        {
+          id: "design-smart-window-wednesday",
+          weekday: "WEDNESDAY",
+          startMinute: 8 * 60,
+          endMinute: 11 * 60,
+          discountType: "PERCENTAGE",
+          maximumDiscount: 15,
+        },
+      ],
+      validFrom: "2026-10-01",
+      validTo: null,
+      bookingOrigin: "MARKETPLACE",
+      currentVersion: 2,
+      updatedAt: now,
+      performance: {
+        marketplaceReservations: 14,
+        generatedRevenue: 16100,
+        averageDiscount: 17,
+        filledHours: 18,
+      },
+    },
+    {
+      id: "design-smart-pricing-mitikah-afternoons",
+      commerceId: catalog.commerces[0]!.id,
+      branchProfileId: catalog.branches[1]?.id ?? catalog.branches[0]!.id,
+      branchName:
+        catalog.branches[1]?.branchName ?? catalog.branches[0]!.branchName,
+      name: "Tardes Mítikah",
+      active: false,
+      serviceProfileIds: catalog.services.map((item) => item.id),
+      serviceNames: catalog.services.map((item) => item.name),
+      professionalProfileIds: [],
+      professionalNames: [],
+      windows: [
+        {
+          id: "design-smart-window-thursday",
+          weekday: "THURSDAY",
+          startMinute: 15 * 60,
+          endMinute: 18 * 60,
+          discountType: "FIXED_AMOUNT",
+          maximumDiscount: 250,
+        },
+      ],
+      validFrom: null,
+      validTo: null,
+      bookingOrigin: "MARKETPLACE",
+      currentVersion: 1,
+      updatedAt: now,
+      performance: {
+        marketplaceReservations: 6,
+        generatedRevenue: 6900,
+        averageDiscount: 250,
+        filledHours: 8,
+      },
+    },
+  ];
+  const smartPricingRecommendations: DesignSmartPricingRecommendation[] =
+    catalog.branches.map((branch, index) => ({
+      branchProfileId: branch.id,
+      branchName: branch.branchName,
+      occupancyPercent: index === 0 ? 31 : 38,
+      suggestedDiscountPercent: index === 0 ? 20 : 15,
+      estimatedReservations: index === 0 ? 9 : 6,
+      windows: [
+        {
+          id: `design-smart-recommendation-${branch.id}-tuesday`,
+          weekday: "TUESDAY",
+          startMinute: 9 * 60,
+          endMinute: 12 * 60,
+          discountType: "PERCENTAGE",
+          maximumDiscount: index === 0 ? 20 : 15,
+        },
+      ],
+    }));
   const state = {
     controls: normalizedControls,
     catalog,
@@ -684,6 +785,8 @@ export function createDesignState(
     branchCommercialModels,
     commissionSchemes,
     commissionCuts: [] as DesignCommissionCut[],
+    smartPricingStrategies,
+    smartPricingRecommendations,
     statusDefinitions,
     statusDefinitionHistory,
     usedAuthorizationCodes: new Set(operationAgents.map((agent) => agent.code)),

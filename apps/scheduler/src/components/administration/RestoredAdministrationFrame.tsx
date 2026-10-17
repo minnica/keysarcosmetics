@@ -25,6 +25,11 @@ export const restoredAdministrationCopy = {
     description:
       "Define reglas versionadas sin sustituir la liquidación final de Nómina.",
   },
+  "smart-pricing": {
+    title: "Precios inteligentes",
+    description:
+      "Llena horarios de baja demanda con descuentos automáticos exclusivos para reservas del Marketplace.",
+  },
   resources: {
     title: "Recursos",
     description:

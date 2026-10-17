@@ -163,6 +163,12 @@ const administrationItems: NavigationItem[] = [
     screenId: "administration.commissions",
   },
   {
+    label: "Precios inteligentes",
+    icon: TrendingUp,
+    adminSection: "smart-pricing",
+    screenId: "administration.smart-pricing",
+  },
+  {
     label: "Encuestas",
     icon: FileText,
     adminSection: "surveys",

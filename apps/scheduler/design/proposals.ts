@@ -12,6 +12,9 @@ import type {
   DesignCommissionScheme,
   DesignCommissionSchemeInput,
   DesignSalesProjectionReport,
+  DesignSmartPricingRecommendation,
+  DesignSmartPricingStrategy,
+  DesignSmartPricingStrategyInput,
   DesignCustomerAdvancedPage,
   DesignCustomerDuplicateCandidate,
   DesignCustomerRecoveryCase,
@@ -282,5 +285,18 @@ export const schedulerDesignProposals: DesignProposalClient = {
     request<DesignCommissionCut>(
       "/api/scheduler/design-proposals/commission-cuts",
       { method: "POST", body: JSON.stringify(input) },
+    ),
+  smartPricingStrategies: () =>
+    request<DesignSmartPricingStrategy[]>(
+      "/api/scheduler/design-proposals/smart-pricing-strategies",
+    ),
+  smartPricingRecommendations: () =>
+    request<DesignSmartPricingRecommendation[]>(
+      "/api/scheduler/design-proposals/smart-pricing-recommendations",
+    ),
+  saveSmartPricingStrategy: (input: DesignSmartPricingStrategyInput) =>
+    request<DesignSmartPricingStrategy>(
+      `/api/scheduler/design-proposals/smart-pricing-strategies${input.id ? `/${input.id}` : ""}`,
+      { method: input.id ? "PUT" : "POST", body: JSON.stringify(input) },
     ),
 };

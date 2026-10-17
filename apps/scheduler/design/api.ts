@@ -74,6 +74,9 @@ import type {
   DesignSaleSettlementStatus,
   DesignSalesProjectionFilters,
   DesignSalesProjectionReport,
+  DesignSmartPricingDiscountType,
+  DesignSmartPricingStrategy,
+  DesignSmartPricingWindow,
   DesignStatusDefinition,
   DesignStatusDefinitionRevision,
   DesignVisitAttendanceStatus,
@@ -2442,6 +2445,182 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     };
   }
   if (resource === "design-proposals") {
+    if (id === "smart-pricing-recommendations") {
+      if (method !== "GET") {
+        fail(
+          405,
+          "Usa GET para consultar sugerencias de precios inteligentes.",
+        );
+      }
+      return [...state.smartPricingRecommendations].sort((left, right) =>
+        left.branchName.localeCompare(right.branchName, "es-MX"),
+      );
+    }
+    if (id === "smart-pricing-strategies") {
+      if (method === "GET") {
+        return [...state.smartPricingStrategies].sort((left, right) =>
+          left.branchName.localeCompare(right.branchName, "es-MX"),
+        );
+      }
+      if (!["POST", "PUT"].includes(method)) {
+        fail(405, "Usa GET, POST o PUT para precios inteligentes.");
+      }
+      if (!designBootstrap(state).canManageAccess) {
+        fail(
+          403,
+          "Sólo un perfil administrador puede modificar precios inteligentes.",
+        );
+      }
+      const name = String(body.name ?? "").trim();
+      if (name.length < 3 || name.length > 80) {
+        fail(
+          400,
+          "El nombre de la estrategia debe tener de 3 a 80 caracteres.",
+        );
+      }
+      const branchProfileId = String(body.branchProfileId ?? "");
+      const branch =
+        state.catalog.branches.find(
+          (candidate) =>
+            candidate.id === branchProfileId &&
+            candidate.active &&
+            candidate.bookingEnabled,
+        ) ??
+        fail(400, "Selecciona una sucursal activa con reservas habilitadas.");
+      const strategyId = action ?? String(body.id ?? "");
+      const existing = strategyId
+        ? state.smartPricingStrategies.find(
+            (strategy) => strategy.id === strategyId,
+          )
+        : undefined;
+      if (action && !existing) fail(404, "Estrategia no encontrada.");
+      if (existing) versionGuard(existing, body);
+      const duplicateBranch = state.smartPricingStrategies.find(
+        (strategy) =>
+          strategy.branchProfileId === branchProfileId &&
+          strategy.id !== existing?.id,
+      );
+      if (duplicateBranch) {
+        fail(
+          409,
+          "Esta sucursal ya tiene una estrategia. Edítala para conservar una sola regla por local.",
+        );
+      }
+      const serviceProfileIds = [
+        ...new Set(rows(body.serviceProfileIds).map(String)),
+      ];
+      const services = serviceProfileIds.map(
+        (serviceProfileId) =>
+          state.catalog.services.find(
+            (service) =>
+              service.id === serviceProfileId &&
+              service.active &&
+              service.acceptsOnline &&
+              service.branchProfileIds.includes(branchProfileId),
+          ) ??
+          fail(
+            400,
+            "Uno de los servicios no admite reservas en esta sucursal.",
+          ),
+      );
+      const professionalProfileIds = [
+        ...new Set(rows(body.professionalProfileIds).map(String)),
+      ];
+      const professionals = professionalProfileIds.map(
+        (professionalProfileId) =>
+          state.catalog.professionals.find(
+            (professional) =>
+              professional.id === professionalProfileId &&
+              professional.active &&
+              professional.acceptsOnline &&
+              professional.branchProfileIds.includes(branchProfileId),
+          ) ??
+          fail(
+            400,
+            "Uno de los especialistas no admite reservas en esta sucursal.",
+          ),
+      );
+      const windows = rows(body.windows).map((candidate, index) => {
+        const weekday = String(
+          candidate.weekday,
+        ) as DesignSmartPricingWindow["weekday"];
+        const startMinute = Number(candidate.startMinute);
+        const endMinute = Number(candidate.endMinute);
+        const discountType = String(
+          candidate.discountType,
+        ) as DesignSmartPricingDiscountType;
+        const maximumDiscount = Number(candidate.maximumDiscount);
+        if (
+          !SCHEDULER_WEEKDAYS.includes(weekday) ||
+          !Number.isInteger(startMinute) ||
+          !Number.isInteger(endMinute) ||
+          startMinute < 0 ||
+          endMinute > 24 * 60 ||
+          startMinute >= endMinute
+        ) {
+          fail(400, `Revisa el horario de la franja ${index + 1}.`);
+        }
+        if (
+          !(["PERCENTAGE", "FIXED_AMOUNT"] as string[]).includes(discountType)
+        ) {
+          fail(400, `Revisa el tipo de descuento de la franja ${index + 1}.`);
+        }
+        if (
+          !Number.isFinite(maximumDiscount) ||
+          maximumDiscount <= 0 ||
+          (discountType === "PERCENTAGE" && maximumDiscount > 90)
+        ) {
+          fail(400, `Revisa el descuento máximo de la franja ${index + 1}.`);
+        }
+        return {
+          id:
+            String(candidate.id ?? "") ||
+            designId(`design-smart-pricing-window-${index + 1}`),
+          weekday,
+          startMinute,
+          endMinute,
+          discountType,
+          maximumDiscount,
+        } satisfies DesignSmartPricingWindow;
+      });
+      if (!windows.length || windows.length > 28) {
+        fail(400, "Configura entre una y 28 franjas de descuento.");
+      }
+      const validFrom = String(body.validFrom ?? "").trim() || null;
+      const validTo = String(body.validTo ?? "").trim() || null;
+      if (validFrom && validTo && validFrom > validTo) {
+        fail(400, "La vigencia final no puede ser anterior a la inicial.");
+      }
+      const next: DesignSmartPricingStrategy = {
+        id: existing?.id ?? designId("design-smart-pricing"),
+        commerceId: String(body.commerceId ?? state.catalog.commerces[0]!.id),
+        branchProfileId,
+        branchName: branch.branchName,
+        name,
+        active: Boolean(body.active),
+        serviceProfileIds,
+        serviceNames: services.map((service) => service.name),
+        professionalProfileIds,
+        professionalNames: professionals.map(
+          (professional) => professional.name,
+        ),
+        windows,
+        validFrom,
+        validTo,
+        bookingOrigin: "MARKETPLACE",
+        currentVersion: (existing?.currentVersion ?? 0) + 1,
+        updatedAt: new Date().toISOString(),
+        performance: existing?.performance ?? {
+          marketplaceReservations: 0,
+          generatedRevenue: 0,
+          averageDiscount: 0,
+          filledHours: 0,
+        },
+      };
+      if (existing) Object.assign(existing, next);
+      else state.smartPricingStrategies.push(next);
+      return next;
+    }
     if (id === "commission-schemes") {
       if (method === "GET") {
         return [...state.commissionSchemes].sort((left, right) =>

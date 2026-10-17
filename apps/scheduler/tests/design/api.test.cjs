@@ -2855,3 +2855,117 @@ test("comisiones incluyen membresías, alcance total y cortes históricos inmuta
     cut.body.data.report.generatedAt,
   );
 });
+
+test("precios inteligentes conserva una estrategia por sucursal y sus franjas", () => {
+  const { state, request } = session();
+  const strategies = request(
+    "GET",
+    "/api/scheduler/design-proposals/smart-pricing-strategies",
+  );
+  assert.equal(strategies.status, 200);
+  assert.equal(strategies.body.data.length, state.catalog.branches.length);
+  assert.ok(
+    strategies.body.data.every(
+      (strategy) => strategy.bookingOrigin === "MARKETPLACE",
+    ),
+  );
+
+  const current = strategies.body.data[0];
+  const currentVersion = current.currentVersion;
+  const updated = request(
+    "PUT",
+    `/api/scheduler/design-proposals/smart-pricing-strategies/${current.id}`,
+    {
+      id: current.id,
+      commerceId: current.commerceId,
+      branchProfileId: current.branchProfileId,
+      name: "Martes de baja demanda",
+      active: true,
+      serviceProfileIds: current.serviceProfileIds,
+      professionalProfileIds: current.professionalProfileIds,
+      windows: [
+        {
+          weekday: "TUESDAY",
+          startMinute: 540,
+          endMinute: 720,
+          discountType: "PERCENTAGE",
+          maximumDiscount: 25,
+        },
+        {
+          weekday: "TUESDAY",
+          startMinute: 660,
+          endMinute: 780,
+          discountType: "PERCENTAGE",
+          maximumDiscount: 30,
+        },
+      ],
+      validFrom: "2026-10-01",
+      validTo: "2026-12-31",
+      expectedVersion: currentVersion,
+    },
+  );
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.data.windows.length, 2);
+  assert.equal(updated.body.data.windows[1].maximumDiscount, 30);
+  assert.equal(updated.body.data.currentVersion, currentVersion + 1);
+
+  const duplicate = request(
+    "POST",
+    "/api/scheduler/design-proposals/smart-pricing-strategies",
+    {
+      commerceId: current.commerceId,
+      branchProfileId: current.branchProfileId,
+      name: "Otra estrategia",
+      active: true,
+      serviceProfileIds: [],
+      professionalProfileIds: [],
+      windows: [
+        {
+          weekday: "MONDAY",
+          startMinute: 540,
+          endMinute: 600,
+          discountType: "FIXED_AMOUNT",
+          maximumDiscount: 200,
+        },
+      ],
+      validFrom: null,
+      validTo: null,
+    },
+  );
+  assert.equal(duplicate.status, 409);
+});
+
+test("precios inteligentes valida descuentos y expone recomendaciones", () => {
+  const { state, request } = session();
+  const recommendations = request(
+    "GET",
+    "/api/scheduler/design-proposals/smart-pricing-recommendations",
+  );
+  assert.equal(recommendations.status, 200);
+  assert.equal(recommendations.body.data.length, state.catalog.branches.length);
+  assert.ok(
+    recommendations.body.data.every(
+      (recommendation) => recommendation.occupancyPercent < 50,
+    ),
+  );
+
+  const current = state.smartPricingStrategies[0];
+  const invalid = request(
+    "PUT",
+    `/api/scheduler/design-proposals/smart-pricing-strategies/${current.id}`,
+    {
+      ...current,
+      windows: [
+        {
+          weekday: "TUESDAY",
+          startMinute: 720,
+          endMinute: 600,
+          discountType: "PERCENTAGE",
+          maximumDiscount: 95,
+        },
+      ],
+      expectedVersion: current.currentVersion,
+    },
+  );
+  assert.equal(invalid.status, 400);
+});

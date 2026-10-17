@@ -11,6 +11,7 @@ import {
   RestoredStatusColorsSection,
 } from "@/components/administration/RestoredAdministrationSections";
 import { RestoredSurveysSection } from "@/components/administration/RestoredSurveysSection";
+import { RestoredSmartPricingSection } from "@/components/administration/RestoredSmartPricingSection";
 
 const operationalSections = [
   "locals",
@@ -26,7 +27,8 @@ function isOperationalSection(value: string): value is OperationalSection {
 
 export function ApiAdministrationWorkspace() {
   const requestedSection = useSearchParams().get("section") ?? "locals";
-  const section = requestedSection === "resources" ? "locals" : requestedSection;
+  const section =
+    requestedSection === "resources" ? "locals" : requestedSection;
   if (isOperationalSection(section)) {
     return (
       <>
@@ -36,6 +38,7 @@ export function ApiAdministrationWorkspace() {
     );
   }
   if (section === "commissions") return <RestoredCommissionsSection />;
+  if (section === "smart-pricing") return <RestoredSmartPricingSection />;
   if (section === "surveys") return <RestoredSurveysSection />;
   if (section === "consents") return <RestoredConsentsSection />;
   if (section === "whatsapp") return <RestoredCommunicationsSection />;

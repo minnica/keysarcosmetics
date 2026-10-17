@@ -1093,3 +1093,24 @@ comprueba que PDF, Excel e impresión incluyen esa misma fila. Después entra co
 Operaciones y confirma que el esquema privado no aparece en el cálculo. Para
 una membresía, selecciona **Membresía** al registrar la atención, elige la
 facialista y verifica después el folio POS de sólo lectura en el tooltip.
+
+El 17 de octubre de 2026 se agregó **Administración → Precios inteligentes**
+como submódulo independiente. Cada sucursal conserva una sola estrategia
+versionada; puede limitarla a servicios y especialistas en línea, definir varias
+franjas por día con descuento máximo porcentual o fijo, establecer vigencia,
+previsualizar la oferta y activarla o pausarla. Si dos franjas se superponen, la
+regla comercial aplica el descuento mayor. Sin servicios o especialistas
+seleccionados, la estrategia cubre todos los disponibles en línea de esa
+sucursal.
+
+Los descuentos se presentan exclusivamente para reservas originadas en el
+Marketplace; las citas creadas directamente en Agenda mantienen su precio
+normal. No se acumulan con cupones, no cambian el abono requerido y la comisión
+del especialista se calcula sobre el precio final pagado. El tablero muestra
+sugerencias por baja ocupación, reservas obtenidas, ingresos y horas
+recuperadas. La propuesta de diseño usa `GET/POST/PUT
+/api/scheduler/design-proposals/smart-pricing-strategies` y `GET
+/api/scheduler/design-proposals/smart-pricing-recommendations`. Producción debe
+crear un permiso propio para el submódulo, persistir versiones por sucursal,
+resolver el descuento en servidor al reservar y guardar precio original,
+descuento aplicado, regla, origen y total final como snapshot auditable.

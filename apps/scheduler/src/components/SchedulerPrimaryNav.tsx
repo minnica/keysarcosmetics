@@ -42,6 +42,7 @@ export type AdministrationSectionId =
   | "locals"
   | "professionals"
   | "services"
+  | "smart-pricing"
   | "commissions"
   | "resources"
   | "surveys"
@@ -85,6 +86,11 @@ const administrationGroups: Array<{
         id: "commissions",
         label: "Comisiones",
         icon: <WalletCards className="h-4 w-4" />,
+      },
+      {
+        id: "smart-pricing",
+        label: "Precios inteligentes",
+        icon: <Sparkles className="h-4 w-4" />,
       },
       {
         id: "surveys",

@@ -3,6 +3,7 @@ import type {
   SchedulerCustomerFieldDefinitionDto,
   SchedulerCustomerSummaryDto,
   SchedulerCustomerVisitHistoryDto,
+  SchedulerWeekday,
 } from "@cosmetics/types";
 
 export type DesignOperationPurpose =
@@ -625,6 +626,67 @@ export interface DesignCommissionCut {
   report: DesignCommissionReport;
 }
 
+export type DesignSmartPricingDiscountType = "PERCENTAGE" | "FIXED_AMOUNT";
+
+export interface DesignSmartPricingWindow {
+  id: string;
+  weekday: SchedulerWeekday;
+  startMinute: number;
+  endMinute: number;
+  discountType: DesignSmartPricingDiscountType;
+  maximumDiscount: number;
+}
+
+export interface DesignSmartPricingPerformance {
+  marketplaceReservations: number;
+  generatedRevenue: number;
+  averageDiscount: number;
+  filledHours: number;
+}
+
+export interface DesignSmartPricingStrategy {
+  id: string;
+  commerceId: string;
+  branchProfileId: string;
+  branchName: string;
+  name: string;
+  active: boolean;
+  serviceProfileIds: string[];
+  serviceNames: string[];
+  professionalProfileIds: string[];
+  professionalNames: string[];
+  windows: DesignSmartPricingWindow[];
+  validFrom: string | null;
+  validTo: string | null;
+  bookingOrigin: "MARKETPLACE";
+  currentVersion: number;
+  updatedAt: string;
+  performance: DesignSmartPricingPerformance;
+}
+
+export interface DesignSmartPricingStrategyInput {
+  id?: string;
+  commerceId: string;
+  branchProfileId: string;
+  name: string;
+  active: boolean;
+  serviceProfileIds: string[];
+  professionalProfileIds: string[];
+  windows: Array<Omit<DesignSmartPricingWindow, "id"> & { id?: string }>;
+  validFrom: string | null;
+  validTo: string | null;
+  expectedVersion?: number;
+}
+
+export interface DesignSmartPricingRecommendation {
+  branchProfileId: string;
+  branchName: string;
+  occupancyPercent: number;
+  suggestedDiscountPercent: number;
+  estimatedReservations: number;
+  windows: DesignSmartPricingWindow[];
+}
+
 export interface DesignMovementRecord {
   id: string;
   actorId: string;
@@ -952,4 +1014,9 @@ export interface DesignProposalClient {
   createCommissionCut(
     input: DesignCommissionReportFilters,
   ): Promise<DesignCommissionCut>;
+  smartPricingStrategies(): Promise<DesignSmartPricingStrategy[]>;
+  smartPricingRecommendations(): Promise<DesignSmartPricingRecommendation[]>;
+  saveSmartPricingStrategy(
+    input: DesignSmartPricingStrategyInput,
+  ): Promise<DesignSmartPricingStrategy>;
 }
