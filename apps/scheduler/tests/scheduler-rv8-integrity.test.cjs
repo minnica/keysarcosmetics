@@ -261,6 +261,20 @@ test("shows the POS ticket without duplicating attendance and purchase rows", ()
   assert.match(ticketPreview, /DESCRIPCIÓN/);
   assert.match(ticketPreview, /TOTAL/);
   assert.match(ticketPreview, /Sólo lectura/);
+  assert.match(ticketPreview, /hideCloseButton/);
+  assert.match(
+    ticketPreview,
+    /onEscapeKeyDown=\{\(event\) => event\.preventDefault\(\)\}/,
+  );
+  assert.match(
+    ticketPreview,
+    /onInteractOutside=\{\(event\) => event\.preventDefault\(\)\}/,
+  );
+  assert.match(
+    ticketPreview,
+    /aria-label=\{`Cerrar ticket \$\{ticket\.folio\}`\}/,
+  );
+  assert.doesNotMatch(ticketPreview, /DialogFooter/);
   assert.doesNotMatch(tooltip, /<dt>Estado<\/dt>/);
   assert.doesNotMatch(tooltip, /<dt>Resultado<\/dt>/);
 });

@@ -1,12 +1,10 @@
 "use client";
 
 import {
-  Button,
   Dialog,
   DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -81,14 +79,28 @@ export function SchedulerPosTicketPreview({
         </button>
       </DialogTrigger>
 
-      <DialogContent className="max-h-[92vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded-[26px] border-[#ddd7d1] bg-[#f4f1ed] p-0 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
-        <DialogHeader className="border-b border-[#ded7cf] bg-white px-5 py-4 text-left">
+      <DialogContent
+        className="max-h-[92vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded-[26px] border-[#ddd7d1] bg-[#f4f1ed] p-0 shadow-[0_28px_80px_rgba(15,23,42,0.28)]"
+        hideCloseButton
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        <DialogHeader className="relative border-b border-[#ded7cf] bg-white px-5 py-4 pr-16 text-left">
           <DialogTitle className="flex items-center gap-2 text-[1.15rem] text-slate-900">
             <ReceiptText className="h-5 w-5" /> Ticket final
           </DialogTitle>
           <DialogDescription>
             Vista del comprobante emitido por Punto de Venta. Sólo lectura.
           </DialogDescription>
+          <DialogClose asChild>
+            <button
+              aria-label={`Cerrar ticket ${ticket.folio}`}
+              className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#ded7cf] bg-white text-slate-600 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
+              type="button"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </DialogClose>
         </DialogHeader>
 
         <div className="max-h-[calc(92vh-150px)] overflow-y-auto p-4 sm:p-6">
@@ -192,14 +204,6 @@ export function SchedulerPosTicketPreview({
             </footer>
           </article>
         </div>
-
-        <DialogFooter className="border-t border-[#ded7cf] bg-white px-5 py-4">
-          <DialogClose asChild>
-            <Button type="button" variant="outline">
-              <X className="mr-2 h-4 w-4" /> Cerrar
-            </Button>
-          </DialogClose>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

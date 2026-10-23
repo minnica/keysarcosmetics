@@ -1083,6 +1083,10 @@ edición, cobro ni cancelación desde Agenda. En el formulario de comisiones, el
 pie con **Guardar esquema** permanece fijo mientras se desplaza el contenido
 para que la acción principal nunca quede fuera de la pantalla.
 
+La vista del ticket permanece abierta aunque se presione Escape o se interactúe
+fuera de la ventana. Una **X** visible y accesible en el encabezado es su única
+acción de cierre, evitando perder la consulta por un clic accidental.
+
 Para revisar el flujo: entra con Master, abre **Nueva comisión**, asigna dos
 empleados, agrega las modalidades necesarias, elige una base total o individual
 y limita la visibilidad a Master. Guarda y
