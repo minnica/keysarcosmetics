@@ -139,6 +139,11 @@ export function AppointmentSection() {
                 Completa tus datos
               </h3>
               <form className="mt-6 space-y-4" onSubmit={submit}>
+                <input
+                  type="hidden"
+                  name="coupon"
+                  value={coupon ? "KEYSAR15" : ""}
+                />
                 {coupon && (
                   <div
                     className="flex items-start gap-3 border border-keysar-gold/35 bg-keysar-sand/60 px-4 py-3"
