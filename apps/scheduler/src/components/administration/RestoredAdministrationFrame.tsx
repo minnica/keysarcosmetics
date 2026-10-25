@@ -46,9 +46,9 @@ export const restoredAdministrationCopy = {
       "Administra versiones de documentos privados y su trazabilidad por cliente.",
   },
   whatsapp: {
-    title: "Comunicaciones",
+    title: "Notificaciones",
     description:
-      "Prepara plantillas multicanal y supervisa el outbox sin confundir encolado con entrega.",
+      "Automatiza recordatorios por evento y supervisa reglas, entregas, respuestas y consumo.",
   },
   "gift-cards": {
     title: "Gift cards",

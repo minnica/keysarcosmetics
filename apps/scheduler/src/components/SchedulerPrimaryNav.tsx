@@ -104,7 +104,7 @@ const administrationGroups: Array<{
       },
       {
         id: "whatsapp",
-        label: "WhatsApp",
+        label: "Notificaciones",
         icon: <MessageCircle className="h-4 w-4" />,
       },
       {

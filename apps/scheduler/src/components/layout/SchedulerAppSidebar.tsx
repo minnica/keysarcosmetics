@@ -181,7 +181,7 @@ const administrationItems: NavigationItem[] = [
     screenId: "administration.consents",
   },
   {
-    label: "WhatsApp",
+    label: "Notificaciones",
     icon: MessageCircle,
     adminSection: "whatsapp",
     screenId: "administration.whatsapp",

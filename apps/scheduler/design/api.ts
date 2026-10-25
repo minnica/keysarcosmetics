@@ -5199,6 +5199,25 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     );
   }
   if (resource === "communications") {
+    if (id === "summary") {
+      const failed = state.messageOutbox.filter(
+        (item) => item.status === "FAILED",
+      ).length;
+      return {
+        monthlyLimit: 2500,
+        monthlyUsed: 1384,
+        sent: 1360,
+        delivered: 1287,
+        read: 941,
+        failed: 24 + failed,
+        appointmentsConfirmed: 312,
+        confirmationsAttributedToNotifications: 228,
+      };
+    }
+    if (id === "rules")
+      return method === "GET"
+        ? state.notificationRules
+        : patchCollection(state.notificationRules, body, action);
     if (id === "templates")
       return method === "GET"
         ? state.messageTemplates
@@ -5209,7 +5228,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         const entry =
           state.messageOutbox.find((item) => item.id === action) ??
           fail(404, "Mensaje no encontrado.");
-        entry.status = "QUEUED";
+        entry.status = "RETRY";
+        entry.attempts = Number(entry.attempts ?? 0) + 1;
+        entry.lastErrorCode = null;
         return entry;
       }
       const customerEntry = customer(state, String(body.customerId));

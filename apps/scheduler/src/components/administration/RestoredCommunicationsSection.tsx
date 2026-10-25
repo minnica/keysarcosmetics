@@ -5,6 +5,10 @@ import type {
   SchedulerMessageChannel,
   SchedulerMessageOutboxDto,
   SchedulerMessageTemplateDto,
+  SchedulerNotificationAction,
+  SchedulerNotificationEvent,
+  SchedulerNotificationRuleDto,
+  SchedulerNotificationRuleWriteDto,
   SchedulerOperationalCatalogDto,
 } from "@cosmetics/types";
 import {
@@ -30,7 +34,11 @@ import {
 } from "@cosmetics/ui";
 import {
   Check,
+  BellRing,
+  CalendarCheck2,
   Clock3,
+  Gauge,
+  Link2,
   Mail,
   MessageCircle,
   Pencil,
@@ -44,6 +52,8 @@ import {
   extractSchedulerMessageVariables,
   formatSchedulerMessagePreview,
   schedulerMessageChannelLabels,
+  schedulerNotificationActionLabels,
+  schedulerNotificationEventLabels,
   schedulerOutboxStatusMeta,
   schedulerTemplateWriteInput,
 } from "@/lib/scheduler-engagement-presentation";
@@ -100,6 +110,105 @@ interface TemplateDraft {
   subject: string;
   body: string;
   expectedVersion?: number;
+}
+
+type NotificationView = "rules" | "outbox" | "templates";
+
+interface NotificationRuleDraft
+  extends Omit<
+    SchedulerNotificationRuleWriteDto,
+    "branchId" | "professionalId" | "active"
+  > {
+  id: string;
+  branchId: string | null;
+  professionalId: string | null;
+  active: boolean;
+}
+
+const notificationEvents = Object.keys(
+  schedulerNotificationEventLabels,
+) as SchedulerNotificationEvent[];
+
+const notificationActions = Object.keys(
+  schedulerNotificationActionLabels,
+) as SchedulerNotificationAction[];
+
+const notificationChannels: SchedulerMessageChannel[] = [
+  "WHATSAPP",
+  "EMAIL",
+  "SMS",
+  "IN_APP",
+];
+
+function emptyRuleDraft(
+  catalog: SchedulerOperationalCatalogDto | null,
+  templates: SchedulerMessageTemplateDto[],
+): NotificationRuleDraft {
+  return {
+    id: "",
+    commerceId: commerceOptions(catalog)[0]?.id ?? "",
+    name: "",
+    event: "APPOINTMENT_CREATED",
+    scope: "COMPANY",
+    branchId: null,
+    professionalId: null,
+    templateId: templates.find((template) => template.active)?.id ?? "",
+    channels: ["WHATSAPP"],
+    timingMinutes: -1440,
+    allowedActions: ["CONFIRM", "CANCEL", "RESCHEDULE"],
+    active: true,
+  };
+}
+
+function editRuleDraft(
+  rule: SchedulerNotificationRuleDto,
+): NotificationRuleDraft {
+  return {
+    id: rule.id,
+    commerceId: rule.commerceId,
+    name: rule.name,
+    event: rule.event,
+    scope: rule.scope,
+    branchId: rule.branchId,
+    professionalId: rule.professionalId,
+    templateId: rule.templateId,
+    channels: [...rule.channels],
+    timingMinutes: rule.timingMinutes,
+    allowedActions: [...rule.allowedActions],
+    active: rule.active,
+    expectedVersion: rule.version,
+  };
+}
+
+function toggleValue<T extends string>(values: T[], value: T): T[] {
+  return values.includes(value)
+    ? values.filter((item) => item !== value)
+    : [...values, value];
+}
+
+function notificationScopeLabel(
+  rule: SchedulerNotificationRuleDto,
+  catalog: SchedulerOperationalCatalogDto | null,
+): string {
+  if (rule.scope === "COMPANY") return "Toda la empresa";
+  if (rule.scope === "BRANCH")
+    return (
+      catalog?.branches.find((branch) => branch.branchId === rule.branchId)
+        ?.branchName ?? "Sucursal"
+    );
+  return (
+    catalog?.professionals.find(
+      (professional) => professional.id === rule.professionalId,
+    )?.name ?? "Especialista"
+  );
+}
+
+function notificationTimingLabel(minutes: number): string {
+  if (minutes === 0) return "Al ocurrir el evento";
+  const value = Math.abs(minutes);
+  const amount = value % 1440 === 0 ? value / 1440 : value / 60;
+  const unit = value % 1440 === 0 ? "día" : "hora";
+  return `${amount} ${unit}${amount === 1 ? "" : "s"} ${minutes < 0 ? "antes" : "después"}`;
 }
 
 function formatDateTime(value: string): string {
@@ -325,6 +434,259 @@ function MessageStatusBadge({
     <Badge className={className} title={meta.detail} variant="outline">
       {meta.label}
     </Badge>
+  );
+}
+
+function NotificationRuleEditor({
+  catalog,
+  draft,
+  setDraft,
+  templates,
+}: {
+  catalog: SchedulerOperationalCatalogDto;
+  draft: NotificationRuleDraft;
+  setDraft: React.Dispatch<React.SetStateAction<NotificationRuleDraft>>;
+  templates: SchedulerMessageTemplateDto[];
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="notification-rule-name">Nombre de la regla</Label>
+          <Input
+            className={`${controlClass} mt-1.5`}
+            id="notification-rule-name"
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                name: event.target.value,
+              }))
+            }
+            value={draft.name}
+          />
+        </div>
+        <div>
+          <Label htmlFor="notification-rule-event">Evento</Label>
+          <Select
+            onValueChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                event: event as SchedulerNotificationEvent,
+              }))
+            }
+            value={draft.event}
+          >
+            <SelectTrigger
+              className={`${controlClass} mt-1.5`}
+              id="notification-rule-event"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {notificationEvents.map((event) => (
+                <SelectItem key={event} value={event}>
+                  {schedulerNotificationEventLabels[event]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="notification-rule-scope">Alcance</Label>
+          <Select
+            onValueChange={(scope) =>
+              setDraft((current) => ({
+                ...current,
+                scope: scope as NotificationRuleDraft["scope"],
+                branchId: null,
+                professionalId: null,
+              }))
+            }
+            value={draft.scope}
+          >
+            <SelectTrigger
+              className={`${controlClass} mt-1.5`}
+              id="notification-rule-scope"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="COMPANY">Toda la empresa</SelectItem>
+              <SelectItem value="BRANCH">Una sucursal</SelectItem>
+              <SelectItem value="PROFESSIONAL">Una especialista</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {draft.scope === "BRANCH" ? (
+          <div>
+            <Label htmlFor="notification-rule-branch">Sucursal</Label>
+            <Select
+              onValueChange={(branchId) =>
+                setDraft((current) => ({ ...current, branchId }))
+              }
+              value={draft.branchId ?? ""}
+            >
+              <SelectTrigger
+                className={`${controlClass} mt-1.5`}
+                id="notification-rule-branch"
+              >
+                <SelectValue placeholder="Selecciona sucursal" />
+              </SelectTrigger>
+              <SelectContent>
+                {catalog.branches.map((branch) => (
+                  <SelectItem key={branch.branchId} value={branch.branchId}>
+                    {branch.branchName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+        {draft.scope === "PROFESSIONAL" ? (
+          <div>
+            <Label htmlFor="notification-rule-professional">
+              Especialista
+            </Label>
+            <Select
+              onValueChange={(professionalId) =>
+                setDraft((current) => ({ ...current, professionalId }))
+              }
+              value={draft.professionalId ?? ""}
+            >
+              <SelectTrigger
+                className={`${controlClass} mt-1.5`}
+                id="notification-rule-professional"
+              >
+                <SelectValue placeholder="Selecciona especialista" />
+              </SelectTrigger>
+              <SelectContent>
+                {catalog.professionals.map((professional) => (
+                  <SelectItem key={professional.id} value={professional.id}>
+                    {professional.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+        <div>
+          <Label htmlFor="notification-rule-template">Plantilla</Label>
+          <Select
+            onValueChange={(templateId) =>
+              setDraft((current) => ({ ...current, templateId }))
+            }
+            value={draft.templateId}
+          >
+            <SelectTrigger
+              className={`${controlClass} mt-1.5`}
+              id="notification-rule-template"
+            >
+              <SelectValue placeholder="Selecciona plantilla" />
+            </SelectTrigger>
+            <SelectContent>
+              {templates
+                .filter((template) => template.active)
+                .map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="notification-rule-timing">Momento</Label>
+          <Select
+            onValueChange={(timingMinutes) =>
+              setDraft((current) => ({
+                ...current,
+                timingMinutes: Number(timingMinutes),
+              }))
+            }
+            value={String(draft.timingMinutes)}
+          >
+            <SelectTrigger
+              className={`${controlClass} mt-1.5`}
+              id="notification-rule-timing"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="-2880">48 horas antes</SelectItem>
+              <SelectItem value="-1440">24 horas antes</SelectItem>
+              <SelectItem value="-120">2 horas antes</SelectItem>
+              <SelectItem value="0">Al ocurrir el evento</SelectItem>
+              <SelectItem value="60">1 hora después</SelectItem>
+              <SelectItem value="1440">1 día después</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <fieldset>
+        <legend className="text-sm font-medium">Canales</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {notificationChannels.map((channel) => (
+            <label
+              className="flex cursor-pointer items-center gap-2 rounded-xl border border-[#ded5cc] bg-white px-3 py-2 text-sm"
+              key={channel}
+            >
+              <input
+                checked={draft.channels.includes(channel)}
+                onChange={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    channels: toggleValue(current.channels, channel),
+                  }))
+                }
+                type="checkbox"
+              />
+              {schedulerMessageChannelLabels[channel]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="text-sm font-medium">
+          Acciones seguras disponibles para la clienta
+        </legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {notificationActions.map((action) => (
+            <label
+              className="flex cursor-pointer items-center gap-2 rounded-xl border border-[#ded5cc] bg-white px-3 py-2 text-sm"
+              key={action}
+            >
+              <input
+                checked={draft.allowedActions.includes(action)}
+                onChange={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    allowedActions: toggleValue(
+                      current.allowedActions,
+                      action,
+                    ),
+                  }))
+                }
+                type="checkbox"
+              />
+              {schedulerNotificationActionLabels[action]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <label className="flex items-center gap-2 text-sm text-slate-600">
+        <input
+          checked={draft.active}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              active: event.target.checked,
+            }))
+          }
+          type="checkbox"
+        />
+        Regla activa
+      </label>
+    </div>
   );
 }
 
@@ -752,11 +1114,13 @@ export function RestoredCommunicationsSection() {
   );
   const content = useSchedulerQuery(
     async () => {
-      const [templates, outbox] = await Promise.all([
+      const [templates, outbox, rules, summary] = await Promise.all([
         schedulerApi.messageTemplates(),
         schedulerApi.messageOutbox(),
+        schedulerApi.notificationRules(),
+        schedulerApi.notificationSummary(),
       ]);
-      return { templates, outbox };
+      return { templates, outbox, rules, summary };
     },
     [],
     { queryKey: "communications:restored" },
@@ -766,7 +1130,11 @@ export function RestoredCommunicationsSection() {
   const [draft, setDraft] = useState<TemplateDraft>(emptyDraft(null));
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
-  const [view, setView] = useState<"templates" | "outbox">("templates");
+  const [view, setView] = useState<NotificationView>("rules");
+  const [ruleEditorOpen, setRuleEditorOpen] = useState(false);
+  const [ruleDraft, setRuleDraft] = useState<NotificationRuleDraft>(() =>
+    emptyRuleDraft(null, []),
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
 
@@ -810,6 +1178,60 @@ export function RestoredCommunicationsSection() {
     setSaving(false);
   }
 
+  async function saveRule() {
+    if (
+      !ruleDraft.commerceId ||
+      ruleDraft.name.trim().length < 2 ||
+      !ruleDraft.templateId ||
+      !ruleDraft.channels.length ||
+      (ruleDraft.scope === "BRANCH" && !ruleDraft.branchId) ||
+      (ruleDraft.scope === "PROFESSIONAL" && !ruleDraft.professionalId)
+    )
+      return;
+    setSaving(true);
+    setConflict(null);
+    const input: SchedulerNotificationRuleWriteDto = {
+      commerceId: ruleDraft.commerceId,
+      name: ruleDraft.name.trim(),
+      event: ruleDraft.event,
+      scope: ruleDraft.scope,
+      branchId: ruleDraft.scope === "BRANCH" ? ruleDraft.branchId : null,
+      professionalId:
+        ruleDraft.scope === "PROFESSIONAL"
+          ? ruleDraft.professionalId
+          : null,
+      templateId: ruleDraft.templateId,
+      channels: ruleDraft.channels,
+      timingMinutes: ruleDraft.timingMinutes,
+      allowedActions: ruleDraft.allowedActions,
+      active: ruleDraft.active,
+      ...(ruleDraft.expectedVersion
+        ? { expectedVersion: ruleDraft.expectedVersion }
+        : {}),
+    };
+    await runSchedulerMutation(
+      () =>
+        ruleDraft.id
+          ? schedulerApi.updateNotificationRule(ruleDraft.id, input)
+          : schedulerApi.createNotificationRule(input),
+      {
+        onSuccess: async () => {
+          toast.success(
+            ruleDraft.id
+              ? "Regla de notificación actualizada."
+              : "Regla de notificación creada.",
+          );
+          await content.reload();
+          setRuleEditorOpen(false);
+        },
+        onError: toast.error,
+        onConflict: setConflict,
+        invalidate: ["communications"],
+      },
+    );
+    setSaving(false);
+  }
+
   const statuses =
     content.data?.outbox.reduce<Record<string, number>>(
       (result, message) => ({
@@ -832,8 +1254,30 @@ export function RestoredCommunicationsSection() {
       paginateSchedulerReportRows(content.data?.outbox ?? [], page, pageSize),
     [content.data?.outbox, page, pageSize],
   );
+  const rulePagination = useMemo(
+    () => paginateSchedulerReportRows(content.data?.rules ?? [], page, pageSize),
+    [content.data?.rules, page, pageSize],
+  );
   const activePagination =
-    view === "templates" ? templatePagination : outboxPagination;
+    view === "templates"
+      ? templatePagination
+      : view === "outbox"
+        ? outboxPagination
+        : rulePagination;
+  const summary = content.data?.summary;
+  const quotaPercent = summary
+    ? Math.min(100, Math.round((summary.monthlyUsed / summary.monthlyLimit) * 100))
+    : 0;
+  const deliveryPercent = summary?.sent
+    ? Math.round((summary.delivered / summary.sent) * 100)
+    : 0;
+  const confirmationPercent = summary?.appointmentsConfirmed
+    ? Math.round(
+        (summary.confirmationsAttributedToNotifications /
+          summary.appointmentsConfirmed) *
+          100,
+      )
+    : 0;
 
   return (
     <RestoredAdministrationFrame
@@ -852,16 +1296,33 @@ export function RestoredCommunicationsSection() {
             </Button>
           ) : null}
           {canAdmin ? (
-            <Button
-              className="admin-primary"
-              onClick={() => {
-                setDraft(emptyDraft(catalog.data));
-                setConflict(null);
-                setEditorOpen(true);
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" /> Nueva plantilla
-            </Button>
+            <>
+              <Button
+                onClick={() => {
+                  setDraft(emptyDraft(catalog.data));
+                  setConflict(null);
+                  setEditorOpen(true);
+                }}
+                variant="outline"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Nueva plantilla
+              </Button>
+              <Button
+                className="admin-primary"
+                onClick={() => {
+                  setRuleDraft(
+                    emptyRuleDraft(
+                      catalog.data,
+                      content.data?.templates ?? [],
+                    ),
+                  );
+                  setConflict(null);
+                  setRuleEditorOpen(true);
+                }}
+              >
+                <BellRing className="mr-2 h-4 w-4" /> Nueva regla
+              </Button>
+            </>
           ) : null}
         </>
       }
@@ -870,36 +1331,53 @@ export function RestoredCommunicationsSection() {
     >
       <div className="whatsapp-overview-card">
         <div>
-          <p className="whatsapp-overview-eyebrow">Operación multicanal</p>
-          <h2>Plantillas y entrega sin estados ambiguos</h2>
+          <p className="whatsapp-overview-eyebrow">
+            Centro de notificaciones
+          </p>
+          <h2>Automatización conectada a cada cita</h2>
           <p>
-            El outbox registra intenciones; sólo Entregado confirma que el
-            proveedor llevó el mensaje a destino.
+            Configura eventos, alcance y acciones seguras; cada entrega conserva
+            la relación con la cita y su respuesta.
           </p>
         </div>
         <div className="whatsapp-overview-stats">
           <div>
-            <strong>
-              {content.data?.templates.filter((template) => template.active)
-                .length ?? 0}
-            </strong>
-            <span>Plantillas activas</span>
+            <strong>{quotaPercent}%</strong>
+            <span>
+              {summary?.monthlyUsed.toLocaleString("es-MX") ?? 0} de{" "}
+              {summary?.monthlyLimit.toLocaleString("es-MX") ?? 0} mensajes
+            </span>
           </div>
           <div>
-            <strong>{statuses.DELIVERED ?? 0}</strong>
-            <span>Entregados</span>
+            <strong>{deliveryPercent}%</strong>
+            <span>Tasa de entrega</span>
           </div>
           <div>
-            <strong>{statuses.FAILED ?? 0}</strong>
-            <span>Fallidos</span>
+            <strong>{confirmationPercent}%</strong>
+            <span>Confirmadas por recordatorio</span>
+          </div>
+          <div>
+            <strong>{summary?.failed ?? statuses.FAILED ?? 0}</strong>
+            <span>Fallidos este mes</span>
           </div>
         </div>
       </div>
       <AdministrationCoverageNotice title="Proveedor controlado por infraestructura">
-        La API no publica secretos ni un interruptor de proveedor. El valor
-        seguro por defecto es disabled; esta pantalla no activa envíos reales.
+        La API no publica secretos ni un interruptor de proveedor. Los enlaces
+        de confirmar, cancelar y reagendar se representan sin exponer tokens;
+        esta pantalla no activa envíos reales.
       </AdministrationCoverageNotice>
       <div className="flex flex-wrap gap-2">
+        <Button
+          className={view === "rules" ? "admin-primary" : "bg-white"}
+          onClick={() => {
+            setView("rules");
+            setPage(1);
+          }}
+          variant={view === "rules" ? "default" : "outline"}
+        >
+          <BellRing className="mr-2 h-4 w-4" /> Reglas
+        </Button>
         <Button
           className={view === "templates" ? "admin-primary" : "bg-white"}
           onClick={() => {
@@ -918,21 +1396,31 @@ export function RestoredCommunicationsSection() {
           }}
           variant={view === "outbox" ? "default" : "outline"}
         >
-          <Clock3 className="mr-2 h-4 w-4" /> Outbox
+          <Clock3 className="mr-2 h-4 w-4" /> Entregas
         </Button>
       </div>
       <QueryBoundary
         empty={
-          view === "templates"
-            ? !content.data?.templates.length
-            : !content.data?.outbox.length
+          view === "rules"
+            ? !content.data?.rules.length
+            : view === "templates"
+              ? !content.data?.templates.length
+              : !content.data?.outbox.length
         }
         emptyDescription={
-          view === "templates"
-            ? "Crea una plantilla versionada para comenzar."
-            : "No hay intenciones de envío en el alcance autorizado."
+          view === "rules"
+            ? "Crea una regla para automatizar un evento de la agenda."
+            : view === "templates"
+              ? "Crea una plantilla versionada para comenzar."
+              : "No hay entregas en el alcance autorizado."
         }
-        emptyTitle={view === "templates" ? "Sin plantillas" : "Outbox vacío"}
+        emptyTitle={
+          view === "rules"
+            ? "Sin reglas"
+            : view === "templates"
+              ? "Sin plantillas"
+              : "Sin entregas"
+        }
         error={content.error ?? catalog.error}
         loading={content.loading || catalog.loading}
         onRetry={() => {
@@ -940,7 +1428,77 @@ export function RestoredCommunicationsSection() {
           void catalog.reload();
         }}
       >
-        {view === "templates" ? (
+        {view === "rules" ? (
+          <div className="space-y-3">
+            {rulePagination.rows.map((rule) => (
+              <Card className="admin-card" key={rule.id}>
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-slate-800">
+                          {rule.name}
+                        </h3>
+                        <Badge
+                          className={
+                            rule.active
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "bg-white text-slate-500"
+                          }
+                          variant="outline"
+                        >
+                          {rule.active ? "Activa" : "Pausada"}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+                        <span>
+                          <CalendarCheck2 className="mr-1.5 inline h-4 w-4" />
+                          {schedulerNotificationEventLabels[rule.event]}
+                        </span>
+                        <span>
+                          <Gauge className="mr-1.5 inline h-4 w-4" />
+                          {notificationTimingLabel(rule.timingMinutes)}
+                        </span>
+                        <span>{notificationScopeLabel(rule, catalog.data)}</span>
+                        <span>
+                          {rule.channels
+                            .map(
+                              (channel) =>
+                                schedulerMessageChannelLabels[channel],
+                            )
+                            .join(" · ")}
+                        </span>
+                      </div>
+                      {rule.allowedActions.length ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <Link2 className="h-4 w-4" /> Acciones seguras:
+                          {rule.allowedActions.map((action) => (
+                            <Badge key={action} variant="outline">
+                              {schedulerNotificationActionLabels[action]}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    {canAdmin ? (
+                      <Button
+                        onClick={() => {
+                          setRuleDraft(editRuleDraft(rule));
+                          setConflict(null);
+                          setRuleEditorOpen(true);
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        <Pencil className="mr-2 h-4 w-4" /> Editar
+                      </Button>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : view === "templates" ? (
           <div className="whatsapp-message-list">
             {templatePagination.rows.map((template) => (
               <Card className="whatsapp-message-row" key={template.id}>
@@ -996,15 +1554,44 @@ export function RestoredCommunicationsSection() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-800">
+                          {message.customerName ?? "Clienta"}
+                        </span>
                         <span className="font-semibold">
                           {schedulerMessageChannelLabels[message.channel]}
                         </span>
                         <MessageStatusBadge status={message.status} />
                       </div>
+                      <p className="mt-2 text-sm text-slate-600">
+                        {message.event
+                          ? schedulerNotificationEventLabels[message.event]
+                          : "Comunicación manual"}
+                        {message.templateName
+                          ? ` · ${message.templateName}`
+                          : ""}
+                      </p>
+                      {message.appointmentId ? (
+                        <p className="mt-1 text-xs font-medium text-[#8b6948]">
+                          <Link2 className="mr-1 inline h-3.5 w-3.5" />
+                          Cita vinculada
+                          {message.appointmentStartsAt
+                            ? ` · ${formatDateTime(message.appointmentStartsAt)}`
+                            : ""}
+                          {message.branchName ? ` · ${message.branchName}` : ""}
+                        </p>
+                      ) : null}
                       <p className="mt-2 text-xs text-slate-500">
                         Programado {formatDateTime(message.scheduledAt)} ·{" "}
                         {message.attempts} intentos
                       </p>
+                      {message.responseAction ? (
+                        <p className="mt-2 text-xs font-semibold text-emerald-700">
+                          Respuesta: {schedulerNotificationActionLabels[message.responseAction]}
+                          {message.responseAt
+                            ? ` · ${formatDateTime(message.responseAt)}`
+                            : ""}
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-xs text-slate-400">
                         {schedulerOutboxStatusMeta[message.status].detail}
                       </p>
@@ -1047,12 +1634,69 @@ export function RestoredCommunicationsSection() {
         )}
         <SchedulerPagination
           {...activePagination}
-          label={view === "templates" ? "plantillas" : "mensajes"}
+          label={
+            view === "rules"
+              ? "reglas"
+              : view === "templates"
+                ? "plantillas"
+                : "entregas"
+          }
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
           pageSize={pageSize}
         />
       </QueryBoundary>
+      <Dialog open={ruleEditorOpen} onOpenChange={setRuleEditorOpen}>
+        <DialogContent className="admin-dialog admin-dialog-wide max-h-[calc(100dvh-2rem)] max-w-4xl overflow-y-auto overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>
+              {ruleDraft.id
+                ? `Editar ${ruleDraft.name}`
+                : "Nueva regla de notificación"}
+            </DialogTitle>
+            <DialogDescription>
+              Define qué evento dispara el mensaje, su alcance y las acciones
+              que podrá realizar la clienta sin exponer credenciales.
+            </DialogDescription>
+          </DialogHeader>
+          <ConflictNotice
+            message={conflict}
+            onReload={() => {
+              setRuleEditorOpen(false);
+              void content.reload();
+            }}
+          />
+          {catalog.data ? (
+            <NotificationRuleEditor
+              catalog={catalog.data}
+              draft={ruleDraft}
+              setDraft={setRuleDraft}
+              templates={content.data?.templates ?? []}
+            />
+          ) : null}
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <Button onClick={() => setRuleEditorOpen(false)} variant="outline">
+              Cancelar
+            </Button>
+            <Button
+              className="admin-primary"
+              disabled={
+                saving ||
+                !ruleDraft.commerceId ||
+                ruleDraft.name.trim().length < 2 ||
+                !ruleDraft.templateId ||
+                !ruleDraft.channels.length ||
+                (ruleDraft.scope === "BRANCH" && !ruleDraft.branchId) ||
+                (ruleDraft.scope === "PROFESSIONAL" &&
+                  !ruleDraft.professionalId)
+              }
+              onClick={() => void saveRule()}
+            >
+              {saving ? "Guardando…" : "Guardar regla"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="admin-dialog admin-dialog-wide max-h-[calc(100dvh-2rem)] max-w-5xl overflow-y-auto overflow-x-hidden">
           <DialogHeader>

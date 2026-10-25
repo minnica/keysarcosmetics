@@ -1118,3 +1118,28 @@ recuperadas. La propuesta de diseño usa `GET/POST/PUT
 crear un permiso propio para el submódulo, persistir versiones por sucursal,
 resolver el descuento en servidor al reservar y guardar precio original,
 descuento aplicado, regla, origen y total final como snapshot auditable.
+
+El 25 de octubre de 2026, **Administración → WhatsApp** evolucionó a
+**Administración → Notificaciones** conservando la ruta y el permiso existente
+para no invalidar accesos configurados. El centro reúne reglas automáticas,
+plantillas y entregas. Una regla define evento (creación, modificación,
+cancelación, llegada o pago), alcance (empresa, sucursal o especialista),
+momento, plantilla, canales y acciones seguras de confirmar, cancelar o
+reagendar. Los canales disponibles en el contrato son WhatsApp, correo, SMS e
+interna; la maqueta no conecta ni activa proveedores reales.
+
+Cada entrega conserva `appointmentId`, cliente, sucursal, plantilla, evento,
+fecha de cita, intentos y estados diferenciados de en cola, enviado, entregado,
+leído, fallido o cancelado. La respuesta de la clienta se atribuye a la misma
+cita sin exponer el token del enlace. Los fallos agotados admiten reintento
+manual y el tablero muestra consumo del periodo, tasa de entrega, fallos y
+porcentaje de citas confirmadas mediante recordatorios.
+
+La propuesta utiliza `GET/POST/PUT /api/scheduler/communications/rules`, `GET
+/api/scheduler/communications/summary` y conserva los endpoints versionados de
+plantillas y outbox. Producción debe validar consentimiento por canal, cupo por
+empresa, alcance por sucursal, idempotencia, reintentos con backoff y firmas de
+un solo uso con expiración para acciones de cita. Los webhooks del proveedor
+deben verificar autenticidad, registrar estados en orden monotónico y mantener
+una bitácora auditable sin almacenar secretos, contenido sensible ni tokens en
+la interfaz.

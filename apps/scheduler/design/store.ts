@@ -23,6 +23,7 @@ import {
   schedulerConsentTemplatesRv6Fixture,
   schedulerMessageTemplatesRv6Fixture,
   schedulerMessageOutboxRv6Fixture,
+  schedulerNotificationRulesRv8Fixture,
 } from "./fixtures/engagement";
 import { schedulerSettingsRv5Documents } from "./fixtures/settings";
 import { schedulerLocalDateTimeToInstant } from "../src/lib/scheduler-agenda-data";
@@ -768,6 +769,9 @@ export function createDesignState(
     ) as DesignRow[],
     messageOutbox: structuredClone(
       schedulerMessageOutboxRv6Fixture,
+    ) as DesignRow[],
+    notificationRules: structuredClone(
+      schedulerNotificationRulesRv8Fixture,
     ) as DesignRow[],
     contactChannels: {} as Record<string, DesignRow[]>,
     medicalRecords: {} as Record<string, DesignRow>,

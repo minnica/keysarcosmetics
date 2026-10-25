@@ -117,6 +117,52 @@ test("las cuentas demo conservan identidad, alcance y códigos personales", () =
   }
 });
 
+test("el centro de notificaciones versiona reglas y conserva la cita en cada entrega", () => {
+  const { state, request } = session();
+  const rules = request("GET", "/api/scheduler/communications/rules");
+  assert.equal(rules.status, 200);
+  assert.ok(rules.body.data.length >= 3);
+  assert.ok(
+    rules.body.data.some(
+      (rule) =>
+        rule.event === "APPOINTMENT_CREATED" &&
+        rule.allowedActions.includes("CONFIRM"),
+    ),
+  );
+
+  const created = request("POST", "/api/scheduler/communications/rules", {
+    commerceId: "commerce-rv4",
+    name: "Aviso de llegada",
+    event: "APPOINTMENT_ARRIVAL",
+    scope: "BRANCH",
+    branchId: "branch-rv4",
+    professionalId: null,
+    templateId: "template-rv6-1",
+    channels: ["IN_APP"],
+    timingMinutes: 0,
+    allowedActions: [],
+    active: true,
+  });
+  assert.equal(created.status, 201);
+  assert.equal(state.notificationRules.at(-1).name, "Aviso de llegada");
+
+  const deliveries = request("GET", "/api/scheduler/communications/outbox");
+  assert.equal(deliveries.status, 200);
+  assert.ok(
+    deliveries.body.data.some(
+      (delivery) =>
+        delivery.appointmentId &&
+        delivery.customerName &&
+        delivery.templateName,
+    ),
+  );
+
+  const summary = request("GET", "/api/scheduler/communications/summary");
+  assert.equal(summary.status, 200);
+  assert.ok(summary.body.data.monthlyUsed < summary.body.data.monthlyLimit);
+  assert.ok(summary.body.data.confirmationsAttributedToNotifications > 0);
+});
+
 test("una sesión o código de otro usuario no autoriza movimientos", () => {
   const { state, request } = session();
   request("POST", "/api/auth/login", {

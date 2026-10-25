@@ -279,6 +279,24 @@ test("shows the POS ticket without duplicating attendance and purchase rows", ()
   assert.doesNotMatch(tooltip, /<dt>Resultado<\/dt>/);
 });
 
+test("exposes notification rules, delivery traceability and reminder attribution", () => {
+  const source = readFileSync(
+    path.join(
+      sourceRoot,
+      "components/administration/RestoredCommunicationsSection.tsx",
+    ),
+    "utf8",
+  );
+  assert.match(source, /Centro de notificaciones/);
+  assert.match(source, /Automatización conectada a cada cita/);
+  assert.match(source, /schedulerApi\.notificationRules\(\)/);
+  assert.match(source, /schedulerApi\.notificationSummary\(\)/);
+  assert.match(source, /Cita vinculada/);
+  assert.match(source, /Confirmadas por recordatorio/);
+  assert.match(source, /Acciones seguras disponibles para la clienta/);
+  assert.match(source, /schedulerApi\.retryMessage/);
+});
+
 test("splits each operational workspace into its route module", () => {
   const source = readFileSync(
     path.join(sourceRoot, "components/api/SchedulerPageEntries.tsx"),

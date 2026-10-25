@@ -148,6 +148,9 @@ import type {
   SchedulerMessageOutboxDto,
   SchedulerMessageTemplateDto,
   SchedulerMessageTemplateWriteDto,
+  SchedulerNotificationRuleDto,
+  SchedulerNotificationRuleWriteDto,
+  SchedulerNotificationSummaryDto,
   SchedulerSurveyDto,
   SchedulerSurveyPublicDto,
   SchedulerSurveyWriteDto,
@@ -429,6 +432,15 @@ export interface SchedulerApiClient {
   ): Promise<{ id: string; status: SchedulerMessageOutboxDto["status"] }>;
   messageOutbox(): Promise<SchedulerMessageOutboxDto[]>;
   retryMessage(id: string): Promise<{ id: string }>;
+  notificationRules(): Promise<SchedulerNotificationRuleDto[]>;
+  createNotificationRule(
+    input: SchedulerNotificationRuleWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  updateNotificationRule(
+    id: string,
+    input: SchedulerNotificationRuleWriteDto,
+  ): Promise<{ id: string; version: number }>;
+  notificationSummary(): Promise<SchedulerNotificationSummaryDto>;
   consentTemplates(): Promise<SchedulerConsentTemplateDto[]>;
   uploadConsentTemplate(
     form: FormData,
@@ -847,6 +859,22 @@ export function createSchedulerApiClient(
     retryMessage: (id) =>
       data<{ id: string }>(
         client.post(`/api/scheduler/communications/outbox/${id}/retry`),
+      ),
+    notificationRules: () =>
+      data<SchedulerNotificationRuleDto[]>(
+        client.get("/api/scheduler/communications/rules"),
+      ),
+    createNotificationRule: (input) =>
+      data<{ id: string; version: number }>(
+        client.post("/api/scheduler/communications/rules", input),
+      ),
+    updateNotificationRule: (id, input) =>
+      data<{ id: string; version: number }>(
+        client.put(`/api/scheduler/communications/rules/${id}`, input),
+      ),
+    notificationSummary: () =>
+      data<SchedulerNotificationSummaryDto>(
+        client.get("/api/scheduler/communications/summary"),
       ),
     consentTemplates: () =>
       data<SchedulerConsentTemplateDto[]>(

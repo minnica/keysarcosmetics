@@ -9,6 +9,21 @@ export const schedulerMessageChannelLabels = {
   WHATSAPP: "WhatsApp",
   EMAIL: "Correo",
   SMS: "SMS",
+  IN_APP: "Interna",
+} as const;
+
+export const schedulerNotificationEventLabels = {
+  APPOINTMENT_CREATED: "Cita creada",
+  APPOINTMENT_UPDATED: "Cita modificada",
+  APPOINTMENT_CANCELED: "Cita cancelada",
+  APPOINTMENT_ARRIVAL: "Llegada registrada",
+  PAYMENT_RECEIVED: "Pago recibido",
+} as const;
+
+export const schedulerNotificationActionLabels = {
+  CONFIRM: "Confirmar",
+  CANCEL: "Cancelar",
+  RESCHEDULE: "Reagendar",
 } as const;
 
 export const schedulerSurveyStatusLabels = {

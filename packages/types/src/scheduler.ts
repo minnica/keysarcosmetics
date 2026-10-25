@@ -1190,9 +1190,75 @@ export interface SchedulerCustomerFieldDefinitionWriteDto {
   expectedVersion?: number;
 }
 
-export const SCHEDULER_MESSAGE_CHANNELS = ["WHATSAPP", "EMAIL", "SMS"] as const;
+export const SCHEDULER_MESSAGE_CHANNELS = [
+  "WHATSAPP",
+  "EMAIL",
+  "SMS",
+  "IN_APP",
+] as const;
 export type SchedulerMessageChannel =
   (typeof SCHEDULER_MESSAGE_CHANNELS)[number];
+
+export const SCHEDULER_NOTIFICATION_EVENTS = [
+  "APPOINTMENT_CREATED",
+  "APPOINTMENT_UPDATED",
+  "APPOINTMENT_CANCELED",
+  "APPOINTMENT_ARRIVAL",
+  "PAYMENT_RECEIVED",
+] as const;
+export type SchedulerNotificationEvent =
+  (typeof SCHEDULER_NOTIFICATION_EVENTS)[number];
+
+export const SCHEDULER_NOTIFICATION_ACTIONS = [
+  "CONFIRM",
+  "CANCEL",
+  "RESCHEDULE",
+] as const;
+export type SchedulerNotificationAction =
+  (typeof SCHEDULER_NOTIFICATION_ACTIONS)[number];
+
+export interface SchedulerNotificationRuleDto {
+  id: string;
+  commerceId: string;
+  name: string;
+  event: SchedulerNotificationEvent;
+  scope: "COMPANY" | "BRANCH" | "PROFESSIONAL";
+  branchId: string | null;
+  professionalId: string | null;
+  templateId: string;
+  channels: SchedulerMessageChannel[];
+  timingMinutes: number;
+  allowedActions: SchedulerNotificationAction[];
+  active: boolean;
+  version: number;
+  updatedAt: string;
+}
+
+export interface SchedulerNotificationRuleWriteDto {
+  commerceId: string;
+  name: string;
+  event: SchedulerNotificationEvent;
+  scope: SchedulerNotificationRuleDto["scope"];
+  branchId?: string | null;
+  professionalId?: string | null;
+  templateId: string;
+  channels: SchedulerMessageChannel[];
+  timingMinutes: number;
+  allowedActions: SchedulerNotificationAction[];
+  active?: boolean;
+  expectedVersion?: number;
+}
+
+export interface SchedulerNotificationSummaryDto {
+  monthlyLimit: number;
+  monthlyUsed: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  failed: number;
+  appointmentsConfirmed: number;
+  confirmationsAttributedToNotifications: number;
+}
 
 export const SCHEDULER_CONTACT_CHANNEL_STATUSES = [
   "UNVERIFIED",
@@ -1259,6 +1325,16 @@ export interface SchedulerMessageOutboxDto {
   attempts: number;
   lastErrorCode: string | null;
   createdAt: string;
+  event?: SchedulerNotificationEvent | null;
+  customerName?: string | null;
+  branchName?: string | null;
+  templateName?: string | null;
+  appointmentStartsAt?: string | null;
+  sentAt?: string | null;
+  deliveredAt?: string | null;
+  readAt?: string | null;
+  responseAction?: SchedulerNotificationAction | null;
+  responseAt?: string | null;
 }
 
 export interface SchedulerDocumentDto {
