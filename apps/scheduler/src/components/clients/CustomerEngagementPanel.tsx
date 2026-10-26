@@ -38,6 +38,7 @@ import { schedulerApi, schedulerApiErrorMessage } from "@/lib/api";
 import { authorizationRetentionMs } from "@/lib/scheduler-customer-data";
 import { formatSchedulerFileSize } from "@/lib/scheduler-engagement-presentation";
 import { useSchedulerSession } from "@/lib/session";
+import { CustomerAestheticVisitPanel } from "@/components/clients/CustomerAestheticVisitPanel";
 
 const controlClass =
   "client-modal-control h-11 rounded-xl border-[#dfd5cc] bg-white focus-visible:ring-[#c3a583]";
@@ -183,9 +184,11 @@ function MedicalDocumentButton({
 export function CustomerEngagementPanel({
   branchId,
   customerId,
+  customerName,
 }: {
   branchId: string;
   customerId: string;
+  customerName: string;
 }) {
   const { bootstrap } = useSchedulerSession();
   const canRead = permission(bootstrap, "READ");
@@ -552,6 +555,14 @@ export function CustomerEngagementPanel({
           </div>
         </div>
       ) : null}
+
+      <CustomerAestheticVisitPanel
+        branchId={branchId}
+        canWrite={canWrite}
+        commerceId={commerceId}
+        customerId={customerId}
+        customerName={customerName}
+      />
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto overflow-x-hidden rounded-[26px]">

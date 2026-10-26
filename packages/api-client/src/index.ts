@@ -149,6 +149,9 @@ import type {
   SchedulerConsentTemplateDto,
   SchedulerDocumentDto,
   SchedulerMedicalRecordDto,
+  SchedulerAestheticWorkspaceDto,
+  SchedulerAestheticVisitRecordDto,
+  SchedulerAestheticVisitRecordWriteDto,
   SchedulerMessageChannel,
   SchedulerMessageOutboxDto,
   SchedulerMessageTemplateDto,
@@ -538,6 +541,24 @@ export interface SchedulerApiClient {
       authorizationToken: string;
     },
   ): Promise<{ version: number; updatedAt: string }>;
+  aestheticWorkspace(
+    customerId: string,
+    input: {
+      branchId: string;
+      commerceId: string;
+      authorizationToken: string;
+    },
+  ): Promise<SchedulerAestheticWorkspaceDto>;
+  saveAestheticVisitRecord(
+    customerId: string,
+    recordId: string | null,
+    input: SchedulerAestheticVisitRecordWriteDto,
+  ): Promise<SchedulerAestheticVisitRecordDto>;
+  signAestheticVisitRecord(
+    customerId: string,
+    recordId: string,
+    input: { personalCode: string; expectedVersion: number },
+  ): Promise<SchedulerAestheticVisitRecordDto>;
   surveys(): Promise<SchedulerSurveyDto[]>;
   createSurvey(
     input: SchedulerSurveyWriteDto,
@@ -1031,6 +1052,34 @@ export function createSchedulerApiClient(
     updateMedicalRecord: (customerId, input) =>
       data<{ version: number; updatedAt: string }>(
         client.put(`/api/scheduler/medical-records/${customerId}`, input),
+      ),
+    aestheticWorkspace: (customerId, input) =>
+      data<SchedulerAestheticWorkspaceDto>(
+        client.get(`/api/scheduler/aesthetic-records/${customerId}`, {
+          params: { branchId: input.branchId, commerceId: input.commerceId },
+          headers: {
+            "x-scheduler-authorization": input.authorizationToken,
+          },
+        }),
+      ),
+    saveAestheticVisitRecord: (customerId, recordId, input) =>
+      data<SchedulerAestheticVisitRecordDto>(
+        recordId
+          ? client.put(
+              `/api/scheduler/aesthetic-records/${customerId}/${recordId}`,
+              input,
+            )
+          : client.post(
+              `/api/scheduler/aesthetic-records/${customerId}`,
+              input,
+            ),
+      ),
+    signAestheticVisitRecord: (customerId, recordId, input) =>
+      data<SchedulerAestheticVisitRecordDto>(
+        client.post(
+          `/api/scheduler/aesthetic-records/${customerId}/${recordId}/sign`,
+          input,
+        ),
       ),
     surveys: () =>
       data<SchedulerSurveyDto[]>(client.get("/api/scheduler/surveys")),

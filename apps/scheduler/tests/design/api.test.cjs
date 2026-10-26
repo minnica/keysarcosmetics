@@ -26,11 +26,7 @@ const { createSchedulerApiClient } = require("@cosmetics/api-client");
 const { http, HttpResponse } = require("msw");
 const { setupServer } = require("msw/node");
 
-function session(
-  scenario = "normal",
-  role = "master",
-  date = "2026-09-29",
-) {
+function session(scenario = "normal", role = "master", date = "2026-09-29") {
   const state = createDesignState({ role, scenario, date });
   function request(method, path, body = {}, extraHeaders = {}) {
     const staffHeaders = path.startsWith("/api/scheduler/customer-portal/")
@@ -3031,11 +3027,9 @@ test("el portal autentica a la clienta y limita todos los datos a su perfil", ()
     .slice(0, 10);
   const { state, request } = session("normal", "master", date);
   const customer = state.customers[0];
-  const challenge = request(
-    "POST",
-    "/api/scheduler/customer-portal/access",
-    { identifier: customer.email },
-  );
+  const challenge = request("POST", "/api/scheduler/customer-portal/access", {
+    identifier: customer.email,
+  });
   assert.equal(challenge.status, 201);
   assert.equal(
     challenge.body.data.destinationHint.includes(customer.email),
@@ -3068,7 +3062,9 @@ test("el portal autentica a la clienta y limita todos los datos a su perfil", ()
   assert.equal(overview.body.data.customer.id, customer.id);
   assert.ok(overview.body.data.upcomingAppointments.length >= 1);
   assert.ok(overview.body.data.memberships.length >= 1);
-  assert.ok(overview.body.data.balances.some((balance) => balance.balanceAmount > 0));
+  assert.ok(
+    overview.body.data.balances.some((balance) => balance.balanceAmount > 0),
+  );
   assert.ok(overview.body.data.documents.length >= 2);
 
   const foreignAppointment = state.appointments.find(
@@ -3110,11 +3106,9 @@ test("el portal reserva, aplica precio inteligente y controla el ciclo de la cit
   const base = new Date(Date.now() + 24 * 60 * 60_000);
   const date = base.toISOString().slice(0, 10);
   const { state, request } = session("normal", "master", date);
-  const challenge = request(
-    "POST",
-    "/api/scheduler/customer-portal/access",
-    { identifier: state.customers[0].phone },
-  );
+  const challenge = request("POST", "/api/scheduler/customer-portal/access", {
+    identifier: state.customers[0].phone,
+  });
   const verified = request(
     "POST",
     `/api/scheduler/customer-portal/access/${challenge.body.data.challengeId}/verify`,
@@ -3230,11 +3224,9 @@ test("el portal firma documentos propios y rechaza fechas fuera de política", (
     .toISOString()
     .slice(0, 10);
   const { state, request } = session("normal", "master", date);
-  const challenge = request(
-    "POST",
-    "/api/scheduler/customer-portal/access",
-    { identifier: state.customers[0].email },
-  );
+  const challenge = request("POST", "/api/scheduler/customer-portal/access", {
+    identifier: state.customers[0].email,
+  });
   const verified = request(
     "POST",
     `/api/scheduler/customer-portal/access/${challenge.body.data.challengeId}/verify`,
@@ -3279,4 +3271,136 @@ test("el portal firma documentos propios y rechaza fechas fuera de política", (
     portalHeaders,
   );
   assert.equal(rejected.status, 409);
+});
+
+test("el expediente estético respeta cita, plantilla, firma especialista e inmutabilidad", () => {
+  const { state, request } = session();
+  const customer = state.customers[0];
+  const branch = state.catalog.branches[0];
+  const commerceId = branch.commerceId;
+  const path = `/api/scheduler/aesthetic-records/${customer.id}?${new URLSearchParams(
+    {
+      branchId: branch.branchId,
+      commerceId,
+    },
+  )}`;
+
+  assert.equal(request("GET", path).status, 403);
+
+  const viewAuthorization = request("POST", "/api/scheduler/authorizations", {
+    secret: "0000",
+    purpose: "AESTHETIC_RECORD_VIEW",
+    targetId: customer.id,
+  }).body.data;
+  const workspaceReply = request(
+    "GET",
+    path,
+    {},
+    {
+      "x-scheduler-authorization": viewAuthorization.token,
+    },
+  );
+  assert.equal(workspaceReply.status, 200);
+  const workspace = workspaceReply.body.data;
+  assert.equal(workspace.records.length, 2);
+  assert.ok(
+    workspace.records.every((record) => record.customerId === customer.id),
+  );
+  assert.ok(workspace.eligibleAppointments.length > 0);
+
+  const visit = workspace.eligibleAppointments[0];
+  const template = workspace.templates.find(
+    (candidate) => candidate.id === visit.templateId,
+  );
+  assert.ok(template);
+  const fieldValues = Object.fromEntries(
+    template.categories.flatMap((category) =>
+      category.fields.map((field) => [
+        field.key,
+        field.type === "SELECT"
+          ? field.options[0]
+          : field.type === "NUMBER"
+            ? 2
+            : field.type === "BOOLEAN"
+              ? false
+              : "Sin reacción adversa",
+      ]),
+    ),
+  );
+  const editAuthorization = request("POST", "/api/scheduler/authorizations", {
+    secret: "0000",
+    purpose: "AESTHETIC_RECORD_EDIT",
+    targetId: customer.id,
+  }).body.data;
+  const createdReply = request(
+    "POST",
+    `/api/scheduler/aesthetic-records/${customer.id}`,
+    {
+      appointmentId: visit.id,
+      templateId: template.id,
+      fieldValues,
+      products: ["Sérum demo"],
+      techniques: ["Masaje demo"],
+      recommendations: "Protección solar.",
+      photos: [
+        {
+          kind: "BEFORE",
+          area: "Rostro",
+          fileName: "antes.jpg",
+          mimeType: "image/jpeg",
+          sizeBytes: 120000,
+        },
+      ],
+      authorizationToken: editAuthorization.token,
+    },
+  );
+  assert.equal(createdReply.status, 201);
+  const created = createdReply.body.data;
+  assert.equal(created.status, "DRAFT");
+  assert.equal(created.specialistName, visit.specialistName);
+
+  const wrongSigner = request(
+    "POST",
+    `/api/scheduler/aesthetic-records/${customer.id}/${created.id}/sign`,
+    { personalCode: "0000", expectedVersion: created.version },
+  );
+  assert.equal(wrongSigner.status, 403);
+  const specialist = state.operationAgents.find(
+    (agent) => agent.name === created.specialistName,
+  );
+  assert.ok(specialist);
+  const signedReply = request(
+    "POST",
+    `/api/scheduler/aesthetic-records/${customer.id}/${created.id}/sign`,
+    { personalCode: specialist.code, expectedVersion: created.version },
+  );
+  assert.equal(signedReply.status, 201);
+  assert.equal(signedReply.body.data.status, "SIGNED");
+  assert.equal(signedReply.body.data.signedBy, created.specialistName);
+
+  const secondEditAuthorization = request(
+    "POST",
+    "/api/scheduler/authorizations",
+    {
+      secret: "0000",
+      purpose: "AESTHETIC_RECORD_EDIT",
+      targetId: customer.id,
+    },
+  ).body.data;
+  const immutable = request(
+    "PUT",
+    `/api/scheduler/aesthetic-records/${customer.id}/${created.id}`,
+    {
+      appointmentId: visit.id,
+      templateId: template.id,
+      fieldValues,
+      products: [],
+      techniques: [],
+      recommendations: "Cambio no permitido",
+      photos: [],
+      expectedVersion: signedReply.body.data.version,
+      authorizationToken: secondEditAuthorization.token,
+    },
+  );
+  assert.equal(immutable.status, 409);
 });

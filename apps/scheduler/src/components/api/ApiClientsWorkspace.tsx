@@ -2200,6 +2200,7 @@ function CustomerRecordDialog({
             <CustomerEngagementPanel
               branchId={branchId}
               customerId={recordCustomer.id}
+              customerName={recordCustomer.displayName}
             />
           ) : null}
         </div>

@@ -9,6 +9,8 @@ import {
   type SchedulerCustomerDetailDto,
   type SchedulerCustomerPortalDocumentDto,
   type SchedulerCustomerFieldDefinitionDto,
+  type SchedulerAestheticRecordTemplateDto,
+  type SchedulerAestheticVisitRecordDto,
   type SchedulerOperationalCatalogDto,
   type SchedulerScheduleBlockDto,
   type SchedulerAdministrationCatalogDto,
@@ -741,6 +743,72 @@ export function createDesignState(
         },
       ],
     }));
+  const aestheticRecordTemplates: SchedulerAestheticRecordTemplateDto[] =
+    catalog.services.slice(0, 2).map((service, index) => ({
+      id: `design-aesthetic-template-${index + 1}`,
+      commerceId: catalog.commerces[0]!.id,
+      serviceProfileId: service.id,
+      serviceName: service.name,
+      name:
+        index === 0
+          ? "Valoración facial y evolución"
+          : "Valoración corporal y seguimiento",
+      version: 2,
+      active: true,
+      categories: [
+        {
+          id: `design-aesthetic-category-${index + 1}-assessment`,
+          name: "Valoración inicial",
+          fields: [
+            {
+              key: "skinCondition",
+              label:
+                index === 0 ? "Condición de la piel" : "Condición del área",
+              type: "SELECT" as const,
+              required: true,
+              options:
+                index === 0
+                  ? ["Hidratada", "Deshidratada", "Sensible", "Mixta"]
+                  : ["Normal", "Retención", "Flacidez", "Celulitis"],
+            },
+            {
+              key: "sensitivity",
+              label: "Sensibilidad observada",
+              type: "TEXT" as const,
+              required: true,
+              options: [],
+            },
+          ],
+        },
+        {
+          id: `design-aesthetic-category-${index + 1}-session`,
+          name: "Sesión y evolución",
+          fields: [
+            {
+              key: "intensity",
+              label: "Intensidad aplicada",
+              type: "NUMBER" as const,
+              required: true,
+              options: [],
+            },
+            {
+              key: "reaction",
+              label: "Reacción posterior",
+              type: "TEXT" as const,
+              required: true,
+              options: [],
+            },
+            {
+              key: "contraindication",
+              label: "¿Presentó contraindicación?",
+              type: "BOOLEAN" as const,
+              required: false,
+              options: [],
+            },
+          ],
+        },
+      ],
+    }));
   const state = {
     controls: normalizedControls,
     catalog,
@@ -807,9 +875,13 @@ export function createDesignState(
         signerDisplayName: null as string | null,
         updatedAt: "2026-10-12T19:00:00.000Z",
       },
-    ] satisfies Array<SchedulerCustomerPortalDocumentDto & { customerId: string }>,
+    ] satisfies Array<
+      SchedulerCustomerPortalDocumentDto & { customerId: string }
+    >,
     customerPortalRescheduleCounts: {} as Record<string, number>,
     medicalRecords: {} as Record<string, DesignRow>,
+    aestheticRecordTemplates,
+    aestheticVisitRecords: [] as SchedulerAestheticVisitRecordDto[],
     authorizations: new Map<
       string,
       {
@@ -1215,6 +1287,101 @@ export function createDesignState(
       ownerName: portfolio?.ownerName ?? "Cartera de la empresa",
     };
   }
+  const aestheticSeedAppointments = state.appointments
+    .filter(
+      (appointment) =>
+        appointment.customerId === customers[0]!.id &&
+        appointment.status === "ATTENDED" &&
+        appointment.services[0],
+    )
+    .slice(0, 2);
+  aestheticSeedAppointments.forEach((appointment, index) => {
+    const service = appointment.services[0]!;
+    const specialist = service.professionals[0]!;
+    const template =
+      aestheticRecordTemplates.find(
+        (candidate) => candidate.serviceProfileId === service.serviceProfileId,
+      ) ?? aestheticRecordTemplates[0]!;
+    const signedAt = appointment.updatedAt;
+    state.aestheticVisitRecords.push({
+      id: `design-aesthetic-record-${index + 1}`,
+      customerId: appointment.customerId,
+      appointmentId: appointment.id,
+      appointmentAt: appointment.startsAt,
+      branchId: appointment.branchId,
+      branchName: appointment.branchName,
+      serviceProfileId: service.serviceProfileId,
+      serviceName: service.serviceName,
+      specialistProfileId: specialist.professionalProfileId,
+      specialistName: specialist.name,
+      templateId: template.id,
+      templateName: template.name,
+      templateVersion: template.version,
+      categories: template.categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        fields: category.fields.map((field) => ({
+          ...field,
+          value:
+            field.key === "skinCondition"
+              ? index === 0
+                ? "Deshidratada"
+                : "Hidratada"
+              : field.key === "sensitivity"
+                ? index === 0
+                  ? "Sensibilidad leve en mejillas"
+                  : "Sin sensibilidad visible"
+                : field.key === "intensity"
+                  ? index === 0
+                    ? 2
+                    : 3
+                  : field.key === "reaction"
+                    ? index === 0
+                      ? "Eritema leve, cedió en diez minutos"
+                      : "Respuesta uniforme y sin irritación"
+                    : false,
+        })),
+      })),
+      products:
+        index === 0
+          ? ["Limpiador suave", "Sérum de ácido hialurónico"]
+          : ["Exfoliante enzimático", "Mascarilla hidratante"],
+      techniques:
+        index === 0
+          ? ["Limpieza profunda", "Masaje facial"]
+          : ["Exfoliación enzimática", "Crioterapia local"],
+      recommendations:
+        index === 0
+          ? "Usar protector solar y reforzar hidratación durante 48 horas."
+          : "Evitar calor directo el mismo día y mantener rutina hidratante.",
+      photos: [
+        {
+          id: `design-aesthetic-photo-${index + 1}-before`,
+          kind: "BEFORE",
+          area: "Rostro",
+          fileName: `valoracion-${index + 1}-antes.jpg`,
+          mimeType: "image/jpeg",
+          sizeBytes: 428_000 + index * 12_000,
+          capturedAt: appointment.startsAt,
+        },
+        {
+          id: `design-aesthetic-photo-${index + 1}-after`,
+          kind: "AFTER",
+          area: "Rostro",
+          fileName: `valoracion-${index + 1}-despues.jpg`,
+          mimeType: "image/jpeg",
+          sizeBytes: 446_000 + index * 12_000,
+          capturedAt: signedAt,
+        },
+      ],
+      status: "SIGNED",
+      signedAt,
+      signedBy: specialist.name,
+      version: 1,
+      createdAt: signedAt,
+      updatedAt: signedAt,
+    });
+  });
   const recoverySeed = [
     {
       customerId: customers[2]!.id,

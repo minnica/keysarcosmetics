@@ -1182,3 +1182,38 @@ la nueva reserva. Reagenda dos veces y verifica que una tercera reprogramación
 sea rechazada. En Documentos firma con el nombre exacto mostrado en el portal y
 descarga el PDF; luego cierra sesión y confirma que el contenido privado deje
 de estar visible.
+
+El 25 de octubre de 2026 se agregó el **Expediente estético por visita** dentro
+del expediente protegido de Clientes. La sección requiere una autorización
+secundaria independiente y expira automáticamente. Sólo ofrece como origen las
+citas de la clienta que ya terminaron con asistencia; cada una conserva
+sucursal, servicio y especialista. La plantilla activa se elige por el servicio
+y guarda una copia de su nombre, versión, categorías, campos y opciones para
+que cambios futuros no reescriban la valoración histórica.
+
+El borrador registra valoración, evolución, productos, técnicas,
+recomendaciones y hasta seis fotografías JPG o PNG de máximo 5 MB cada una,
+clasificadas como antes, después o detalle. Los campos obligatorios y las
+opciones de la plantilla se validan también en el API. Una cita no puede tener
+dos expedientes estéticos y el control de versión evita sobrescribir cambios de
+otra sesión.
+
+La firma exige el código personal de la especialista asignada en esa cita; el
+código de un administrador o de otra especialista no es válido. Después de la
+firma desaparecen las acciones de edición y el API rechaza cualquier cambio,
+conservando firmante, fecha y versión. Cada registro puede descargarse como PDF
+y se pueden seleccionar exactamente dos visitas para comparar su evolución en
+paralelo. La maqueta usa `GET/POST/PUT
+/api/scheduler/aesthetic-records/:customerId` y `POST
+/api/scheduler/aesthetic-records/:customerId/:recordId/sign`. Producción debe
+almacenar las fotografías en un repositorio privado con cifrado, URL temporal,
+hash de integridad y retención configurada; además debe conservar bitácora de
+lectura, escritura, firma y descarga sin exponer códigos personales.
+
+Para revisar el flujo entra con Master, abre Clientes, el expediente de María
+Camila Celis y autoriza **Expediente estético por visita** con `0000`. Compara
+las dos visitas firmadas, crea un borrador desde una cita atendida y completa
+los campos requeridos. Guarda con `0000`; después firma con el código de la
+especialista mostrada (Renata `1111`, Camila `2222` o Elena `5555`). Verifica que
+el registro quede **Firmado**, que ya no muestre Editar ni Firmar y que el PDF
+incluya valoración, productos, técnicas, evidencia y firma.

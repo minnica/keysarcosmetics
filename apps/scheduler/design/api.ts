@@ -6,6 +6,8 @@ import type {
   SchedulerCustomerFieldDefinitionWriteDto,
   SchedulerCustomerPortalAppointmentDto,
   SchedulerCustomerPortalOverviewDto,
+  SchedulerAestheticVisitRecordDto,
+  SchedulerAestheticVisitPhotoDto,
   SchedulerSettingSection,
   SchedulerSettingScope,
   SchedulerAvailabilitySlotDto,
@@ -524,6 +526,7 @@ function authorizeRequest(state: DesignState, request: DesignRequest) {
     path.includes("/administration/") ||
     path.includes("/access") ||
     path.includes("/medical-records/") ||
+    path.includes("/aesthetic-records/") ||
     path.includes("/documents/") ||
     path.includes("/surveys") ||
     path.includes("/communications/") ||
@@ -2478,7 +2481,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const token = headers.get("x-customer-portal-token") ?? "";
       const session = state.customerPortalSessions.get(token);
       if (!session || Date.parse(session.expiresAt) <= Date.now())
-        return fail(401, "La sesión del portal expiró. Solicita un nuevo código.");
+        return fail(
+          401,
+          "La sesión del portal expiró. Solicita un nuevo código.",
+        );
       return session;
     };
     const portalAppointment = (
@@ -2500,9 +2506,7 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         : originalPrice;
       const rescheduleCount =
         state.customerPortalRescheduleCounts[item.id] ?? 0;
-      const closed = ["CANCELED", "ATTENDED", "NO_SHOW"].includes(
-        item.status,
-      );
+      const closed = ["CANCELED", "ATTENDED", "NO_SHOW"].includes(item.status);
       return {
         id: item.id,
         branchId: item.branchId,
@@ -2551,7 +2555,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         state.customerPortalChallenges.delete(action);
         return { portalToken, expiresAt };
       }
-      const identifier = String(body.identifier ?? "").trim().toLowerCase();
+      const identifier = String(body.identifier ?? "")
+        .trim()
+        .toLowerCase();
       const normalizedPhone = identifier.replace(/\D/g, "");
       const customerItem = state.customers.find(
         (candidate) =>
@@ -2580,7 +2586,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       };
     }
     if (id === "overview") {
-      if (method !== "GET") return fail(405, "Usa GET para consultar el portal.");
+      if (method !== "GET")
+        return fail(405, "Usa GET para consultar el portal.");
       const session = portalSession();
       const customerItem = state.customers.find(
         (candidate) => candidate.id === session.customerId,
@@ -2687,21 +2694,20 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           candidate.id === serviceProfileId &&
           candidate.branchProfileIds.some(
             (profileId) =>
-              state.catalog.branches.find(
-                (branch) => branch.id === profileId,
-              )?.branchId === branchId,
+              state.catalog.branches.find((branch) => branch.id === profileId)
+                ?.branchId === branchId,
           ),
       );
-      if (!service) return fail(404, "Servicio no disponible en esta sucursal.");
+      if (!service)
+        return fail(404, "Servicio no disponible en esta sucursal.");
       const professionals = state.catalog.professionals.filter(
         (professional) =>
           professional.active &&
           professional.acceptsOnline &&
           professional.branchProfileIds.some(
             (profileId) =>
-              state.catalog.branches.find(
-                (branch) => branch.id === profileId,
-              )?.branchId === branchId,
+              state.catalog.branches.find((branch) => branch.id === profileId)
+                ?.branchId === branchId,
           ),
       );
       const originalPrice = servicePrice(serviceProfileId);
@@ -2766,7 +2772,11 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               assignment.serviceProfileId === service?.id &&
               assignment.professionalProfileId === professional?.id,
           );
-        if (!branch?.bookingEnabled || !serviceAvailable || !professionalAvailable)
+        if (
+          !branch?.bookingEnabled ||
+          !serviceAvailable ||
+          !professionalAvailable
+        )
           return fail(404, "Servicio o especialista no disponible.");
         const startsAt = String(body.startsAt);
         validatePortalStart(startsAt);
@@ -2842,7 +2852,10 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               assignment.professionalProfileId === professional.id,
           );
         if (!professionalAvailable)
-          return fail(404, "La especialista seleccionada ya no está disponible.");
+          return fail(
+            404,
+            "La especialista seleccionada ya no está disponible.",
+          );
         const duration =
           Date.parse(sessionAppointment.endsAt) -
           Date.parse(sessionAppointment.startsAt);
@@ -2889,7 +2902,8 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       const session = portalSession();
       const document = state.customerPortalDocuments.find(
         (candidate) =>
-          candidate.id === action && candidate.customerId === session.customerId,
+          candidate.id === action &&
+          candidate.customerId === session.customerId,
       );
       if (!document) return fail(404, "Documento no encontrado.");
       if (document.status !== "PENDING_SIGNATURE")
@@ -5851,6 +5865,240 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       version: Number(existing.version) + 1,
     };
     return state.medicalRecords[id!];
+  }
+  if (resource === "aesthetic-records") {
+    const customerItem = customer(state, id!);
+    const recordId = action;
+    const recordAction = parts[5];
+    if (method === "GET") {
+      consumeAuthorization(
+        state,
+        headers.get("x-scheduler-authorization"),
+        "AESTHETIC_RECORD_VIEW",
+        customerItem.id,
+      );
+      const branchId = query.get("branchId") ?? "";
+      const commerceId = query.get("commerceId") ?? "";
+      const templates = state.aestheticRecordTemplates.filter(
+        (template) => template.active && template.commerceId === commerceId,
+      );
+      const records = state.aestheticVisitRecords
+        .filter(
+          (entry) =>
+            entry.customerId === customerItem.id &&
+            (!branchId || entry.branchId === branchId),
+        )
+        .sort((left, right) =>
+          right.appointmentAt.localeCompare(left.appointmentAt),
+        );
+      const recordedAppointmentIds = new Set(
+        state.aestheticVisitRecords.map((entry) => entry.appointmentId),
+      );
+      const eligibleAppointments = visibleAppointments(state)
+        .filter(
+          (entry) =>
+            entry.customerId === customerItem.id &&
+            entry.status === "ATTENDED" &&
+            (!branchId || entry.branchId === branchId) &&
+            !recordedAppointmentIds.has(entry.id),
+        )
+        .map((entry) => {
+          const service = entry.services[0]!;
+          const specialist = service.professionals[0]!;
+          return {
+            id: entry.id,
+            startsAt: entry.startsAt,
+            branchId: entry.branchId,
+            branchName: entry.branchName,
+            serviceProfileId: service.serviceProfileId,
+            serviceName: service.serviceName,
+            specialistProfileId: specialist.professionalProfileId,
+            specialistName: specialist.name,
+            templateId:
+              templates.find(
+                (template) =>
+                  template.serviceProfileId === service.serviceProfileId,
+              )?.id ?? null,
+          };
+        })
+        .filter((entry) => entry.templateId)
+        .sort((left, right) => right.startsAt.localeCompare(left.startsAt));
+      return { templates, eligibleAppointments, records };
+    }
+    if (recordAction === "sign") {
+      if (method !== "POST") fail(405, "Usa POST para firmar el registro.");
+      const existing =
+        state.aestheticVisitRecords.find(
+          (entry) =>
+            entry.id === recordId && entry.customerId === customerItem.id,
+        ) ?? fail(404, "Registro estético no encontrado.");
+      if (existing.status === "SIGNED")
+        fail(409, "El registro ya fue firmado y es inmutable.");
+      versionGuard(existing, body);
+      const signer =
+        state.operationAgents.find(
+          (agent) =>
+            agent.active &&
+            agent.code === String(body.personalCode ?? "") &&
+            textKey(agent.name) === textKey(existing.specialistName),
+        ) ??
+        fail(
+          403,
+          `Sólo ${existing.specialistName} puede firmar este registro con su código personal.`,
+        );
+      const signedAt = new Date().toISOString();
+      existing.status = "SIGNED";
+      existing.signedAt = signedAt;
+      existing.signedBy = signer.name;
+      existing.version += 1;
+      existing.updatedAt = signedAt;
+      return existing;
+    }
+    if (!["POST", "PUT"].includes(method))
+      fail(405, "Usa GET, POST o PUT para registros estéticos.");
+    consumeAuthorization(
+      state,
+      body.authorizationToken,
+      "AESTHETIC_RECORD_EDIT",
+      customerItem.id,
+    );
+    const existing = recordId
+      ? state.aestheticVisitRecords.find(
+          (entry) =>
+            entry.id === recordId && entry.customerId === customerItem.id,
+        )
+      : undefined;
+    if (recordId && !existing) fail(404, "Registro estético no encontrado.");
+    if (existing?.status === "SIGNED")
+      fail(409, "Un registro firmado no puede modificarse.");
+    if (existing) versionGuard(existing, body);
+    const visitAppointment = appointment(
+      state,
+      String(body.appointmentId ?? existing?.appointmentId ?? ""),
+    );
+    if (
+      visitAppointment.customerId !== customerItem.id ||
+      visitAppointment.status !== "ATTENDED"
+    )
+      fail(
+        400,
+        "El expediente sólo puede vincularse a una cita atendida del cliente.",
+      );
+    if (
+      !existing &&
+      state.aestheticVisitRecords.some(
+        (entry) => entry.appointmentId === visitAppointment.id,
+      )
+    )
+      fail(409, "La cita ya tiene un registro estético.");
+    const service = visitAppointment.services[0]!;
+    const specialist = service.professionals[0]!;
+    const template =
+      state.aestheticRecordTemplates.find(
+        (candidate) =>
+          candidate.id === body.templateId &&
+          candidate.active &&
+          candidate.serviceProfileId === service.serviceProfileId,
+      ) ??
+      fail(400, "Selecciona la plantilla activa que corresponde al servicio.");
+    const fieldValues = record(body.fieldValues);
+    for (const field of template.categories.flatMap(
+      (category) => category.fields,
+    )) {
+      const value = fieldValues[field.key];
+      if (
+        field.required &&
+        (value === undefined || value === null || value === "")
+      )
+        fail(400, `Completa el campo obligatorio: ${field.label}.`);
+      if (
+        field.type === "NUMBER" &&
+        value !== undefined &&
+        value !== null &&
+        value !== "" &&
+        !Number.isFinite(Number(value))
+      )
+        fail(400, `${field.label} debe ser numérico.`);
+      if (
+        field.type === "SELECT" &&
+        value &&
+        !field.options.includes(String(value))
+      )
+        fail(400, `${field.label} contiene una opción no válida.`);
+    }
+    const photosInput = rows(body.photos);
+    if (photosInput.length > 6)
+      fail(400, "Puedes adjuntar hasta seis fotografías.");
+    const photos: SchedulerAestheticVisitPhotoDto[] = photosInput.map(
+      (photo, index) => {
+        const mimeType = String(photo.mimeType ?? "");
+        const sizeBytes = Number(photo.sizeBytes ?? 0);
+        if (!["image/jpeg", "image/png"].includes(mimeType))
+          fail(400, "Las fotografías deben ser JPG o PNG.");
+        if (
+          !Number.isFinite(sizeBytes) ||
+          sizeBytes <= 0 ||
+          sizeBytes > 5 * 1024 * 1024
+        )
+          fail(400, "Cada fotografía debe pesar entre 1 byte y 5 MB.");
+        const kind = String(photo.kind ?? "DETAIL");
+        if (!["BEFORE", "AFTER", "DETAIL"].includes(kind))
+          fail(400, "El tipo de fotografía no es válido.");
+        return {
+          id: existing?.photos[index]?.id ?? designId("design-aesthetic-photo"),
+          kind: kind as SchedulerAestheticVisitPhotoDto["kind"],
+          area: String(photo.area ?? "Área tratada").trim() || "Área tratada",
+          fileName: String(photo.fileName ?? `foto-${index + 1}.jpg`),
+          mimeType: mimeType as SchedulerAestheticVisitPhotoDto["mimeType"],
+          sizeBytes,
+          capturedAt:
+            existing?.photos[index]?.capturedAt ?? new Date().toISOString(),
+        };
+      },
+    );
+    const now = new Date().toISOString();
+    const next: SchedulerAestheticVisitRecordDto = {
+      id: existing?.id ?? designId("design-aesthetic-record"),
+      customerId: customerItem.id,
+      appointmentId: visitAppointment.id,
+      appointmentAt: visitAppointment.startsAt,
+      branchId: visitAppointment.branchId,
+      branchName: visitAppointment.branchName,
+      serviceProfileId: service.serviceProfileId,
+      serviceName: service.serviceName,
+      specialistProfileId: specialist.professionalProfileId,
+      specialistName: specialist.name,
+      templateId: template.id,
+      templateName: template.name,
+      templateVersion: template.version,
+      categories: template.categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        fields: category.fields.map((field) => ({
+          ...field,
+          value:
+            field.type === "NUMBER" && fieldValues[field.key] !== ""
+              ? Number(fieldValues[field.key])
+              : field.type === "BOOLEAN"
+                ? Boolean(fieldValues[field.key])
+                : ((fieldValues[field.key] as string | null | undefined) ??
+                  null),
+        })),
+      })),
+      products: rows(body.products).map(String).filter(Boolean),
+      techniques: rows(body.techniques).map(String).filter(Boolean),
+      recommendations: String(body.recommendations ?? "").trim(),
+      photos,
+      status: "DRAFT",
+      signedAt: null,
+      signedBy: null,
+      version: (existing?.version ?? 0) + 1,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    if (existing) Object.assign(existing, next);
+    else state.aestheticVisitRecords.push(next);
+    return next;
   }
   if (resource === "access")
     return {

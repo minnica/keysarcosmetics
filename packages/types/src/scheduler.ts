@@ -51,6 +51,8 @@ export const SCHEDULER_AUTHORIZATION_PURPOSES = [
   "SENSITIVE_EXPORT",
   "MEDICAL_RECORD_VIEW",
   "MEDICAL_RECORD_EDIT",
+  "AESTHETIC_RECORD_VIEW",
+  "AESTHETIC_RECORD_EDIT",
   "PRIVATE_DOCUMENT_DOWNLOAD",
   "MEDICAL_DOCUMENT_DOWNLOAD",
 ] as const;
@@ -1486,6 +1488,119 @@ export interface SchedulerMedicalRecordDto {
   fields: Record<string, unknown>;
   version: number;
   updatedAt: string;
+}
+
+export type SchedulerAestheticFieldType =
+  | "TEXT"
+  | "NUMBER"
+  | "BOOLEAN"
+  | "SELECT";
+
+export interface SchedulerAestheticFieldDefinitionDto {
+  key: string;
+  label: string;
+  type: SchedulerAestheticFieldType;
+  required: boolean;
+  options: string[];
+}
+
+export interface SchedulerAestheticCategoryDefinitionDto {
+  id: string;
+  name: string;
+  fields: SchedulerAestheticFieldDefinitionDto[];
+}
+
+export interface SchedulerAestheticRecordTemplateDto {
+  id: string;
+  commerceId: string;
+  serviceProfileId: string;
+  serviceName: string;
+  name: string;
+  version: number;
+  active: boolean;
+  categories: SchedulerAestheticCategoryDefinitionDto[];
+}
+
+export interface SchedulerAestheticVisitPhotoDto {
+  id: string;
+  kind: "BEFORE" | "AFTER" | "DETAIL";
+  area: string;
+  fileName: string;
+  mimeType: "image/jpeg" | "image/png";
+  sizeBytes: number;
+  capturedAt: string;
+}
+
+export interface SchedulerAestheticVisitCategoryDto {
+  id: string;
+  name: string;
+  fields: Array<
+    SchedulerAestheticFieldDefinitionDto & {
+      value: string | number | boolean | null;
+    }
+  >;
+}
+
+export interface SchedulerAestheticVisitRecordDto {
+  id: string;
+  customerId: string;
+  appointmentId: string;
+  appointmentAt: string;
+  branchId: string;
+  branchName: string;
+  serviceProfileId: string;
+  serviceName: string;
+  specialistProfileId: string;
+  specialistName: string;
+  templateId: string;
+  templateName: string;
+  templateVersion: number;
+  categories: SchedulerAestheticVisitCategoryDto[];
+  products: string[];
+  techniques: string[];
+  recommendations: string;
+  photos: SchedulerAestheticVisitPhotoDto[];
+  status: "DRAFT" | "SIGNED";
+  signedAt: string | null;
+  signedBy: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchedulerAestheticEligibleAppointmentDto {
+  id: string;
+  startsAt: string;
+  branchId: string;
+  branchName: string;
+  serviceProfileId: string;
+  serviceName: string;
+  specialistProfileId: string;
+  specialistName: string;
+  templateId: string | null;
+}
+
+export interface SchedulerAestheticWorkspaceDto {
+  templates: SchedulerAestheticRecordTemplateDto[];
+  eligibleAppointments: SchedulerAestheticEligibleAppointmentDto[];
+  records: SchedulerAestheticVisitRecordDto[];
+}
+
+export interface SchedulerAestheticVisitRecordWriteDto {
+  appointmentId: string;
+  templateId: string;
+  fieldValues: Record<string, string | number | boolean | null>;
+  products: string[];
+  techniques: string[];
+  recommendations: string;
+  photos: Array<
+    Pick<
+      SchedulerAestheticVisitPhotoDto,
+      "kind" | "area" | "fileName" | "mimeType" | "sizeBytes"
+    >
+  >;
+  expectedVersion?: number;
+  authorizationToken: string;
 }
 
 export interface SchedulerSurveyQuestionWriteDto {
