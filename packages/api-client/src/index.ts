@@ -107,6 +107,11 @@ import type {
   SchedulerCustomerFieldDefinitionRequest,
   SchedulerCustomerFieldDefinitionWriteDto,
   SchedulerCustomerFinancialHistoryDto,
+  SchedulerCustomerPortalAccessChallengeDto,
+  SchedulerCustomerPortalAppointmentDto,
+  SchedulerCustomerPortalAvailabilitySlotDto,
+  SchedulerCustomerPortalOverviewDto,
+  SchedulerCustomerPortalSessionDto,
   SchedulerCustomerMergeRequestDto,
   SchedulerCustomerMergeResultDto,
   SchedulerCustomerPageDto,
@@ -441,6 +446,51 @@ export interface SchedulerApiClient {
     input: SchedulerNotificationRuleWriteDto,
   ): Promise<{ id: string; version: number }>;
   notificationSummary(): Promise<SchedulerNotificationSummaryDto>;
+  requestCustomerPortalAccess(input: {
+    identifier: string;
+  }): Promise<SchedulerCustomerPortalAccessChallengeDto>;
+  verifyCustomerPortalAccess(
+    challengeId: string,
+    input: { code: string },
+  ): Promise<SchedulerCustomerPortalSessionDto>;
+  customerPortalOverview(
+    portalToken: string,
+  ): Promise<SchedulerCustomerPortalOverviewDto>;
+  customerPortalAvailability(
+    portalToken: string,
+    input: {
+      branchId: string;
+      serviceProfileId: string;
+      date: string;
+    },
+  ): Promise<SchedulerCustomerPortalAvailabilitySlotDto[]>;
+  createCustomerPortalAppointment(
+    portalToken: string,
+    input: {
+      branchId: string;
+      serviceProfileId: string;
+      professionalProfileId: string;
+      startsAt: string;
+      repeatAppointmentId?: string | null;
+    },
+  ): Promise<SchedulerCustomerPortalAppointmentDto>;
+  updateCustomerPortalAppointment(
+    portalToken: string,
+    appointmentId: string,
+    input:
+      | { action: "CONFIRM" }
+      | { action: "CANCEL" }
+      | {
+          action: "RESCHEDULE";
+          startsAt: string;
+          professionalProfileId: string;
+        },
+  ): Promise<SchedulerCustomerPortalAppointmentDto>;
+  signCustomerPortalDocument(
+    portalToken: string,
+    documentId: string,
+    input: { signatureName: string },
+  ): Promise<{ id: string; status: "SIGNED"; updatedAt: string }>;
   consentTemplates(): Promise<SchedulerConsentTemplateDto[]>;
   uploadConsentTemplate(
     form: FormData,
@@ -875,6 +925,52 @@ export function createSchedulerApiClient(
     notificationSummary: () =>
       data<SchedulerNotificationSummaryDto>(
         client.get("/api/scheduler/communications/summary"),
+      ),
+    requestCustomerPortalAccess: (input) =>
+      data<SchedulerCustomerPortalAccessChallengeDto>(
+        client.post("/api/scheduler/customer-portal/access", input),
+      ),
+    verifyCustomerPortalAccess: (challengeId, input) =>
+      data<SchedulerCustomerPortalSessionDto>(
+        client.post(
+          `/api/scheduler/customer-portal/access/${challengeId}/verify`,
+          input,
+        ),
+      ),
+    customerPortalOverview: (portalToken) =>
+      data<SchedulerCustomerPortalOverviewDto>(
+        client.get("/api/scheduler/customer-portal/overview", {
+          headers: { "X-Customer-Portal-Token": portalToken },
+        }),
+      ),
+    customerPortalAvailability: (portalToken, input) =>
+      data<SchedulerCustomerPortalAvailabilitySlotDto[]>(
+        client.get("/api/scheduler/customer-portal/availability", {
+          params: input,
+          headers: { "X-Customer-Portal-Token": portalToken },
+        }),
+      ),
+    createCustomerPortalAppointment: (portalToken, input) =>
+      data<SchedulerCustomerPortalAppointmentDto>(
+        client.post("/api/scheduler/customer-portal/appointments", input, {
+          headers: { "X-Customer-Portal-Token": portalToken },
+        }),
+      ),
+    updateCustomerPortalAppointment: (portalToken, appointmentId, input) =>
+      data<SchedulerCustomerPortalAppointmentDto>(
+        client.put(
+          `/api/scheduler/customer-portal/appointments/${appointmentId}`,
+          input,
+          { headers: { "X-Customer-Portal-Token": portalToken } },
+        ),
+      ),
+    signCustomerPortalDocument: (portalToken, documentId, input) =>
+      data<{ id: string; status: "SIGNED"; updatedAt: string }>(
+        client.post(
+          `/api/scheduler/customer-portal/documents/${documentId}/sign`,
+          input,
+          { headers: { "X-Customer-Portal-Token": portalToken } },
+        ),
       ),
     consentTemplates: () =>
       data<SchedulerConsentTemplateDto[]>(

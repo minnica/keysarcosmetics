@@ -101,7 +101,38 @@ test("keeps the complete RV0 route inventory mounted", () => {
     "app/(dashboard)/reportes/reservas/servicios/page.tsx",
     "app/(dashboard)/reportes/seguimiento-citas/page.tsx",
     "app/(dashboard)/reportes/ventas/page.tsx",
+    "app/portal/page.tsx",
   ]);
+});
+
+test("mounts the customer self-service portal outside the staff dashboard", () => {
+  const route = readFileSync(
+    path.join(sourceRoot, "app/portal/page.tsx"),
+    "utf8",
+  );
+  const portal = readFileSync(
+    path.join(
+      sourceRoot,
+      "components/portal/SchedulerCustomerPortal.tsx",
+    ),
+    "utf8",
+  );
+  const documentExport = readFileSync(
+    path.join(sourceRoot, "lib/scheduler-customer-portal-document.ts"),
+    "utf8",
+  );
+
+  assert.match(route, /SchedulerCustomerPortal/);
+  assert.match(portal, /Accede a tu portal/);
+  assert.match(portal, /Repetir tu visita/);
+  assert.match(portal, /Apartados y saldos/);
+  assert.match(portal, /Mis documentos/);
+  assert.match(
+    portal,
+    /await import\(\s*["']@\/lib\/scheduler-customer-portal-document["']\s*\)/,
+  );
+  assert.match(documentExport, /await Promise\.all\(\[import\("jspdf"\)\]\)/);
+  assert.doesNotMatch(documentExport, /^import .* from ["']jspdf["']/m);
 });
 
 test("combines commerce and resources into one administration submenu", () => {

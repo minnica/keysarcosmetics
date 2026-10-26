@@ -4,6 +4,8 @@ import type {
   SchedulerAppointmentStatus,
   SchedulerCustomerWriteDto,
   SchedulerCustomerFieldDefinitionWriteDto,
+  SchedulerCustomerPortalAppointmentDto,
+  SchedulerCustomerPortalOverviewDto,
   SchedulerSettingSection,
   SchedulerSettingScope,
   SchedulerAvailabilitySlotDto,
@@ -506,6 +508,7 @@ function authorizeRequest(state: DesignState, request: DesignRequest) {
     request.method === "POST" &&
     path === "/api/scheduler/design-proposals/customers/advanced-search";
   if (path === "/api/auth/login") return;
+  if (path.startsWith("/api/scheduler/customer-portal/")) return;
   if (
     request.headers.get("authorization") !==
     `Bearer ${designSessionToken(state.controls.accountId)}`
@@ -2410,6 +2413,511 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     state.controls.role = account.role;
     state.authorizations.clear();
     return { token: designSessionToken(account.id) };
+  }
+  if (resource === "customer-portal") {
+    const portalPolicy = {
+      minimumBookingLeadMinutes: 120,
+      bookingHorizonDays: 90,
+      cancellationWindowHours: 12,
+      rescheduleWindowHours: 6,
+      maximumReschedules: 2,
+    };
+    const servicePrice = (serviceProfileId: string) =>
+      serviceProfileId === "class-rv4" ? 1200 : 1850;
+    const portalBookingDeadline = () =>
+      Date.now() + portalPolicy.bookingHorizonDays * 24 * 60 * 60_000;
+    const validatePortalStart = (startsAt: string) => {
+      const timestamp = Date.parse(startsAt);
+      if (!Number.isFinite(timestamp))
+        return fail(400, "Selecciona una fecha y horario válidos.");
+      if (
+        timestamp <=
+        Date.now() + portalPolicy.minimumBookingLeadMinutes * 60_000
+      )
+        return fail(409, "El horario no cumple la anticipación mínima.");
+      if (timestamp > portalBookingDeadline())
+        return fail(
+          409,
+          `Sólo puedes reservar con ${portalPolicy.bookingHorizonDays} días de anticipación.`,
+        );
+      return timestamp;
+    };
+    const overlapsPortalAppointment = ({
+      appointmentId,
+      endsAt,
+      professionalProfileId,
+      startsAt,
+    }: {
+      appointmentId?: string;
+      endsAt: string;
+      professionalProfileId: string;
+      startsAt: string;
+    }) =>
+      state.appointments.some(
+        (item) =>
+          item.id !== appointmentId &&
+          item.status !== "CANCELED" &&
+          Date.parse(item.startsAt) < Date.parse(endsAt) &&
+          Date.parse(item.endsAt) > Date.parse(startsAt) &&
+          item.services.some((scheduledService) =>
+            scheduledService.professionals.some(
+              (assigned) =>
+                assigned.professionalProfileId === professionalProfileId,
+            ),
+          ),
+      );
+    const maskDestination = (value: string) => {
+      if (value.includes("@")) {
+        const [local, domain] = value.split("@");
+        return `${local?.slice(0, 2) ?? "**"}***@${domain ?? "***"}`;
+      }
+      const digits = value.replace(/\D/g, "");
+      return `*** *** ${digits.slice(-4)}`;
+    };
+    const portalSession = () => {
+      const token = headers.get("x-customer-portal-token") ?? "";
+      const session = state.customerPortalSessions.get(token);
+      if (!session || Date.parse(session.expiresAt) <= Date.now())
+        return fail(401, "La sesión del portal expiró. Solicita un nuevo código.");
+      return session;
+    };
+    const portalAppointment = (
+      item: SchedulerAppointmentDto,
+    ): SchedulerCustomerPortalAppointmentDto => {
+      const service = item.services[0]!;
+      const originalPrice = servicePrice(service.serviceProfileId);
+      const localHour = Number(
+        new Intl.DateTimeFormat("en-GB", {
+          hour: "2-digit",
+          hour12: false,
+          timeZone: "America/Mexico_City",
+        }).format(new Date(item.startsAt)),
+      );
+      const smartPricingApplied =
+        item.origin === "CUSTOMER_PORTAL" && localHour === 10;
+      const finalPrice = smartPricingApplied
+        ? Math.round(originalPrice * 0.85)
+        : originalPrice;
+      const rescheduleCount =
+        state.customerPortalRescheduleCounts[item.id] ?? 0;
+      const closed = ["CANCELED", "ATTENDED", "NO_SHOW"].includes(
+        item.status,
+      );
+      return {
+        id: item.id,
+        branchId: item.branchId,
+        branchName: item.branchName,
+        serviceProfileId: service.serviceProfileId,
+        serviceName: service.serviceName,
+        professionalName: service.professionals[0]?.name ?? null,
+        startsAt: item.startsAt,
+        endsAt: item.endsAt,
+        status: item.status,
+        originalPrice,
+        finalPrice,
+        smartPricingApplied,
+        rescheduleCount,
+        canConfirm:
+          ["PENDING", "RESERVED"].includes(item.status) &&
+          Date.parse(item.endsAt) > Date.now(),
+        canCancel:
+          !closed &&
+          Date.parse(item.startsAt) - Date.now() >=
+            portalPolicy.cancellationWindowHours * 60 * 60_000,
+        canReschedule:
+          !closed &&
+          rescheduleCount < portalPolicy.maximumReschedules &&
+          Date.parse(item.startsAt) - Date.now() >=
+            portalPolicy.rescheduleWindowHours * 60 * 60_000,
+      };
+    };
+    if (id === "access") {
+      if (method !== "POST")
+        return fail(405, "Usa POST para solicitar o validar el código.");
+      if (method === "POST" && action) {
+        const challenge = state.customerPortalChallenges.get(action);
+        if (!challenge || Date.parse(challenge.expiresAt) <= Date.now())
+          return fail(401, "El código de acceso expiró.");
+        if (parts[5] !== "verify")
+          return fail(404, "Acción de acceso no encontrada.");
+        if (String(body.code) !== "246810")
+          return fail(401, "Código incorrecto. En la demo usa 246810.");
+        const portalToken = designId("customer-portal-token");
+        const expiresAt = new Date(Date.now() + 60 * 60_000).toISOString();
+        state.customerPortalSessions.set(portalToken, {
+          customerId: challenge.customerId,
+          expiresAt,
+        });
+        state.customerPortalChallenges.delete(action);
+        return { portalToken, expiresAt };
+      }
+      const identifier = String(body.identifier ?? "").trim().toLowerCase();
+      const normalizedPhone = identifier.replace(/\D/g, "");
+      const customerItem = state.customers.find(
+        (candidate) =>
+          candidate.email?.toLowerCase() === identifier ||
+          candidate.phone?.replace(/\D/g, "") === normalizedPhone,
+      );
+      if (!customerItem)
+        return fail(
+          404,
+          "No encontramos una clienta con ese correo o teléfono.",
+        );
+      const challengeId = designId("customer-portal-challenge");
+      const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+      state.customerPortalChallenges.set(challengeId, {
+        customerId: customerItem.id,
+        expiresAt,
+      });
+      return {
+        challengeId,
+        destinationHint: maskDestination(
+          identifier.includes("@")
+            ? identifier
+            : (customerItem.phone ?? identifier),
+        ),
+        expiresAt,
+      };
+    }
+    if (id === "overview") {
+      if (method !== "GET") return fail(405, "Usa GET para consultar el portal.");
+      const session = portalSession();
+      const customerItem = state.customers.find(
+        (candidate) => candidate.id === session.customerId,
+      )!;
+      const customerAppointments = state.appointments
+        .filter((item) => item.customerId === session.customerId)
+        .map(portalAppointment);
+      const upcomingStatuses = new Set([
+        "PENDING",
+        "RESERVED",
+        "CONFIRMED",
+        "ARRIVED",
+      ]);
+      return {
+        customer: {
+          id: customerItem.id,
+          displayName: customerItem.displayName,
+          contactHint: maskDestination(
+            customerItem.email ?? customerItem.phone ?? "Contacto protegido",
+          ),
+        },
+        policy: portalPolicy,
+        upcomingAppointments: customerAppointments.filter(
+          (item) =>
+            upcomingStatuses.has(item.status) &&
+            Date.parse(item.endsAt) > Date.now(),
+        ),
+        appointmentHistory: customerAppointments.filter(
+          (item) =>
+            !upcomingStatuses.has(item.status) ||
+            Date.parse(item.endsAt) <= Date.now(),
+        ),
+        memberships:
+          session.customerId === state.customers[0]?.id
+            ? [
+                {
+                  id: "portal-membership-1",
+                  name: "Membresía facial · 6 sesiones",
+                  usedSessions: 2,
+                  totalSessions: 6,
+                  expiresAt: "2027-03-31T23:59:59.000Z",
+                  status: "ACTIVE" as const,
+                },
+              ]
+            : [],
+        balances:
+          session.customerId === state.customers[0]?.id
+            ? [
+                {
+                  id: "portal-balance-1",
+                  description: "Apartado de membresía facial",
+                  saleAmount: 2400,
+                  receivedAmount: 600,
+                  balanceAmount: 1800,
+                  status: "OPEN" as const,
+                },
+              ]
+            : [],
+        documents: state.customerPortalDocuments.filter(
+          (document) => document.customerId === session.customerId,
+        ),
+        services: state.catalog.services
+          .filter((service) => service.active && service.acceptsOnline)
+          .map((service) => ({
+            id: service.id,
+            name: service.name,
+            durationMinutes: service.durationMinutes,
+            price: servicePrice(service.id),
+          })),
+        branches: state.catalog.branches
+          .filter((branch) => branch.active && branch.bookingEnabled)
+          .map((branch) => ({
+            id: branch.branchId,
+            name: branch.branchName,
+            address:
+              branch.branchId === "branch-rv4"
+                ? "Polanco, Ciudad de México"
+                : "Mítikah, Ciudad de México",
+          })),
+      } satisfies SchedulerCustomerPortalOverviewDto;
+    }
+    if (id === "availability") {
+      if (method !== "GET")
+        return fail(405, "Usa GET para consultar disponibilidad.");
+      portalSession();
+      const branchId = query.get("branchId") ?? "";
+      const serviceProfileId = query.get("serviceProfileId") ?? "";
+      const date = query.get("date") ?? "";
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return fail(400, "Selecciona una fecha válida.");
+      const dateAtNoon = Date.parse(`${date}T12:00:00`);
+      if (
+        !Number.isFinite(dateAtNoon) ||
+        new Date(dateAtNoon).toISOString().slice(0, 10) !== date
+      )
+        return fail(400, "Selecciona una fecha válida.");
+      if (dateAtNoon > portalBookingDeadline())
+        return fail(
+          409,
+          `Sólo puedes consultar ${portalPolicy.bookingHorizonDays} días por adelantado.`,
+        );
+      const service = state.catalog.services.find(
+        (candidate) =>
+          candidate.id === serviceProfileId &&
+          candidate.branchProfileIds.some(
+            (profileId) =>
+              state.catalog.branches.find(
+                (branch) => branch.id === profileId,
+              )?.branchId === branchId,
+          ),
+      );
+      if (!service) return fail(404, "Servicio no disponible en esta sucursal.");
+      const professionals = state.catalog.professionals.filter(
+        (professional) =>
+          professional.active &&
+          professional.acceptsOnline &&
+          professional.branchProfileIds.some(
+            (profileId) =>
+              state.catalog.branches.find(
+                (branch) => branch.id === profileId,
+              )?.branchId === branchId,
+          ),
+      );
+      const originalPrice = servicePrice(serviceProfileId);
+      return [10 * 60, 12 * 60, 16 * 60].flatMap((minute, index) => {
+        const professional = professionals[index % professionals.length];
+        if (!professional) return [];
+        const startsAt = designInstant(date, minute);
+        const endsAt = new Date(
+          Date.parse(startsAt) + service.durationMinutes * 60_000,
+        ).toISOString();
+        if (
+          Date.parse(startsAt) <=
+            Date.now() + portalPolicy.minimumBookingLeadMinutes * 60_000 ||
+          overlapsPortalAppointment({
+            endsAt,
+            professionalProfileId: professional.id,
+            startsAt,
+          })
+        )
+          return [];
+        const smartPricingApplied = minute === 10 * 60;
+        return [
+          {
+            startsAt,
+            endsAt,
+            professionalProfileId: professional.id,
+            professionalName: professional.name,
+            originalPrice,
+            finalPrice: smartPricingApplied
+              ? Math.round(originalPrice * 0.85)
+              : originalPrice,
+            smartPricingApplied,
+          },
+        ];
+      });
+    }
+    if (id === "appointments") {
+      const session = portalSession();
+      if (method === "POST") {
+        if (action) return fail(405, "La creación de citas no recibe un ID.");
+        const service = state.catalog.services.find(
+          (candidate) => candidate.id === body.serviceProfileId,
+        );
+        const professional = state.catalog.professionals.find(
+          (candidate) => candidate.id === body.professionalProfileId,
+        );
+        const branch = state.catalog.branches.find(
+          (candidate) => candidate.branchId === body.branchId,
+        );
+        const serviceAvailable =
+          service?.active &&
+          service.acceptsOnline &&
+          service.branchProfileIds.includes(branch?.id ?? "");
+        const professionalAvailable =
+          professional?.active &&
+          professional.acceptsOnline &&
+          professional.branchProfileIds.includes(branch?.id ?? "") &&
+          state.catalog.professionalServices.some(
+            (assignment) =>
+              assignment.active &&
+              assignment.branchProfileId === branch?.id &&
+              assignment.serviceProfileId === service?.id &&
+              assignment.professionalProfileId === professional?.id,
+          );
+        if (!branch?.bookingEnabled || !serviceAvailable || !professionalAvailable)
+          return fail(404, "Servicio o especialista no disponible.");
+        const startsAt = String(body.startsAt);
+        validatePortalStart(startsAt);
+        const endsAt = new Date(
+          Date.parse(startsAt) + service.durationMinutes * 60_000,
+        ).toISOString();
+        if (
+          overlapsPortalAppointment({
+            endsAt,
+            professionalProfileId: professional.id,
+            startsAt,
+          })
+        )
+          return fail(409, "El horario acaba de ocuparse. Elige otro.");
+        const created = buildDesignAppointment(state, {
+          branchId: String(body.branchId),
+          customerId: session.customerId,
+          startsAt,
+          status: "RESERVED",
+          notes: body.repeatAppointmentId
+            ? `Repetición de ${String(body.repeatAppointmentId)}`
+            : "Reserva creada desde portal de clientes",
+          services: [
+            {
+              serviceProfileId: service.id,
+              professionalProfileIds: [professional.id],
+              resourceIds: [],
+            },
+          ],
+        });
+        created.origin = "CUSTOMER_PORTAL";
+        state.appointments.push(created);
+        return portalAppointment(created);
+      }
+      if (method !== "PUT")
+        return fail(405, "Usa PUT para actualizar una cita del portal.");
+      const sessionAppointment = state.appointments.find(
+        (item) => item.id === action && item.customerId === session.customerId,
+      );
+      if (!sessionAppointment) return fail(404, "Cita no encontrada.");
+      const current = portalAppointment(sessionAppointment);
+      if (body.action === "CONFIRM") {
+        if (!current.canConfirm)
+          return fail(409, "Esta cita ya no necesita confirmación.");
+        sessionAppointment.status = "CONFIRMED";
+      } else if (body.action === "CANCEL") {
+        if (!current.canCancel)
+          return fail(409, "Esta cita ya no puede cancelarse.");
+        sessionAppointment.status = "CANCELED";
+        sessionAppointment.cancellationReason = "Cancelada por la clienta";
+      } else if (body.action === "RESCHEDULE") {
+        if (!current.canReschedule)
+          return fail(409, "Se alcanzó el máximo de reprogramaciones.");
+        const startsAt = String(body.startsAt ?? "");
+        validatePortalStart(startsAt);
+        const professional = state.catalog.professionals.find(
+          (candidate) => candidate.id === body.professionalProfileId,
+        );
+        const branch = state.catalog.branches.find(
+          (candidate) => candidate.branchId === sessionAppointment.branchId,
+        );
+        const scheduledService = sessionAppointment.services[0];
+        const professionalAvailable =
+          professional?.active &&
+          professional.acceptsOnline &&
+          professional.branchProfileIds.includes(branch?.id ?? "") &&
+          state.catalog.professionalServices.some(
+            (assignment) =>
+              assignment.active &&
+              assignment.branchProfileId === branch?.id &&
+              assignment.serviceProfileId ===
+                scheduledService?.serviceProfileId &&
+              assignment.professionalProfileId === professional.id,
+          );
+        if (!professionalAvailable)
+          return fail(404, "La especialista seleccionada ya no está disponible.");
+        const duration =
+          Date.parse(sessionAppointment.endsAt) -
+          Date.parse(sessionAppointment.startsAt);
+        const endsAt = new Date(Date.parse(startsAt) + duration).toISOString();
+        if (
+          overlapsPortalAppointment({
+            appointmentId: sessionAppointment.id,
+            endsAt,
+            professionalProfileId: professional.id,
+            startsAt,
+          })
+        )
+          return fail(409, "El horario acaba de ocuparse. Elige otro.");
+        sessionAppointment.startsAt = startsAt;
+        sessionAppointment.endsAt = endsAt;
+        for (const service of sessionAppointment.services) {
+          const serviceDuration =
+            Date.parse(service.endsAt) - Date.parse(service.startsAt);
+          service.startsAt = startsAt;
+          service.endsAt = new Date(
+            Date.parse(startsAt) + serviceDuration,
+          ).toISOString();
+          service.occupiesFrom = startsAt;
+          service.occupiesUntil = service.endsAt;
+          service.professionals = [
+            {
+              professionalProfileId: professional.id,
+              name: professional.name,
+              role: "PRIMARY",
+            },
+          ];
+        }
+        sessionAppointment.status = "RESERVED";
+        state.customerPortalRescheduleCounts[sessionAppointment.id] =
+          current.rescheduleCount + 1;
+      } else return fail(400, "Acción de cita no válida.");
+      sessionAppointment.version += 1;
+      sessionAppointment.updatedAt = new Date().toISOString();
+      return portalAppointment(sessionAppointment);
+    }
+    if (id === "documents" && parts[5] === "sign") {
+      if (method !== "POST")
+        return fail(405, "Usa POST para firmar un documento.");
+      const session = portalSession();
+      const document = state.customerPortalDocuments.find(
+        (candidate) =>
+          candidate.id === action && candidate.customerId === session.customerId,
+      );
+      if (!document) return fail(404, "Documento no encontrado.");
+      if (document.status !== "PENDING_SIGNATURE")
+        return fail(409, "El documento no requiere firma.");
+      const signatureName = String(body.signatureName ?? "").trim();
+      const customerItem = state.customers.find(
+        (candidate) => candidate.id === session.customerId,
+      );
+      if (
+        !customerItem ||
+        signatureName.toLocaleLowerCase("es-MX") !==
+          customerItem.displayName.trim().toLocaleLowerCase("es-MX")
+      )
+        return fail(
+          400,
+          "Escribe tu nombre completo tal como aparece en el portal.",
+        );
+      const signedAt = new Date().toISOString();
+      document.status = "SIGNED";
+      document.signedAt = signedAt;
+      document.signerDisplayName = customerItem.displayName;
+      document.updatedAt = signedAt;
+      return {
+        id: document.id,
+        status: "SIGNED",
+        updatedAt: document.updatedAt,
+      };
+    }
   }
   if (resource === "bootstrap") return designBootstrap(state);
   if (resource === "security") return { updated: true };

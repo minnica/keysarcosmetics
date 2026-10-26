@@ -7,6 +7,7 @@ import {
   type SchedulerAppointmentCreateDto,
   type SchedulerBootstrapDto,
   type SchedulerCustomerDetailDto,
+  type SchedulerCustomerPortalDocumentDto,
   type SchedulerCustomerFieldDefinitionDto,
   type SchedulerOperationalCatalogDto,
   type SchedulerScheduleBlockDto,
@@ -774,6 +775,40 @@ export function createDesignState(
       schedulerNotificationRulesRv8Fixture,
     ) as DesignRow[],
     contactChannels: {} as Record<string, DesignRow[]>,
+    customerPortalChallenges: new Map<
+      string,
+      { customerId: string; expiresAt: string }
+    >(),
+    customerPortalSessions: new Map<
+      string,
+      { customerId: string; expiresAt: string }
+    >(),
+    customerPortalDocuments: [
+      {
+        id: "portal-document-consent-1",
+        customerId: customers[0]!.id,
+        name: "Consentimiento para tratamiento facial",
+        kind: "CONSENT",
+        version: 3,
+        status:
+          "PENDING_SIGNATURE" as SchedulerCustomerPortalDocumentDto["status"],
+        signedAt: null as string | null,
+        signerDisplayName: null as string | null,
+        updatedAt: "2026-10-20T16:00:00.000Z",
+      },
+      {
+        id: "portal-document-recommendation-1",
+        customerId: customers[0]!.id,
+        name: "Recomendaciones posteriores a hidratación",
+        kind: "RECOMMENDATION",
+        version: 1,
+        status: "AVAILABLE" as SchedulerCustomerPortalDocumentDto["status"],
+        signedAt: null as string | null,
+        signerDisplayName: null as string | null,
+        updatedAt: "2026-10-12T19:00:00.000Z",
+      },
+    ] satisfies Array<SchedulerCustomerPortalDocumentDto & { customerId: string }>,
+    customerPortalRescheduleCounts: {} as Record<string, number>,
     medicalRecords: {} as Record<string, DesignRow>,
     authorizations: new Map<
       string,
@@ -1277,6 +1312,27 @@ export function createDesignState(
       updatedAt: history[0]?.createdAt ?? eligibilityDate.toISOString(),
       history,
     });
+  }
+  if (controls.scenario !== "empty") {
+    const portalDate = new Date(`${controls.date}T12:00:00.000Z`);
+    portalDate.setUTCDate(portalDate.getUTCDate() + 2);
+    const portalDateKey = portalDate.toISOString().slice(0, 10);
+    const portalAppointment = buildDesignAppointment(state, {
+      branchId: catalog.branches[0]!.branchId,
+      customerId: customers[0]!.id,
+      startsAt: designInstant(portalDateKey, 14 * 60),
+      status: "RESERVED",
+      notes: "Reserva de demostración disponible en el portal de clientes",
+      services: [
+        {
+          serviceProfileId: catalog.services[0]!.id,
+          professionalProfileIds: [catalog.professionals[0]!.id],
+          resourceIds: [],
+        },
+      ],
+    });
+    portalAppointment.origin = "CUSTOMER_PORTAL";
+    state.appointments.push(portalAppointment);
   }
   return state;
 }

@@ -262,7 +262,12 @@ export interface DesignAppointmentAttendeeContext {
 
 export interface DesignAppointmentContext {
   appointmentId: string;
-  appointmentOrigin: "SCHEDULER" | "POS" | "INTERNAL_API" | "IMPORT";
+  appointmentOrigin:
+    | "SCHEDULER"
+    | "CUSTOMER_PORTAL"
+    | "POS"
+    | "INTERNAL_API"
+    | "IMPORT";
   attendeeNames: string[];
   attendees: DesignAppointmentAttendeeContext[];
   attendingSpecialistProfileIds: string[];

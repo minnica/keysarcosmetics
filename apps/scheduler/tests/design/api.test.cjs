@@ -26,15 +26,24 @@ const { createSchedulerApiClient } = require("@cosmetics/api-client");
 const { http, HttpResponse } = require("msw");
 const { setupServer } = require("msw/node");
 
-function session(scenario = "normal", role = "master") {
-  const state = createDesignState({ role, scenario, date: "2026-09-29" });
+function session(
+  scenario = "normal",
+  role = "master",
+  date = "2026-09-29",
+) {
+  const state = createDesignState({ role, scenario, date });
   function request(method, path, body = {}, extraHeaders = {}) {
+    const staffHeaders = path.startsWith("/api/scheduler/customer-portal/")
+      ? {}
+      : {
+          authorization: `Bearer ${designSessionToken(state.controls.accountId)}`,
+        };
     return handleDesignRequest(state, {
       method,
       url: new URL(path, designOrigin),
       body,
       headers: new Headers({
-        authorization: `Bearer ${designSessionToken(state.controls.accountId)}`,
+        ...staffHeaders,
         ...extraHeaders,
       }),
     });
@@ -3014,4 +3023,260 @@ test("precios inteligentes valida descuentos y expone recomendaciones", () => {
     },
   );
   assert.equal(invalid.status, 400);
+});
+
+test("el portal autentica a la clienta y limita todos los datos a su perfil", () => {
+  const date = new Date(Date.now() + 24 * 60 * 60_000)
+    .toISOString()
+    .slice(0, 10);
+  const { state, request } = session("normal", "master", date);
+  const customer = state.customers[0];
+  const challenge = request(
+    "POST",
+    "/api/scheduler/customer-portal/access",
+    { identifier: customer.email },
+  );
+  assert.equal(challenge.status, 201);
+  assert.equal(
+    challenge.body.data.destinationHint.includes(customer.email),
+    false,
+  );
+
+  const rejected = request(
+    "POST",
+    `/api/scheduler/customer-portal/access/${challenge.body.data.challengeId}/verify`,
+    { code: "000000" },
+  );
+  assert.equal(rejected.status, 401);
+
+  const verified = request(
+    "POST",
+    `/api/scheduler/customer-portal/access/${challenge.body.data.challengeId}/verify`,
+    { code: "246810" },
+  );
+  assert.equal(verified.status, 201);
+  const portalHeaders = {
+    "x-customer-portal-token": verified.body.data.portalToken,
+  };
+  const overview = request(
+    "GET",
+    "/api/scheduler/customer-portal/overview",
+    {},
+    portalHeaders,
+  );
+  assert.equal(overview.status, 200);
+  assert.equal(overview.body.data.customer.id, customer.id);
+  assert.ok(overview.body.data.upcomingAppointments.length >= 1);
+  assert.ok(overview.body.data.memberships.length >= 1);
+  assert.ok(overview.body.data.balances.some((balance) => balance.balanceAmount > 0));
+  assert.ok(overview.body.data.documents.length >= 2);
+
+  const foreignAppointment = state.appointments.find(
+    (appointment) => appointment.customerId !== customer.id,
+  );
+  const foreignMutation = request(
+    "PUT",
+    `/api/scheduler/customer-portal/appointments/${foreignAppointment.id}`,
+    { action: "CONFIRM" },
+    portalHeaders,
+  );
+  assert.equal(foreignMutation.status, 404);
+
+  const secondCustomer = state.customers[1];
+  const secondChallenge = request(
+    "POST",
+    "/api/scheduler/customer-portal/access",
+    { identifier: secondCustomer.email },
+  );
+  const secondVerified = request(
+    "POST",
+    `/api/scheduler/customer-portal/access/${secondChallenge.body.data.challengeId}/verify`,
+    { code: "246810" },
+  );
+  const secondOverview = request(
+    "GET",
+    "/api/scheduler/customer-portal/overview",
+    {},
+    { "x-customer-portal-token": secondVerified.body.data.portalToken },
+  );
+  assert.equal(secondOverview.status, 200);
+  assert.equal(secondOverview.body.data.customer.id, secondCustomer.id);
+  assert.deepEqual(secondOverview.body.data.memberships, []);
+  assert.deepEqual(secondOverview.body.data.balances, []);
+  assert.deepEqual(secondOverview.body.data.documents, []);
+});
+
+test("el portal reserva, aplica precio inteligente y controla el ciclo de la cita", () => {
+  const base = new Date(Date.now() + 24 * 60 * 60_000);
+  const date = base.toISOString().slice(0, 10);
+  const { state, request } = session("normal", "master", date);
+  const challenge = request(
+    "POST",
+    "/api/scheduler/customer-portal/access",
+    { identifier: state.customers[0].phone },
+  );
+  const verified = request(
+    "POST",
+    `/api/scheduler/customer-portal/access/${challenge.body.data.challengeId}/verify`,
+    { code: "246810" },
+  );
+  const portalHeaders = {
+    "x-customer-portal-token": verified.body.data.portalToken,
+  };
+  const overview = request(
+    "GET",
+    "/api/scheduler/customer-portal/overview",
+    {},
+    portalHeaders,
+  ).body.data;
+  const bookingDate = new Date(Date.now() + 5 * 24 * 60 * 60_000)
+    .toISOString()
+    .slice(0, 10);
+  const query = new URLSearchParams({
+    branchId: overview.branches[0].id,
+    serviceProfileId: overview.services[0].id,
+    date: bookingDate,
+  });
+  const availability = request(
+    "GET",
+    `/api/scheduler/customer-portal/availability?${query}`,
+    {},
+    portalHeaders,
+  );
+  assert.equal(availability.status, 200);
+  assert.ok(availability.body.data.length >= 2);
+  const smartSlot = availability.body.data.find(
+    (slot) => slot.smartPricingApplied,
+  );
+  assert.ok(smartSlot);
+  assert.ok(smartSlot.finalPrice < smartSlot.originalPrice);
+
+  const created = request(
+    "POST",
+    "/api/scheduler/customer-portal/appointments",
+    {
+      branchId: overview.branches[0].id,
+      serviceProfileId: overview.services[0].id,
+      professionalProfileId: smartSlot.professionalProfileId,
+      startsAt: smartSlot.startsAt,
+      repeatAppointmentId: overview.appointmentHistory[0]?.id ?? null,
+    },
+    portalHeaders,
+  );
+  assert.equal(created.status, 201);
+  assert.equal(created.body.data.status, "RESERVED");
+  assert.equal(created.body.data.smartPricingApplied, true);
+
+  const duplicate = request(
+    "POST",
+    "/api/scheduler/customer-portal/appointments",
+    {
+      branchId: overview.branches[0].id,
+      serviceProfileId: overview.services[0].id,
+      professionalProfileId: smartSlot.professionalProfileId,
+      startsAt: smartSlot.startsAt,
+    },
+    portalHeaders,
+  );
+  assert.equal(duplicate.status, 409);
+
+  const confirmed = request(
+    "PUT",
+    `/api/scheduler/customer-portal/appointments/${created.body.data.id}`,
+    { action: "CONFIRM" },
+    portalHeaders,
+  );
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.data.status, "CONFIRMED");
+
+  const rescheduleDates = [7, 9, 11].map((days) =>
+    new Date(Date.now() + days * 24 * 60 * 60_000).toISOString().slice(0, 10),
+  );
+  let current = confirmed.body.data;
+  for (const [index, rescheduleDate] of rescheduleDates.entries()) {
+    const slots = request(
+      "GET",
+      `/api/scheduler/customer-portal/availability?${new URLSearchParams({
+        branchId: current.branchId,
+        serviceProfileId: current.serviceProfileId,
+        date: rescheduleDate,
+      })}`,
+      {},
+      portalHeaders,
+    ).body.data;
+    assert.ok(slots.length > 0);
+    const changed = request(
+      "PUT",
+      `/api/scheduler/customer-portal/appointments/${current.id}`,
+      {
+        action: "RESCHEDULE",
+        startsAt: slots[0].startsAt,
+        professionalProfileId: slots[0].professionalProfileId,
+      },
+      portalHeaders,
+    );
+    if (index < 2) {
+      assert.equal(changed.status, 200);
+      assert.equal(changed.body.data.rescheduleCount, index + 1);
+      current = changed.body.data;
+    } else {
+      assert.equal(changed.status, 409);
+    }
+  }
+});
+
+test("el portal firma documentos propios y rechaza fechas fuera de política", () => {
+  const date = new Date(Date.now() + 24 * 60 * 60_000)
+    .toISOString()
+    .slice(0, 10);
+  const { state, request } = session("normal", "master", date);
+  const challenge = request(
+    "POST",
+    "/api/scheduler/customer-portal/access",
+    { identifier: state.customers[0].email },
+  );
+  const verified = request(
+    "POST",
+    `/api/scheduler/customer-portal/access/${challenge.body.data.challengeId}/verify`,
+    { code: "246810" },
+  );
+  const portalHeaders = {
+    "x-customer-portal-token": verified.body.data.portalToken,
+  };
+  const signed = request(
+    "POST",
+    "/api/scheduler/customer-portal/documents/portal-document-consent-1/sign",
+    { signatureName: state.customers[0].displayName },
+    portalHeaders,
+  );
+  assert.equal(signed.status, 201);
+  assert.equal(signed.body.data.status, "SIGNED");
+  const repeated = request(
+    "POST",
+    "/api/scheduler/customer-portal/documents/portal-document-consent-1/sign",
+    { signatureName: state.customers[0].displayName },
+    portalHeaders,
+  );
+  assert.equal(repeated.status, 409);
+
+  const overview = request(
+    "GET",
+    "/api/scheduler/customer-portal/overview",
+    {},
+    portalHeaders,
+  ).body.data;
+  const outsideHorizon = new Date(Date.now() + 100 * 24 * 60 * 60_000)
+    .toISOString()
+    .slice(0, 10);
+  const rejected = request(
+    "GET",
+    `/api/scheduler/customer-portal/availability?${new URLSearchParams({
+      branchId: overview.branches[0].id,
+      serviceProfileId: overview.services[0].id,
+      date: outsideHorizon,
+    })}`,
+    {},
+    portalHeaders,
+  );
+  assert.equal(rejected.status, 409);
 });

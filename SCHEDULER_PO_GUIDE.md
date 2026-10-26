@@ -1143,3 +1143,42 @@ un solo uso con expiración para acciones de cita. Los webhooks del proveedor
 deben verificar autenticidad, registrar estados en orden monotónico y mantener
 una bitácora auditable sin almacenar secretos, contenido sensible ni tokens en
 la interfaz.
+
+El 25 de octubre de 2026 se agregó el **Portal de clientes** como experiencia
+pública independiente en `/portal`; no hereda la navegación ni la sesión del
+personal. La clienta solicita un código con el correo o teléfono ya registrado
+y la maqueta acepta `246810`. El destino siempre se presenta enmascarado y el
+token del portal dura una hora en memoria, sin `localStorage`. El portal sólo
+devuelve citas, documentos, membresías y saldos del `customerId` ligado a esa
+sesión; una cita de otra clienta no puede consultarse ni modificarse con el
+mismo token.
+
+Desde **Inicio**, **Reservar**, **Mis citas**, **Beneficios** y **Documentos**
+la clienta puede crear o repetir una reserva, ver precio normal o inteligente,
+confirmar, cancelar, reagendar, revisar historial, membresías, apartados y
+saldos, así como descargar un PDF de sólo lectura o firmar un consentimiento
+pendiente. Las políticas visibles y aplicadas por el API de diseño son: dos
+horas de anticipación mínima, horizonte de 90 días, cancelación hasta 12 horas
+antes, reprogramación hasta seis horas antes y máximo dos reprogramaciones. Al
+reagendar se vuelve a confirmar la disponibilidad de la especialista y la cita
+regresa a **Reservada** para exigir una nueva confirmación.
+
+La propuesta usa `POST /api/scheduler/customer-portal/access`, `POST
+/api/scheduler/customer-portal/access/:challengeId/verify`, `GET
+/api/scheduler/customer-portal/overview`, `GET
+/api/scheduler/customer-portal/availability`, `POST/PUT
+/api/scheduler/customer-portal/appointments` y `POST
+/api/scheduler/customer-portal/documents/:documentId/sign`. Producción debe
+separar estos endpoints de la autenticación del personal, enviar códigos reales
+con límite de intentos y frecuencia, invalidar sesiones revocadas, resolver
+precios y disponibilidad dentro de una transacción, y conservar evidencia de
+versión, identidad, fecha e integridad de cada firma. La maqueta no envía SMS o
+correo, no cobra saldos y no representa una firma electrónica certificada.
+
+Para validar el flujo abre `/portal`, usa `cliente1@example.test` y el código
+`246810`. Confirma la cita futura, repite una visita desde el historial, elige
+un horario con precio inteligente y comprueba que el monto descontado quede en
+la nueva reserva. Reagenda dos veces y verifica que una tercera reprogramación
+sea rechazada. En Documentos firma con el nombre exacto mostrado en el portal y
+descarga el PDF; luego cierra sesión y confirma que el contenido privado deje
+de estar visible.

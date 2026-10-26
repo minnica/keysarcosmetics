@@ -488,6 +488,7 @@ export type SchedulerAppointmentStatus =
 
 export type SchedulerAppointmentOrigin =
   | "SCHEDULER"
+  | "CUSTOMER_PORTAL"
   | "POS"
   | "INTERNAL_API"
   | "IMPORT";
@@ -1258,6 +1259,112 @@ export interface SchedulerNotificationSummaryDto {
   failed: number;
   appointmentsConfirmed: number;
   confirmationsAttributedToNotifications: number;
+}
+
+export interface SchedulerCustomerPortalAccessChallengeDto {
+  challengeId: string;
+  destinationHint: string;
+  expiresAt: string;
+}
+
+export interface SchedulerCustomerPortalSessionDto {
+  portalToken: string;
+  expiresAt: string;
+}
+
+export interface SchedulerCustomerPortalPolicyDto {
+  minimumBookingLeadMinutes: number;
+  bookingHorizonDays: number;
+  cancellationWindowHours: number;
+  rescheduleWindowHours: number;
+  maximumReschedules: number;
+}
+
+export interface SchedulerCustomerPortalAppointmentDto {
+  id: string;
+  branchId: string;
+  branchName: string;
+  serviceProfileId: string;
+  serviceName: string;
+  professionalName: string | null;
+  startsAt: string;
+  endsAt: string;
+  status: SchedulerAppointmentStatus;
+  originalPrice: number;
+  finalPrice: number;
+  smartPricingApplied: boolean;
+  rescheduleCount: number;
+  canConfirm: boolean;
+  canCancel: boolean;
+  canReschedule: boolean;
+}
+
+export interface SchedulerCustomerPortalMembershipDto {
+  id: string;
+  name: string;
+  usedSessions: number;
+  totalSessions: number;
+  expiresAt: string | null;
+  status: "ACTIVE" | "EXHAUSTED" | "EXPIRED";
+}
+
+export interface SchedulerCustomerPortalBalanceDto {
+  id: string;
+  description: string;
+  saleAmount: number;
+  receivedAmount: number;
+  balanceAmount: number;
+  status: "OPEN" | "PAID";
+}
+
+export interface SchedulerCustomerPortalDocumentDto {
+  id: string;
+  name: string;
+  kind: "CONSENT" | "RECOMMENDATION" | "RECEIPT";
+  version: number;
+  status: "PENDING_SIGNATURE" | "SIGNED" | "AVAILABLE";
+  signedAt: string | null;
+  signerDisplayName: string | null;
+  updatedAt: string;
+}
+
+export interface SchedulerCustomerPortalServiceDto {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  price: number;
+}
+
+export interface SchedulerCustomerPortalBranchDto {
+  id: string;
+  name: string;
+  address: string;
+}
+
+export interface SchedulerCustomerPortalOverviewDto {
+  customer: {
+    id: string;
+    displayName: string;
+    contactHint: string;
+  };
+  policy: SchedulerCustomerPortalPolicyDto;
+  upcomingAppointments: SchedulerCustomerPortalAppointmentDto[];
+  appointmentHistory: SchedulerCustomerPortalAppointmentDto[];
+  memberships: SchedulerCustomerPortalMembershipDto[];
+  balances: SchedulerCustomerPortalBalanceDto[];
+  documents: SchedulerCustomerPortalDocumentDto[];
+  services: SchedulerCustomerPortalServiceDto[];
+  branches: SchedulerCustomerPortalBranchDto[];
+}
+
+export interface SchedulerCustomerPortalAvailabilitySlotDto {
+  startsAt: string;
+  endsAt: string;
+  professionalProfileId: string;
+  professionalName: string;
+  originalPrice: number;
+  finalPrice: number;
+  smartPricingApplied: boolean;
 }
 
 export const SCHEDULER_CONTACT_CHANNEL_STATUSES = [
