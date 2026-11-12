@@ -1,5 +1,12 @@
 # Análisis y guía de refactorización de Finance
 
+> **Alcance vigente: demo con mocks.** Las instrucciones de [AGENTS.md](AGENTS.md)
+> aplican a todas las peticiones de Finance, aunque no mencionen mocks. Esta guía
+> conserva el diagnóstico histórico y una posible arquitectura futura; sus fases
+> pendientes no son instrucciones de ejecución para la persona que prueba la
+> demo. Backend, BD, autenticación e integraciones reales quedan fuera de ese
+> trabajo y requieren una iniciativa técnica separada con alcance expreso.
+
 ## Decisión de nombre
 
 La carpeta debe llamarse `apps/finance` y el paquete `@cosmetics/finance`.
