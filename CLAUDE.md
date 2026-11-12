@@ -2,6 +2,12 @@
 
 > Fuente principal de contexto del proyecto. Leer antes de hacer cambios.
 
+> **Entrega actual de HR: solo mocks.** Las instrucciones operativas para Codex
+> están en [AGENTS.md](AGENTS.md) y [apps/hr/AGENTS.md](apps/hr/AGENTS.md).
+> En esta entrega, las peticiones sin app indicada se refieren a HR y se resuelven
+> exclusivamente en su frontend con datos locales simulados. Los planes de
+> backend/BD de este documento son contexto futuro, no autorización de ejecución.
+
 ---
 
 ## Descripción del proyecto
@@ -1735,6 +1741,7 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 
 ### Estado de `apps/hr` (2026-08-23)
 
+- Política de entrega actual: trabajar exclusivamente con mocks, aun cuando el prompt omita esa condición. No conectar ni modificar backend/BD, otras apps o paquetes compartidos para implementar funcionalidades de HR. Alcance y ejemplos en `apps/hr/AGENTS.md`.
 - El frontend de HR usa una shell Tailwind responsive que replica el prototipo oscuro original: sidebar, topbar, hero y superficie de contenido negros, acentos dorados y tablas densas. Conserva el orden y etiquetas heredadas: Nuevo empleado, Todos los empleados, Personal y horarios, Calendario, Solicitudes, Historial de vacaciones, Sucursales, Puestos, Horarios facialistas, Cumpleaños, Políticas y reglamentos, Usuarios y permisos.
 - Los controles de HR consumen los componentes canónicos de `@cosmetics/ui` ya usados por `envelope` y `payroll`: Sidebar, Button, Input, Label, Textarea, Select, Badge, Card, Table/DataTable, Dialog, AlertDialog, Tabs, Popover, Tooltip, Skeleton y toast. Su apariencia negro/dorado se define únicamente en `apps/hr/tailwind.config.ts`, `apps/hr/app/globals.css` y los wrappers de `apps/hr/app/hr-ui.tsx`; no modificar `packages/ui` para personalizar visualmente HR.
 - Todos los módulos funcionan con mocks persistidos en `localStorage` bajo `keysar-hr-mocks`. Empleados incluye alta, edición, borrado individual/masivo, cambio de estado, búsqueda, importación mock y exportación CSV; solicitudes permite autorizar/rechazar; calendario, sucursales, puestos, horarios facialistas, políticas y perfiles de acceso tienen alta/edición/borrado; cumpleaños se edita desde el expediente. Preferencias permite restaurar los mocks iniciales.

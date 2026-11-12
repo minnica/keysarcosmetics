@@ -1,5 +1,11 @@
 # Análisis y guía de refactorización de HR
 
+> **Alcance de la entrega actual: solo frontend con mocks.** Antes de trabajar,
+> leer [AGENTS.md](AGENTS.md). Esta guía conserva el análisis y el plan futuro del
+> equipo técnico; no autoriza conectar backend/BD ni ejecutar sus fases de
+> integración. Las peticiones de funcionalidad se resuelven con datos simulados
+> y persistencia local, aunque el usuario no lo indique en su prompt.
+
 ## Decisión de nombre
 
 La carpeta debe llamarse `apps/hr` y el paquete `@cosmetics/hr`.
@@ -93,7 +99,7 @@ No debe copiarse `staff` a `Empleado` fila por fila sin reconciliación. En desa
 - `scheduler` gestiona citas; HR puede leer demanda/cobertura, pero no duplicar ni modificar citas desde su calendario laboral.
 - `Sucursal`, `Position`, `Empleado` y `Usuario` son catálogos compartidos, no tablas HR paralelas.
 
-## Guía por fases para la siguiente sesión
+## Guía por fases para una futura integración técnica (fuera de esta entrega)
 
 ### Fase 0 — decisiones y reconciliación
 

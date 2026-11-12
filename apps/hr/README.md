@@ -12,12 +12,28 @@ Frontend interno de Recursos Humanos para Keysar Cosmetics. La aplicación vive 
 
 El frontend mock permite validar los flujos, pero sus datos no deben considerarse reales ni utilizarse como fuente de verdad.
 
+## Trabajar con Codex en esta entrega
+
+Puedes pedir cambios como «agrega un campo al empleado», «crea un reporte» o
+«mejora el calendario» sin repetir que quieres mocks. [AGENTS.md](AGENTS.md)
+instruye a Codex para resolverlos exclusivamente en el frontend y guardar los
+cambios de la demo en este navegador, sin conectar backend ni base de datos.
+El [AGENTS.md de la raíz](../../AGENTS.md) establece el mismo alcance cuando se
+abre el monorepo y no se indica una app.
+
+Abre una sesión nueva de Codex después de recibir estos archivos para que cargue
+las instrucciones. La integración real queda fuera de esta entrega.
+
+Estos archivos son instrucciones para el asistente, no un bloqueo de permisos.
+Para una entrega con aislamiento técnico, el responsable debe preparar un entorno
+sin credenciales ni accesos a backend/BD y limitar la escritura fuera de HR.
+
 ## Desarrollo
 
-Ejecuta los comandos desde la raíz del monorepo:
+Con las dependencias preparadas por el responsable técnico, ejecuta los comandos
+desde la raíz del monorepo:
 
 ```bash
-pnpm install
 pnpm --filter @cosmetics/hr dev
 pnpm --filter @cosmetics/hr lint
 pnpm --filter @cosmetics/hr type-check
@@ -26,11 +42,14 @@ pnpm --filter @cosmetics/hr start
 ```
 
 La aplicación queda disponible en `http://localhost:3007` durante desarrollo.
+Para trabajar en la demo usa el comando filtrado de HR; `pnpm dev` en la raíz
+también inicia otros servicios.
 
 ## Estructura vigente
 
 ```text
 apps/hr/
+├── AGENTS.md             Instrucciones para mantener la entrega en mocks
 ├── app/
 │   ├── globals.css       Tokens y estilos propios de HR
 │   ├── hr-ui.tsx         Wrappers visuales sobre @cosmetics/ui
@@ -44,7 +63,8 @@ apps/hr/
 
 ## Arquitectura pendiente
 
-La siguiente etapa reemplazará los mocks por:
+La integración futura, fuera del alcance de esta entrega y reservada a un encargo
+técnico separado, reemplazaría los mocks por:
 
 - `@cosmetics/api-client` contra endpoints `/api/hr/*` en `backend/api`;
 - autenticación JWT y cuentas compartidas mediante `@cosmetics/auth`;
