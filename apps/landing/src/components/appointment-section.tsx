@@ -1,10 +1,10 @@
 "use client";
 
 import { whatsappPhoneNumber } from "@/lib/contact";
+import { treatmentGroups } from "@/data/treatments";
 import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-const services = { facial: "Facial", corporal: "Corporal" } as const;
 const branches = {
   "sucursal-1": "Sucursal Masaryk",
   "sucursal-2": "Keysar Cosmétics Mítikah Luxury",
@@ -12,10 +12,15 @@ const branches = {
   "sucursal-4": "Opatra Galería Insurgentes",
 } as const;
 
-export function AppointmentSection() {
+export function AppointmentSection({
+  service,
+  onServiceChange,
+}: {
+  service: string;
+  onServiceChange: (service: string) => void;
+}) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [service, setService] = useState<keyof typeof services | "">("");
   const [branch, setBranch] = useState<keyof typeof branches | "">("");
   const [coupon, setCoupon] = useState(false);
   const [couponOpen, setCouponOpen] = useState(false);
@@ -57,7 +62,7 @@ export function AppointmentSection() {
     const message = [
       "Hola, quiero agendar una cita en Keysar Cosmetics.",
       name.trim() ? `Mi nombre es ${name.trim()}.` : "",
-      service ? `Servicio de interés: ${services[service]}.` : "",
+      service ? `Servicio de interés: ${service}.` : "",
       branch ? `Sucursal: ${branches[branch]}.` : "",
       phone.trim() ? `Mi teléfono es +52 ${phone.trim()}.` : "",
       coupon
@@ -184,20 +189,20 @@ export function AppointmentSection() {
                   <span className="sr-only">Servicio de interés</span>
                   <select
                     value={service}
-                    onChange={(event) =>
-                      setService(
-                        event.target.value as keyof typeof services | "",
-                      )
-                    }
+                    onChange={(event) => onServiceChange(event.target.value)}
                     name="service"
                     required
                     className="w-full appearance-none border border-keysar-text/30 bg-transparent px-4 py-3 pr-12 text-sm text-keysar-text outline-none focus:border-keysar-gold"
                   >
                     <option value="">Servicio de interés</option>
-                    {Object.entries(services).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
+                    {treatmentGroups.map((group) => (
+                      <optgroup key={group.key} label={group.label}>
+                        {group.treatments.map((treatment) => (
+                          <option key={treatment.title} value={treatment.title}>
+                            {treatment.title}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                   <span

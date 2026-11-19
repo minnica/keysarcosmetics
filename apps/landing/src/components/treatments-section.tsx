@@ -4,7 +4,11 @@ import { treatmentGroups } from "@/data/treatments";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-export function TreatmentsSection() {
+export function TreatmentsSection({
+  onSelectService,
+}: {
+  onSelectService: (service: string) => void;
+}) {
   const [groupIndex, setGroupIndex] = useState(0);
   const [cardIndex, setCardIndex] = useState(0);
   const [atEnd, setAtEnd] = useState(false);
@@ -292,14 +296,20 @@ export function TreatmentsSection() {
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                   <a
                     href="#agenda"
-                    onClick={() => setDetailIndex(null)}
+                    onClick={() => {
+                      onSelectService(treatment.title);
+                      setDetailIndex(null);
+                    }}
                     className="inline-flex items-center justify-center rounded-full bg-keysar-gold px-6 py-3 text-sm font-semibold text-white transition hover:bg-keysar-dark"
                   >
                     Agendar este ritual
                   </a>
                   <a
                     href="#agenda"
-                    onClick={() => setDetailIndex(null)}
+                    onClick={() => {
+                      onSelectService(treatment.title);
+                      setDetailIndex(null);
+                    }}
                     className="inline-flex items-center justify-center rounded-full border border-keysar-gold/45 px-6 py-3 text-sm font-semibold text-keysar-text transition hover:bg-white/60"
                   >
                     Pedir valoración

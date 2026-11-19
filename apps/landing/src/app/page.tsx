@@ -1,4 +1,4 @@
-import { AppointmentSection } from "@/components/appointment-section";
+import { ExperienceSections } from "@/components/experience-sections";
 import {
   CallToAction,
   EssenceSection,
@@ -9,8 +9,6 @@ import {
   WhatsAppButton,
 } from "@/components/landing-static";
 import { TestimonialsSection } from "@/components/testimonials-section";
-import { TreatmentsSection } from "@/components/treatments-section";
-import { VideoReelsSection } from "@/components/video-reels-section";
 
 export default function LandingPage() {
   return (
@@ -19,9 +17,7 @@ export default function LandingPage() {
         <Navbar />
         <Hero />
         <EssenceSection />
-        <TreatmentsSection />
-        <VideoReelsSection />
-        <AppointmentSection />
+        <ExperienceSections />
         <LocationsSection />
         <TestimonialsSection />
         <CallToAction />
