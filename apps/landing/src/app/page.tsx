@@ -1,4 +1,5 @@
 import { ExperienceSections } from "@/components/experience-sections";
+import { HelpPrompt } from "@/components/help-prompt";
 import {
   CallToAction,
   EssenceSection,
@@ -24,6 +25,7 @@ export default function LandingPage() {
       </main>
       <LandingFooter />
       <WhatsAppButton />
+      <HelpPrompt />
     </>
   );
 }

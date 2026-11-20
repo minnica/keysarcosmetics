@@ -3,7 +3,9 @@
 import { whatsappPhoneNumber } from "@/lib/contact";
 import { treatmentGroups } from "@/data/treatments";
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
 
 const branches = {
   "sucursal-1": "Sucursal Masaryk",
@@ -12,6 +14,79 @@ const branches = {
   "sucursal-4": "Opatra Galería Insurgentes",
 } as const;
 
+const channelLabels = {
+  whatsapp: "WhatsApp",
+  telefono: "Llamada",
+  email: "Email",
+} as const;
+
+const bookingSchema = z
+  .object({
+    name: z.string().trim().min(2, "Escribe tu nombre completo.").max(120),
+    phone: z.string().trim().max(30),
+    email: z.union([
+      z.string().trim().email("Ingresa un correo válido."),
+      z.literal(""),
+    ]),
+    service: z.string().refine(
+      (value) =>
+        treatmentGroups.some((group) =>
+          group.treatments.some((treatment) => treatment.title === value),
+        ),
+      "Selecciona un servicio.",
+    ),
+    branch: z.string().refine((value) => value in branches, "Selecciona una sucursal."),
+    preferredDate: z
+      .string()
+      .min(1, "Elige una fecha.")
+      .refine(
+        (value) => !value || value >= localDate(),
+        "Elige una fecha de hoy en adelante.",
+      ),
+    preferredTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Elige una hora."),
+    channel: z.enum(["whatsapp", "telefono", "email"]),
+    message: z.string().trim().max(600, "Máximo 600 caracteres."),
+  })
+  .superRefine((values, context) => {
+    const digits = values.phone.replace(/\D/g, "");
+    if (values.phone && (!/^[+()\d\s-]+$/.test(values.phone) || digits.length < 10)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["phone"],
+        message: "Ingresa un teléfono de al menos 10 dígitos.",
+      });
+    }
+    if (values.channel !== "email" && !values.phone) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["phone"],
+        message: "Agrega un teléfono para confirmar por WhatsApp o llamada.",
+      });
+    }
+    if (values.channel === "email" && !values.email) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["email"],
+        message: "Agrega tu correo para recibir la confirmación.",
+      });
+    }
+  });
+
+type BookingValues = z.infer<typeof bookingSchema>;
+
+function localDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const inputClassName =
+  "w-full border border-keysar-text/30 bg-transparent px-4 py-3 text-sm text-keysar-text outline-none placeholder:text-keysar-gray focus:border-keysar-gold";
+
+const selectClassName = `${inputClassName} min-w-0 appearance-none`;
+
 export function AppointmentSection({
   service,
   onServiceChange,
@@ -19,14 +94,48 @@ export function AppointmentSection({
   service: string;
   onServiceChange: (service: string) => void;
 }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [branch, setBranch] = useState<keyof typeof branches | "">("");
   const [coupon, setCoupon] = useState(false);
   const [couponOpen, setCouponOpen] = useState(false);
+  const [today, setToday] = useState("");
   const sectionRef = useRef<HTMLElement>(null);
-  const nameRef = useRef<HTMLInputElement>(null);
   const couponShownRef = useRef(false);
+  const {
+    register,
+    handleSubmit,
+    watch,
+    control,
+    setValue,
+    setError,
+    clearErrors,
+    setFocus,
+    formState: { errors },
+  } = useForm<BookingValues>({
+    defaultValues: {
+      name: "",
+      phone: "",
+      email: "",
+      service,
+      branch: "",
+      preferredDate: "",
+      preferredTime: "",
+      channel: "whatsapp",
+      message: "",
+    },
+  });
+  const channel = watch("channel");
+
+  useEffect(() => setToday(localDate()), []);
+
+  useEffect(() => {
+    setValue("service", service);
+  }, [service, setValue]);
+
+  useEffect(() => {
+    const subscription = watch((_values, { name }) => {
+      if (name) clearErrors(name);
+    });
+    return () => subscription.unsubscribe();
+  }, [clearErrors, watch]);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -58,33 +167,42 @@ export function AppointmentSection({
     };
   }, [couponOpen]);
 
-  const whatsappUrl = useMemo(() => {
+  const submit = (values: BookingValues) => {
+    const result = bookingSchema.safeParse(values);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        const field = issue.path[0] as keyof BookingValues;
+        setError(field, { type: "manual", message: issue.message });
+      }
+      return;
+    }
+
+    const booking = result.data;
+    const [year, month, day] = booking.preferredDate.split("-");
     const message = [
-      "Hola, quiero agendar una cita en Keysar Cosmetics.",
-      name.trim() ? `Mi nombre es ${name.trim()}.` : "",
-      service ? `Servicio de interés: ${service}.` : "",
-      branch ? `Sucursal: ${branches[branch]}.` : "",
-      phone.trim() ? `Mi teléfono es +52 ${phone.trim()}.` : "",
-      coupon
-        ? "Quiero aprovechar el beneficio KEYSAR15: 15% de cortesía en un segundo tratamiento."
-        : "",
-      "Quedo al pendiente de su confirmación.",
+      "Hola, quiero solicitar una cita en Keysar Cosmetics.",
+      `Nombre: ${booking.name}.`,
+      booking.phone ? `Teléfono: ${booking.phone}.` : "",
+      booking.email ? `Correo: ${booking.email}.` : "",
+      `Servicio: ${booking.service}.`,
+      `Sucursal: ${branches[booking.branch as keyof typeof branches]}.`,
+      `Fecha preferida: ${day}/${month}/${year}.`,
+      `Hora preferida: ${booking.preferredTime}.`,
+      `Canal para confirmar: ${channelLabels[booking.channel]}.`,
+      booking.message ? `Detalle adicional: ${booking.message}.` : "",
+      coupon ? "Beneficio KEYSAR15 para un segundo tratamiento." : "",
+      "La fecha y hora están sujetas a confirmación.",
     ]
       .filter(Boolean)
-      .join(" ");
-    return `https://wa.me/${whatsappPhoneNumber}?text=${encodeURIComponent(message)}`;
-  }, [branch, coupon, name, phone, service]);
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!event.currentTarget.reportValidity()) return;
+      .join("\n");
+    const whatsappUrl = `https://wa.me/${whatsappPhoneNumber}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   };
 
   const acceptCoupon = () => {
     setCoupon(true);
     setCouponOpen(false);
-    window.requestAnimationFrame(() => nameRef.current?.focus());
+    window.requestAnimationFrame(() => setFocus("name"));
   };
 
   return (
@@ -141,9 +259,17 @@ export function AppointmentSection({
                 Tu cita
               </p>
               <h3 className="mt-1 text-lg font-semibold text-keysar-dark">
-                Completa tus datos
+                Reserva tu cita
               </h3>
-              <form className="mt-6 space-y-4" onSubmit={submit}>
+              <p className="mt-2 text-sm leading-6 text-keysar-gray">
+                Comparte tus preferencias y te confirmaremos los detalles por el
+                canal que elijas.
+              </p>
+              <form
+                className="mt-6 space-y-5"
+                onSubmit={handleSubmit(submit)}
+                noValidate
+              >
                 <input
                   type="hidden"
                   name="coupon"
@@ -171,106 +297,155 @@ export function AppointmentSection({
                     </div>
                   </div>
                 )}
-                <label className="block">
-                  <span className="sr-only">Nombre(s)</span>
-                  <input
-                    ref={nameRef}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    name="name"
-                    type="text"
-                    autoComplete="name"
-                    placeholder="Nombre(s)"
-                    required
-                    className="w-full border border-keysar-text/30 bg-transparent px-4 py-3 text-sm text-keysar-text outline-none placeholder:text-keysar-gray focus:border-keysar-gold"
-                  />
-                </label>
-                <label className="relative block">
-                  <span className="sr-only">Servicio de interés</span>
-                  <select
-                    value={service}
-                    onChange={(event) => onServiceChange(event.target.value)}
-                    name="service"
-                    required
-                    className="w-full appearance-none border border-keysar-text/30 bg-transparent px-4 py-3 pr-12 text-sm text-keysar-text outline-none focus:border-keysar-gold"
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <BookingField label="Nombre completo" error={errors.name?.message}>
+                    <input
+                      {...register("name")}
+                      autoComplete="name"
+                      placeholder="Tu nombre"
+                      aria-invalid={Boolean(errors.name)}
+                      className={inputClassName}
+                    />
+                  </BookingField>
+                  <BookingField
+                    label={channel === "email" ? "Teléfono (opcional)" : "Teléfono"}
+                    error={errors.phone?.message}
                   >
-                    <option value="">Servicio de interés</option>
-                    {treatmentGroups.map((group) => (
-                      <optgroup key={group.key} label={group.label}>
-                        {group.treatments.map((treatment) => (
-                          <option key={treatment.title} value={treatment.title}>
-                            {treatment.title}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <span
-                    className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2"
-                    aria-hidden="true"
+                    <input
+                      {...register("phone")}
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      placeholder="+52 55..."
+                      aria-invalid={Boolean(errors.phone)}
+                      className={inputClassName}
+                    />
+                  </BookingField>
+                  <BookingField
+                    label={channel === "email" ? "Correo electrónico" : "Correo electrónico (opcional)"}
+                    error={errors.email?.message}
                   >
-                    ⌄
-                  </span>
-                </label>
-                <label className="relative block">
-                  <span className="sr-only">Sucursal</span>
-                  <select
-                    value={branch}
-                    onChange={(event) =>
-                      setBranch(
-                        event.target.value as keyof typeof branches | "",
-                      )
-                    }
-                    name="branch"
-                    required
-                    className="w-full appearance-none border border-keysar-text/30 bg-transparent px-4 py-3 pr-12 text-sm text-keysar-text outline-none focus:border-keysar-gold"
+                    <input
+                      {...register("email")}
+                      type="email"
+                      autoComplete="email"
+                      placeholder="tu@email.com"
+                      aria-invalid={Boolean(errors.email)}
+                      className={inputClassName}
+                    />
+                  </BookingField>
+                  <BookingField label="Servicio de interés" error={errors.service?.message}>
+                    <Controller
+                      name="service"
+                      control={control}
+                      render={({ field }) => (
+                        <select
+                          {...field}
+                          onChange={(event) => {
+                            field.onChange(event);
+                            onServiceChange(event.target.value);
+                          }}
+                          aria-invalid={Boolean(errors.service)}
+                          className={selectClassName}
+                        >
+                          <option value="">Selecciona un servicio</option>
+                          {treatmentGroups.map((group) => (
+                            <optgroup key={group.key} label={group.label}>
+                              {group.treatments.map((treatment) => (
+                                <option key={treatment.title} value={treatment.title}>
+                                  {treatment.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      )}
+                    />
+                  </BookingField>
+                  <BookingField label="Sucursal" error={errors.branch?.message}>
+                    <select
+                      {...register("branch")}
+                      aria-invalid={Boolean(errors.branch)}
+                      className={selectClassName}
+                    >
+                      <option value="">Selecciona una sucursal</option>
+                      {Object.entries(branches).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </BookingField>
+                  <BookingField label="Fecha preferida" error={errors.preferredDate?.message}>
+                    <input
+                      {...register("preferredDate")}
+                      type="date"
+                      min={today || undefined}
+                      aria-invalid={Boolean(errors.preferredDate)}
+                      className={inputClassName}
+                    />
+                  </BookingField>
+                  <BookingField
+                    label="Hora preferida"
+                    error={errors.preferredTime?.message}
                   >
-                    <option value="">Sucursal</option>
-                    {Object.entries(branches).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <span
-                    className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2"
-                    aria-hidden="true"
+                    <input
+                      {...register("preferredTime")}
+                      type="time"
+                      aria-invalid={Boolean(errors.preferredTime)}
+                      className={inputClassName}
+                    />
+                  </BookingField>
+                  <BookingField label="Canal de contacto" error={errors.channel?.message}>
+                    <select
+                      {...register("channel")}
+                      aria-invalid={Boolean(errors.channel)}
+                      className={selectClassName}
+                    >
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="telefono">Llamada</option>
+                      <option value="email">Email</option>
+                    </select>
+                  </BookingField>
+                  <BookingField
+                    label="Detalle extra (opcional)"
+                    error={errors.message?.message}
+                    className="sm:col-span-2"
                   >
-                    ⌄
-                  </span>
-                </label>
-                <label className="block">
-                  <span className="sr-only">Teléfono</span>
-                  <input
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
-                    name="phone"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="Teléfono"
-                    required
-                    minLength={10}
-                    pattern="[0-9 ()+-]{10,}"
-                    title="Ingresa un teléfono de al menos 10 dígitos"
-                    className="w-full border border-keysar-text/30 bg-transparent px-4 py-3 text-sm text-keysar-text outline-none placeholder:text-keysar-gray focus:border-keysar-gold"
-                  />
-                </label>
+                    <textarea
+                      {...register("message")}
+                      rows={4}
+                      maxLength={600}
+                      placeholder="Cuéntanos si hay algún detalle importante para tu visita..."
+                      aria-invalid={Boolean(errors.message)}
+                      className={`${inputClassName} resize-y`}
+                    />
+                  </BookingField>
+                </div>
+                <p className="text-xs leading-5 text-keysar-gray">
+                  La fecha y hora son preferencias; una asesora confirmará la
+                  disponibilidad por {channelLabels[channel]}.
+                </p>
                 <button
                   type="submit"
                   className="w-full rounded-full bg-keysar-gold px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-keysar-dark focus:outline-none focus:ring-4 focus:ring-keysar-gold/30"
                 >
-                  Agendar cita
+                  Enviar solicitud
                 </button>
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-keysar-gold/45 bg-transparent px-6 py-3.5 text-sm font-semibold text-keysar-text transition hover:border-keysar-gold hover:bg-white/60 focus:outline-none focus:ring-4 focus:ring-keysar-gold/20"
-                >
-                  Continuar por WhatsApp
-                </a>
+                <p className="text-center text-xs leading-5 text-keysar-gray">
+                  Se abrirá WhatsApp con tu solicitud. Pulsa Enviar en el chat
+                  para que llegue a Keysar.
+                </p>
               </form>
+              <p className="mt-5 text-center text-xs text-keysar-gray">
+                ¿Prefieres llamarnos?{" "}
+                <a
+                  href={`tel:+${whatsappPhoneNumber}`}
+                  className="font-semibold text-keysar-text underline underline-offset-2 hover:text-keysar-gold"
+                >
+                  +52 55 8056 1135
+                </a>
+              </p>
             </div>
           </div>
         </div>
@@ -362,5 +537,31 @@ export function AppointmentSection({
         </div>
       )}
     </>
+  );
+}
+
+function BookingField({
+  label,
+  error,
+  className = "",
+  children,
+}: {
+  label: string;
+  error?: string | undefined;
+  className?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <label className={`block min-w-0 ${className}`}>
+      <span className="mb-2 block text-sm font-semibold text-keysar-text">
+        {label}
+      </span>
+      {children}
+      {error && (
+        <span className="mt-1 block text-xs font-medium text-red-700">
+          {error}
+        </span>
+      )}
+    </label>
   );
 }
