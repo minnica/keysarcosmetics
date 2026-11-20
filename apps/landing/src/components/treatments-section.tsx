@@ -159,6 +159,16 @@ export function TreatmentsSection({
                   <span className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-keysar-text shadow-sm">
                     {item.tag}
                   </span>
+                  {item.feature && (
+                    <>
+                      <span className="absolute right-4 top-4 drop-shadow-[0_2px_5px_rgba(0,0,0,0.35)]">
+                        <ItalianFlag />
+                      </span>
+                      <span className="absolute bottom-4 right-4 rounded-full bg-keysar-gold px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-sm">
+                        {item.feature.badge}
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="flex flex-1 flex-col p-6">
                   <div className="flex items-start justify-between gap-4">
@@ -246,6 +256,12 @@ export function TreatmentsSection({
                   className="object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
+                {treatment.feature && (
+                  <span className="absolute left-6 top-6 inline-flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-keysar-text shadow-sm">
+                    <ItalianFlag />
+                    Tecnología italiana
+                  </span>
+                )}
                 <div className="absolute bottom-7 left-6 right-14 text-white sm:left-8 sm:right-8">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em]">
                     {treatment.tag}
@@ -266,10 +282,44 @@ export function TreatmentsSection({
                   <span className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-keysar-text shadow-sm">
                     {group.label}
                   </span>
+                  {treatment.feature && (
+                    <span className="rounded-full bg-keysar-gold px-4 py-1.5 text-xs font-semibold text-white shadow-sm">
+                      {treatment.feature.badge}
+                    </span>
+                  )}
                 </div>
                 <p className="mt-6 text-base leading-7 text-keysar-text lg:text-[17px] lg:leading-8">
                   {treatment.ritual}
                 </p>
+                {treatment.feature && (
+                  <div className="mt-7 flex items-center gap-4 rounded-[8px] border border-keysar-gold/25 bg-white/70 p-4">
+                    <div className="relative h-28 w-24 shrink-0">
+                      <Image
+                        src={treatment.feature.deviceImageSrc}
+                        alt="Equipo NeuroNova de Novalis Medical"
+                        fill
+                        sizes="96px"
+                        className="object-contain"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-keysar-gold">
+                        Imagen oficial del equipo
+                      </p>
+                      <p className="mt-1 font-title text-xl text-keysar-dark">
+                        NeuroNova
+                      </p>
+                      <a
+                        href={treatment.feature.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-block text-xs font-medium text-keysar-text underline underline-offset-2 hover:text-keysar-gold"
+                      >
+                        Ver equipo en Novalis Medical
+                      </a>
+                    </div>
+                  </div>
+                )}
                 <div className="mt-8 grid gap-7 md:grid-cols-[1fr_1.1fr]">
                   <div>
                     <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-keysar-gold">
@@ -293,6 +343,24 @@ export function TreatmentsSection({
                     </ul>
                   </div>
                 </div>
+                {treatment.feature && (
+                  <div className="mt-8">
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-keysar-gold">
+                      Así trabaja NeuroNova
+                    </p>
+                    <video
+                      className="mt-3 aspect-video w-full rounded-[8px] bg-keysar-dark object-cover"
+                      aria-label="Demostración de NeuroNova en un tratamiento facial"
+                      poster={treatment.feature.videoPoster}
+                      controls
+                      playsInline
+                      preload="none"
+                    >
+                      <source src={treatment.feature.videoSrc} type="video/mp4" />
+                      Tu navegador no puede reproducir este video.
+                    </video>
+                  </div>
+                )}
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                   <a
                     href="#agenda"
@@ -321,6 +389,20 @@ export function TreatmentsSection({
         </div>
       )}
     </section>
+  );
+}
+
+function ItalianFlag() {
+  return (
+    <span
+      role="img"
+      aria-label="Bandera de Italia"
+      className="inline-flex h-4 w-6 overflow-hidden rounded-[2px] border border-black/10 shadow-sm"
+    >
+      <span className="w-1/3 bg-[#009246]" />
+      <span className="w-1/3 bg-white" />
+      <span className="w-1/3 bg-[#ce2b37]" />
+    </span>
   );
 }
 

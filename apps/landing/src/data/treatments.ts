@@ -1,15 +1,42 @@
-const facialTreatments = [
+type Treatment = {
+  title: string;
+  tag: string;
+  duration: string;
+  imageSrc: string;
+  description: string;
+  bestFor: string;
+  benefits: string[];
+  ritual: string;
+  feature?: {
+    badge: string;
+    origin: "Italy";
+    deviceImageSrc: string;
+    videoSrc: string;
+    videoPoster: string;
+    sourceUrl: string;
+  };
+};
+
+const facialTreatments: Treatment[] = [
   {
     title: "Micro Lifting",
     tag: "Lifting no invasivo",
     duration: "Según valoración",
     imageSrc: "/images/keysar-cosmetics/real-micro-lifting.jpeg",
     description:
-      "Tratamiento de lifting no invasivo que estimula colágeno, tensa la piel y reduce signos visibles de envejecimiento.",
+      "Micro Lifting con NeuroNova: tecnología estética italiana patentada que combina flujo de iones, microcorrientes y vehiculación transdérmica para un lifting facial no invasivo.",
     bestFor: "Piel con flacidez ligera, líneas visibles o pérdida de firmeza.",
     benefits: ["Estimula colágeno", "Tensa la piel", "Suaviza signos de edad"],
     ritual:
-      "Integra técnicas avanzadas de tecnología italiana para trabajar la firmeza facial y favorecer una apariencia más rejuvenecida sin cirugía.",
+      "NeuroNova combina flujo de iones, microcorrientes y vehiculación transdérmica en un protocolo facial para trabajar firmeza, textura y luminosidad sin cirugía.",
+    feature: {
+      badge: "Best Seller 2026",
+      origin: "Italy",
+      deviceImageSrc: "/images/keysar-cosmetics/neuro-nova-device.png",
+      videoSrc: "/videos/neuro-nova-demo.mp4",
+      videoPoster: "/images/keysar-cosmetics/neuro-nova-demo-poster.webp",
+      sourceUrl: "https://novalismed.com/es/equipos/neuro-nova",
+    },
   },
   {
     title: "Limpieza Facial Profunda",
@@ -161,7 +188,7 @@ const facialTreatments = [
   },
 ];
 
-const bodyTreatments = [
+const bodyTreatments: Treatment[] = [
   {
     title: "Masaje Relajante",
     tag: "Calma",
@@ -215,7 +242,7 @@ const bodyTreatments = [
     title: "Piernas Cansadas",
     tag: "Ligereza",
     duration: "45-50 min",
-    imageSrc: "/images/corporal-7.webp",
+    imageSrc: "/images/keysar-cosmetics/piernas-cansadas-keysar.png",
     description:
       "Masaje beneficioso para aliviar tensión y fatiga muscular, estimular circulación y reducir hinchazón.",
     bestFor:
@@ -225,10 +252,23 @@ const bodyTreatments = [
       "Se aplica presión en puntos adecuados para recuperar comodidad, ligereza y movilidad en las piernas.",
   },
   {
+    title: "Presoterapia",
+    tag: "Bienestar de piernas",
+    duration: "Según valoración",
+    imageSrc: "/images/keysar-cosmetics/presoterapia.png",
+    description:
+      "Tratamiento con botas de compresión neumática que alternan presión y descanso para brindar una sensación de ligereza en las piernas.",
+    bestFor:
+      "Piernas cansadas o con sensación de pesadez después de jornadas largas.",
+    benefits: ["Aporta ligereza", "Favorece el descanso", "Relaja las piernas"],
+    ritual:
+      "En una sesión personalizada, las botas aplican ciclos suaves de compresión y liberación mientras disfrutas de un momento de descanso.",
+  },
+  {
     title: "Body VIP",
     tag: "Firma Keysar",
     duration: "90 min",
-    imageSrc: "/images/keysar-cosmetics/masaje7.png",
+    imageSrc: "/images/keysar-cosmetics/masaje6.png",
     description:
       "Terapia integral con maniobras de presión ligera a media, aceites esenciales y domo de luz LED.",
     bestFor:
