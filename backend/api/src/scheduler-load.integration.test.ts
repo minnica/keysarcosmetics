@@ -14,6 +14,10 @@ const professionalsPerBranch = 2;
 const resourcesPerBranch = 2;
 const appointmentsPerBranch = 48;
 const expectedAppointments = branchCount * appointmentsPerBranch;
+const firstSlot = new Date();
+firstSlot.setUTCDate(firstSlot.getUTCDate() + 7);
+firstSlot.setUTCHours(6, 0, 0, 0); // Medianoche en America/Mexico_City.
+const reportDate = firstSlot.toISOString().slice(0, 10);
 let server: Server;
 let baseUrl: string;
 let token: string;
@@ -178,7 +182,7 @@ loadDescribe("Scheduler scale gate on PostgreSQL", () => {
         resources.push({ id: resource.id, name });
       }
       for (let slot = 0; slot < appointmentsPerBranch; slot += 1) {
-        const startsAt = new Date(Date.UTC(2026, 9, 1, 6, slot * 30));
+        const startsAt = new Date(firstSlot.getTime() + slot * 30 * 60_000);
         const endsAt = new Date(startsAt.getTime() + 30 * 60_000);
         const appointmentId = randomUUID();
         const appointmentServiceId = randomUUID();
@@ -261,8 +265,8 @@ loadDescribe("Scheduler scale gate on PostgreSQL", () => {
       process.env["SCHEDULER_LOAD_MAX_MS"] ?? "30000",
     );
     const params = new URLSearchParams({
-      dateFrom: "2026-10-01",
-      dateTo: "2026-10-01",
+      dateFrom: reportDate,
+      dateTo: reportDate,
       branchIds: branchIds.join(","),
     });
     const startedAt = performance.now();
@@ -286,7 +290,7 @@ loadDescribe("Scheduler scale gate on PostgreSQL", () => {
 
     const availabilityStartedAt = performance.now();
     const availability = await request(
-      `/api/scheduler/availability?branchId=${branchIds[0]}&serviceProfileId=${serviceProfileId}&date=2026-10-01`,
+      `/api/scheduler/availability?branchId=${branchIds[0]}&serviceProfileId=${serviceProfileId}&date=${reportDate}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     const availabilityDurationMs = performance.now() - availabilityStartedAt;

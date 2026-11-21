@@ -100,6 +100,23 @@ el diseño y el autocuidado.
 | `hr`          | Next.js                 | 3007       | Recursos Humanos, turnos, vacaciones y expedientes      |
 | `backend/api` | Express                 | 4000       | API REST compartida                                     |
 
+### Migración activa de `apps/landing`
+
+- Rama de trabajo: `feature/landing`.
+- La landing pública se migra desde el repo hermano `../keysar-landing`, usado
+  únicamente como referencia, hacia `apps/landing`.
+- El destino conserva el stack del monorepo: Next.js 14 App Router, React 18,
+  TypeScript, Tailwind CSS 3, pnpm y Turborepo. No se incorpora Astro ni la
+  configuración o lockfile del repo fuente.
+- El plan por fases, estado transferible, decisiones y comandos de validación
+  viven en `docs/LANDING_MIGRATION.md`. Leerlo antes de tocar la landing y
+  actualizar su checklist al cerrar cada fase.
+- La migración funcional quedó completada el 2026-09-25: `/` se prerenderiza,
+  TypeScript y ESLint pasan, el build de producción termina correctamente y se
+  verificaron flujos desktop/móvil. Consultar la bitácora del plan para el QA.
+- La persona responsable del repositorio hará los commits y push; los chats de
+  migración deben dejar cambios sin confirmar.
+
 ## Estado actual de `apps/pos`
 
 - La Fase 5 de `PLAN_BACKEND_SCHEDULER.md` sustituyó en repositorio a Agenda CRM como autoridad final de citas del POS. `AGENDA_PROVIDER=internal` es el default y trabaja sólo con Prisma/Scheduler; `http` conserva temporalmente el adaptador anterior como rollback. En modo interno, disponibilidad se deriva de catálogos, horarios, bloqueos, profesionales, recursos y citas canónicas; la confirmación de `SchedulerAppointment(origin = POS)`, ticket y `PosAppointment.schedulerAppointmentId` ocurre en una sola transacción serializable.
@@ -1120,11 +1137,16 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 
 **Notas importantes:**
 
-- Los cinco proyectos frontend actualmente conectados al monorepo en Vercel
+- Los cinco proyectos de apps internas conectados al monorepo en Vercel
   (Envelope, Payroll, Scheduler, Finance y HR) crean deployments automáticamente
-  por integración Git en cualquier rama, no sólo en `master`/`develop`. CRM,
-  POS y `apps/landing` no tienen proyecto Vercel; `keysar-landing` pertenece a
-  otro repositorio.
+  por integración Git en cualquier rama, no sólo en `master`/`develop`. CRM y
+  POS no tienen proyecto Vercel. `keysar-landing` pertenece a otro repositorio.
+- `keysarcosmetics-landing` compila `apps/landing` del monorepo. El flujo para el
+  dominio oficial usa `develop` en Preview para pruebas y `master` en Production
+  para `keysarcosmetics.com`. Asignar el subdominio de pruebas a la rama `develop`
+  y redirigir `www` al dominio raíz. `NEXT_PUBLIC_SITE_URL` debe corresponder al
+  origen de cada entorno durante el build. Antes de mover el dominio, comprobar
+  la portada y que el formulario prepare la solicitud de cita en WhatsApp.
 - Backend en Fly.io se despliega mediante el workflow manual protegido `.github/workflows/deploy-api.yml`; no se despliega automáticamente por push.
 - Migraciones de BD se aplican dentro del workflow manual protegido y con revisión previa; nunca por un push automático.
 - La Fase 0 del plan de despliegues selectivos se completó el 4 de septiembre de
