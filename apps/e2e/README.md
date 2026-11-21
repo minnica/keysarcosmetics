@@ -57,8 +57,10 @@ E2E_SCHEDULER_PASSWORD
 Conservar también las variables `API_BASE_URL`, `ENVELOPE_BASE_URL`,
 `FINANCE_BASE_URL`, `HR_BASE_URL`, `PAYROLL_BASE_URL` y `SCHEDULER_BASE_URL`,
 además de los cinco bypass secrets separados de Vercel que usa el smoke del
-ambiente. Nunca copiar valores reales a `.env.example`, logs, issues o
-artefactos.
+ambiente. Mantener las credenciales, los valores de bypass y las URLs privadas
+fuera de `.env.example`, logs, issues y artefactos.
+
+Las URLs de Sobres y Nómina para cada entorno están en la [tabla de variables de GitHub Actions](../../docs/RELEASE_RUNBOOK.md#dominios-en-github-actions).
 
 Las cinco apps exponen `keysar-release`. Los builds selectivos inyectan
 `KEYSAR_RELEASE_SHA`; mientras una app conserve integración Git, ésta usa

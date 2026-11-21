@@ -4,7 +4,7 @@ Este documento define el flujo seguro para promover cambios desde una feature ha
 
 ## 1. Configuración inicial en GitHub
 
-Crear los environments `development` y `production`.
+El repositorio usa los entornos de GitHub `development` y `Production`. Los workflows se refieren al segundo como `production`.
 
 Para la selección frontend y la auditoría operativa de las Fases 4–9, configurar como secret de
 repositorio `VERCEL_TOKEN_READ_ONLY`. Debe ser una credencial
@@ -47,8 +47,7 @@ Envelope productivo recibe únicamente `dashboard` y `reportes/total-general`, c
 Configurar estas variables:
 
 - `API_BASE_URL`: URL pública del API correspondiente, sin `/` final.
-- `ENVELOPE_BASE_URL`: URL del frontend Envelope del ambiente.
-- `PAYROLL_BASE_URL`: URL del frontend Payroll del ambiente.
+- `ENVELOPE_BASE_URL` y `PAYROLL_BASE_URL` usan los [dominios de Sobres y Nómina](#dominios-en-github-actions).
 - `SCHEDULER_BASE_URL`: URL del frontend Scheduler del ambiente.
 - `FINANCE_BASE_URL` y `HR_BASE_URL`: aliases estables de las aplicaciones mock.
 - `DEVELOPMENT_API_RELEASE_SHA`: SHA completo servido por `/health.release` en
@@ -83,6 +82,17 @@ transitoria conserva `VERCEL_GIT_COMMIT_SHA`. Las cinco apps deben publicar
 `meta[name="keysar-release"]` antes de retirar su iniciador anterior.
 
 En `production`, habilitar required reviewer, impedir self-review cuando exista otra persona autorizada y deshabilitar bypass de administradores si el plan lo permite.
+
+### Dominios en GitHub Actions
+
+El 21 de noviembre de 2026 se actualizaron las URL de Sobres y Nómina en los dos entornos de GitHub Actions. Las pruebas automáticas usan estas variables para abrir el dominio oficial de cada aplicación.
+
+| Variable | `development` (rama `develop`) | `Production` (rama `master`) |
+|---|---|---|
+| `ENVELOPE_BASE_URL` | `https://pruebas-sobres.keysarcosmetics.com` | `https://sobres.keysarcosmetics.com` |
+| `PAYROLL_BASE_URL` | `https://pruebas-nomina.keysarcosmetics.com` | `https://nomina.keysarcosmetics.com` |
+
+GitHub devolvió los cuatro valores tras guardarlos. En las cuatro direcciones, Vercel pidió autenticación y la página `/login` mostró en `meta[name="keysar-release"]` el SHA del último commit de la rama correspondiente. Los dominios activos y previstos de las seis aplicaciones figuran en el [inventario de dominios](../CLAUDE.md#dominios-por-aplicación).
 
 ## 2. Rulesets de ramas
 

@@ -22,6 +22,8 @@ La diferencia principal es que integrar cambios en `develop` ya no significa des
 - El backend y las migraciones se despliegan mediante GitHub Actions.
 - Producción requiere respaldo, aprobación, smoke tests y validación manual.
 
+Consulta los dominios de ambas ramas y el estado de cada migración en el [inventario de aplicaciones](CLAUDE.md#dominios-por-aplicación).
+
 ---
 
 # 1. Desarrollo de una funcionalidad
