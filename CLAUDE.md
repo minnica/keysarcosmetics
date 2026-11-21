@@ -1091,10 +1091,37 @@ Reglas para futuras sesiones:
 
 ## Ambientes y deploy
 
+### Dominios por aplicación
+
+Estado verificado el 21 de noviembre de 2026 en los proyectos de Vercel de `minnica/keysarcosmetics`. En las filas pendientes, los dominios son los nombres acordados para la migración. Esas aplicaciones siguen usando su dirección `<proyecto>.vercel.app`.
+
+| Sistema | Proyecto de Vercel | Estado | Producción (`master`) | Pruebas (`develop`) |
+|---|---|---|---|---|
+| Sitio público | `keysarcosmetics-landing` | Migrado | `keysarcosmetics.com` | `pruebas.keysarcosmetics.com` |
+| Sobres | `keysarcosmetics-envelope` | Migrado | `sobres.keysarcosmetics.com` | `pruebas-sobres.keysarcosmetics.com` |
+| Nómina | `keysarcosmetics-payroll` | Migrado | `nomina.keysarcosmetics.com` | `pruebas-nomina.keysarcosmetics.com` |
+| Agenda de citas | `keysarcosmetics-scheduler` | Pendiente | `agenda.keysarcosmetics.com` | `pruebas-agenda.keysarcosmetics.com` |
+| Recursos Humanos | `keysarcosmetics-hr` | Pendiente | `rh.keysarcosmetics.com` | `pruebas-rh.keysarcosmetics.com` |
+| Finanzas | `keysarcosmetics-finance` | Pendiente | `finanzas.keysarcosmetics.com` | `pruebas-finanzas.keysarcosmetics.com` |
+
+### Dominios de Sobres
+
+En `keysarcosmetics.com`, el subdominio `sobres` sirve la rama `master` y `pruebas-sobres` sirve `develop`. El proyecto `keysarcosmetics-envelope` exige autenticación de Vercel en todos sus despliegues. Después, el personal inicia sesión en Sobres con una cuenta del entorno correspondiente.
+
+Una vez que Vercel autoriza el acceso, `keysarcosmetics-envelope.vercel.app` redirige a `sobres.keysarcosmetics.com` con HTTP 308. La regla del proyecto conserva la ruta y los parámetros de consulta de los enlaces anteriores.
+
+En Fly.io, `CORS_ORIGINS` de `cosmetics-api` incluye el origen de `sobres` y el de `cosmetics-api-dev` incluye el de `pruebas-sobres`. Antes de editar estas listas compartidas, leer el valor activo del entorno y conservar sus orígenes.
+
+### Dominios de Nómina
+
+El proyecto `keysarcosmetics-payroll` publica `master` en `nomina.keysarcosmetics.com` y `develop` en `pruebas-nomina.keysarcosmetics.com`. Vercel exige autenticación en todos los despliegues. Después, el personal inicia sesión en Nómina con una cuenta autorizada para ese entorno.
+
+Tras la autenticación de Vercel, `keysarcosmetics-payroll.vercel.app` redirige de forma permanente (HTTP 308) a `nomina.keysarcosmetics.com` y conserva la ruta y los parámetros de consulta.
+
 ### Producción
 
 ```
-master → https://keysarcosmetics-payroll.vercel.app → cosmetics-api.fly.dev → Supabase prod
+master → https://nomina.keysarcosmetics.com → cosmetics-api.fly.dev → Supabase prod
 ```
 
 El backend Fly.io de producción está configurado para evitar cold start con `auto_stop_machines = 'off'` y `min_machines_running = 1`; esto requiere deploy de backend para reflejarse en Fly.
@@ -1105,8 +1132,8 @@ Configuración requerida para Payroll producción:
 # Vercel Production de apps/payroll
 NEXT_PUBLIC_API_URL=https://cosmetics-api.fly.dev
 
-# Fly.io, app cosmetics-api
-CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics-payroll.vercel.app
+# Fly.io, orígenes activos de cosmetics-api al migrar Nómina
+CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics-payroll.vercel.app,https://sobres.keysarcosmetics.com,https://nomina.keysarcosmetics.com
 ```
 
 - Los origins CORS no llevan `/` final, espacios ni comillas. El backend lee `CORS_ORIGINS` en plural; `CORS_ORIGIN` en singular no participa.
@@ -1117,7 +1144,7 @@ CORS_ORIGINS=https://keysarcosmetics-envelope.vercel.app,https://keysarcosmetics
 ### Desarrollo
 
 ```
-develop → Vercel Preview → cosmetics-api-dev.fly.dev → Supabase dev
+develop → https://pruebas-nomina.keysarcosmetics.com (Vercel Preview de Nómina) → cosmetics-api-dev.fly.dev → Supabase dev
 ```
 
 Configuración validada para desarrollo local y previews de Envelope/Payroll:
@@ -1129,11 +1156,13 @@ NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
 # Vercel Preview de apps/payroll, limitada a la rama develop
 NEXT_PUBLIC_API_URL=https://cosmetics-api-dev.fly.dev
 
-# Fly.io, app cosmetics-api-dev
-CORS_ORIGINS=http://localhost:3001,http://localhost:3002,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,https://keysarcosmetics-payroll-git-develop-minnicas-projects.vercel.app
+# Fly.io, orígenes activos de cosmetics-api-dev al migrar Nómina
+CORS_ORIGINS=http://localhost:3001,http://localhost:3002,http://localhost:3004,https://keysarcosmetics-envelope-git-develop-minnicas-projects.vercel.app,https://keysarcosmetics-payroll-git-develop-minnicas-projects.vercel.app,https://keysarcosmetics-scheduler-git-develop-minnicas-projects.vercel.app,https://pruebas-sobres.keysarcosmetics.com,https://pruebas-nomina.keysarcosmetics.com
 ```
 
-La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Los dominios únicos de cada deployment Vercel cambian y no se agregan a CORS; para validación manual se usan los alias estables `git-develop`. Si cambia alguno de esos alias, actualizar simultáneamente la variable del environment `development` en GitHub y `CORS_ORIGINS` en Fly.
+La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_ADMIN` y el flujo de formularios de Payroll fueron probados correctamente. Los alias estables `git-develop` siguen disponibles para validación manual. Los dominios únicos de cada despliegue quedan fuera de la lista de CORS.
+
+En GitHub Actions, `ENVELOPE_BASE_URL` (Sobres) y `PAYROLL_BASE_URL` (Nómina) apuntan a los dominios oficiales de cada entorno. Si cambia uno de estos dominios, actualizar su variable de GitHub y `CORS_ORIGINS` en la API correspondiente. Los cuatro valores están en la [guía de configuración de GitHub Actions](docs/RELEASE_RUNBOOK.md#dominios-en-github-actions).
 
 **Notas importantes:**
 
@@ -1141,12 +1170,11 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
   (Envelope, Payroll, Scheduler, Finance y HR) crean deployments automáticamente
   por integración Git en cualquier rama, no sólo en `master`/`develop`. CRM y
   POS no tienen proyecto Vercel. `keysar-landing` pertenece a otro repositorio.
-- `keysarcosmetics-landing` compila `apps/landing` del monorepo. El flujo para el
-  dominio oficial usa `develop` en Preview para pruebas y `master` en Production
-  para `keysarcosmetics.com`. Asignar el subdominio de pruebas a la rama `develop`
-  y redirigir `www` al dominio raíz. `NEXT_PUBLIC_SITE_URL` debe corresponder al
-  origen de cada entorno durante el build. Antes de mover el dominio, comprobar
-  la portada y que el formulario prepare la solicitud de cita en WhatsApp.
+- `keysarcosmetics-landing` compila `apps/landing` del monorepo. `NEXT_PUBLIC_SITE_URL`
+  usa el dominio oficial de cada entorno. `www.keysarcosmetics.com` redirige al
+  dominio raíz. La redirección de `keysarcosmetics-landing.vercel.app` a
+  `keysarcosmetics.com` usa HTTP 308 y conserva la ruta y los parámetros de consulta.
+  El formulario de citas prepara la solicitud en WhatsApp.
 - Backend en Fly.io se despliega mediante el workflow manual protegido `.github/workflows/deploy-api.yml`; no se despliega automáticamente por push.
 - Migraciones de BD se aplican dentro del workflow manual protegido y con revisión previa; nunca por un push automático.
 - La Fase 0 del plan de despliegues selectivos se completó el 4 de septiembre de
@@ -1754,6 +1782,10 @@ npx ts-node --project tsconfig.json prisma/seed-catalogs.ts
 ---
 
 ## Pendientes conocidos
+
+Para Agenda, Recursos Humanos y Finanzas queda asignar en Vercel los [dominios acordados](#dominios-por-aplicación) y comprobar sus registros DNS en Namecheap. Cada aplicación debe tener acceso interno y su variable de GitHub Actions (`SCHEDULER_BASE_URL`, `HR_BASE_URL` o `FINANCE_BASE_URL`) en ambos entornos.
+
+Si la aplicación consume la API de Fly.io, añadir el origen HTTPS a `CORS_ORIGINS` del entorno correspondiente. Tras verificar los nuevos dominios, redirigir el alias anterior de producción con HTTP 308 conservando la ruta y los parámetros.
 
 ### Estado de `apps/hr` (2026-08-23)
 
