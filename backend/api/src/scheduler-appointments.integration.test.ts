@@ -8,6 +8,10 @@ import { prisma } from "./prisma/client";
 const enabled = process.env["RUN_DATABASE_TESTS"] === "true";
 const integrationDescribe = enabled ? describe : describe.skip;
 const suffix = `${process.pid}-${Date.now()}`;
+const nextFriday = new Date();
+const daysUntilFriday = (5 - nextFriday.getUTCDay() + 7) % 7 || 7;
+nextFriday.setUTCDate(nextFriday.getUTCDate() + daysUntilFriday);
+const bookingDate = nextFriday.toISOString().slice(0, 10);
 const password = "Scheduler-Integration-2026";
 let server: Server;
 let baseUrl: string;
@@ -157,7 +161,7 @@ integrationDescribe("Scheduler appointment concurrency with PostgreSQL", () => {
     const body = {
       branchId,
       customerId,
-      startsAt: "2026-09-11T18:00:00.000Z",
+      startsAt: `${bookingDate}T18:00:00.000Z`,
       services: [
         { serviceProfileId, professionalProfileIds: [professionalProfileId] },
       ],
@@ -218,7 +222,7 @@ integrationDescribe("Scheduler appointment concurrency with PostgreSQL", () => {
     const body = {
       branchId,
       customerId,
-      startsAt: "2026-09-11T16:00:00.000Z",
+      startsAt: `${bookingDate}T16:00:00.000Z`,
       services: [
         { serviceProfileId, professionalProfileIds: [professionalProfileId] },
       ],
