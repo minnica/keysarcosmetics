@@ -1,3 +1,87 @@
+@import url("https://fonts.googleapis.com/css2?family=Afacad:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: #f7f1e8;
+    color: #4a4038;
+    font-family: "Afacad", sans-serif;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+  }
+
+  dialog::backdrop {
+    background: rgb(36 31 26 / 55%);
+    backdrop-filter: blur(2px);
+  }
+}
+
+@layer utilities {
+  .ks-section-a {
+    background:
+      radial-gradient(
+        ellipse 85% 70% at 18% 0%,
+        rgb(251 248 242 / 76%) 0%,
+        transparent 100%
+      ),
+      #e8d8ca;
+  }
+
+  .ks-section-b {
+    background:
+      radial-gradient(
+        ellipse 72% 65% at 84% 100%,
+        rgb(247 241 232 / 72%) 0%,
+        transparent 100%
+      ),
+      radial-gradient(
+        ellipse 36% 36% at 90% 6%,
+        rgb(169 120 75 / 18%) 0%,
+        transparent 100%
+      ),
+      #e2ccb9;
+  }
+
+  .ks-section-c {
+    background:
+      radial-gradient(
+        ellipse 92% 65% at 50% 44%,
+        rgb(251 248 242 / 72%) 0%,
+        transparent 100%
+      ),
+      #efe3d6;
+  }
+
+  .ks-section-d {
+    background:
+      radial-gradient(
+        ellipse 58% 62% at 4% 52%,
+        rgb(251 248 242 / 76%) 0%,
+        transparent 100%
+      ),
+      radial-gradient(
+        ellipse 52% 55% at 96% 28%,
+        rgb(182 134 104 / 18%) 0%,
+        transparent 100%
+      ),
+      #dec7b4;
+  }
+}

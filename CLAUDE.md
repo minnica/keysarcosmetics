@@ -925,6 +925,13 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 **Notas importantes:**
 
 - Frontend en Vercel se despliega automáticamente por push a `master`/`develop`.
+- `keysarcosmetics-landing` compila `apps/landing` del monorepo. El flujo para el
+  dominio oficial usa `develop` en Preview para pruebas y `master` en Production
+  para `keysarcosmetics.com`. Asignar el subdominio de pruebas a la rama `develop`
+  y redirigir `www` al dominio raíz. `NEXT_PUBLIC_SITE_URL` debe corresponder al
+  origen de cada entorno durante el build. Antes de mover el dominio, comprobar
+  la portada y que el formulario prepare la solicitud de cita en WhatsApp.
+  La migración de la web pública se documenta en `docs/LANDING_MIGRATION.md`.
 - Backend en Fly.io se despliega mediante el workflow manual protegido `.github/workflows/deploy-api.yml`; no se despliega automáticamente por push.
 - Migraciones de BD se aplican dentro del workflow manual protegido y con revisión previa; nunca por un push automático.
 - No subir `.env` ni `.env.local` al repositorio.
