@@ -1141,12 +1141,12 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
   (Envelope, Payroll, Scheduler, Finance y HR) crean deployments automáticamente
   por integración Git en cualquier rama, no sólo en `master`/`develop`. CRM y
   POS no tienen proyecto Vercel. `keysar-landing` pertenece a otro repositorio.
-- `keysarcosmetics-landing` está conectado a `minnica/keysarcosmetics` y compila
-  `apps/landing`. El 19 de noviembre de 2026 se publicó `feature/landing` en
-  `https://keysarcosmetics-landing.vercel.app/` con un despliegue de producción
-  iniciado desde Vercel. Para que los siguientes pushes actualicen esa URL sin
-  pasar por `develop`, seleccionar `feature/landing` en **Settings →
-  Environments → Production → Branch Tracking** de ese proyecto.
+- `keysarcosmetics-landing` compila `apps/landing` del monorepo. El flujo para el
+  dominio oficial usa `develop` en Preview para pruebas y `master` en Production
+  para `keysarcosmetics.com`. Asignar el subdominio de pruebas a la rama `develop`
+  y redirigir `www` al dominio raíz. `NEXT_PUBLIC_SITE_URL` debe corresponder al
+  origen de cada entorno durante el build. Antes de mover el dominio, comprobar
+  la portada y que el formulario prepare la solicitud de cita en WhatsApp.
 - Backend en Fly.io se despliega mediante el workflow manual protegido `.github/workflows/deploy-api.yml`; no se despliega automáticamente por push.
 - Migraciones de BD se aplican dentro del workflow manual protegido y con revisión previa; nunca por un push automático.
 - La Fase 0 del plan de despliegues selectivos se completó el 4 de septiembre de
