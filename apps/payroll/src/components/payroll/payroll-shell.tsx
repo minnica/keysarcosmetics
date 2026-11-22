@@ -93,6 +93,11 @@ const sections: NavSection[] = [
         label: "Centro de control",
         icon: MonitorCheck,
       },
+      {
+        href: "/resumen-nomina",
+        label: "Resumen de nómina",
+        icon: BarChart2,
+      },
     ],
   },
   {

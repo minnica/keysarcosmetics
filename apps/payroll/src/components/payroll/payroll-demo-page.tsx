@@ -64,12 +64,15 @@ import {
   type PayrollCostAllocationMode,
   type DemoPayrollPeriodConfig,
   type PayrollStatus,
-  employeeCommissionPayrollModule,
+  branchAppliesToPeriod,
+  employeeCommissionPayrollModuleForPeriod,
   employeeSalaryPayrollModule,
+  employeeShowsCommissionInPayroll,
+  employeeShowsSalaryInPayroll,
   moduleTaxInclusionForRange,
   periodTaxInclusionForRange,
+  payrollModuleAppliesToPeriod,
   payrollModuleLabel,
-  payrollModuleLabels,
   roleHasPermission,
   sortByListMode,
   usePayrollDemo,
@@ -81,9 +84,8 @@ import {
   type ConsolidatedSalesTrendPoint,
 } from "./payroll-consolidated-sales-analytics";
 import {
-  employeeCostAllocationShares,
   employeeCostBranchIds,
-  payrollCostAllocationMode,
+  employeeMixedCostAllocationShares,
 } from "./payroll-cost-branch-selector";
 import { ReportExportButtons } from "./report-export-buttons";
 import {
@@ -136,6 +138,15 @@ const dateLabel = new Intl.DateTimeFormat("es-MX", {
   year: "numeric",
   timeZone: "UTC",
 });
+
+function ConfidentialPayrollValue() {
+  return (
+    <span className="inline-flex items-center justify-end gap-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-muted)]">
+      <LockKeyhole className="size-3" aria-hidden="true" />
+      Confidencial
+    </span>
+  );
+}
 
 const monthLabel = new Intl.DateTimeFormat("es-MX", {
   month: "long",
@@ -1113,10 +1124,12 @@ function PayrollTable({
   );
   const branchOptions = useMemo(
     () =>
-      state.branches.filter((branch) =>
-        lines.some((line) => line.employee.branchId === branch.id),
+      state.branches.filter(
+        (branch) =>
+          branchAppliesToPeriod(branch, periodStart, periodEnd) ||
+          lines.some((line) => line.employee.branchId === branch.id),
       ),
-    [lines, state.branches],
+    [lines, periodEnd, periodStart, state.branches],
   );
   const normalizedSearch = search.trim().toLocaleLowerCase("es-MX");
   const filteredLines = useMemo(
@@ -1158,14 +1171,29 @@ function PayrollTable({
           `${line.employee.position} ${line.schemeName ?? ""}`,
         grossSales: (line) => line.grossSales,
         salesWithoutVat: (line) => line.salesWithoutVat,
-        commission: (line) => line.commission,
-        invoiceSubtotal: (line) => line.invoiceSubtotal,
-        ivaAmount: (line) => line.ivaAmount,
-        isrRetention: (line) => line.isrRetention,
-        ivaRetention: (line) => line.ivaRetention,
-        fixedSalary: (line) => line.fixedSalary,
+        commission: (line) =>
+          employeeShowsCommissionInPayroll(line.employee) ? line.commission : 0,
+        invoiceSubtotal: (line) =>
+          employeeShowsCommissionInPayroll(line.employee)
+            ? line.invoiceSubtotal
+            : 0,
+        ivaAmount: (line) =>
+          employeeShowsCommissionInPayroll(line.employee) ? line.ivaAmount : 0,
+        isrRetention: (line) =>
+          employeeShowsCommissionInPayroll(line.employee)
+            ? line.isrRetention
+            : 0,
+        ivaRetention: (line) =>
+          employeeShowsCommissionInPayroll(line.employee)
+            ? line.ivaRetention
+            : 0,
+        fixedSalary: (line) =>
+          employeeShowsSalaryInPayroll(line.employee) ? line.fixedSalary : 0,
         doublePay: (line) => line.doublePayAmount,
-        commissionBonuses: (line) => line.commission + line.bonuses,
+        commissionBonuses: (line) =>
+          (employeeShowsCommissionInPayroll(line.employee)
+            ? line.commission
+            : 0) + line.bonuses,
         deductions: (line) =>
           line.fines +
           line.loanDeduction +
@@ -1333,14 +1361,18 @@ function PayrollTable({
     workedDays: `${line.workedDays} DE ${line.periodDays}`,
     grossSales: line.grossSales,
     salesWithoutVat: line.salesWithoutVat,
-    salary: line.fixedSalary,
+    salary: employeeShowsSalaryInPayroll(line.employee)
+      ? line.fixedSalary
+      : "CONFIDENCIAL",
     doublePay: line.doublePayAmount,
     doublePayDetail: line.doublePayDays
       .map((entry) => `${entry.date} · ${entry.reason}`)
       .join(" | "),
     carriedBalance: line.carriedNegativeBalance,
     pendingBalance: line.newNegativeBalance,
-    commission: line.commission,
+    commission: employeeShowsCommissionInPayroll(line.employee)
+      ? line.commission
+      : "CONFIDENCIAL",
     bonuses: line.bonuses,
     deductions: line.fines + line.loanDeduction,
     adjustments: line.externalAdditions - line.externalDeductions,
@@ -1456,6 +1488,7 @@ function PayrollTable({
             `Los saldos negativos anteriores descuentan ${money.format(filteredLines.reduce((sum, line) => sum + line.carriedNegativeBalance, 0))}; cualquier remanente se conserva para el siguiente periodo.`,
           ]
         : []),
+      "Los sueldos o comisiones marcados como confidenciales siguen incluidos en cálculos y totales, pero no se muestran por empleado.",
       "La exportación contiene únicamente la nómina seleccionada y no incluye filtros, navegación ni controles del sistema.",
     ],
     filename: `nomina-${view.toLocaleLowerCase()}-${periodStart}`,
@@ -1715,7 +1748,7 @@ function PayrollTable({
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="min-w-max text-[13px] [&_tbody_td]:px-2.5 [&_tbody_td]:py-1.5 [&_tfoot_td]:px-2.5 [&_tfoot_td]:py-2 [&_thead_th]:h-9 [&_thead_th]:px-2.5">
             <TableHeader>
               <TableRow>
                 <SortableTableHead
@@ -1724,6 +1757,7 @@ function PayrollTable({
                   kind="text"
                   sort={tableSort}
                   onSort={changeTableSort}
+                  className="min-w-[220px]"
                 />
                 <SortableTableHead
                   column="bank"
@@ -1731,6 +1765,7 @@ function PayrollTable({
                   kind="text"
                   sort={tableSort}
                   onSort={changeTableSort}
+                  className="min-w-[150px]"
                 />
                 <SortableTableHead
                   column="position"
@@ -1738,6 +1773,7 @@ function PayrollTable({
                   kind="text"
                   sort={tableSort}
                   onSort={changeTableSort}
+                  className="min-w-[190px]"
                 />
                 {showSales && (
                   <SortableTableHead
@@ -1968,11 +2004,11 @@ function PayrollTable({
                           : undefined
                   }
                 >
-                  <TableCell>
-                    <p className="font-semibold text-[color:var(--text-primary)]">
+                  <TableCell className="min-w-[220px]">
+                    <p className="whitespace-nowrap text-[13px] font-semibold leading-5 text-[color:var(--text-primary)]">
                       {line.employee.name}
                     </p>
-                    <p className="text-xs text-[color:var(--text-muted)]">
+                    <p className="whitespace-nowrap text-[10px] leading-4 text-[color:var(--text-muted)]">
                       {state.branches.find(
                         (branch) => branch.id === line.employee.branchId,
                       )?.name ?? "SIN SUCURSAL"}{" "}
@@ -1996,20 +2032,22 @@ function PayrollTable({
                       </Badge>
                     ) : null}
                   </TableCell>
-                  <TableCell className="min-w-44">
-                    <p className="text-xs font-semibold">
+                  <TableCell className="min-w-[150px] whitespace-nowrap">
+                    <p className="text-[11px] font-semibold leading-4">
                       {line.employee.bank}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-[color:var(--text-muted)]">
+                    <p className="text-[9px] leading-4 text-[color:var(--text-muted)]">
                       Cuenta / CLABE
                     </p>
-                    <p className="number-display text-xs">
+                    <p className="number-display text-[11px] leading-4">
                       {line.employee.account}
                     </p>
                   </TableCell>
-                  <TableCell>
-                    <p className="text-sm">{line.employee.position}</p>
-                    <p className="text-xs text-[color:var(--text-muted)]">
+                  <TableCell className="min-w-[190px] whitespace-nowrap">
+                    <p className="text-[12px] leading-4">
+                      {line.employee.position}
+                    </p>
+                    <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
                       {line.schemeName}
                       {line.rate > 0
                         ? ` · ${(line.rate * 100).toFixed(0)}%`
@@ -2040,34 +2078,59 @@ function PayrollTable({
                   {contractor ? (
                     <>
                       <TableCell className="number-display text-right">
-                        {money.format(line.commission)}
+                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                          money.format(line.commission)
+                        ) : (
+                          <ConfidentialPayrollValue />
+                        )}
                       </TableCell>
                       <TableCell className="number-display text-right">
-                        {money.format(line.invoiceSubtotal)}
+                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                          money.format(line.invoiceSubtotal)
+                        ) : (
+                          <ConfidentialPayrollValue />
+                        )}
                       </TableCell>
                       <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
-                        {money.format(line.ivaAmount)}
+                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                          money.format(line.ivaAmount)
+                        ) : (
+                          <ConfidentialPayrollValue />
+                        )}
                       </TableCell>
                       <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
-                        {money.format(line.isrRetention)}
+                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                          money.format(line.isrRetention)
+                        ) : (
+                          <ConfidentialPayrollValue />
+                        )}
                       </TableCell>
                       <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
-                        {money.format(line.ivaRetention)}
+                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                          money.format(line.ivaRetention)
+                        ) : (
+                          <ConfidentialPayrollValue />
+                        )}
                       </TableCell>
                     </>
                   ) : (
                     <>
                       {showSalary && (
                         <TableCell className="text-right">
-                          <p className="number-display">
-                            {money.format(line.fixedSalary)}
-                          </p>
-                          {line.workedDays < line.periodDays && (
-                            <p className="mt-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">
-                              PRORRATEO · {line.workedDays}/{line.periodDays}{" "}
-                              DÍAS
+                          {employeeShowsSalaryInPayroll(line.employee) ? (
+                            <p className="number-display">
+                              {money.format(line.fixedSalary)}
                             </p>
+                          ) : (
+                            <ConfidentialPayrollValue />
                           )}
+                          {employeeShowsSalaryInPayroll(line.employee) &&
+                            line.workedDays < line.periodDays && (
+                              <p className="mt-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">
+                                PRORRATEO · {line.workedDays}/{line.periodDays}{" "}
+                                DÍAS
+                              </p>
+                            )}
                         </TableCell>
                       )}
                       {showDoublePay && (
@@ -2088,7 +2151,18 @@ function PayrollTable({
                       )}
                       {showCommission && (
                         <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
-                          {money.format(line.commission + line.bonuses)}
+                          {employeeShowsCommissionInPayroll(line.employee) ? (
+                            money.format(line.commission + line.bonuses)
+                          ) : (
+                            <div className="space-y-0.5">
+                              <ConfidentialPayrollValue />
+                              {line.bonuses !== 0 ? (
+                                <p className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                  BONOS {money.format(line.bonuses)}
+                                </p>
+                              ) : null}
+                            </div>
+                          )}
                         </TableCell>
                       )}
                     </>
@@ -2124,7 +2198,8 @@ function PayrollTable({
                       </p>
                       {line.newNegativeBalance > 0 ? (
                         <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-rose-700 dark:text-rose-300">
-                          PASA {money.format(line.newNegativeBalance)}
+                          PASA A OTRA NÓMINA{" "}
+                          {money.format(line.newNegativeBalance)}
                         </p>
                       ) : null}
                     </TableCell>
@@ -2360,7 +2435,13 @@ function ConsolidatedDashboard({
     0,
   );
   const payrollTypeColumns = state.payrollModules.filter(
-    (module) => module.id !== "CONSOLIDATED",
+    (module) =>
+      module.id !== "CONSOLIDATED" &&
+      payrollModuleAppliesToPeriod(
+        module,
+        config.periodStart,
+        config.periodEnd,
+      ),
   );
   const payrollLinesByModule = payrollTypeColumns.map((module) => ({
     module,
@@ -2383,28 +2464,35 @@ function ConsolidatedDashboard({
       decision.periodStart <= config.periodEnd &&
       decision.status === "AUTHORIZED",
   ).length;
+  const periodBranches = useMemo(
+    () =>
+      state.branches.filter(
+        (branch) =>
+          branch.registeredAt <= config.periodEnd &&
+          (branch.active ||
+            Boolean(
+              branch.deactivatedAt && branch.deactivatedAt > config.periodEnd,
+            )),
+      ),
+    [config.periodEnd, state.branches],
+  );
   const costAllocations = lines.flatMap((line) => {
-    const allocationMode = payrollCostAllocationMode(
-      state.payrollCostAllocationModes,
-      line.employee.id,
-      config.periodStart,
-      config.periodEnd,
-    );
-    return employeeCostAllocationShares({
+    const fixedAmount = line.fixedSalary + line.doublePayAmount;
+    return employeeMixedCostAllocationShares({
       employee: line.employee,
-      branches: state.branches,
+      branches: periodBranches,
       sales: state.sales,
       periodStart: config.periodStart,
       periodEnd: config.periodEnd,
-      mode: allocationMode,
+      fixedAmount,
+      variableAmount: Math.max(line.total - fixedAmount, 0),
     }).map(({ branchId, share }) => ({
       line,
       branchId,
       share,
-      allocationMode,
     }));
   });
-  const defaultBranchCosts = state.branches
+  const defaultBranchCosts = periodBranches
     .map((branch) => {
       const branchAllocations = costAllocations.filter(
         (allocation) => allocation.branchId === branch.id,
@@ -2541,7 +2629,7 @@ function ConsolidatedDashboard({
     const costByBranch = new Map(
       branchCosts.map((branch) => [branch.id, branch]),
     );
-    const defaultRows = state.branches
+    const defaultRows = periodBranches
       .map((branch) => {
         const cost = costByBranch.get(branch.id);
         return {
@@ -2565,7 +2653,7 @@ function ConsolidatedDashboard({
     config.periodStart,
     listSortMode,
     lines,
-    state.branches,
+    periodBranches,
     state.sales,
   ]);
   const positionCostMap = new Map<
@@ -2586,7 +2674,7 @@ function ConsolidatedDashboard({
     }
   >();
   costAllocations.forEach(({ line, branchId, share }) => {
-    const branch = state.branches.find((item) => item.id === branchId);
+    const branch = periodBranches.find((item) => item.id === branchId);
     const branchName = branch?.name ?? "SIN SUCURSAL";
     const key = `${branchId}|${line.employee.position}`;
     const row = positionCostMap.get(key) ?? {
@@ -2621,8 +2709,12 @@ function ConsolidatedDashboard({
     });
     const unassignedPayroll = line.total - assignedPayroll;
     const fallbackModuleId =
-      employeeCommissionPayrollModule(line.employee) ??
-      employeeSalaryPayrollModule(line.employee);
+      employeeCommissionPayrollModuleForPeriod(
+        state,
+        line.employee,
+        config.periodStart,
+        config.periodEnd,
+      ) ?? employeeSalaryPayrollModule(line.employee);
     if (
       fallbackModuleId &&
       Math.abs(unassignedPayroll) >= 0.005 &&
@@ -2651,12 +2743,10 @@ function ConsolidatedDashboard({
     (row) => row.total,
   );
   const branchPositionCosts = sortByListMode(
-    state.branches
-      .map((branch) => ({
-        branch,
-        rows: positionCosts.filter((row) => row.branchId === branch.id),
-      }))
-      .filter((item) => item.rows.length > 0),
+    periodBranches.map((branch) => ({
+      branch,
+      rows: positionCosts.filter((row) => row.branchId === branch.id),
+    })),
     listSortMode,
     (item) => item.branch.name,
     (item) => item.rows.reduce((sum, row) => sum + row.total, 0),
@@ -2689,7 +2779,7 @@ function ConsolidatedDashboard({
     ...lines
       .filter(
         (line) =>
-          employeeCostBranchIds(line.employee, state.branches).length === 0,
+          employeeCostBranchIds(line.employee, periodBranches).length === 0,
       )
       .map((line) => ({
         id: `employee-${line.employee.id}`,
@@ -2706,7 +2796,7 @@ function ConsolidatedDashboard({
         id: `adjustment-${adjustment.id}`,
         source: "MOVIMIENTOS DE NÓMINA",
         concept: adjustment.concept,
-        detail: `${adjustment.payrollDate} · ${payrollModuleLabels[adjustment.payrollModule]} · sin sucursal válida`,
+        detail: `${adjustment.payrollDate} · ${payrollModuleLabel(state, adjustment.payrollModule)} · sin sucursal válida`,
       })),
     ...periodMovements
       .filter((movement) => {
@@ -3307,6 +3397,17 @@ function ConsolidatedDashboard({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
+                        {rows.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={payrollTypeColumns.length + 9}
+                              className="py-5 text-center text-xs text-[color:var(--text-muted)]"
+                            >
+                              Sucursal activa sin nómina ni movimientos en este
+                              periodo.
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
                         {rows.map((row) => (
                           <TableRow key={`${row.branchId}-${row.position}`}>
                             <TableCell className="font-semibold">
@@ -3511,6 +3612,10 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
     view,
   );
   const lines = allLines;
+  const pendingNegativeTotal = lines.reduce(
+    (sum, line) => sum + line.newNegativeBalance,
+    0,
+  );
   const selectedRun = state.runs.find(
     (run) =>
       run.module === view &&
@@ -3533,19 +3638,15 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
   const isMaster = activeEmployee?.roleId === "role-admin";
   const allocatedBranchCount = new Set(
     lines.flatMap((line) => {
-      const allocationMode = payrollCostAllocationMode(
-        state.payrollCostAllocationModes,
-        line.employee.id,
-        selectedPeriod.start,
-        selectedPeriod.end,
-      );
-      return employeeCostAllocationShares({
+      const fixedAmount = line.fixedSalary + line.doublePayAmount;
+      return employeeMixedCostAllocationShares({
         employee: line.employee,
         branches: state.branches,
         sales: state.sales,
         periodStart: selectedPeriod.start,
         periodEnd: selectedPeriod.end,
-        mode: allocationMode,
+        fixedAmount,
+        variableAmount: Math.max(line.total - fixedAmount, 0),
       }).map((allocation) => allocation.branchId);
     }),
   ).size;
@@ -3957,6 +4058,14 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
                         ? "Importes, cargas y movimientos están bloqueados. Solo un código maestro autorizado puede reabrir esta corrida."
                         : "Al cerrar, la corrida se bloquea y se habilita en Dispersión."}
                     </p>
+                    {!payrollLocked && pendingNegativeTotal > 0 ? (
+                      <p className="mt-1 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                        El cierre está permitido.{" "}
+                        {money.format(pendingNegativeTotal)} quedará pendiente y
+                        se aplicará una sola vez en la siguiente nómina
+                        disponible del empleado.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -4003,13 +4112,21 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
                           lines.map((line) => ({
                             employeeId: line.employee.id,
                             amount: line.newNegativeBalance,
+                            carriedAmount: line.carriedNegativeBalance,
+                            breakdown: line.newNegativeBalanceBreakdown,
                           })),
                         );
                         if (periodDisplay === "MONTHLY")
                           setSelectedMonth(nextPeriod.start.slice(0, 7));
                         else setSelectedFortnight(nextPeriod.start);
+                        const pendingBalance = lines.reduce(
+                          (sum, line) => sum + line.newNegativeBalance,
+                          0,
+                        );
                         toast.success(
-                          `Nómina cerrada para pago. Se abrió ${nextPeriod.label.toLocaleLowerCase("es-MX")}.`,
+                          pendingBalance > 0
+                            ? `Nómina cerrada. ${money.format(pendingBalance)} quedó pendiente y se arrastrará al siguiente pago disponible.`
+                            : `Nómina cerrada para pago. Se abrió ${nextPeriod.label.toLocaleLowerCase("es-MX")}.`,
                         );
                       }}
                     >

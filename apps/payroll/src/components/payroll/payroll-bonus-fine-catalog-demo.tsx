@@ -63,6 +63,7 @@ import {
   type MovementType,
   type PayrollModule,
   payrollModuleLabel,
+  personalizedBonusAwardsForPeriod,
   temporaryBonusStandings,
   usePayrollDemo,
 } from "./payroll-demo-context";
@@ -75,6 +76,7 @@ const money = new Intl.NumberFormat("es-MX", {
 });
 
 type ConceptPreset = "BONUS" | "FINE" | "TEMPORARY";
+type ConceptDialogPreset = ConceptPreset | "CUSTOM";
 type CatalogStatusFilter =
   | "ALL"
   | "ACTIVE"
@@ -231,7 +233,7 @@ function ConceptDialog({
   onOpenChange,
 }: {
   concept: DemoBonusFineConcept | null;
-  preset: ConceptPreset;
+  preset: ConceptDialogPreset;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -241,11 +243,14 @@ function ConceptDialog({
     (module) => module.active && module.id !== "CONSOLIDATED",
   )?.id as Exclude<PayrollModule, "CONSOLIDATED"> | undefined;
   const temporary = concept?.temporary ?? preset === "TEMPORARY";
+  const personalized = concept?.personalized ?? preset === "CUSTOM";
   const [type, setType] = useState<MovementType>(
     concept?.type ?? (preset === "FINE" ? "FINE" : "BONUS"),
   );
   const [name, setName] = useState(concept?.name ?? "");
-  const [mode, setMode] = useState<MovementMode>(concept?.mode ?? "FIXED");
+  const [mode, setMode] = useState<MovementMode>(
+    concept?.mode ?? (personalized ? "SCALE" : "FIXED"),
+  );
   const [condition, setCondition] = useState<BonusCondition>(
     concept?.condition ?? "SALES",
   );
@@ -284,13 +289,19 @@ function ConceptDialog({
   const [eligibleEmployeeIds, setEligibleEmployeeIds] = useState<string[]>(
     concept?.eligibleEmployeeIds ?? [],
   );
+  const [salesAggregation, setSalesAggregation] = useState<
+    "INDIVIDUAL" | "GROUP"
+  >(concept?.salesAggregation ?? "INDIVIDUAL");
   const salesBased =
-    type === "BONUS" && (temporary ? condition === "SALES" : mode === "SCALE");
-  const dialogKindLabel = temporary
-    ? "bono temporal"
-    : type === "FINE"
-      ? "multa"
-      : "bono";
+    type === "BONUS" &&
+    (personalized || (temporary ? condition === "SALES" : mode === "SCALE"));
+  const dialogKindLabel = personalized
+    ? "bono personalizado"
+    : temporary
+      ? "bono temporal"
+      : type === "FINE"
+        ? "multa"
+        : "bono";
   const eligibleEmployees = useMemo(
     () => state.employees.filter((employee) => employee.active),
     [state.employees],
@@ -360,7 +371,7 @@ function ConceptDialog({
       !name.trim() ||
       !validFrom ||
       (!(salesBased && salesScale) && amount <= 0) ||
-      (type === "BONUS" && (temporary || mode === "SCALE") &&
+      (type === "BONUS" && (personalized || temporary || mode === "SCALE") &&
         !(salesBased && salesScale) &&
         scaleThreshold <= 0) ||
       (temporary && !validUntil) ||
@@ -383,7 +394,7 @@ function ConceptDialog({
     }
     if (
       salesBased &&
-      !allEligibleEmployees &&
+      (personalized || !allEligibleEmployees) &&
       eligibleEmployeeIds.length === 0
     ) {
       toast.error("Selecciona al menos un empleado para este bono.");
@@ -404,6 +415,8 @@ function ConceptDialog({
       mode:
         type === "FINE"
           ? ("FIXED" as const)
+          : personalized
+            ? ("SCALE" as const)
           : temporary
             ? condition === "SALES"
               ? ("SCALE" as const)
@@ -416,18 +429,22 @@ function ConceptDialog({
           ? null
           : salesBased && salesScale
             ? (primaryTier?.from ?? null)
-            : temporary || mode === "SCALE"
+            : personalized || temporary || mode === "SCALE"
               ? scaleThreshold
               : null,
       payrollModule,
       validFrom,
       validUntil: temporary || !indefinite ? validUntil || null : null,
       temporary,
-      condition: temporary ? condition : null,
+      condition: temporary || personalized ? condition : null,
       salesScale: salesBased ? salesScale : false,
       salesTiers: salesBased && salesScale ? normalizedTiers : [],
       eligibleEmployeeIds:
-        salesBased && !allEligibleEmployees ? eligibleEmployeeIds : null,
+        personalized || (salesBased && !allEligibleEmployees)
+          ? eligibleEmployeeIds
+          : null,
+      personalized,
+      ...(personalized ? { salesAggregation } : {}),
       active: concept?.active ?? true,
     };
     if (concept) {
@@ -436,7 +453,9 @@ function ConceptDialog({
     } else {
       addBonusFineConcept(input);
       toast.success(
-        temporary
+        personalized
+          ? "Bono personalizado creado; la meta ya alimenta nómina, recibos, consolidado y reportes."
+          : temporary
           ? "Bono temporal creado; su avance y cierre ya alimentan nómina y reportes."
           : "Concepto creado y disponible en las listas dependientes.",
       );
@@ -483,7 +502,7 @@ function ConceptDialog({
                   value as Exclude<PayrollModule, "CONSOLIDATED">,
                 );
                 setEligibleEmployeeIds([]);
-                setAllEligibleEmployees(true);
+                setAllEligibleEmployees(!personalized);
               }}
             >
               <SelectTrigger>
@@ -525,11 +544,47 @@ function ConceptDialog({
               </p>
             </div>
           )}
+          {personalized && (
+            <div className="rounded-xl border border-emerald-300 bg-emerald-50/70 p-3 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-100 sm:col-span-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em]">
+                Bono automático para personal seleccionado
+              </p>
+              <p className="mt-1 text-[11px] leading-5">
+                El cumplimiento se recalcula con las ventas del periodo. Al
+                alcanzar la meta, el premio se entrega a cada persona
+                seleccionada y actualiza nómina, recibos, consolidado, costos y
+                reportes.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>
-              {temporary ? "Condición del bono" : "Tipo de cálculo"}
+              {personalized
+                ? "Forma de acumular la venta"
+                : temporary
+                  ? "Condición del bono"
+                  : "Tipo de cálculo"}
             </Label>
-            {temporary ? (
+            {personalized ? (
+              <Select
+                value={salesAggregation}
+                onValueChange={(value) =>
+                  setSalesAggregation(value as "INDIVIDUAL" | "GROUP")
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="INDIVIDUAL">
+                    META PERSONAL POR VENDEDOR
+                  </SelectItem>
+                  <SelectItem value="GROUP">
+                    VENTA COMBINADA DEL GRUPO
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : temporary ? (
               <Select
                 value={condition}
                 onValueChange={(value) => setCondition(value as BonusCondition)}
@@ -596,10 +651,15 @@ function ConceptDialog({
               />
             </div>
           )}
-          {(temporary || mode === "SCALE") && !(salesBased && salesScale) && (
+          {(personalized || temporary || mode === "SCALE") &&
+            !(salesBased && salesScale) && (
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="catalog-threshold">
-                {temporary && condition === "BONUS_COUNT"
+                {personalized
+                  ? salesAggregation === "GROUP"
+                    ? "Venta mínima combinada requerida"
+                    : "Venta mínima personal requerida"
+                  : temporary && condition === "BONUS_COUNT"
                   ? "Número de bonos requeridos"
                   : "Venta mínima requerida"}
               </Label>
@@ -621,6 +681,12 @@ function ConceptDialog({
                   <p className="text-[10px] text-[color:var(--text-muted)]">
                     Define el rango y el bono que corresponde a cada nivel.
                   </p>
+                  {personalized && (
+                    <p className="mt-1 text-[10px] font-medium text-[#987049]">
+                      Ejemplo: hasta $79,999.99 = $1,000; hasta $119,999.99 =
+                      $2,000; nivel superior = $5,000.
+                    </p>
+                  )}
                 </div>
                 <Button
                   type="button"
@@ -699,20 +765,33 @@ function ConceptDialog({
           )}
           {salesBased && (
             <section className="space-y-3 rounded-xl border border-[color:var(--border-color)] p-3 sm:col-span-2">
-              <ToggleOption
-                checked={allEligibleEmployees}
-                onChange={(checked) => {
-                  setAllEligibleEmployees(checked);
-                  if (checked) setEligibleEmployeeIds([]);
-                }}
-                label="APLICAR A TODO EL PERSONAL"
-                description={
-                  allEligibleEmployees
-                    ? `${eligibleEmployees.length} empleados elegibles`
-                    : "Elegir participantes mediante casillas"
-                }
-              />
-              {!allEligibleEmployees && (
+              {personalized ? (
+                <div>
+                  <p className="text-xs font-semibold">
+                    Personas a las que aplica el bono
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-[color:var(--text-muted)]">
+                    {salesAggregation === "GROUP"
+                      ? "Las ventas de las personas elegidas se suman; si el grupo cumple, cada participante recibe el premio."
+                      : "Cada persona debe alcanzar la meta con sus propias ventas."}
+                  </p>
+                </div>
+              ) : (
+                <ToggleOption
+                  checked={allEligibleEmployees}
+                  onChange={(checked) => {
+                    setAllEligibleEmployees(checked);
+                    if (checked) setEligibleEmployeeIds([]);
+                  }}
+                  label="APLICAR A TODO EL PERSONAL"
+                  description={
+                    allEligibleEmployees
+                      ? `${eligibleEmployees.length} empleados elegibles`
+                      : "Elegir participantes mediante casillas"
+                  }
+                />
+              )}
+              {(personalized || !allEligibleEmployees) && (
                 <SellerSelector
                   employees={eligibleEmployees}
                   selectedIds={eligibleEmployeeIds}
@@ -890,11 +969,36 @@ function DeleteConceptDialog({
               status: "GENERADO AL CIERRE",
             }))
         : [];
+    const personalizedAwardUsages = concept.personalized
+      ? Array.from(
+          new Map(
+            state.runs.map((run) => [
+              `${run.periodStart}-${run.periodEnd}`,
+              { start: run.periodStart, end: run.periodEnd },
+            ]),
+          ).values(),
+        ).flatMap((period) =>
+          personalizedBonusAwardsForPeriod(state, period.start, period.end)
+            .filter((award) => award.concept.id === concept.id)
+            .map((award) => ({
+              id: `personalized-${award.id}`,
+              source: "BONO PERSONALIZADO AUTOMÁTICO",
+              employee: employeeDisplayName(award.employee),
+              location: branchNames(award.costBranchIds),
+              payroll: payrollModuleLabel(state, concept.payrollModule),
+              date: award.appliedAt,
+              period: `${period.start} — ${period.end}`,
+              amount: award.amount,
+              status: "GENERADO POR META",
+            })),
+        )
+      : [];
 
     return [
       ...movementUsages,
       ...adjustmentUsages,
       ...automaticAwardUsages,
+      ...personalizedAwardUsages,
     ].sort(
       (left, right) =>
         right.date.localeCompare(left.date) ||
@@ -1069,6 +1173,14 @@ function conceptStatusLabel(status: CatalogStatusFilter) {
 function conceptRule(concept: DemoBonusFineConcept) {
   if (concept.type === "FINE")
     return `DESCUENTO FIJO · ${money.format(concept.defaultAmount)}`;
+  if (
+    concept.personalized &&
+    concept.salesScale &&
+    concept.salesTiers?.length
+  )
+    return `${concept.salesAggregation === "GROUP" ? "VENTA COMBINADA" : "META PERSONAL"} · ${concept.salesTiers.length} NIVELES · DESDE ${money.format(Math.min(...concept.salesTiers.map((tier) => tier.from)))}`;
+  if (concept.personalized)
+    return `${concept.salesAggregation === "GROUP" ? "VENTA COMBINADA" : "META PERSONAL"} ≥ ${money.format(concept.threshold ?? 0)} · PREMIO ${money.format(concept.defaultAmount)}`;
   if (concept.salesScale && concept.salesTiers?.length)
     return `${concept.salesTiers.length} NIVELES · DESDE ${money.format(Math.min(...concept.salesTiers.map((tier) => tier.from)))}`;
   if (concept.temporary && concept.condition === "BONUS_COUNT")
@@ -1086,7 +1198,7 @@ export function PayrollBonusFineCatalogDemo() {
   const isMaster = activeEmployee?.roleId === "role-admin";
   const [dialog, setDialog] = useState<{
     concept: DemoBonusFineConcept | null;
-    preset: ConceptPreset;
+    preset: ConceptDialogPreset;
   } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DemoBonusFineConcept | null>(
     null,
@@ -1265,6 +1377,13 @@ export function PayrollBonusFineCatalogDemo() {
               onClick={() => setDialog({ concept: null, preset: "BONUS" })}
             >
               <Plus className="mr-2 h-4 w-4" /> Registrar bono
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!isMaster}
+              onClick={() => setDialog({ concept: null, preset: "CUSTOM" })}
+            >
+              <UsersRound className="mr-2 h-4 w-4" /> Bono personalizado
             </Button>
             <Button
               disabled={!isMaster}
@@ -1449,6 +1568,11 @@ export function PayrollBonusFineCatalogDemo() {
                               TEMPORAL
                             </Badge>
                           )}
+                          {concept.personalized && (
+                            <Badge className="border-emerald-300 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100">
+                              PERSONALIZADO
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-xs text-[color:var(--text-muted)]">
                           {catalogLabels[conceptCatalog(concept)].singular}
@@ -1512,6 +1636,8 @@ export function PayrollBonusFineCatalogDemo() {
                                     concept,
                                     preset: concept.temporary
                                       ? "TEMPORARY"
+                                      : concept.personalized
+                                        ? "CUSTOM"
                                       : concept.type,
                                   })
                                 }

@@ -37,13 +37,13 @@ import {
   TableRow,
 } from "@cosmetics/ui";
 import {
-  employeeCostAllocationShares,
-  payrollCostAllocationMode,
+  employeeMixedCostAllocationShares,
 } from "./payroll-cost-branch-selector";
 import {
   christmasBonusPaidAmountForRange,
   effectiveTaxInclusionForRange,
   payrollModuleForCategory,
+  personalizedBonusAwardsForPeriod,
   terminationSettlementTotal,
   usePayrollDemo,
 } from "./payroll-demo-context";
@@ -350,20 +350,16 @@ export function PayrollBranchReportDemo() {
               employeeSalesTotal > 0
                 ? employeeBranchSales / employeeSalesTotal
                 : 0;
-            const allocationMode = payrollCostAllocationMode(
-              state.payrollCostAllocationModes,
-              line.employee.id,
-              bounds.start,
-              bounds.end,
-            );
+            const fixedAmount = line.fixedSalary + line.doublePayAmount;
             const costShare =
-              employeeCostAllocationShares({
+              employeeMixedCostAllocationShares({
                 employee: line.employee,
                 branches: state.branches,
                 sales: state.sales,
                 periodStart: bounds.start,
                 periodEnd: bounds.end,
-                mode: allocationMode,
+                fixedAmount,
+                variableAmount: Math.max(line.total - fixedAmount, 0),
               }).find((allocation) => allocation.branchId === branch.id)
                 ?.share ?? 0;
             if (costShare <= 0) return;
@@ -464,6 +460,20 @@ export function PayrollBranchReportDemo() {
                   : -movement.amount) / Math.max(movementBranches.length, 1);
               employeeIds.add(movement.employeeId);
             });
+
+          personalizedBonusAwardsForPeriod(
+            state,
+            bounds.start,
+            bounds.end,
+          ).forEach((award) => {
+            const awardBranches = validCostBranches(
+              award.costBranchIds,
+              award.employee.branchId,
+            );
+            if (!awardBranches.includes(branch.id)) return;
+            movements += award.amount / Math.max(awardBranches.length, 1);
+            employeeIds.add(award.employee.id);
+          });
 
           state.adjustments
             .filter(

@@ -72,8 +72,7 @@ import {
   usePayrollDemo,
 } from "./payroll-demo-context";
 import {
-  employeeCostAllocationShares,
-  payrollCostAllocationMode,
+  employeeMixedCostAllocationShares,
 } from "./payroll-cost-branch-selector";
 
 const money = new Intl.NumberFormat("es-MX", {
@@ -236,19 +235,15 @@ function buildScopeAnalysis({
         },
       );
     }
-    const mode = payrollCostAllocationMode(
-      state.payrollCostAllocationModes,
-      line.employee.id,
-      start,
-      end,
-    );
-    const allocations = employeeCostAllocationShares({
+    const fixedAmount = line.fixedSalary + line.doublePayAmount;
+    const allocations = employeeMixedCostAllocationShares({
       employee: line.employee,
       branches: state.branches,
       sales: state.sales,
       periodStart: start,
       periodEnd: end,
-      mode,
+      fixedAmount,
+      variableAmount: Math.max(line.total - fixedAmount, 0),
     });
     if (!allocations.length) {
       unassigned.add(line.employee.id);
@@ -326,22 +321,22 @@ function MetricCard({
     rose: "border-rose-300/80 bg-rose-50/70 dark:border-rose-800 dark:bg-rose-950/20",
   };
   return (
-    <Card className={tones[tone]}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+    <Card className={`min-h-0 ${tones[tone]}`}>
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.11em] text-[color:var(--text-muted)]">
               {label}
             </p>
-            <p className="number-display mt-2 text-2xl text-[color:var(--text-primary)]">
+            <p className="number-display mt-1 text-xl leading-7 text-[color:var(--text-primary)]">
               {value}
             </p>
           </div>
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#b99568]/25 bg-[#b99568]/10 text-[#8a6744]">
-            <Icon className="h-4 w-4" />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#b99568]/25 bg-[#b99568]/10 text-[#8a6744]">
+            <Icon className="h-3.5 w-3.5" />
           </span>
         </div>
-        <p className="mt-2 text-xs leading-5 text-[color:var(--text-muted)]">
+        <p className="mt-1 truncate text-[10px] leading-4 text-[color:var(--text-muted)]" title={detail}>
           {detail}
         </p>
       </CardContent>
@@ -726,13 +721,11 @@ export function PayrollControlCenterDemo() {
                   <SelectContent>
                     <SelectItem value="ALL">TODAS LAS NÓMINAS</SelectItem>
                     {state.payrollModules
-                      .filter(
-                        (module) =>
-                          module.id !== "CONSOLIDATED" && module.active,
-                      )
+                      .filter((module) => module.id !== "CONSOLIDATED")
                       .map((module) => (
                         <SelectItem key={module.id} value={module.id}>
                           {module.name}
+                          {!module.active ? " · HISTÓRICO" : ""}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -791,7 +784,7 @@ export function PayrollControlCenterDemo() {
         </header>
 
         <section
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
+          className="grid gap-2 sm:grid-cols-2 md:grid-cols-5"
           aria-label="Indicadores ejecutivos"
         >
           <MetricCard

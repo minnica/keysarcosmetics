@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
   Button,
@@ -36,7 +36,11 @@ import {
   ShieldPlus,
   UsersRound,
 } from "lucide-react";
-import { type PayrollModule, usePayrollDemo } from "./payroll-demo-context";
+import {
+  payrollModuleAppliesToPeriod,
+  type PayrollModule,
+  usePayrollDemo,
+} from "./payroll-demo-context";
 import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { ReportExportButtons } from "./report-export-buttons";
 import {
@@ -54,18 +58,10 @@ const money = new Intl.NumberFormat("es-MX", {
   minimumFractionDigits: 2,
 });
 
-const modules = [
-  "CONSOLIDATED",
-  "FIXED",
-  "SPECIALIST",
-  "COMMISSION",
-  "KIOSK_COMMISSION",
-  "CONTRACTOR",
-] as const;
-type DisbursementModule = (typeof modules)[number];
+type DisbursementModule = PayrollModule;
 
-const moduleCopy: Record<
-  DisbursementModule,
+const defaultModuleCopy: Record<
+  string,
   { label: string; detail: string }
 > = {
   CONSOLIDATED: {
@@ -80,6 +76,14 @@ const moduleCopy: Record<
     detail: "CIERRE MENSUAL GERENCIAL",
   },
   CONTRACTOR: { label: "HONORARIOS", detail: "SERVICIOS FACTURADOS" },
+  SETTLEMENT: {
+    label: "LIQUIDACIONES",
+    detail: "FINIQUITOS Y CIERRES LABORALES",
+  },
+  CHRISTMAS_BONUS: {
+    label: "AGUINALDOS",
+    detail: "PAGOS ANUALES PROGRAMADOS",
+  },
 };
 
 interface DisbursementRun {
@@ -214,16 +218,19 @@ function Metric({
 }) {
   return (
     <Card className="border-[color:var(--border-color)]">
-      <CardContent className="flex items-start justify-between gap-4 p-4">
-        <div>
+      <CardContent className="flex items-start justify-between gap-2 p-3">
+        <div className="min-w-0">
           <p className="label-caps">{label}</p>
-          <p className="number-display mt-1 text-xl">{value}</p>
-          <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
+          <p className="number-display mt-0.5 text-lg leading-6">{value}</p>
+          <p
+            className="mt-0.5 truncate text-[9px] leading-4 text-[color:var(--text-muted)]"
+            title={detail}
+          >
             {detail}
           </p>
         </div>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#c7a17a]/30 bg-[#c7a17a]/10 text-[#946a43]">
-          <Icon className="h-4 w-4" />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#c7a17a]/30 bg-[#c7a17a]/10 text-[#946a43]">
+          <Icon className="h-3.5 w-3.5" />
         </span>
       </CardContent>
     </Card>
@@ -273,6 +280,43 @@ export function PayrollDisbursementDemo() {
     setRunStatus,
     markDisbursementPaymentPaid,
   } = usePayrollDemo();
+  const modules = useMemo<DisbursementModule[]>(() => {
+    const registered = state.payrollModules.map((item) => item.id);
+    const preferred: DisbursementModule[] = [
+      "CONSOLIDATED",
+      "FIXED",
+      "SPECIALIST",
+      "COMMISSION",
+      "KIOSK_COMMISSION",
+      "CONTRACTOR",
+      "SETTLEMENT",
+      "CHRISTMAS_BONUS",
+    ];
+    return Array.from(new Set([...preferred, ...registered])).filter(
+      (item) =>
+        item === "KIOSK_COMMISSION" ||
+        state.payrollModules.some((module) => module.id === item),
+    );
+  }, [state.payrollModules]);
+  const moduleCopy = useCallback(
+    (item: DisbursementModule) => {
+      const definition = state.payrollModules.find(
+        (payrollModule) => payrollModule.id === item,
+      );
+      return {
+        label:
+          item === "CONSOLIDATED"
+            ? "TODAS LAS NÓMINAS"
+            : (definition?.name ?? defaultModuleCopy[item]?.label ?? item),
+        detail:
+          definition?.description ??
+          defaultModuleCopy[item]?.detail ??
+          "NÓMINA REGISTRADA EN CONFIGURACIÓN",
+        active: definition?.active ?? true,
+      };
+    },
+    [state.payrollModules],
+  );
   const [module, setModule] = useState<DisbursementModule>("CONSOLIDATED");
   const [selectedRunId, setSelectedRunId] = useState("");
   const [pageSize, setPageSize] = useState("20");
@@ -308,6 +352,9 @@ export function PayrollDisbursementDemo() {
     const moduleRuns = state.runs.filter(
       (item) => item.module === module,
     ) as DisbursementRun[];
+    const moduleDefinition = state.payrollModules.find(
+      (item) => item.id === module,
+    );
     const knownPeriods = new Set(
       moduleRuns.map((item) => `${item.periodStart}:${item.periodEnd}`),
     );
@@ -315,7 +362,13 @@ export function PayrollDisbursementDemo() {
       .filter(
         (period) =>
           period.end < currentPeriod.start &&
-          !knownPeriods.has(`${period.start}:${period.end}`),
+          !knownPeriods.has(`${period.start}:${period.end}`) &&
+          (!moduleDefinition ||
+            payrollModuleAppliesToPeriod(
+              moduleDefinition,
+              period.start,
+              period.end,
+            )),
       )
       .slice(0, 6)
       .map<DisbursementRun>((period) => ({
@@ -335,6 +388,7 @@ export function PayrollDisbursementDemo() {
     module,
     periodOptions,
     state.kioskMonthlySales,
+    state.payrollModules,
     state.runs,
   ]);
   const run =
@@ -365,6 +419,9 @@ export function PayrollDisbursementDemo() {
         const moduleRuns = state.runs.filter(
           (runItem) => runItem.module === item,
         );
+        const moduleDefinition = state.payrollModules.find(
+          (payrollModule) => payrollModule.id === item,
+        );
         const knownPeriods = new Set(
           moduleRuns.map(
             (runItem) => `${runItem.periodStart}:${runItem.periodEnd}`,
@@ -374,14 +431,27 @@ export function PayrollDisbursementDemo() {
           .filter(
             (period) =>
               period.end < currentPeriod.start &&
-              !knownPeriods.has(`${period.start}:${period.end}`),
+              !knownPeriods.has(`${period.start}:${period.end}`) &&
+              (!moduleDefinition ||
+                payrollModuleAppliesToPeriod(
+                  moduleDefinition,
+                  period.start,
+                  period.end,
+                )),
           )
           .slice(0, 6).length;
 
         return [item, moduleRuns.length + historicalPeriods];
       }),
     ) as Record<DisbursementModule, number>;
-  }, [currentPeriod.start, periodOptions, state.kioskMonthlySales, state.runs]);
+  }, [
+    currentPeriod.start,
+    modules,
+    periodOptions,
+    state.kioskMonthlySales,
+    state.payrollModules,
+    state.runs,
+  ]);
 
   const dispersionPreview = useMemo<{
     rows: DisbursementRow[];
@@ -612,7 +682,7 @@ export function PayrollDisbursementDemo() {
         ? [
             {
               id: run.id,
-              label: moduleCopy[module].label,
+              label: moduleCopy(module).label,
               periodStart: run.periodStart,
               periodEnd: run.periodEnd,
             },
@@ -620,12 +690,31 @@ export function PayrollDisbursementDemo() {
         : [];
     }
 
-    const sourceModules: DisbursementModule[] = [
+    const standardSourceModules = new Set<DisbursementModule>([
       "FIXED",
       "SPECIALIST",
       "COMMISSION",
       "CONTRACTOR",
-    ];
+    ]);
+    const sourceModules = state.payrollModules
+      .filter(
+        (definition) =>
+          definition.id !== "CONSOLIDATED" &&
+          payrollModuleAppliesToPeriod(
+            definition,
+            run.periodStart,
+            run.periodEnd,
+          ) &&
+          (definition.custom ||
+            standardSourceModules.has(definition.id) ||
+            state.runs.some(
+              (item) =>
+                item.module === definition.id &&
+                item.periodStart === run.periodStart &&
+                item.periodEnd === run.periodEnd,
+            )),
+      )
+      .map((definition) => definition.id);
     const warnings = sourceModules.flatMap<OpenPayrollWarning>(
       (sourceModule) => {
         const sourceRun = state.runs.find(
@@ -641,7 +730,7 @@ export function PayrollDisbursementDemo() {
           ? [
               {
                 id: sourceRun?.id ?? `${sourceModule}-${run.periodStart}`,
-                label: moduleCopy[sourceModule].label,
+                label: moduleCopy(sourceModule).label,
                 periodStart: run.periodStart,
                 periodEnd: run.periodEnd,
               },
@@ -656,7 +745,7 @@ export function PayrollDisbursementDemo() {
       if (kioskMonth >= currentMonth) {
         warnings.push({
           id: `run-kiosk-${kioskMonth}`,
-          label: moduleCopy.KIOSK_COMMISSION.label,
+          label: moduleCopy("KIOSK_COMMISSION").label,
           periodStart: `${kioskMonth}-01`,
           periodEnd: monthEnd(kioskMonth),
         });
@@ -666,7 +755,7 @@ export function PayrollDisbursementDemo() {
     if (warnings.length === 0 && run.status === "DRAFT") {
       warnings.push({
         id: run.id,
-        label: moduleCopy.CONSOLIDATED.label,
+        label: moduleCopy("CONSOLIDATED").label,
         periodStart: run.periodStart,
         periodEnd: run.periodEnd,
       });
@@ -677,7 +766,9 @@ export function PayrollDisbursementDemo() {
     currentPeriod.start,
     dispersionPreview.kioskRows.length,
     module,
+    moduleCopy,
     run,
+    state.payrollModules,
     state.runs,
   ]);
 
@@ -701,7 +792,7 @@ export function PayrollDisbursementDemo() {
   };
 
   const exportConfig: ReportExportConfig<DisbursementRow> = {
-    title: `DISPERSIÓN DE NÓMINA · ${moduleCopy[module].label}`,
+    title: `DISPERSIÓN DE NÓMINA · ${moduleCopy(module).label}`,
     subtitle: run
       ? `PERIODO ${run.periodStart} — ${run.periodEnd} · CORRIDA ${runStatusLabel(run.status)} · DATOS DEMOSTRATIVOS`
       : "SIN PERIODO DISPONIBLE",
@@ -710,7 +801,7 @@ export function PayrollDisbursementDemo() {
         label: "Periodo",
         value: run ? `${run.periodStart} — ${run.periodEnd}` : "SIN PERIODO",
       },
-      { label: "Tipo de nómina", value: moduleCopy[module].label },
+      { label: "Tipo de nómina", value: moduleCopy(module).label },
       {
         label: "Alcance",
         value:
@@ -785,7 +876,7 @@ export function PayrollDisbursementDemo() {
     analysis: [
       module === "CONSOLIDATED"
         ? "El precálculo consolida una sola fila por empleado e incluye las nóminas del periodo aunque todavía no estén cerradas o pagadas."
-        : `La dispersión corresponde a ${moduleCopy[module].label.toLocaleLowerCase("es-MX")} y conserva a todo el personal asignado a esa nómina.`,
+        : `La dispersión corresponde a ${moduleCopy(module).label.toLocaleLowerCase("es-MX")} y conserva a todo el personal asignado a esa nómina.`,
       ...(module === "CONSOLIDATED"
         ? [
             `Conciliación: nómina consolidada ${money.format(consolidatedSourceTotals.total)} + comisión de kiosco ${money.format(kioskSourceTotals.total)} = ${money.format(expectedConsolidatedTotal)}.`,
@@ -807,7 +898,7 @@ export function PayrollDisbursementDemo() {
       "El personal se ordena por apellido paterno, apellido materno y nombre para control bancario.",
     ],
     filename: `dispersion-${module.toLocaleLowerCase()}-${run?.periodStart ?? "sin-periodo"}`,
-    sheetName: `Dispersión ${moduleCopy[module].label}`,
+    sheetName: `Dispersión ${moduleCopy(module).label}`,
     orientation: "landscape",
     columns: [
       {
@@ -909,9 +1000,10 @@ export function PayrollDisbursementDemo() {
         className="payroll-dispersion-controls rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-3 shadow-sm"
         aria-label="Tipos de nómina"
       >
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {modules.map((item) => {
             const active = module === item;
+            const copy = moduleCopy(item);
             return (
               <button
                 key={item}
@@ -928,13 +1020,20 @@ export function PayrollDisbursementDemo() {
                   <span
                     className={`block text-[10px] font-semibold tracking-[0.1em] ${active ? "text-[#f1cfaa]" : "text-[color:var(--text-secondary)]"}`}
                   >
-                    {moduleCopy[item].label}
+                    {copy.label}
                   </span>
                   <span
                     className={`mt-0.5 block text-[8px] tracking-[0.08em] ${active ? "text-white/60" : "text-[color:var(--text-muted)]"}`}
                   >
-                    {moduleCopy[item].detail}
+                    {copy.detail}
                   </span>
+                  {!copy.active && (
+                    <span
+                      className={`mt-1 block text-[8px] font-semibold tracking-[0.08em] ${active ? "text-amber-200" : "text-amber-700 dark:text-amber-300"}`}
+                    >
+                      HISTÓRICO · INACTIVO
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`flex h-7 min-w-7 items-center justify-center rounded-lg border px-1.5 text-[9px] font-semibold ${active ? "border-white/20 bg-white/10" : "border-[color:var(--border-color)]"}`}
@@ -988,7 +1087,7 @@ export function PayrollDisbursementDemo() {
             </span>
             <h2 className="mt-4 text-lg font-semibold">
               No existe un periodo disponible de{" "}
-              {moduleCopy[module].label.toLocaleLowerCase("es-MX")}
+              {moduleCopy(module).label.toLocaleLowerCase("es-MX")}
             </h2>
             <p className="mt-2 max-w-xl text-sm text-[color:var(--text-muted)]">
               En cuanto exista una corrida, este formato se alimentará
@@ -1103,7 +1202,7 @@ export function PayrollDisbursementDemo() {
                       </p>
                     </div>
                     <h2 className="mt-3 font-brand text-2xl tracking-wide">
-                      {moduleCopy[module].label}
+                      {moduleCopy(module).label}
                     </h2>
                     <p className="mt-1 text-xs text-white/65">
                       {run.periodStart} — {run.periodEnd} · pago {run.payDate}
@@ -1137,7 +1236,7 @@ export function PayrollDisbursementDemo() {
               </CardContent>
             </Card>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+            <div className="grid gap-2 sm:grid-cols-4 xl:grid-cols-7">
               <Metric
                 icon={UsersRound}
                 label="PERSONAL"
@@ -1221,8 +1320,8 @@ export function PayrollDisbursementDemo() {
             )}
 
             <Card className="overflow-hidden border-[color:var(--border-color)]">
-              <CardHeader className="border-b border-[color:var(--border-color)] pb-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardHeader className="border-b border-[color:var(--border-color)] px-4 py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <FileCheck2 className="h-4 w-4 text-[color:var(--text-secondary)]" />
@@ -1235,7 +1334,7 @@ export function PayrollDisbursementDemo() {
                       nombre. Las CLABE mostradas son ficticias.
                     </CardDescription>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <Badge variant="outline">{rows.length} REGISTROS</Badge>
                     <Badge className="border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
                       {paidRows.length} PAGADOS
@@ -1247,37 +1346,25 @@ export function PayrollDisbursementDemo() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="hidden xl:block">
-                  <Table>
+                <div className="hidden md:block">
+                  <Table className="min-w-[1240px] text-[11px] [&_tbody_td]:px-2 [&_tbody_td]:py-1 [&_tfoot_td]:px-2 [&_tfoot_td]:py-1.5 [&_thead_th]:h-8 [&_thead_th]:px-2">
                     <TableHeader>
                       <TableRow>
                         <SortableTableHead
                           column="paternalSurname"
-                          label="APELLIDO PATERNO"
+                          label="EMPLEADO"
                           kind="text"
                           sort={tableSort}
                           onSort={changeTableSort}
-                        />
-                        <SortableTableHead
-                          column="maternalSurname"
-                          label="APELLIDO MATERNO"
-                          kind="text"
-                          sort={tableSort}
-                          onSort={changeTableSort}
-                        />
-                        <SortableTableHead
-                          column="firstName"
-                          label="NOMBRE(S)"
-                          kind="text"
-                          sort={tableSort}
-                          onSort={changeTableSort}
+                          className="min-w-[190px]"
                         />
                         <SortableTableHead
                           column="position"
-                          label="PUESTO"
+                          label="PUESTO / SUCURSAL"
                           kind="text"
                           sort={tableSort}
                           onSort={changeTableSort}
+                          className="min-w-[150px]"
                         />
                         <SortableTableHead
                           column="bank"
@@ -1362,14 +1449,17 @@ export function PayrollDisbursementDemo() {
                               : undefined
                           }
                         >
-                          <TableCell className="font-semibold">
-                            {row.paternalSurname}
+                          <TableCell className="min-w-[190px] whitespace-nowrap">
+                            <p className="font-semibold leading-4">
+                              {row.firstName} {row.paternalSurname}{" "}
+                              {row.maternalSurname}
+                            </p>
                           </TableCell>
-                          <TableCell>{row.maternalSurname}</TableCell>
-                          <TableCell>{row.firstName}</TableCell>
-                          <TableCell>
-                            <p className="font-medium">{row.position}</p>
-                            <p className="text-[9px] text-[color:var(--text-muted)]">
+                          <TableCell className="min-w-[150px]">
+                            <p className="whitespace-nowrap font-medium leading-4">
+                              {row.position}
+                            </p>
+                            <p className="whitespace-nowrap text-[9px] leading-3 text-[color:var(--text-muted)]">
                               {row.branch}
                             </p>
                           </TableCell>
@@ -1427,10 +1517,10 @@ export function PayrollDisbursementDemo() {
                     <TableFooter>
                       <TableRow>
                         <TableCell
-                          colSpan={5}
+                          colSpan={3}
                           className="text-right font-semibold"
                         >
-                          TOTAL {moduleCopy[module].label}
+                          TOTAL {moduleCopy(module).label}
                         </TableCell>
                         <TableCell className="number-display text-right">
                           {money.format(totals.grossPayment)}
@@ -1460,32 +1550,34 @@ export function PayrollDisbursementDemo() {
                     </TableFooter>
                   </Table>
                 </div>
-                <div className="divide-y divide-[color:var(--border-color)] xl:hidden">
+                <div className="divide-y divide-[color:var(--border-color)] md:hidden">
                   {pagedRows.map((row, index) => (
                     <article
                       key={row.id}
-                      className={`p-4 ${row.paid ? "bg-emerald-50/60 dark:bg-emerald-950/15" : ""}`}
+                      className={`p-3 ${row.paid ? "bg-emerald-50/60 dark:bg-emerald-950/15" : ""}`}
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
                           <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-secondary)]">
                             {String(
                               (currentPage - 1) * effectivePageSize + index + 1,
                             ).padStart(2, "0")}{" "}
                             · {row.paternalSurname} {row.maternalSurname}
                           </p>
-                          <p className="mt-1 font-semibold">{row.firstName}</p>
-                          <p className="text-xs text-[color:var(--text-muted)]">
+                          <p className="mt-0.5 truncate text-sm font-semibold">
+                            {row.firstName}
+                          </p>
+                          <p className="truncate text-[10px] leading-4 text-[color:var(--text-muted)]">
                             {row.position} · {row.branch}
                           </p>
                         </div>
-                        <div className="text-right">
+                        <div className="shrink-0 text-right">
                           <p className="label-caps">NETO A COBRAR</p>
-                          <p className="number-display mt-1 text-base">
+                          <p className="number-display mt-0.5 text-sm">
                             {money.format(row.payment)}
                           </p>
                           {row.paid ? (
-                            <Badge className="mt-2 border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                            <Badge className="mt-1 border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
                               <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
                               PAGADO
                             </Badge>
@@ -1494,7 +1586,7 @@ export function PayrollDisbursementDemo() {
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="payroll-dispersion-controls mt-2 h-8 text-[10px]"
+                              className="payroll-dispersion-controls mt-1 h-7 px-2.5 text-[9px]"
                               disabled={run.status === "DRAFT"}
                               onClick={() => markRowPaid(row)}
                             >
@@ -1503,47 +1595,47 @@ export function PayrollDisbursementDemo() {
                           )}
                         </div>
                       </div>
-                      <div className="mt-3 grid gap-2 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 p-3 sm:grid-cols-2">
-                        <div>
+                      <div className="mt-2 grid gap-2 rounded-lg border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 p-2 sm:grid-cols-[minmax(210px,1fr)_2fr] sm:items-center">
+                        <div className="min-w-0">
                           <p className="label-caps">BANCO / CLABE</p>
-                          <p className="mt-1 text-xs font-semibold">
+                          <p className="mt-0.5 truncate text-[10px] font-semibold leading-4">
                             {row.bank} · {row.clabe}
                           </p>
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-3 gap-x-2 gap-y-1">
                           <div>
                             <p className="label-caps">ANTES</p>
-                            <p className="number-display mt-1 text-xs">
+                            <p className="number-display mt-0.5 text-[10px]">
                               {money.format(row.grossPayment)}
                             </p>
                           </div>
                           <div>
                             <p className="label-caps">DESCUENTOS</p>
-                            <p className="number-display mt-1 text-xs text-rose-700 dark:text-rose-300">
+                            <p className="number-display mt-0.5 text-[10px] text-rose-700 dark:text-rose-300">
                               −{money.format(row.deductions)}
                             </p>
                           </div>
                           <div>
                             <p className="label-caps">IMP. TRABAJADOR</p>
-                            <p className="number-display mt-1 text-xs text-amber-700 dark:text-amber-300">
+                            <p className="number-display mt-0.5 text-[10px] text-amber-700 dark:text-amber-300">
                               −{money.format(row.workerTax)}
                             </p>
                           </div>
                           <div>
                             <p className="label-caps">COSTO</p>
-                            <p className="number-display mt-1 text-xs">
+                            <p className="number-display mt-0.5 text-[10px]">
                               {money.format(row.total)}
                             </p>
                           </div>
                           <div>
                             <p className="label-caps">ISR</p>
-                            <p className="number-display mt-1 text-xs">
+                            <p className="number-display mt-0.5 text-[10px]">
                               {money.format(row.isr)}
                             </p>
                           </div>
                           <div>
                             <p className="label-caps">SOCIAL</p>
-                            <p className="number-display mt-1 text-xs">
+                            <p className="number-display mt-0.5 text-[10px]">
                               {money.format(row.socialCost)}
                             </p>
                           </div>

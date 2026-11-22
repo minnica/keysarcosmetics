@@ -49,9 +49,7 @@ export function employeeCostAllocationShares({
   const branchIds =
     mode === "SALES_SHARE" && saleBranchIds.length > 0
       ? saleBranchIds
-      : saleBranchIds.length > 1
-        ? saleBranchIds
-        : employeeCostBranchIds(employee, branches);
+      : employeeCostBranchIds(employee, branches);
   const totalSales = branchIds.reduce((sum, branchId) => sum + (salesByBranch[branchId] ?? 0), 0);
   return branchIds.map((branchId) => ({
     branchId,
@@ -59,6 +57,61 @@ export function employeeCostAllocationShares({
     share: mode === "SALES_SHARE" && totalSales > 0
       ? (salesByBranch[branchId] ?? 0) / totalSales
       : 1 / Math.max(branchIds.length, 1),
+  }));
+}
+
+export function employeeMixedCostAllocationShares({
+  employee,
+  branches,
+  sales,
+  periodStart,
+  periodEnd,
+  fixedAmount,
+  variableAmount,
+}: {
+  employee: Pick<DemoEmployee, "id" | "branchId" | "costBranchIds">;
+  branches: DemoBranch[];
+  sales: DemoSale[];
+  periodStart: string;
+  periodEnd: string;
+  fixedAmount: number;
+  variableAmount: number;
+}) {
+  const fixedShares = employeeCostAllocationShares({
+    employee,
+    branches,
+    sales,
+    periodStart,
+    periodEnd,
+    mode: "EQUAL",
+  });
+  const salesShares = employeeCostAllocationShares({
+    employee,
+    branches,
+    sales,
+    periodStart,
+    periodEnd,
+    mode: "SALES_SHARE",
+  });
+  const safeFixed = Math.max(fixedAmount, 0);
+  const safeVariable = Math.max(variableAmount, 0);
+  const totalWeight = safeFixed + safeVariable;
+  const weights = new Map<string, number>();
+  fixedShares.forEach(({ branchId, share }) =>
+    weights.set(branchId, (weights.get(branchId) ?? 0) + safeFixed * share),
+  );
+  (salesShares.length > 0 ? salesShares : fixedShares).forEach(
+    ({ branchId, share }) =>
+      weights.set(
+        branchId,
+        (weights.get(branchId) ?? 0) + safeVariable * share,
+      ),
+  );
+  if (totalWeight <= 0) return fixedShares;
+  return Array.from(weights, ([branchId, weight]) => ({
+    branchId,
+    sales: 0,
+    share: weight / totalWeight,
   }));
 }
 

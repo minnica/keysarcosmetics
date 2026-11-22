@@ -57,6 +57,7 @@ import {
   payrollModuleForCategory,
   temporaryBonusAwardsForPeriod,
   temporaryBonusStandings,
+  personalizedBonusAwardsForPeriod,
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
@@ -330,6 +331,14 @@ export function EmployeePayrollPortalDemo() {
   const automaticTemporaryAwards =
     activeConfig && employee
       ? temporaryBonusAwardsForPeriod(
+          state,
+          activeConfig.periodStart,
+          activeConfig.periodEnd,
+        ).filter((award) => award.employee.id === employee.id)
+      : [];
+  const automaticPersonalizedAwards =
+    activeConfig && employee
+      ? personalizedBonusAwardsForPeriod(
           state,
           activeConfig.periodStart,
           activeConfig.periodEnd,
@@ -1648,7 +1657,9 @@ export function EmployeePayrollPortalDemo() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {movements.length || automaticTemporaryAwards.length ? (
+            {movements.length ||
+            automaticTemporaryAwards.length ||
+            automaticPersonalizedAwards.length ? (
               <>
                 {movements.map((movement) => (
                   <div
@@ -1723,6 +1734,44 @@ export function EmployeePayrollPortalDemo() {
                         <p className="text-xs text-[color:var(--text-muted)]">
                           PREMIO AUTOMÁTICO AL CIERRE · {award.appliedAt}
                         </p>
+                      </div>
+                      <p className="number-display text-emerald-700 dark:text-emerald-300">
+                        +{money.format(award.amount)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {automaticPersonalizedAwards.map((award) => (
+                  <div
+                    key={award.id}
+                    className="rounded-xl border border-emerald-300/80 bg-emerald-50/70 p-4 dark:bg-emerald-950/20"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className="border-emerald-300 bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+                            BONO PERSONALIZADO
+                          </Badge>
+                          <Badge variant="outline">META CUMPLIDA</Badge>
+                        </div>
+                        <p className="mt-2 font-semibold">
+                          {award.concept.name}
+                        </p>
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          {award.progress.aggregation === "GROUP"
+                            ? `VENTA COMBINADA · ${award.progress.participantCount} PARTICIPANTES`
+                            : "VENTA PERSONAL"}
+                          {" · "}
+                          {money.format(award.progress.sales)} DE {money.format(award.progress.target)}
+                        </p>
+                        {award.progress.tier && (
+                          <p className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-200">
+                            NIVEL {money.format(award.progress.tier.from)} —{" "}
+                            {award.progress.tier.to === null
+                              ? "SIN TOPE"
+                              : money.format(award.progress.tier.to)}
+                          </p>
+                        )}
                       </div>
                       <p className="number-display text-emerald-700 dark:text-emerald-300">
                         +{money.format(award.amount)}

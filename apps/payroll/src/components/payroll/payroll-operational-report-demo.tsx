@@ -42,6 +42,7 @@ import {
 } from "@cosmetics/ui";
 import {
   payrollModuleLabel,
+  personalizedBonusAwardsForPeriod,
   temporaryBonusAwardsForPeriod,
   temporaryBonusStandings,
   usePayrollDemo,
@@ -383,7 +384,36 @@ export function PayrollOperationalReportDemo({
       signedAmount: award.amount,
       approved: true,
     }));
-    return [...movementRows, ...automaticAwards];
+    const recordedPeriods = Array.from(
+      new Map(
+        state.runs.map((run) => [
+          `${run.periodStart}-${run.periodEnd}`,
+          { start: run.periodStart, end: run.periodEnd },
+        ]),
+      ).values(),
+    );
+    const personalizedAwards = recordedPeriods.flatMap((period) =>
+      personalizedBonusAwardsForPeriod(state, period.start, period.end).map(
+        (award) => ({
+          id: award.id,
+          date: award.appliedAt,
+          employeeIds: [award.employee.id],
+          employeeNames: employeeNames([award.employee.id]),
+          branchIds: award.costBranchIds,
+          concept: award.concept.name,
+          detail: `${award.progress.aggregation === "GROUP" ? `VENTA COMBINADA DE ${award.progress.participantCount} PERSONAS` : "VENTA PERSONAL"} · ${money.format(award.progress.sales)} DE ${money.format(award.progress.target)}${award.progress.tier ? ` · NIVEL ${money.format(award.progress.tier.from)}${award.progress.tier.to === null ? " EN ADELANTE" : ` A ${money.format(award.progress.tier.to)}`}` : ""}`,
+          payrollModule: payrollModuleLabel(
+            state,
+            award.concept.payrollModule,
+          ),
+          status: "APPROVED",
+          amount: award.amount,
+          signedAmount: award.amount,
+          approved: true,
+        }),
+      ),
+    );
+    return [...movementRows, ...automaticAwards, ...personalizedAwards];
   }, [employeeMap, kind, state]);
 
   const availableStatuses = useMemo(

@@ -53,6 +53,7 @@ import {
   type MovementType,
   employeeSalesForRange,
   payrollModuleLabel,
+  personalizedBonusAwardsForPeriod,
   resolveBonusConceptAward,
   usePayrollDemo,
 } from "./payroll-demo-context";
@@ -61,6 +62,13 @@ import {
   employeeCostBranchIds,
 } from "./payroll-cost-branch-selector";
 import { ReportExportButtons } from "./report-export-buttons";
+import {
+  nextTableSort,
+  SortableTableHead,
+  sortTableRows,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -78,6 +86,14 @@ const statusLabels: Record<MovementStatus, string> = {
   REJECTED: "RECHAZADO",
   CANCELLED: "CANCELADO",
 };
+
+type MovementSortKey =
+  | "date"
+  | "concept"
+  | "employee"
+  | "payroll"
+  | "amount"
+  | "status";
 
 function monthLabel(month: string) {
   const label = monthFormatter.format(new Date(`${month}-01T00:00:00Z`));
@@ -139,6 +155,7 @@ function BonusFineMovementDialog({
   const availableConcepts = state.bonusFineConcepts.filter(
     (concept) =>
       concept.type === type &&
+      !concept.personalized &&
       bonusFineConceptAllowsEmployee(concept, employeeId) &&
       (concept.active || concept.id === movement?.catalogId) &&
       concept.validFrom <= (selectedPeriod?.end ?? currentPeriod.end) &&
@@ -427,7 +444,7 @@ function ActionIcon({
 }
 
 export function PayrollBonusesFinesDemo() {
-  const { state, currentPeriod, setMovementStatus, deleteMovement } =
+  const { state, currentPeriod, periodOptions, setMovementStatus, deleteMovement } =
     usePayrollDemo();
   const activeEmployee = state.employees.find(
     (employee) => employee.id === state.activeEmployeeId,
@@ -441,9 +458,10 @@ export function PayrollBonusesFinesDemo() {
           ...state.movements.map((movement) =>
             movement.periodStart.slice(0, 7),
           ),
+          ...periodOptions.map((period) => period.start.slice(0, 7)),
         ]),
       ).sort((a, b) => b.localeCompare(a)),
-    [currentPeriod.start, state.movements],
+    [currentPeriod.start, periodOptions, state.movements],
   );
   const [selectedMonth, setSelectedMonth] = useState(
     currentPeriod.start.slice(0, 7),
@@ -452,19 +470,47 @@ export function PayrollBonusesFinesDemo() {
   const [dateFilter, setDateFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<MovementType | "ALL">("ALL");
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<TableSortState<MovementSortKey>>(null);
   const [dialog, setDialog] = useState<{
     movement: DemoMovement | null;
     type: MovementType;
   } | null>(null);
 
-  const periodRows = useMemo(
-    () =>
-      state.movements.filter((movement) =>
+  const periodRows = useMemo(() => {
+    const automaticRows: DemoMovement[] = periodOptions
+      .filter((period) => period.start.startsWith(selectedMonth))
+      .flatMap((period) =>
+        personalizedBonusAwardsForPeriod(state, period.start, period.end).map(
+          (award) => ({
+            id: award.id,
+            catalogId: award.concept.id,
+            employeeId: award.employee.id,
+            costBranchIds: award.costBranchIds,
+            type: "BONUS" as const,
+            mode: "SCALE" as const,
+            concept: award.concept.name,
+            comments:
+              award.progress.aggregation === "GROUP"
+                ? `BONO AUTOMÁTICO · VENTA COMBINADA DE ${award.progress.participantCount} PERSONAS · ${money.format(award.progress.sales)} DE ${money.format(award.progress.target)}${award.progress.tier ? ` · NIVEL ${money.format(award.progress.tier.from)}` : ""}`
+                : `BONO AUTOMÁTICO · VENTA PERSONAL ${money.format(award.progress.sales)} DE ${money.format(award.progress.target)}${award.progress.tier ? ` · NIVEL ${money.format(award.progress.tier.from)}` : ""}`,
+            amount: award.amount,
+            threshold: award.progress.target,
+            payrollModule: award.concept.payrollModule,
+            periodStart: period.start,
+            status: "APPROVED" as const,
+            appliedAt: award.appliedAt,
+            createdAt: award.appliedAt,
+          }),
+        ),
+      );
+    return [
+      ...state.movements.filter((movement) =>
         movement.periodStart.startsWith(selectedMonth),
       ),
-    [selectedMonth, state.movements],
-  );
-  const rows = useMemo(() => {
+      ...automaticRows,
+    ];
+  }, [periodOptions, selectedMonth, state]);
+  const filteredRows = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("es-MX");
     return periodRows
       .filter(
@@ -499,6 +545,25 @@ export function PayrollBonusesFinesDemo() {
     state.employees,
     typeFilter,
   ]);
+  const rows = useMemo(
+    () =>
+      sortTableRows(filteredRows, sort, {
+        date: (movement) => Date.parse(movement.appliedAt),
+        concept: (movement) => `${movement.type} ${movement.concept}`,
+        employee: (movement) =>
+          state.employees.find(
+            (employee) => employee.id === movement.employeeId,
+          )?.name ?? "SIN EMPLEADO",
+        payroll: (movement) =>
+          payrollModuleLabel(state, movement.payrollModule),
+        amount: (movement) => movement.amount,
+        status: (movement) => statusLabels[movement.status],
+      }),
+    [filteredRows, sort, state],
+  );
+  function changeSort(key: MovementSortKey, kind: TableSortKind) {
+    setSort((current) => nextTableSort(current, key, kind));
+  }
 
   const approvedRows = periodRows.filter(
     (movement) => movement.status === "APPROVED",
@@ -539,6 +604,10 @@ export function PayrollBonusesFinesDemo() {
     (left, right) => left.count - right.count,
   )[0];
   const maxBonusCount = Math.max(...bonusAnalysis.map((item) => item.count), 1);
+  const totalBonusApplications = bonusAnalysis.reduce(
+    (sum, item) => sum + item.count,
+    0,
+  );
   const exportConfig = {
     title: "Historial de bonos y multas",
     subtitle: `${monthLabel(selectedMonth)} · ${rows.length} registros del periodo seleccionado`,
@@ -816,27 +885,45 @@ export function PayrollBonusesFinesDemo() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {bonusAnalysis.map((item) => (
-                <div key={item.concept.id}>
-                  <div className="mb-1.5 flex items-end justify-between gap-3 text-sm">
-                    <div>
-                      <p className="font-semibold">{item.concept.name}</p>
-                      <p className="text-xs text-[color:var(--text-muted)]">
-                        {money.format(item.amount)} aprobado
-                      </p>
+              {bonusAnalysis.map((item) => {
+                const contribution = totalBonusApplications
+                  ? (item.count / totalBonusApplications) * 100
+                  : 0;
+                return (
+                  <div key={item.concept.id}>
+                    <div className="mb-1.5 flex items-end justify-between gap-3 text-sm">
+                      <div>
+                        <p className="font-semibold">{item.concept.name}</p>
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          {money.format(item.amount)} aprobado
+                        </p>
+                      </div>
+                      <span className="number-display">{item.count}</span>
                     </div>
-                    <span className="number-display">{item.count}</span>
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="h-3 flex-1 overflow-hidden rounded-full bg-[color:var(--accent-hover)]"
+                        role="img"
+                        aria-label={`${item.concept.name}: ${contribution.toFixed(1)}% del total de aplicaciones del periodo`}
+                      >
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-[#c3a583] to-[#648672]"
+                          style={{
+                            width: `${Math.max((item.count / maxBonusCount) * 100, item.count ? 5 : 0)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="number-display w-14 shrink-0 text-right text-xs font-semibold text-[color:var(--text-secondary)]">
+                        {contribution.toLocaleString("es-MX", {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 1,
+                        })}
+                        %
+                      </span>
+                    </div>
                   </div>
-                  <div className="h-3 overflow-hidden rounded-full bg-[color:var(--accent-hover)]">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#c3a583] to-[#648672]"
-                      style={{
-                        width: `${Math.max((item.count / maxBonusCount) * 100, item.count ? 5 : 0)}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
           <Card className="border-[color:var(--border-color)]">
@@ -888,12 +975,49 @@ export function PayrollBonusesFinesDemo() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>FECHA</TableHead>
-                    <TableHead>TIPO / CONCEPTO</TableHead>
-                    <TableHead>EMPLEADO</TableHead>
-                    <TableHead>NÓMINA</TableHead>
-                    <TableHead className="text-right">MONTO</TableHead>
-                    <TableHead>ESTATUS</TableHead>
+                    <SortableTableHead
+                      column="date"
+                      label="FECHA"
+                      kind="number"
+                      sort={sort}
+                      onSort={changeSort}
+                    />
+                    <SortableTableHead
+                      column="concept"
+                      label="TIPO / CONCEPTO"
+                      kind="text"
+                      sort={sort}
+                      onSort={changeSort}
+                    />
+                    <SortableTableHead
+                      column="employee"
+                      label="EMPLEADO"
+                      kind="text"
+                      sort={sort}
+                      onSort={changeSort}
+                    />
+                    <SortableTableHead
+                      column="payroll"
+                      label="NÓMINA"
+                      kind="text"
+                      sort={sort}
+                      onSort={changeSort}
+                    />
+                    <SortableTableHead
+                      column="amount"
+                      label="MONTO"
+                      kind="number"
+                      sort={sort}
+                      onSort={changeSort}
+                      align="right"
+                    />
+                    <SortableTableHead
+                      column="status"
+                      label="ESTATUS"
+                      kind="text"
+                      sort={sort}
+                      onSort={changeSort}
+                    />
                     <TableHead className="text-right">ACCIONES</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -912,13 +1036,18 @@ export function PayrollBonusesFinesDemo() {
                       const employee = state.employees.find(
                         (item) => item.id === movement.employeeId,
                       );
+                      const automatic = movement.id.startsWith("personalized-");
                       return (
                         <TableRow key={movement.id}>
                           <TableCell>{movement.appliedAt}</TableCell>
                           <TableCell>
                             <p className="font-semibold">{movement.concept}</p>
                             <p className="text-xs text-[color:var(--text-muted)]">
-                              {movement.type === "BONUS" ? "BONO" : "MULTA"}
+                              {automatic
+                                ? "BONO PERSONALIZADO · AUTOMÁTICO"
+                                : movement.type === "BONUS"
+                                  ? "BONO"
+                                  : "MULTA"}
                             </p>
                             <p className="mt-1 max-w-sm text-[10px] leading-4 text-[color:var(--text-muted)]">
                               {movement.comments}
@@ -946,7 +1075,9 @@ export function PayrollBonusesFinesDemo() {
                               <ActionIcon
                                 label={`Aprobar ${movement.concept}`}
                                 disabled={
-                                  !isMaster || movement.status === "APPROVED"
+                                  automatic ||
+                                  !isMaster ||
+                                  movement.status === "APPROVED"
                                 }
                                 onClick={() =>
                                   changeStatus(movement, "APPROVED")
@@ -956,7 +1087,7 @@ export function PayrollBonusesFinesDemo() {
                               </ActionIcon>
                               <ActionIcon
                                 label={`Editar ${movement.concept}`}
-                                disabled={!isMaster}
+                                disabled={automatic || !isMaster}
                                 onClick={() =>
                                   setDialog({
                                     movement,
@@ -968,7 +1099,7 @@ export function PayrollBonusesFinesDemo() {
                               </ActionIcon>
                               <ActionIcon
                                 label={`Eliminar ${movement.concept}`}
-                                disabled={!isMaster}
+                                disabled={automatic || !isMaster}
                                 onClick={() => {
                                   deleteMovement(movement.id);
                                   toast.success(

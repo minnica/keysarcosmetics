@@ -7,6 +7,7 @@ import {
   CalendarDays,
   History,
   Landmark,
+  LockKeyhole,
   ReceiptText,
   Settings2,
   ShieldPlus,
@@ -46,7 +47,11 @@ import {
   TableRow,
   toast,
 } from "@cosmetics/ui";
-import { type DemoKioskTarget, usePayrollDemo } from "./payroll-demo-context";
+import {
+  employeeShowsCommissionInPayroll,
+  type DemoKioskTarget,
+  usePayrollDemo,
+} from "./payroll-demo-context";
 import { resolveBranchCommission } from "./branch-commission-calculator";
 import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { ReportExportButtons } from "./report-export-buttons";
@@ -102,6 +107,15 @@ export function kioskCommission(sales: number, target: number, rate: number) {
 function monthLabel(month: string) {
   const label = monthFormatter.format(new Date(`${month}-01T00:00:00Z`));
   return label.charAt(0).toLocaleUpperCase("es-MX") + label.slice(1);
+}
+
+function ConfidentialKioskValue() {
+  return (
+    <span className="inline-flex items-center justify-end gap-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-muted)]">
+      <LockKeyhole className="size-3" aria-hidden="true" />
+      Confidencial
+    </span>
+  );
 }
 
 function TaxToggle({
@@ -295,12 +309,30 @@ export function PayrollKioskCommissionDemo() {
     sales: (row) => row.sales,
     achievement: (row) => row.achievement,
     rate: (row) => row.appliedRate,
-    commission: (row) => row.commission,
-    workerTax: (row) => row.workerTax,
-    netPayment: (row) => row.netPayment,
-    socialCost: (row) => row.socialCost,
-    isr: (row) => row.isr,
-    totalCost: (row) => row.totalCost,
+    commission: (row) =>
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.commission
+        : 0,
+    workerTax: (row) =>
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.workerTax
+        : 0,
+    netPayment: (row) =>
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.netPayment
+        : 0,
+    socialCost: (row) =>
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.socialCost
+        : 0,
+    isr: (row) =>
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.isr
+        : 0,
+    totalCost: (row) =>
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.totalCost
+        : 0,
   });
   function changeTableSort(key: KioskSortKey, kind: TableSortKind) {
     setTableSort((current) => nextTableSort(current, key, kind));
@@ -335,6 +367,9 @@ export function PayrollKioskCommissionDemo() {
         ...sale,
         branch: branch?.name ?? "SIN SUCURSAL",
         manager: manager?.name ?? "GERENCIA VACANTE",
+        commissionVisible: manager
+          ? employeeShowsCommissionInPayroll(manager)
+          : true,
         target: target.monthlyTarget,
         achievement:
           target.monthlyTarget > 0 ? sale.sales / target.monthlyTarget : 0,
@@ -353,7 +388,7 @@ export function PayrollKioskCommissionDemo() {
     scheme: (row) => `${row.schemeName} ${row.manager}`,
     sales: (row) => row.sales,
     rate: (row) => row.rate,
-    commission: (row) => row.commission,
+    commission: (row) => (row.commissionVisible ? row.commission : 0),
   });
   function changeHistorySort(key: KioskHistorySortKey, kind: TableSortKind) {
     setHistorySort((current) => nextTableSort(current, key, kind));
@@ -435,12 +470,30 @@ export function PayrollKioskCommissionDemo() {
     transactions: row.transactions,
     achievement: row.achievement,
     rate: row.appliedRate,
-    commission: row.commission,
-    workerTax: row.workerTax,
-    netPayment: row.netPayment,
-    socialCost: row.socialCost,
-    isr: row.isr,
-    totalCost: row.totalCost,
+    commission:
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.commission
+        : "CONFIDENCIAL",
+    workerTax:
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.workerTax
+        : "CONFIDENCIAL",
+    netPayment:
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.netPayment
+        : "CONFIDENCIAL",
+    socialCost:
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.socialCost
+        : "CONFIDENCIAL",
+    isr:
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.isr
+        : "CONFIDENCIAL",
+    totalCost:
+      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+        ? row.totalCost
+        : "CONFIDENCIAL",
   }));
   const exportConfig = {
     title: "Comisión de kiosco",
@@ -510,6 +563,7 @@ export function PayrollKioskCommissionDemo() {
         : "Aún no existe un récord histórico de venta disponible.",
       `${achievedBranches} de ${rows.length} sucursales alcanzaron la meta en el mes seleccionado.`,
       "La comisión se presenta por punto de venta y conserva al gerente responsable del periodo.",
+      "Las comisiones gerenciales marcadas como confidenciales permanecen en los totales, pero no se exponen por persona.",
       `La carga fiscal efectiva del periodo es costo social ${kioskPayroll.taxInclusion.includeSocialCost ? "incluido" : "excluido"}, ISR ${kioskPayroll.taxInclusion.includeIsr ? "incluido" : "excluido"} e impuesto al trabajador ${kioskPayroll.taxInclusion.includeWorkerTax ? `activo al ${(kioskPayroll.taxInclusion.workerTaxRate * 100).toFixed(2)}%` : "apagado"}.`,
     ],
     filename: `comision-kiosco-${selectedMonth}`,
@@ -975,22 +1029,52 @@ export function PayrollKioskCommissionDemo() {
                       {percent.format(row.appliedRate)}
                     </TableCell>
                     <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
-                      {money.format(row.commission)}
+                      {!row.manager ||
+                      employeeShowsCommissionInPayroll(row.manager) ? (
+                        money.format(row.commission)
+                      ) : (
+                        <ConfidentialKioskValue />
+                      )}
                     </TableCell>
                     <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
-                      −{money.format(row.workerTax)}
+                      {!row.manager ||
+                      employeeShowsCommissionInPayroll(row.manager) ? (
+                        <>−{money.format(row.workerTax)}</>
+                      ) : (
+                        <ConfidentialKioskValue />
+                      )}
                     </TableCell>
                     <TableCell className="number-display text-right font-semibold">
-                      {money.format(row.netPayment)}
+                      {!row.manager ||
+                      employeeShowsCommissionInPayroll(row.manager) ? (
+                        money.format(row.netPayment)
+                      ) : (
+                        <ConfidentialKioskValue />
+                      )}
                     </TableCell>
                     <TableCell className="number-display text-right">
-                      {money.format(row.socialCost)}
+                      {!row.manager ||
+                      employeeShowsCommissionInPayroll(row.manager) ? (
+                        money.format(row.socialCost)
+                      ) : (
+                        <ConfidentialKioskValue />
+                      )}
                     </TableCell>
                     <TableCell className="number-display text-right">
-                      {money.format(row.isr)}
+                      {!row.manager ||
+                      employeeShowsCommissionInPayroll(row.manager) ? (
+                        money.format(row.isr)
+                      ) : (
+                        <ConfidentialKioskValue />
+                      )}
                     </TableCell>
                     <TableCell className="number-display text-right font-semibold">
-                      {money.format(row.totalCost)}
+                      {!row.manager ||
+                      employeeShowsCommissionInPayroll(row.manager) ? (
+                        money.format(row.totalCost)
+                      ) : (
+                        <ConfidentialKioskValue />
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end">
@@ -1212,7 +1296,11 @@ export function PayrollKioskCommissionDemo() {
                           {percent.format(row.rate)}
                         </TableCell>
                         <TableCell className="number-display text-right">
-                          {money.format(row.commission)}
+                          {row.commissionVisible ? (
+                            money.format(row.commission)
+                          ) : (
+                            <ConfidentialKioskValue />
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

@@ -7,15 +7,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Crown,
+  Eye,
   KeyRound,
   LockKeyhole,
   LogIn,
   MonitorCheck,
   Minus,
+  Pencil,
   Plus,
   Search,
   Settings2,
   ShieldCheck,
+  Trash2,
   UserCog,
   UserRoundCheck,
   UsersRound,
@@ -47,9 +50,13 @@ import {
 } from "@cosmetics/ui";
 import {
   customPayrollModulePermission,
+  moduleActionPermission,
+  modulePermissionActions,
+  modulePermissionBundle,
   modulePermissionCatalog,
   permissionCatalog,
   usePayrollDemo,
+  type ModulePermissionAction,
 } from "./payroll-demo-context";
 import {
   CostBranchSelector,
@@ -130,6 +137,16 @@ const actionPermissionsBySection: Record<PermissionSection, string[]> = {
   Reportes: ["reports.view", "receipts.view"],
 };
 
+const moduleActionMeta: Record<
+  ModulePermissionAction,
+  { label: string; shortLabel: string; icon: typeof Eye }
+> = {
+  view: { label: "Modo visualización", shortLabel: "VER", icon: Eye },
+  create: { label: "Agregar altas", shortLabel: "ALTA", icon: Plus },
+  edit: { label: "Editar registros", shortLabel: "EDITAR", icon: Pencil },
+  delete: { label: "Borrar registros", shortLabel: "BORRAR", icon: Trash2 },
+};
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -184,6 +201,42 @@ function PermissionSwitch({
         <span
           className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-[17px]" : "translate-x-0.5"}`}
         />
+      </span>
+    </button>
+  );
+}
+
+function ModuleActionToggle({
+  action,
+  checked,
+  disabled,
+  onClick,
+}: {
+  action: ModulePermissionAction;
+  checked: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const meta = moduleActionMeta[action];
+  const Icon = meta.icon;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={meta.label}
+      title={meta.label}
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-[9px] font-semibold transition-colors disabled:cursor-not-allowed ${checked ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-200" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)] text-[color:var(--text-muted)] hover:bg-[color:var(--accent-hover)]/35"}`}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span className="hidden 2xl:inline">{meta.shortLabel}</span>
+      <span
+        aria-hidden="true"
+        className={`ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full ${checked ? "bg-emerald-600 text-white" : "bg-stone-200 text-stone-500 dark:bg-stone-700"}`}
+      >
+        {checked ? <Check className="h-2.5 w-2.5" /> : <Minus className="h-2.5 w-2.5" />}
       </span>
     </button>
   );
@@ -246,6 +299,7 @@ export function PayrollAccessDemo() {
   const {
     state,
     togglePermission,
+    setPermissions,
     assignRole,
     setEmployeeCostBranches,
     setActiveEmployee,
@@ -265,6 +319,7 @@ export function PayrollAccessDemo() {
       permission,
       label,
       section,
+      permissions: modulePermissionBundle(permission),
     })),
     ...state.payrollModules
       .filter((module) => module.custom && module.active)
@@ -272,6 +327,9 @@ export function PayrollAccessDemo() {
         permission: customPayrollModulePermission(module.id),
         label: module.name,
         section: "Nómina",
+        permissions: modulePermissionBundle(
+          customPayrollModulePermission(module.id),
+        ),
       })),
   ];
   const permissionGroups = permissionSectionOrder
@@ -289,7 +347,7 @@ export function PayrollAccessDemo() {
         actions,
         permissions: Array.from(
           new Set([
-            ...modules.map((item) => item.permission),
+            ...modules.flatMap((item) => item.permissions),
             ...actions.map((item) => item.permission),
           ]),
         ),
@@ -339,16 +397,23 @@ export function PayrollAccessDemo() {
     enabled: boolean,
   ) {
     if (!selectedRole || selectedIsMaster) return;
-    permissions.forEach((permission) => {
-      const currentlyEnabled = selectedRole.permissions.includes(permission);
-      if (currentlyEnabled !== enabled) {
-        togglePermission(selectedRole.id, permission);
-      }
-    });
+    setPermissions(selectedRole.id, permissions, enabled);
     toast.success(
       enabled
         ? `${section}: acceso completo habilitado.`
         : `${section}: accesos retirados.`,
+    );
+  }
+
+  function setModulePermissionGroup(
+    modulePermission: string,
+    enabled: boolean,
+  ) {
+    if (!selectedRole || selectedIsMaster) return;
+    setPermissions(
+      selectedRole.id,
+      modulePermissionBundle(modulePermission),
+      enabled,
     );
   }
 
@@ -396,7 +461,12 @@ export function PayrollAccessDemo() {
             {
               icon: KeyRound,
               label: "Permisos",
-              value: permissionCatalog.length + modulePermissions.length,
+              value:
+                permissionCatalog.length +
+                modulePermissions.reduce(
+                  (total, module) => total + module.permissions.length,
+                  0,
+                ),
               detail: "disponibles",
             },
           ].map(({ icon: Icon, label, value, detail }) => (
@@ -502,9 +572,9 @@ export function PayrollAccessDemo() {
                     Permisos por menú y submenú
                   </h3>
                   <p className="mt-0.5 max-w-2xl text-[10px] leading-4 text-[color:var(--text-muted)]">
-                    Activa un menú completo o selecciona únicamente los submenús
-                    y acciones que necesita el rol. Lo no autorizado se oculta y
-                    tampoco abre por URL directa.
+                    Cada submenú permite asignar visualización, altas, edición y
+                    borrado por separado. Lo no autorizado se oculta, se bloquea
+                    y tampoco abre por URL directa.
                   </p>
                 </div>
                 <Badge
@@ -521,7 +591,7 @@ export function PayrollAccessDemo() {
                 </Badge>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-4">
                 {permissionGroups.map((group) => {
                   const meta = permissionSectionMeta[group.section];
                   const Icon = meta.icon;
@@ -614,43 +684,109 @@ export function PayrollAccessDemo() {
                         <div>
                           <div className="mb-2 flex items-center justify-between gap-3">
                             <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
-                              Submenús
+                              Submenús y nivel de acceso
                             </p>
                             <span className="text-[9px] text-[color:var(--text-muted)]">
                               {group.modules.length} disponibles
                             </span>
                           </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {group.modules.map(({ permission, label }) => (
-                              <PermissionSwitch
-                                key={permission}
-                                checked={
+                          <div className="mb-1 hidden grid-cols-[minmax(180px,1fr)_repeat(4,minmax(84px,.48fr))_76px] gap-2 px-2 text-center text-[8px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-muted)] lg:grid">
+                            <span className="text-left">Submenú</span>
+                            {modulePermissionActions.map((action) => (
+                              <span key={action}>
+                                {moduleActionMeta[action].shortLabel}
+                              </span>
+                            ))}
+                            <span>Todo</span>
+                          </div>
+                          <div className="space-y-2">
+                            {group.modules.map(({ permission, label }) => {
+                              const enabledActions = modulePermissionActions.filter(
+                                (action) =>
                                   selectedIsMaster ||
                                   (selectedRole?.permissions.includes(
-                                    permission,
-                                  ) ??
-                                    false)
-                                }
-                                disabled={selectedIsMaster}
-                                label={label}
-                                detail={
-                                  selectedIsMaster
-                                    ? "ACCESO TOTAL"
-                                    : "SUBMENÚ DEL MÓDULO"
-                                }
-                                onClick={() =>
-                                  selectedRole &&
-                                  togglePermission(selectedRole.id, permission)
-                                }
-                              />
-                            ))}
+                                    moduleActionPermission(permission, action),
+                                  ) ?? false),
+                              );
+                              const moduleComplete =
+                                enabledActions.length ===
+                                modulePermissionActions.length;
+
+                              return (
+                                <div
+                                  key={permission}
+                                  className="grid gap-2 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-2.5 lg:grid-cols-[minmax(180px,1fr)_repeat(4,minmax(84px,.48fr))_76px] lg:items-center"
+                                >
+                                  <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
+                                    <div className="min-w-0">
+                                      <p className="truncate text-[11px] font-semibold">
+                                        {label}
+                                      </p>
+                                      <p className="mt-0.5 text-[8px] uppercase tracking-[0.08em] text-[color:var(--text-muted)]">
+                                        {selectedIsMaster
+                                          ? "ACCESO TOTAL"
+                                          : `${enabledActions.length}/4 PERMISOS`}
+                                      </p>
+                                    </div>
+                                    <Badge
+                                      variant="outline"
+                                      className="shrink-0 px-1.5 py-0 text-[8px] lg:hidden"
+                                    >
+                                      {enabledActions.length}/4
+                                    </Badge>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 lg:contents">
+                                    {modulePermissionActions.map((action) => (
+                                      <ModuleActionToggle
+                                        key={action}
+                                        action={action}
+                                        checked={
+                                          selectedIsMaster ||
+                                          (selectedRole?.permissions.includes(
+                                            moduleActionPermission(
+                                              permission,
+                                              action,
+                                            ),
+                                          ) ?? false)
+                                        }
+                                        disabled={selectedIsMaster}
+                                        onClick={() =>
+                                          selectedRole &&
+                                          togglePermission(
+                                            selectedRole.id,
+                                            moduleActionPermission(
+                                              permission,
+                                              action,
+                                            ),
+                                          )
+                                        }
+                                      />
+                                    ))}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    aria-pressed={moduleComplete}
+                                    disabled={selectedIsMaster}
+                                    onClick={() =>
+                                      setModulePermissionGroup(
+                                        permission,
+                                        !moduleComplete,
+                                      )
+                                    }
+                                    className={`min-h-9 rounded-lg border px-2 text-[8px] font-semibold uppercase transition-colors disabled:cursor-not-allowed ${moduleComplete ? "border-emerald-300 bg-emerald-600 text-white" : "border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 text-[color:var(--text-secondary)]"}`}
+                                  >
+                                    {moduleComplete ? "Completo" : "Activar todo"}
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
 
                         {group.actions.length > 0 && (
                           <div className="border-t border-[color:var(--border-color)] pt-3">
                             <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
-                              Acciones dentro del módulo
+                              Autorizaciones especiales
                             </p>
                             <div className="grid gap-2 sm:grid-cols-2">
                               {group.actions.map(({ permission, label }) => (
@@ -668,7 +804,7 @@ export function PayrollAccessDemo() {
                                   detail={
                                     selectedIsMaster
                                       ? "ACCESO TOTAL"
-                                      : "ACCIÓN ESPECÍFICA"
+                                      : "APROBACIONES Y REGLAS"
                                   }
                                   onClick={() =>
                                     selectedRole &&

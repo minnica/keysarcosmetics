@@ -37,6 +37,8 @@ import {
   type PayrollModule,
   type PayrollModuleConcept,
   payrollModuleLabel,
+  personalizedBonusAwardsForPeriod,
+  personalizedBonusProgressForPeriod,
   temporaryBonusAwardsForPeriod,
   temporaryBonusStandings,
   usePayrollDemo,
@@ -66,21 +68,8 @@ export function commissionReceiptNet(
   );
 }
 
-export function commissionReceiptPendingBalance(
-  line: EmployeePayrollLine,
-  includeBaseSalary = false,
-) {
-  return Math.max(
-    line.fines +
-      line.loanDeduction +
-      line.externalDeductions +
-      line.carriedNegativeBalance -
-      (includeBaseSalary ? line.fixedSalary : 0) -
-      line.commission -
-      line.bonuses -
-      line.externalAdditions,
-    0,
-  );
+export function commissionReceiptPendingBalance(line: EmployeePayrollLine) {
+  return Math.max(line.newNegativeBalance, 0);
 }
 
 export function hasCommissionReceiptActivity(
@@ -138,6 +127,32 @@ export function Receipt({
       award.employee.id === line.employee.id &&
       (module === "CONSOLIDATED" || award.concept.payrollModule === module),
   );
+  const automaticPersonalizedAwards = personalizedBonusAwardsForPeriod(
+    state,
+    periodStart,
+    periodEnd,
+  ).filter(
+    (award) =>
+      award.employee.id === line.employee.id &&
+      (module === "CONSOLIDATED" || award.concept.payrollModule === module),
+  );
+  const personalizedBonusConditions = state.bonusFineConcepts
+    .filter(
+      (concept) =>
+        concept.personalized &&
+        concept.type === "BONUS" &&
+        concept.validFrom <= periodEnd &&
+        (!concept.validUntil || concept.validUntil >= periodStart) &&
+        (module === "CONSOLIDATED" || concept.payrollModule === module),
+    )
+    .flatMap((concept) =>
+      personalizedBonusProgressForPeriod(
+        state,
+        concept,
+        periodStart,
+        periodEnd,
+      ).filter((progress) => progress.employee.id === line.employee.id),
+    );
   const temporaryChallenges = state.bonusFineConcepts
     .filter(
       (concept) =>
@@ -187,10 +202,43 @@ export function Receipt({
   const includeBaseSalary =
     receiptConfiguration.includeBaseSalaryInReceipt && line.fixedSalary > 0;
   const receiptNet = commissionReceiptNet(line, includeBaseSalary);
-  const pendingBalance = commissionReceiptPendingBalance(
-    line,
-    includeBaseSalary,
-  );
+  const pendingBalance = commissionReceiptPendingBalance(line);
+  const carriedBalanceSources = [
+    {
+      label: "Multas pendientes",
+      amount: line.carriedNegativeBalanceBreakdown.fines,
+    },
+    {
+      label: "Préstamos pendientes",
+      amount: line.carriedNegativeBalanceBreakdown.loans,
+    },
+    {
+      label: "Adelantos pendientes",
+      amount: line.carriedNegativeBalanceBreakdown.advances,
+    },
+    {
+      label: "Otros descuentos pendientes",
+      amount: line.carriedNegativeBalanceBreakdown.otherDeductions,
+    },
+  ].filter((source) => source.amount > 0.005);
+  const nextBalanceSources = [
+    {
+      label: "Multas por recuperar",
+      amount: line.newNegativeBalanceBreakdown.fines,
+    },
+    {
+      label: "Préstamos por recuperar",
+      amount: line.newNegativeBalanceBreakdown.loans,
+    },
+    {
+      label: "Adelantos por recuperar",
+      amount: line.newNegativeBalanceBreakdown.advances,
+    },
+    {
+      label: "Otros descuentos por recuperar",
+      amount: line.newNegativeBalanceBreakdown.otherDeductions,
+    },
+  ].filter((source) => source.amount > 0.005);
   const receiptNetLabel = includeBaseSalary
     ? "Neto del recibo"
     : "Neto de comisiones";
@@ -351,6 +399,24 @@ export function Receipt({
               </strong>
             </div>
           ))}
+          {automaticPersonalizedAwards.map((award) => (
+            <div key={award.id} className="flex justify-between gap-4">
+              <span>
+                <span className="block">{award.concept.name}</span>
+                <span className="mt-0.5 block text-[10px] leading-4 text-[color:var(--text-muted)]">
+                  {award.progress.aggregation === "GROUP"
+                    ? `Meta grupal lograda con ${award.progress.participantCount} participantes · venta acumulada ${money.format(award.progress.sales)}`
+                    : `Meta personal lograda · venta acumulada ${money.format(award.progress.sales)}`}
+                  {award.progress.tier
+                    ? ` · NIVEL ${money.format(award.progress.tier.from)}${award.progress.tier.to === null ? " EN ADELANTE" : ` A ${money.format(award.progress.tier.to)}`}`
+                    : ""}
+                </span>
+              </span>
+              <strong className="text-emerald-700 dark:text-emerald-300">
+                +{money.format(award.amount)}
+              </strong>
+            </div>
+          ))}
           {adjustments
             .filter(
               (adjustment) =>
@@ -425,11 +491,19 @@ export function Receipt({
               </div>
             );
           })}
-          {showLoans && (
+          {showLoans && line.loanDeductionBreakdown.loans > 0 && (
             <div className="flex justify-between">
               <span>Cuota de préstamo</span>
               <strong className="text-amber-700 dark:text-amber-300">
-                −{money.format(line.loanDeduction)}
+                −{money.format(line.loanDeductionBreakdown.loans)}
+              </strong>
+            </div>
+          )}
+          {showLoans && line.loanDeductionBreakdown.advances > 0 && (
+            <div className="flex justify-between">
+              <span>Descuento de adelanto</span>
+              <strong className="text-amber-700 dark:text-amber-300">
+                −{money.format(line.loanDeductionBreakdown.advances)}
               </strong>
             </div>
           )}
@@ -442,21 +516,45 @@ export function Receipt({
             </div>
           )}
           {line.carriedNegativeBalance > 0 && (
-            <div className="flex justify-between gap-4">
-              <span>Saldo negativo del periodo anterior</span>
-              <strong className="text-rose-700 dark:text-rose-300">
-                −{money.format(line.carriedNegativeBalance)}
-              </strong>
+            <div className="rounded-lg border border-rose-200 bg-rose-50/50 px-3 py-2 dark:border-rose-900 dark:bg-rose-950/15">
+              <div className="flex justify-between gap-4">
+                <span className="font-semibold">
+                  Saldo arrastrado de otras nóminas
+                </span>
+                <strong className="text-rose-700 dark:text-rose-300">
+                  −{money.format(line.carriedNegativeBalance)}
+                </strong>
+              </div>
+              {carriedBalanceSources.map((source) => (
+                <div
+                  key={source.label}
+                  className="mt-1 flex justify-between gap-4 text-[10px] text-[color:var(--text-muted)]"
+                >
+                  <span>{source.label}</span>
+                  <span>{money.format(source.amount)}</span>
+                </div>
+              ))}
             </div>
           )}
           {pendingBalance > 0 && (
-            <div className="flex justify-between gap-4 rounded-lg border border-rose-300 bg-rose-50/70 px-3 py-2 dark:border-rose-900 dark:bg-rose-950/20">
+            <div className="flex flex-wrap justify-between gap-2 rounded-lg border border-rose-300 bg-rose-50/70 px-3 py-2 dark:border-rose-900 dark:bg-rose-950/20">
               <span className="font-semibold">
                 Saldo pendiente para el siguiente periodo
               </span>
               <strong className="number-display text-rose-700 dark:text-rose-300">
                 {money.format(pendingBalance)}
               </strong>
+              <div className="basis-full border-t border-rose-200 pt-1 dark:border-rose-900">
+                {nextBalanceSources.map((source) => (
+                  <div
+                    key={source.label}
+                    className="flex justify-between gap-4 text-[10px] font-normal text-rose-800/80 dark:text-rose-200/80"
+                  >
+                    <span>{source.label}</span>
+                    <span>{money.format(source.amount)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -504,6 +602,62 @@ export function Receipt({
               })}
             </div>
           )}
+        {personalizedBonusConditions.length > 0 && (
+          <div className="space-y-3 rounded-xl border border-emerald-300/70 bg-emerald-50/50 p-4 dark:bg-emerald-950/20">
+            <div className="flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-emerald-700" />
+              <p className="text-xs font-semibold uppercase tracking-wider">
+                Condiciones de bonos personalizados
+              </p>
+            </div>
+            {personalizedBonusConditions.map((progress) => {
+              const percent =
+                progress.target > 0
+                  ? Math.min((progress.sales / progress.target) * 100, 100)
+                  : 0;
+              return (
+                <div key={progress.concept.id}>
+                  <div className="flex flex-wrap items-end justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold">
+                        {progress.concept.name}
+                      </p>
+                      <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
+                        {progress.aggregation === "GROUP"
+                          ? `VENTA COMBINADA DE ${progress.participantCount} PERSONAS`
+                          : "VENTA PERSONAL"}
+                        {" · "}META {money.format(progress.target)}
+                        {" · "}AVANCE {money.format(progress.sales)}
+                      </p>
+                      {progress.tier && (
+                        <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
+                          NIVEL APLICADO {money.format(progress.tier.from)} —{" "}
+                          {progress.tier.to === null
+                            ? "SIN TOPE"
+                            : money.format(progress.tier.to)}
+                        </p>
+                      )}
+                      <p className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-200">
+                        {progress.achieved
+                          ? `CUMPLIDO · PREMIO ${money.format(progress.awardAmount)}`
+                          : `FALTAN ${money.format(progress.remaining)}`}
+                      </p>
+                    </div>
+                    <span className="number-display text-sm">
+                      {percent.toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950/50">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#b87d49] to-emerald-600"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <Separator />
         <div className="flex items-end justify-between gap-4">
           {receiptConfiguration.showBankAccount ? (

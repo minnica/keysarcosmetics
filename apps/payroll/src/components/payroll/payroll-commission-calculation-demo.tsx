@@ -46,8 +46,10 @@ import {
 } from "@cosmetics/ui";
 import { ReportExportButtons } from "./report-export-buttons";
 import {
+  branchAppliesToPeriod,
   type DemoPayrollRun,
   type EmployeePayrollLine,
+  personalizedBonusAwardsForPeriod,
   sortByListMode,
   temporaryBonusAwardsForPeriod,
   usePayrollDemo,
@@ -65,6 +67,47 @@ const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
 });
+
+type CommissionDetailSortKey =
+  | "employee"
+  | "scheme"
+  | "base"
+  | "grossSales"
+  | "netSales"
+  | "commission"
+  | "bonus"
+  | "deductions"
+  | "adjustment"
+  | "viatics"
+  | "account"
+  | "approval"
+  | "total";
+
+const commissionDetailHeaders: Array<{
+  key: CommissionDetailSortKey;
+  label: string;
+  kind: TableSortKind;
+  align?: "left" | "center" | "right";
+}> = [
+  { key: "employee", label: "EMPLEADO / SUCURSAL", kind: "text" },
+  { key: "scheme", label: "ESQUEMA / %", kind: "text" },
+  { key: "base", label: "BASE", kind: "text" },
+  { key: "grossSales", label: "VENTA IVA", kind: "number", align: "right" },
+  { key: "netSales", label: "VENTA SIN IVA", kind: "number", align: "right" },
+  { key: "commission", label: "COMISIÓN", kind: "number", align: "right" },
+  { key: "bonus", label: "BONO", kind: "number", align: "right" },
+  {
+    key: "deductions",
+    label: "MULTA / PRÉST.",
+    kind: "number",
+    align: "right",
+  },
+  { key: "adjustment", label: "AJUSTE", kind: "number", align: "right" },
+  { key: "viatics", label: "VIÁTICOS", kind: "number", align: "right" },
+  { key: "account", label: "CUENTA", kind: "text", align: "right" },
+  { key: "approval", label: "APROBACIÓN", kind: "text", align: "center" },
+  { key: "total", label: "TOTAL PAGO", kind: "number", align: "right" },
+];
 
 function shortPeriodLabel(start: string) {
   const date = new Date(`${start}T00:00:00Z`);
@@ -111,6 +154,8 @@ export function PayrollCommissionCalculationDemo() {
   const [branchFilter, setBranchFilter] = useState("ALL");
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
+  const [detailSort, setDetailSort] =
+    useState<TableSortState<CommissionDetailSortKey>>(null);
   const [showMissing, setShowMissing] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
@@ -172,6 +217,10 @@ export function PayrollCommissionCalculationDemo() {
     (row) => row.approvalStatus === "AUTHORIZED",
   ).length;
   const pendingReceiptCount = detailRows.length - approvedReceiptCount;
+  const pendingNegativeTotal = detailRows.reduce(
+    (sum, row) => sum + row.line.newNegativeBalance,
+    0,
+  );
   const masterEmployee = state.employees.find(
     (employee) =>
       employee.active &&
@@ -186,9 +235,16 @@ export function PayrollCommissionCalculationDemo() {
     new Set(detailRows.map((row) => row.line.employee.position)),
   ).sort((left, right) => left.localeCompare(right, "es-MX"));
   const branchOptions = Array.from(
-    new Set(detailRows.map((row) => row.branch)),
+    new Set([
+      ...state.branches
+        .filter((branch) =>
+          branchAppliesToPeriod(branch, period.start, period.end),
+        )
+        .map((branch) => branch.name),
+      ...detailRows.map((row) => row.branch),
+    ]),
   ).sort((left, right) => left.localeCompare(right, "es-MX"));
-  const filteredRows = detailRows.filter((row) => {
+  const filteredUnsortedRows = detailRows.filter((row) => {
     const matchesSearch =
       !normalizedSearch ||
       `${row.line.employee.name} ${row.line.employee.position} ${row.branch} ${row.line.schemeName}`
@@ -201,6 +257,33 @@ export function PayrollCommissionCalculationDemo() {
       (branchFilter === "ALL" || row.branch === branchFilter)
     );
   });
+  const filteredRows = sortTableRows(filteredUnsortedRows, detailSort, {
+    employee: (row) => `${row.line.employee.name} ${row.branch}`,
+    scheme: (row) => `${row.line.schemeName} ${row.line.rate}`,
+    base: (row) =>
+      state.commissionModeOverrides[
+        `${period.start}:${row.line.employee.id}`
+      ] ??
+      state.commissionModeOverrides[row.line.employee.id] ??
+      calculationMode,
+    grossSales: (row) => row.grossSales,
+    netSales: (row) => row.netSales,
+    commission: (row) => row.line.commission,
+    bonus: (row) => row.line.bonuses,
+    deductions: (row) =>
+      row.line.fines + row.line.loanDeduction + row.line.carriedNegativeBalance,
+    adjustment: (row) =>
+      row.line.externalAdditions - row.line.externalDeductions,
+    viatics: (row) => row.line.viaticsAdditions - row.line.viaticsDeductions,
+    account: (row) => row.line.employee.account,
+    approval: (row) =>
+      row.approvalStatus === "AUTHORIZED" ? "APROBADO" : "PENDIENTE",
+    total: (row) => row.line.total,
+  });
+  function changeDetailSort(key: CommissionDetailSortKey, kind: TableSortKind) {
+    setDetailSort((current) => nextTableSort(current, key, kind));
+    setPage(1);
+  }
   const filteredDeductions = filteredRows.reduce(
     (sum, row) =>
       sum +
@@ -505,7 +588,9 @@ export function PayrollCommissionCalculationDemo() {
     closeCommissionRun(activeRun.id);
     setCloseDialogOpen(false);
     toast.success(
-      "Nómina cerrada manualmente. Los importes quedaron bloqueados.",
+      pendingNegativeTotal > 0
+        ? `Nómina cerrada. ${money.format(pendingNegativeTotal)} quedó pendiente y se arrastrará a la siguiente nómina disponible.`
+        : "Nómina cerrada manualmente. Los importes quedaron bloqueados.",
     );
   }
 
@@ -701,6 +786,14 @@ export function PayrollCommissionCalculationDemo() {
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 El cierre manual está permitido, pero conservará como pendientes
                 las confirmaciones faltantes.
+              </p>
+            ) : null}
+            {pendingNegativeTotal > 0 ? (
+              <p className="mt-3 flex gap-2 text-xs text-rose-700 dark:text-rose-300">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                Existen {money.format(pendingNegativeTotal)} en saldos
+                negativos. El cierre está permitido y esos importes se
+                trasladarán al siguiente pago disponible de cada empleado.
               </p>
             ) : null}
           </div>
@@ -999,27 +1092,17 @@ export function PayrollCommissionCalculationDemo() {
                 </colgroup>
                 <TableHeader className="bg-[linear-gradient(110deg,#28231f,#3b3027)] text-white">
                   <TableRow className="border-[#5a493b] hover:bg-transparent">
-                    {[
-                      "EMPLEADO / SUCURSAL",
-                      "ESQUEMA / %",
-                      "BASE",
-                      "VENTA IVA",
-                      "VENTA SIN IVA",
-                      "COMISIÓN",
-                      "BONO",
-                      "MULTA / PRÉST.",
-                      "AJUSTE",
-                      "VIÁTICOS",
-                      "CUENTA",
-                      "APROBACIÓN",
-                      "TOTAL PAGO",
-                    ].map((label, index) => (
-                      <TableHead
-                        key={label}
-                        className={`h-9 px-2 text-[8px] font-semibold uppercase tracking-[0.08em] text-white/75 ${index >= 3 && index !== 11 ? "text-right" : index === 11 ? "text-center" : ""}`}
-                      >
-                        {label}
-                      </TableHead>
+                    {commissionDetailHeaders.map((column) => (
+                      <SortableTableHead
+                        key={column.key}
+                        column={column.key}
+                        label={column.label}
+                        kind={column.kind}
+                        sort={detailSort}
+                        onSort={changeDetailSort}
+                        align={column.align ?? "left"}
+                        className="h-9 px-2 text-[8px] font-semibold uppercase tracking-[0.08em] text-white/75"
+                      />
                     ))}
                   </TableRow>
                 </TableHeader>
@@ -1117,20 +1200,28 @@ export function PayrollCommissionCalculationDemo() {
                           {money.format(row.line.bonuses)}
                         </TableCell>
                         <TableCell className="number-display px-2 py-2 text-right">
-                          <span className="block text-rose-700 dark:text-rose-300" title="Multas">
+                          <span
+                            className="block text-rose-700 dark:text-rose-300"
+                            title="Multas"
+                          >
                             M −{money.format(row.line.fines)}
                           </span>
-                          <span className="mt-0.5 block text-amber-700 dark:text-amber-300" title="Préstamos y adelantos">
+                          <span
+                            className="mt-0.5 block text-amber-700 dark:text-amber-300"
+                            title="Préstamos y adelantos"
+                          >
                             P −{money.format(row.line.loanDeduction)}
                           </span>
                           {row.line.carriedNegativeBalance > 0 ? (
                             <span className="mt-0.5 block text-[7px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
-                              SALDO −{money.format(row.line.carriedNegativeBalance)}
+                              SALDO −
+                              {money.format(row.line.carriedNegativeBalance)}
                             </span>
                           ) : null}
                           {row.line.newNegativeBalance > 0 ? (
                             <span className="mt-0.5 block text-[7px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
-                              PASA {money.format(row.line.newNegativeBalance)}
+                              PASA A OTRA NÓMINA{" "}
+                              {money.format(row.line.newNegativeBalance)}
                             </span>
                           ) : null}
                         </TableCell>
@@ -1256,7 +1347,7 @@ interface CommissionBonusCostRow {
   employeeName: string;
   position: string;
   concept: string;
-  source: "REGISTRADO" | "TEMPORAL" | "CONCILIACIÓN";
+  source: "REGISTRADO" | "TEMPORAL" | "PERSONALIZADO" | "CONCILIACIÓN";
   branchId: string;
   branchName: string;
   allocationShare: number;
@@ -1388,6 +1479,18 @@ function CommissionBranchCostReport({
         }),
     );
 
+    personalizedBonusAwardsForPeriod(state, periodStart, periodEnd).forEach(
+      (award) =>
+        appendBonus({
+          id: award.id,
+          employeeId: award.employee.id,
+          concept: award.concept.name,
+          source: "PERSONALIZADO",
+          amount: award.amount,
+          requestedBranchIds: award.costBranchIds,
+        }),
+    );
+
     lines.forEach((line) => {
       const detailedAmount =
         detailedTotalsByEmployee.get(line.employee.id) ?? 0;
@@ -1430,69 +1533,74 @@ function CommissionBranchCostReport({
 
   const rows = useMemo<CommissionBranchCostRow[]>(
     () =>
-      sortByListMode(lines.map((line) => {
-        const salesFactor =
-          line.grossSales > 0 ? line.sales / line.grossSales : 1;
-        const branchSales = state.sales
-          .filter(
-            (sale) =>
-              sale.employeeId === line.employee.id &&
-              sale.date >= periodStart &&
-              sale.date <= periodEnd,
-          )
-          .reduce<Record<string, number>>((totals, sale) => {
-            totals[sale.branchId] =
-              (totals[sale.branchId] ?? 0) + sale.amount * salesFactor;
-            return totals;
-          }, {});
-        const allocations = employeeCostAllocationShares({
-          employee: line.employee,
-          branches: state.branches,
-          sales: state.sales,
-          periodStart,
-          periodEnd,
-          mode: "SALES_SHARE",
-        });
-        const movementNet = line.total - line.commission - line.bonuses;
-        const allocateAmount = (amount: number) => {
-          const costs: Record<string, number> = {};
-          let assigned = 0;
-          allocations.forEach((allocation, index) => {
-            const cost =
-              index === allocations.length - 1
-                ? amount - assigned
-                : amount * allocation.share;
-            costs[allocation.branchId] = cost;
-            assigned += cost;
+      sortByListMode(
+        lines.map((line) => {
+          const salesFactor =
+            line.grossSales > 0 ? line.sales / line.grossSales : 1;
+          const branchSales = state.sales
+            .filter(
+              (sale) =>
+                sale.employeeId === line.employee.id &&
+                sale.date >= periodStart &&
+                sale.date <= periodEnd,
+            )
+            .reduce<Record<string, number>>((totals, sale) => {
+              totals[sale.branchId] =
+                (totals[sale.branchId] ?? 0) + sale.amount * salesFactor;
+              return totals;
+            }, {});
+          const allocations = employeeCostAllocationShares({
+            employee: line.employee,
+            branches: state.branches,
+            sales: state.sales,
+            periodStart,
+            periodEnd,
+            mode: "SALES_SHARE",
           });
-          return costs;
-        };
-        const branchCommissionCosts = allocateAmount(line.commission);
-        const branchMovementCosts = allocateAmount(movementNet);
-        const branchBonusCosts =
-          bonusCostsByEmployee.get(line.employee.id) ??
-          allocateAmount(line.bonuses);
-        const branchCosts: Record<string, number> = {};
-        new Set([
-          ...Object.keys(branchCommissionCosts),
-          ...Object.keys(branchBonusCosts),
-          ...Object.keys(branchMovementCosts),
-        ]).forEach((branchId) => {
-          branchCosts[branchId] =
-            (branchCommissionCosts[branchId] ?? 0) +
-            (branchBonusCosts[branchId] ?? 0) +
-            (branchMovementCosts[branchId] ?? 0);
-        });
-        return {
-          line,
-          branchSales,
-          branchCommissionCosts,
-          branchBonusCosts,
-          branchMovementCosts,
-          branchCosts,
-          movementNet,
-        };
-      }), listSortMode, (row) => row.line.employee.name, (row) => row.line.total),
+          const movementNet = line.total - line.commission - line.bonuses;
+          const allocateAmount = (amount: number) => {
+            const costs: Record<string, number> = {};
+            let assigned = 0;
+            allocations.forEach((allocation, index) => {
+              const cost =
+                index === allocations.length - 1
+                  ? amount - assigned
+                  : amount * allocation.share;
+              costs[allocation.branchId] = cost;
+              assigned += cost;
+            });
+            return costs;
+          };
+          const branchCommissionCosts = allocateAmount(line.commission);
+          const branchMovementCosts = allocateAmount(movementNet);
+          const branchBonusCosts =
+            bonusCostsByEmployee.get(line.employee.id) ??
+            allocateAmount(line.bonuses);
+          const branchCosts: Record<string, number> = {};
+          new Set([
+            ...Object.keys(branchCommissionCosts),
+            ...Object.keys(branchBonusCosts),
+            ...Object.keys(branchMovementCosts),
+          ]).forEach((branchId) => {
+            branchCosts[branchId] =
+              (branchCommissionCosts[branchId] ?? 0) +
+              (branchBonusCosts[branchId] ?? 0) +
+              (branchMovementCosts[branchId] ?? 0);
+          });
+          return {
+            line,
+            branchSales,
+            branchCommissionCosts,
+            branchBonusCosts,
+            branchMovementCosts,
+            branchCosts,
+            movementNet,
+          };
+        }),
+        listSortMode,
+        (row) => row.line.employee.name,
+        (row) => row.line.total,
+      ),
     [
       bonusCostsByEmployee,
       lines,
@@ -1505,14 +1613,16 @@ function CommissionBranchCostReport({
   );
   const branchColumns = useMemo(
     () =>
-      state.branches.filter((branch) =>
-        rows.some(
-          (row) =>
-            Object.hasOwn(row.branchCosts, branch.id) ||
-            (row.branchSales[branch.id] ?? 0) > 0,
-        ),
+      state.branches.filter(
+        (branch) =>
+          branchAppliesToPeriod(branch, periodStart, periodEnd) ||
+          rows.some(
+            (row) =>
+              Object.hasOwn(row.branchCosts, branch.id) ||
+              (row.branchSales[branch.id] ?? 0) > 0,
+          ),
       ),
-    [rows, state.branches],
+    [periodEnd, periodStart, rows, state.branches],
   );
   const visibleBranchColumns =
     branchFilter === "ALL"
@@ -1542,8 +1652,7 @@ function CommissionBranchCostReport({
   });
   const filteredRows = sortTableRows(filteredUnsortedRows, matrixSort, {
     employee: (row) => row.line.employee.name,
-    scheme: (row) =>
-      `${row.line.employee.position} ${row.line.schemeName}`,
+    scheme: (row) => `${row.line.employee.position} ${row.line.schemeName}`,
     sales: (row) =>
       branchFilter === "ALL"
         ? row.line.sales
@@ -1932,12 +2041,58 @@ function CommissionBranchCostReport({
             <Table className="min-w-max text-[10px]">
               <TableHeader className="bg-[linear-gradient(110deg,#28231f,#3b3027)] text-white">
                 <TableRow className="border-[#5a493b] hover:bg-transparent">
-                  <SortableTableHead column="employee" label="EMPLEADO" kind="text" sort={matrixSort} onSort={changeMatrixSort} className="min-w-56 text-white/75" />
-                  <SortableTableHead column="scheme" label="PUESTO / ESQUEMA" kind="text" sort={matrixSort} onSort={changeMatrixSort} className="min-w-44 text-white/75" />
-                  <SortableTableHead column="sales" label="VENTA CALCULADA" kind="number" sort={matrixSort} onSort={changeMatrixSort} align="right" className="min-w-32 text-white/75" />
-                  <SortableTableHead column="commission" label="COMISIÓN" kind="number" sort={matrixSort} onSort={changeMatrixSort} align="right" className="min-w-32 text-white/75" />
-                  <SortableTableHead column="bonuses" label="BONOS" kind="number" sort={matrixSort} onSort={changeMatrixSort} align="right" className="min-w-32 text-white/75" />
-                  <SortableTableHead column="movements" label="OTROS MOVIMIENTOS" kind="number" sort={matrixSort} onSort={changeMatrixSort} align="right" className="min-w-36 text-white/75" />
+                  <SortableTableHead
+                    column="employee"
+                    label="EMPLEADO"
+                    kind="text"
+                    sort={matrixSort}
+                    onSort={changeMatrixSort}
+                    className="min-w-56 text-white/75"
+                  />
+                  <SortableTableHead
+                    column="scheme"
+                    label="PUESTO / ESQUEMA"
+                    kind="text"
+                    sort={matrixSort}
+                    onSort={changeMatrixSort}
+                    className="min-w-44 text-white/75"
+                  />
+                  <SortableTableHead
+                    column="sales"
+                    label="VENTA CALCULADA"
+                    kind="number"
+                    sort={matrixSort}
+                    onSort={changeMatrixSort}
+                    align="right"
+                    className="min-w-32 text-white/75"
+                  />
+                  <SortableTableHead
+                    column="commission"
+                    label="COMISIÓN"
+                    kind="number"
+                    sort={matrixSort}
+                    onSort={changeMatrixSort}
+                    align="right"
+                    className="min-w-32 text-white/75"
+                  />
+                  <SortableTableHead
+                    column="bonuses"
+                    label="BONOS"
+                    kind="number"
+                    sort={matrixSort}
+                    onSort={changeMatrixSort}
+                    align="right"
+                    className="min-w-32 text-white/75"
+                  />
+                  <SortableTableHead
+                    column="movements"
+                    label="OTROS MOVIMIENTOS"
+                    kind="number"
+                    sort={matrixSort}
+                    onSort={changeMatrixSort}
+                    align="right"
+                    className="min-w-36 text-white/75"
+                  />
                   {visibleBranchColumns.map((branch) => (
                     <SortableTableHead
                       key={branch.id}
@@ -1952,7 +2107,11 @@ function CommissionBranchCostReport({
                   ))}
                   <SortableTableHead
                     column="total"
-                    label={branchFilter === "ALL" ? "TOTAL NÓMINA" : "COSTO SELECCIONADO"}
+                    label={
+                      branchFilter === "ALL"
+                        ? "TOTAL NÓMINA"
+                        : "COSTO SELECCIONADO"
+                    }
                     kind="number"
                     sort={matrixSort}
                     onSort={changeMatrixSort}

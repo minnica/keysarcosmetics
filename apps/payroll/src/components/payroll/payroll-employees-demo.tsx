@@ -9,6 +9,8 @@ import {
   ChevronRight,
   CircleDollarSign,
   Copy,
+  Eye,
+  EyeOff,
   History,
   KeyRound,
   LockKeyhole,
@@ -46,6 +48,8 @@ import {
   toast,
 } from "@cosmetics/ui";
 import {
+  employeeShowsCommissionInPayroll,
+  employeeShowsSalaryInPayroll,
   type DemoEmployee,
   type EmployeeCategory,
   type PayrollModule,
@@ -135,6 +139,85 @@ function localDate() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function PayrollVisibilityControls({
+  salaryVisible,
+  commissionVisible,
+  onSalaryChange,
+  onCommissionChange,
+}: {
+  salaryVisible: boolean;
+  commissionVisible: boolean;
+  onSalaryChange: (visible: boolean) => void;
+  onCommissionChange: (visible: boolean) => void;
+}) {
+  const controls = [
+    {
+      key: "salary",
+      label: "Mostrar sueldo fijo en nóminas",
+      detail: "Oculta únicamente el importe individual; los totales no cambian.",
+      checked: salaryVisible,
+      onChange: onSalaryChange,
+    },
+    {
+      key: "commission",
+      label: "Mostrar comisiones en nóminas",
+      detail: "Bonos y ajustes conservan su propio detalle.",
+      checked: commissionVisible,
+      onChange: onCommissionChange,
+    },
+  ];
+
+  return (
+    <div className="space-y-2 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/10 p-3">
+      <div>
+        <p className="text-xs font-semibold">Privacidad en nóminas</p>
+        <p className="mt-0.5 text-[10px] leading-4 text-[color:var(--text-muted)]">
+          Controla qué importes individuales pueden verse en tablas y
+          descargas. El cálculo contable permanece completo.
+        </p>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {controls.map((control) => (
+          <button
+            key={control.key}
+            type="button"
+            role="switch"
+            aria-checked={control.checked}
+            onClick={() => control.onChange(!control.checked)}
+            className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${control.checked ? "border-emerald-300 bg-emerald-50/70 dark:bg-emerald-950/20" : "border-amber-300 bg-amber-50/70 dark:bg-amber-950/20"}`}
+          >
+            <span
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${control.checked ? "bg-emerald-600 text-white" : "bg-amber-600 text-white"}`}
+            >
+              {control.checked ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-semibold leading-4">
+                {control.label}
+              </span>
+              <span className="mt-0.5 block text-[9px] leading-3 text-[color:var(--text-muted)]">
+                {control.detail}
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className={`relative h-4 w-8 shrink-0 rounded-full ${control.checked ? "bg-emerald-600" : "bg-amber-600"}`}
+            >
+              <span
+                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${control.checked ? "translate-x-[17px]" : "translate-x-0.5"}`}
+              />
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function normalizeCredentialPart(value: string) {
   return value
     .normalize("NFD")
@@ -172,11 +255,22 @@ function EmployeeDialog({
     initialPosition?.defaultRoleId ?? "role-employee",
   );
   const [monthlySalary, setMonthlySalary] = useState("0");
+  const [showSalaryInPayroll, setShowSalaryInPayroll] = useState(
+    initialPosition?.category !== "MANAGEMENT",
+  );
+  const [showCommissionInPayroll, setShowCommissionInPayroll] = useState(
+    initialPosition?.category !== "MANAGEMENT",
+  );
   const [salaryPayrollModuleId, setSalaryPayrollModuleId] =
-    useState<Exclude<PayrollModule, "CONSOLIDATED">>("FIXED");
+    useState<Exclude<PayrollModule, "CONSOLIDATED">>(
+      initialPosition?.salaryPayrollModuleId ?? "FIXED",
+    );
+  const [commissionEnabled, setCommissionEnabled] = useState(
+    initialPosition?.commissionPayrollModuleId != null,
+  );
   const [commissionPayrollModuleId, setCommissionPayrollModuleId] = useState<
     Exclude<PayrollModule, "CONSOLIDATED"> | "NONE"
-  >("NONE");
+  >(initialPosition?.commissionPayrollModuleId ?? "NONE");
   const [bank, setBank] = useState("");
   const [clabe, setClabe] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -197,8 +291,19 @@ function EmployeeDialog({
     setCostBranchIds([state.branches[0]?.id ?? ""].filter(Boolean));
     setRoleId(nextInitialPosition?.defaultRoleId ?? "role-employee");
     setMonthlySalary("0");
-    setSalaryPayrollModuleId("FIXED");
-    setCommissionPayrollModuleId("NONE");
+    setShowSalaryInPayroll(nextInitialPosition?.category !== "MANAGEMENT");
+    setShowCommissionInPayroll(
+      nextInitialPosition?.category !== "MANAGEMENT",
+    );
+    setSalaryPayrollModuleId(
+      nextInitialPosition?.salaryPayrollModuleId ?? "FIXED",
+    );
+    setCommissionEnabled(
+      nextInitialPosition?.commissionPayrollModuleId != null,
+    );
+    setCommissionPayrollModuleId(
+      nextInitialPosition?.commissionPayrollModuleId ?? "NONE",
+    );
     setBank("");
     setClabe("");
     setBirthDate("");
@@ -233,6 +338,13 @@ function EmployeeDialog({
     setPosition(selected.name);
     setCategory(selected.category);
     setRoleId(selected.defaultRoleId);
+    setSalaryPayrollModuleId(selected.salaryPayrollModuleId ?? "FIXED");
+    setCommissionEnabled(selected.commissionPayrollModuleId !== null);
+    setCommissionPayrollModuleId(
+      selected.commissionPayrollModuleId ?? "NONE",
+    );
+    setShowSalaryInPayroll(selected.category !== "MANAGEMENT");
+    setShowCommissionInPayroll(selected.category !== "MANAGEMENT");
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -275,9 +387,13 @@ function EmployeeDialog({
       branchId,
       costBranchIds,
       monthlySalary: salary,
+      showSalaryInPayroll,
+      showCommissionInPayroll,
       salaryPayrollModuleId: salary > 0 ? salaryPayrollModuleId : null,
       commissionPayrollModuleId:
-        commissionPayrollModuleId === "NONE" ? null : commissionPayrollModuleId,
+        !commissionEnabled || commissionPayrollModuleId === "NONE"
+          ? null
+          : commissionPayrollModuleId,
       schemeId: null,
       bank: bank.trim(),
       account: `•••• ${lastFour}`,
@@ -437,7 +553,7 @@ function EmployeeDialog({
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="employee-category">Tipo de nómina</Label>
+                <Label htmlFor="employee-category">Área laboral / contrato</Label>
                 <Select value={category} disabled>
                   <SelectTrigger
                     id="employee-category"
@@ -494,15 +610,15 @@ function EmployeeDialog({
                 </Select>
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label>Distribución del costo</Label>
+                <Label>Distribución del costo fijo</Label>
                 <CostBranchSelector
                   branches={state.branches.filter((branch) => branch.active)}
                   selectedIds={costBranchIds}
                   onChange={setCostBranchIds}
                 />
                 <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
-                  Elige una, varias o todas. El sueldo base, costo social e ISR
-                  se reparten por igual entre los puntos seleccionados.
+                  Elige una, varias o todas para sueldo, costo social e ISR.
+                  Ventas, comisiones y movimientos usan la sucursal donde se originaron.
                 </p>
               </div>
               <div className="space-y-2">
@@ -556,40 +672,22 @@ function EmployeeDialog({
                 </p>
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="employee-commission-payroll">
-                  Nómina de comisión
-                </Label>
-                <Select
-                  value={commissionPayrollModuleId}
-                  onValueChange={(value) =>
-                    setCommissionPayrollModuleId(
-                      value as Exclude<PayrollModule, "CONSOLIDATED"> | "NONE",
-                    )
-                  }
-                >
-                  <SelectTrigger id="employee-commission-payroll">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NONE">SIN COMISIÓN</SelectItem>
-                    {state.payrollModules
-                      .filter(
-                        (module) =>
-                          module.active &&
-                          module.id !== "CONSOLIDATED" &&
-                          module.concepts.includes("COMMISSION"),
-                      )
-                      .map((module) => (
-                        <SelectItem key={module.id} value={module.id}>
-                          {module.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[10px] text-[color:var(--text-muted)]">
-                  Puede combinarse con sueldo; esta nómina nunca tomará el
-                  sueldo base.
-                </p>
+                <div className={`rounded-xl border p-3 ${commissionEnabled ? "border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20" : "border-[color:var(--border-color)]"}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div><p className="text-xs font-semibold">¿El empleado genera comisión?</p><p className="mt-0.5 text-[10px] leading-4 text-[color:var(--text-muted)]">Si está activo aparecerá en la nómina de comisiones, aunque su puesto principal sea call center, gerencia o especialista.</p></div>
+                    <button type="button" role="switch" aria-checked={commissionEnabled} aria-label="El empleado genera comisión" onClick={() => { setCommissionEnabled((value) => !value); if (commissionPayrollModuleId === "NONE") setCommissionPayrollModuleId("COMMISSION"); }} className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${commissionEnabled ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${commissionEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                  </div>
+                  {commissionEnabled && <Select value={commissionPayrollModuleId === "NONE" ? "COMMISSION" : commissionPayrollModuleId} onValueChange={(value) => setCommissionPayrollModuleId(value as Exclude<PayrollModule, "CONSOLIDATED">)}><SelectTrigger id="employee-commission-payroll" className="mt-3"><SelectValue /></SelectTrigger><SelectContent>{state.payrollModules.filter((module) => module.active && module.id !== "CONSOLIDATED" && module.concepts.includes("COMMISSION")).map((module) => <SelectItem key={module.id} value={module.id}>{module.name}</SelectItem>)}</SelectContent></Select>}
+                  <p className="mt-2 text-[10px] leading-4 text-[color:var(--text-muted)]">El sueldo fijo permanece en su propia nómina. Las comisiones se cargan según la sucursal donde se registró cada venta o movimiento.</p>
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <PayrollVisibilityControls
+                  salaryVisible={showSalaryInPayroll}
+                  commissionVisible={showCommissionInPayroll}
+                  onSalaryChange={setShowSalaryInPayroll}
+                  onCommissionChange={setShowCommissionInPayroll}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="employee-birth-date">Fecha de nacimiento</Label>
@@ -819,9 +917,18 @@ function EmployeeProfileDialog({
   const [monthlySalary, setMonthlySalary] = useState(
     String(employee?.monthlySalary ?? 0),
   );
+  const [showSalaryInPayroll, setShowSalaryInPayroll] = useState(
+    employee ? employeeShowsSalaryInPayroll(employee) : true,
+  );
+  const [showCommissionInPayroll, setShowCommissionInPayroll] = useState(
+    employee ? employeeShowsCommissionInPayroll(employee) : true,
+  );
   const [salaryPayrollModuleId, setSalaryPayrollModuleId] = useState<
     Exclude<PayrollModule, "CONSOLIDATED">
   >(employee?.salaryPayrollModuleId ?? "FIXED");
+  const [commissionEnabled, setCommissionEnabled] = useState(
+    employee?.commissionPayrollModuleId != null,
+  );
   const [commissionPayrollModuleId, setCommissionPayrollModuleId] = useState<
     Exclude<PayrollModule, "CONSOLIDATED"> | "NONE"
   >(employee?.commissionPayrollModuleId ?? "NONE");
@@ -839,6 +946,13 @@ function EmployeeProfileDialog({
     setPosition(selected.name);
     setCategory(selected.category);
     setRoleId(selected.defaultRoleId);
+    setSalaryPayrollModuleId(selected.salaryPayrollModuleId ?? "FIXED");
+    setCommissionEnabled(selected.commissionPayrollModuleId !== null);
+    setCommissionPayrollModuleId(
+      selected.commissionPayrollModuleId ?? "NONE",
+    );
+    setShowSalaryInPayroll(selected.category !== "MANAGEMENT");
+    setShowCommissionInPayroll(selected.category !== "MANAGEMENT");
   }
 
   function save() {
@@ -871,9 +985,13 @@ function EmployeeProfileDialog({
       costBranchIds,
       roleId,
       monthlySalary: salary,
+      showSalaryInPayroll,
+      showCommissionInPayroll,
       salaryPayrollModuleId: salary > 0 ? salaryPayrollModuleId : null,
       commissionPayrollModuleId:
-        commissionPayrollModuleId === "NONE" ? null : commissionPayrollModuleId,
+        !commissionEnabled || commissionPayrollModuleId === "NONE"
+          ? null
+          : commissionPayrollModuleId,
       bank: bank.trim(),
       account: `•••• ${normalizedClabe.slice(-4)}`,
       clabe: normalizedClabe,
@@ -944,7 +1062,7 @@ function EmployeeProfileDialog({
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-category">Área de nómina</Label>
+            <Label htmlFor="profile-category">Área laboral / contrato</Label>
             <Select value={category} disabled>
               <SelectTrigger
                 id="profile-category"
@@ -1047,39 +1165,22 @@ function EmployeeProfileDialog({
             </Select>
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="profile-commission-payroll">
-              Nómina que paga la comisión
-            </Label>
-            <Select
-              value={commissionPayrollModuleId}
-              onValueChange={(value) =>
-                setCommissionPayrollModuleId(
-                  value as Exclude<PayrollModule, "CONSOLIDATED"> | "NONE",
-                )
-              }
-            >
-              <SelectTrigger id="profile-commission-payroll">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="NONE">SIN COMISIÓN</SelectItem>
-                {state.payrollModules
-                  .filter(
-                    (module) =>
-                      module.active &&
-                      module.id !== "CONSOLIDATED" &&
-                      module.concepts.includes("COMMISSION"),
-                  )
-                  .map((module) => (
-                    <SelectItem key={module.id} value={module.id}>
-                      {payrollModuleLabel(state, module.id)}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            <p className="text-[10px] text-[color:var(--text-muted)]">
-              Sueldo y comisión pueden ir a módulos distintos sin duplicarse.
-            </p>
+            <div className={`rounded-xl border p-3 ${commissionEnabled ? "border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20" : "border-[color:var(--border-color)]"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div><p className="text-xs font-semibold">Participa en comisiones</p><p className="mt-0.5 text-[10px] leading-4 text-[color:var(--text-muted)]">El cambio se aplica desde el periodo actual; las nóminas anteriores conservan el estatus que tenían.</p></div>
+                <button type="button" role="switch" aria-checked={commissionEnabled} aria-label="El empleado participa en comisiones" onClick={() => { setCommissionEnabled((value) => !value); if (commissionPayrollModuleId === "NONE") setCommissionPayrollModuleId("COMMISSION"); }} className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${commissionEnabled ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${commissionEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+              </div>
+              {commissionEnabled && <Select value={commissionPayrollModuleId === "NONE" ? "COMMISSION" : commissionPayrollModuleId} onValueChange={(value) => setCommissionPayrollModuleId(value as Exclude<PayrollModule, "CONSOLIDATED">)}><SelectTrigger id="profile-commission-payroll" className="mt-3"><SelectValue /></SelectTrigger><SelectContent>{state.payrollModules.filter((module) => module.active && module.id !== "CONSOLIDATED" && module.concepts.includes("COMMISSION")).map((module) => <SelectItem key={module.id} value={module.id}>{payrollModuleLabel(state, module.id)}</SelectItem>)}</SelectContent></Select>}
+              <p className="mt-2 text-[10px] leading-4 text-[color:var(--text-muted)]">Sueldo y comisión pueden ir a módulos distintos sin duplicarse.</p>
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <PayrollVisibilityControls
+              salaryVisible={showSalaryInPayroll}
+              commissionVisible={showCommissionInPayroll}
+              onSalaryChange={setShowSalaryInPayroll}
+              onCommissionChange={setShowCommissionInPayroll}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="profile-bank">Banco</Label>
@@ -1120,7 +1221,7 @@ function EmployeeProfileDialog({
             </p>
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label>Distribución del costo</Label>
+            <Label>Distribución del costo fijo</Label>
             <CostBranchSelector
               branches={state.branches.filter(
                 (branch) => branch.active || costBranchIds.includes(branch.id),
@@ -1130,7 +1231,7 @@ function EmployeeProfileDialog({
             />
             <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
               Una sucursal absorbe 100%; varias comparten sueldo, costo social e
-              ISR en partes iguales.
+              ISR en partes iguales. La comisión se distribuye por la sucursal de la venta.
             </p>
           </div>
           <div className="flex gap-3 rounded-xl border border-[#c3a583]/35 bg-[#c3a583]/10 p-3 sm:col-span-2">
@@ -1164,7 +1265,7 @@ function EmployeeProfileDialog({
 }
 
 export function PayrollEmployeesDemo() {
-  const { state } = usePayrollDemo();
+  const { state, setEmployeePayrollVisibility } = usePayrollDemo();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [employmentEmployee, setEmploymentEmployee] =
     useState<DemoEmployee | null>(null);
@@ -1333,14 +1434,22 @@ export function PayrollEmployeesDemo() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="hidden grid-cols-[minmax(180px,1.4fr)_minmax(130px,1fr)_minmax(135px,1fr)_minmax(145px,1fr)_72px] gap-3 border-b border-[color:var(--border-color)] bg-[color:var(--bg-card)] px-4 py-1.5 text-[8px] font-semibold uppercase tracking-[0.11em] text-[color:var(--text-muted)] md:grid">
-            <span>Empleado / sucursal</span>
-            <span>Nómina / acceso</span>
-            <span>Pago / cuenta</span>
-            <span>Vigencia</span>
-            <span></span>
-          </div>
-          <div className="divide-y divide-[color:var(--border-color)]">
+          <div className="overflow-x-auto">
+            <div
+              className="grid min-w-[1100px] gap-3 border-b border-[color:var(--border-color)] bg-[color:var(--bg-card)] px-4 py-1.5 text-[8px] font-semibold uppercase tracking-[0.11em] text-[color:var(--text-muted)]"
+              style={{
+                gridTemplateColumns:
+                  "minmax(250px,1.45fr) minmax(135px,.75fr) minmax(145px,.8fr) minmax(190px,1fr) minmax(145px,.8fr) 64px",
+              }}
+            >
+              <span>Empleado / sucursal</span>
+              <span>Nómina / acceso</span>
+              <span>Pago / cuenta</span>
+              <span>Privacidad en nómina</span>
+              <span>Vigencia</span>
+              <span className="text-right">Acciones</span>
+            </div>
+            <div className="min-w-[1100px] divide-y divide-[color:var(--border-color)]">
             {pagedEmployees.map((employee) => {
               const branch = state.branches.find(
                 (item) => item.id === employee.branchId,
@@ -1360,6 +1469,9 @@ export function PayrollEmployeesDemo() {
               const role = state.roles.find(
                 (item) => item.id === employee.roleId,
               );
+              const salaryVisible = employeeShowsSalaryInPayroll(employee);
+              const commissionVisible =
+                employeeShowsCommissionInPayroll(employee);
               const today = localDate();
               const status =
                 employee.terminationDate && employee.terminationDate < today
@@ -1372,15 +1484,19 @@ export function PayrollEmployeesDemo() {
               return (
                 <div
                   key={employee.id}
-                  className="grid grid-cols-2 gap-x-3 gap-y-2 px-4 py-2 transition-colors hover:bg-[color:var(--accent-hover)]/20 md:grid-cols-[minmax(180px,1.4fr)_minmax(130px,1fr)_minmax(135px,1fr)_minmax(145px,1fr)_72px] md:items-center"
+                  className="grid min-h-14 items-center gap-3 px-4 py-1.5 transition-colors hover:bg-[color:var(--accent-hover)]/20"
+                  style={{
+                    gridTemplateColumns:
+                      "minmax(250px,1.45fr) minmax(135px,.75fr) minmax(145px,.8fr) minmax(190px,1fr) minmax(145px,.8fr) 64px",
+                  }}
                 >
-                  <div className="col-span-2 flex min-w-0 items-center gap-2.5 md:col-span-1">
+                  <div className="flex min-w-0 items-center gap-2.5">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#c3a583]/45 bg-[#342b23] text-[9px] font-bold text-[#f0d9b8]">
                       {initials(employee.name)}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-[11px] font-semibold">
+                        <p className="whitespace-nowrap text-[11px] font-semibold">
                           {employee.name}
                         </p>
                         <Badge
@@ -1416,12 +1532,68 @@ export function PayrollEmployeesDemo() {
                     <p className="text-[8px] uppercase tracking-[0.08em] text-[color:var(--text-muted)] md:hidden">
                       Pago / cuenta
                     </p>
-                    <p className="number-display truncate text-[11px]">
-                      {money.format(employee.monthlySalary)}
-                    </p>
+                    {salaryVisible ? (
+                      <p className="number-display truncate text-[11px]">
+                        {money.format(employee.monthlySalary)}
+                      </p>
+                    ) : (
+                      <p className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.06em] text-amber-700 dark:text-amber-300">
+                        <EyeOff className="h-3 w-3" /> Confidencial
+                      </p>
+                    )}
                     <p className="mt-0.5 truncate text-[9px] text-[color:var(--text-muted)]">
                       {employee.bank} · {employee.account}
                     </p>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        {
+                          key: "salary",
+                          label: "Sueldo",
+                          checked: salaryVisible,
+                          nextVisibility: {
+                            showSalaryInPayroll: !salaryVisible,
+                            showCommissionInPayroll: commissionVisible,
+                          },
+                        },
+                        {
+                          key: "commission",
+                          label: "Comisión",
+                          checked: commissionVisible,
+                          nextVisibility: {
+                            showSalaryInPayroll: salaryVisible,
+                            showCommissionInPayroll: !commissionVisible,
+                          },
+                        },
+                      ].map((control) => (
+                        <button
+                          key={control.key}
+                          type="button"
+                          role="switch"
+                          aria-checked={control.checked}
+                          aria-label={`${control.checked ? "Ocultar" : "Mostrar"} ${control.label.toLocaleLowerCase("es-MX")} de ${employee.name} en nóminas`}
+                          title={`${control.label}: ${control.checked ? "visible" : "confidencial"}`}
+                          onClick={() => {
+                            setEmployeePayrollVisibility(
+                              employee.id,
+                              control.nextVisibility,
+                            );
+                            toast.success(
+                              `${control.label} ${control.checked ? "oculto" : "visible"} en nóminas para ${employee.name}.`,
+                            );
+                          }}
+                          className={`flex h-7 items-center justify-center gap-1 rounded-md border px-1.5 text-[8px] font-semibold uppercase transition-colors ${control.checked ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-200" : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/25 dark:text-amber-200"}`}
+                        >
+                          {control.checked ? (
+                            <Eye className="h-3 w-3 shrink-0" />
+                          ) : (
+                            <EyeOff className="h-3 w-3 shrink-0" />
+                          )}
+                          <span className="truncate">{control.label}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div className="min-w-0">
                     <p className="text-[8px] uppercase tracking-[0.08em] text-[color:var(--text-muted)] md:hidden">
@@ -1477,6 +1649,7 @@ export function PayrollEmployeesDemo() {
                 </p>
               </div>
             )}
+            </div>
           </div>
           {filteredEmployees.length > 0 && (
             <div className="flex flex-col gap-2 border-t border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/10 px-4 py-2.5 text-[10px] sm:flex-row sm:items-center sm:justify-between">

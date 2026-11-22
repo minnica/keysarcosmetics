@@ -485,8 +485,8 @@ export function PayrollModulesDemo() {
                       togglePayrollModule(module.id);
                       toast.success(
                         module.active
-                          ? "Módulo desactivado; el historial se conserva."
-                          : "Módulo activado.",
+                          ? "Módulo desactivado para periodos futuros; el periodo vigente y todo el historial se conservan."
+                          : "Módulo reactivado para el siguiente periodo.",
                       );
                     }}
                   >

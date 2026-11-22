@@ -43,6 +43,7 @@ export type PayrollStatus = "DRAFT" | "APPROVED" | "PAID";
 export type MovementType = "BONUS" | "FINE";
 export type MovementMode = "FIXED" | "SCALE";
 export type BonusCondition = "SALES" | "BONUS_COUNT";
+export type PersonalizedBonusAggregation = "INDIVIDUAL" | "GROUP";
 export type MovementStatus =
   | "DRAFT"
   | "PENDING"
@@ -82,6 +83,18 @@ export interface DemoBranch {
   registeredAt: string;
   deactivatedAt: string | null;
   lastSyncedAt: string | null;
+}
+
+export function branchAppliesToPeriod(
+  branch: Pick<DemoBranch, "registeredAt" | "active" | "deactivatedAt">,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return (
+    branch.registeredAt <= periodEnd &&
+    (branch.active ||
+      Boolean(branch.deactivatedAt && branch.deactivatedAt >= periodStart))
+  );
 }
 
 export interface DemoPosBranchInput {
@@ -127,6 +140,8 @@ export interface DemoEmployee {
   branchId: string;
   costBranchIds: string[];
   monthlySalary: number;
+  showSalaryInPayroll?: boolean;
+  showCommissionInPayroll?: boolean;
   salaryPayrollModuleId: Exclude<PayrollModule, "CONSOLIDATED"> | null;
   commissionPayrollModuleId: Exclude<PayrollModule, "CONSOLIDATED"> | null;
   schemeId: string | null;
@@ -149,6 +164,14 @@ export interface DemoEmployee {
   secondaryAccessKeyUpdatedBy?: string | null;
 }
 
+export function employeeShowsSalaryInPayroll(employee: DemoEmployee) {
+  return employee.showSalaryInPayroll ?? employee.category !== "MANAGEMENT";
+}
+
+export function employeeShowsCommissionInPayroll(employee: DemoEmployee) {
+  return employee.showCommissionInPayroll ?? employee.category !== "MANAGEMENT";
+}
+
 export function employeeAppliesToPeriod(
   employee: Pick<DemoEmployee, "hireDate" | "terminationDate">,
   periodStart: string,
@@ -169,12 +192,30 @@ export interface DemoPayrollModuleDefinition {
   active: boolean;
   custom: boolean;
   createdAt: string;
+  deactivatedAt?: string | null;
+}
+
+export function payrollModuleAppliesToPeriod(
+  module: Pick<
+    DemoPayrollModuleDefinition,
+    "createdAt" | "active" | "deactivatedAt"
+  >,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return (
+    module.createdAt <= periodEnd &&
+    (module.active ||
+      Boolean(module.deactivatedAt && module.deactivatedAt >= periodStart))
+  );
 }
 
 export interface DemoPosition {
   id: string;
   name: string;
   category: EmployeeCategory;
+  salaryPayrollModuleId: Exclude<PayrollModule, "CONSOLIDATED"> | null;
+  commissionPayrollModuleId: Exclude<PayrollModule, "CONSOLIDATED"> | null;
   defaultRoleId: string;
   active: boolean;
   createdAt: string;
@@ -270,6 +311,16 @@ export interface DemoSalaryAssignment {
   createdAt: string;
 }
 
+export interface DemoCommissionAssignment {
+  id: string;
+  employeeId: string;
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED"> | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  reason: string;
+  createdAt: string;
+}
+
 export interface DemoSale {
   id: string;
   employeeId: string;
@@ -311,6 +362,8 @@ export interface DemoBonusFineConcept {
   salesScale?: boolean;
   salesTiers?: BonusSalesTier[];
   eligibleEmployeeIds?: string[] | null;
+  personalized?: boolean;
+  salesAggregation?: PersonalizedBonusAggregation;
   active: boolean;
   createdAt: string;
   deletedAt?: string | null;
@@ -467,11 +520,19 @@ export interface DemoPeriodTaxInclusion {
   updatedByEmployeeId: string;
 }
 
+export interface DemoNegativeBalanceBreakdown {
+  fines: number;
+  loans: number;
+  advances: number;
+  otherDeductions: number;
+}
+
 export interface DemoNegativeBalance {
   employeeId: string;
   payrollModule: Exclude<PayrollModule, "CONSOLIDATED">;
   amount: number;
   originPeriodStart: string;
+  breakdown?: DemoNegativeBalanceBreakdown;
   updatedAt: string;
 }
 
@@ -742,6 +803,7 @@ export interface DemoState {
   schemes: DemoScheme[];
   schemeAssignments: DemoSchemeAssignment[];
   salaryAssignments: DemoSalaryAssignment[];
+  commissionAssignments: DemoCommissionAssignment[];
   sales: DemoSale[];
   bonusFineConcepts: DemoBonusFineConcept[];
   movements: DemoMovement[];
@@ -792,10 +854,16 @@ export interface EmployeePayrollLine {
   doublePayDayCount: number;
   doublePayAmount: number;
   carriedNegativeBalance: number;
+  carriedNegativeBalanceBreakdown: DemoNegativeBalanceBreakdown;
   newNegativeBalance: number;
+  newNegativeBalanceBreakdown: DemoNegativeBalanceBreakdown;
   bonuses: number;
   fines: number;
   loanDeduction: number;
+  loanDeductionBreakdown: Pick<
+    DemoNegativeBalanceBreakdown,
+    "loans" | "advances"
+  >;
   externalAdditions: number;
   externalDeductions: number;
   viaticsAdditions: number;
@@ -820,6 +888,106 @@ export interface EmployeePayrollLine {
   includedInModule: boolean;
 }
 
+const emptyNegativeBalanceBreakdown = (): DemoNegativeBalanceBreakdown => ({
+  fines: 0,
+  loans: 0,
+  advances: 0,
+  otherDeductions: 0,
+});
+
+function negativeBalanceBreakdownFor(
+  balance: DemoNegativeBalance,
+): DemoNegativeBalanceBreakdown {
+  return balance.breakdown
+    ? { ...balance.breakdown }
+    : {
+        ...emptyNegativeBalanceBreakdown(),
+        otherDeductions: balance.amount,
+      };
+}
+
+function addNegativeBalanceBreakdowns(
+  left: DemoNegativeBalanceBreakdown,
+  right: DemoNegativeBalanceBreakdown,
+): DemoNegativeBalanceBreakdown {
+  return {
+    fines: left.fines + right.fines,
+    loans: left.loans + right.loans,
+    advances: left.advances + right.advances,
+    otherDeductions: left.otherDeductions + right.otherDeductions,
+  };
+}
+
+function negativeBalanceBreakdownTotal(
+  breakdown: DemoNegativeBalanceBreakdown,
+) {
+  return (
+    breakdown.fines +
+    breakdown.loans +
+    breakdown.advances +
+    breakdown.otherDeductions
+  );
+}
+
+function unpaidNegativeBalanceBreakdown(
+  components: Array<{
+    source: keyof DemoNegativeBalanceBreakdown;
+    amount: number;
+  }>,
+  availableAmount: number,
+) {
+  let available = Math.max(availableAmount, 0);
+  const pending = emptyNegativeBalanceBreakdown();
+  components.forEach(({ source, amount }) => {
+    const charge = Math.max(amount, 0);
+    const covered = Math.min(charge, available);
+    available -= covered;
+    pending[source] += charge - covered;
+  });
+  return pending;
+}
+
+function reconcileNegativeBalancesForClosure(
+  existingBalances: DemoNegativeBalance[],
+  payrollModule: Exclude<PayrollModule, "CONSOLIDATED">,
+  periodStart: string,
+  balances: Array<{
+    employeeId: string;
+    amount: number;
+    carriedAmount: number;
+    breakdown: DemoNegativeBalanceBreakdown;
+  }>,
+) {
+  const inputByEmployee = new Map(
+    balances.map((balance) => [balance.employeeId, balance]),
+  );
+  const retained = existingBalances.filter((balance) => {
+    const input = inputByEmployee.get(balance.employeeId);
+    if (!input) return true;
+    const belongsToThisClosure =
+      balance.payrollModule === payrollModule &&
+      balance.originPeriodStart === periodStart;
+    if (belongsToThisClosure) return false;
+    return !(
+      input.carriedAmount > 0.005 && balance.originPeriodStart <= periodStart
+    );
+  });
+  const updatedAt = new Date().toISOString();
+  return [
+    ...retained,
+    ...balances
+      .filter((balance) => balance.amount > 0.005)
+      .map((balance) => ({
+        employeeId: balance.employeeId,
+        payrollModule,
+        amount: balance.amount,
+        originPeriodStart: periodStart,
+        breakdown: balance.breakdown,
+        updatedAt,
+      })),
+  ];
+}
+
 export const permissionCatalog = [
   "dashboard.view",
   "payroll.create",
@@ -842,6 +1010,12 @@ export const modulePermissionCatalog = [
     label: "Centro de control",
     section: "Dirección",
     paths: ["/centro-control"],
+  },
+  {
+    permission: "module.payroll_summary",
+    label: "Resumen de nómina",
+    section: "Dirección",
+    paths: ["/resumen-nomina"],
   },
   {
     permission: "module.employees",
@@ -1049,6 +1223,30 @@ export const modulePermissionCatalog = [
   },
 ] as const;
 
+export const modulePermissionActions = [
+  "view",
+  "create",
+  "edit",
+  "delete",
+] as const;
+
+export type ModulePermissionAction = (typeof modulePermissionActions)[number];
+
+export function moduleActionPermission(
+  modulePermission: string,
+  action: ModulePermissionAction,
+) {
+  return action === "view"
+    ? modulePermission
+    : `${modulePermission}.action.${action}`;
+}
+
+export function modulePermissionBundle(modulePermission: string) {
+  return modulePermissionActions.map((action) =>
+    moduleActionPermission(modulePermission, action),
+  );
+}
+
 export function customPayrollModulePermission(moduleId: string) {
   return `module.payroll.custom:${moduleId}`;
 }
@@ -1059,6 +1257,21 @@ export function roleHasPermission(
 ) {
   return (
     role?.id === "role-admin" || role?.permissions.includes(permission) === true
+  );
+}
+
+export function roleHasModuleActionPermission(
+  role: DemoRole | undefined,
+  modulePermission: string,
+  action: ModulePermissionAction,
+) {
+  return (
+    role?.id === "role-admin" ||
+    (role?.permissions.includes(modulePermission) === true &&
+      (action === "view" ||
+        role.permissions.includes(
+          moduleActionPermission(modulePermission, action),
+        )))
   );
 }
 
@@ -1164,6 +1377,30 @@ export function employeeSalaryPayrollModule(
   return "FIXED";
 }
 
+export function employeeSalaryPayrollModuleForPeriod(
+  state: Pick<DemoState, "salaryAssignments">,
+  employee: DemoEmployee,
+  periodStart: string,
+  periodEnd: string,
+): Exclude<PayrollModule, "CONSOLIDATED"> | null {
+  const employeeHistory = state.salaryAssignments.filter(
+    (assignment) => assignment.employeeId === employee.id,
+  );
+  if (employeeHistory.length === 0)
+    return employeeSalaryPayrollModule(employee);
+  return (
+    employeeHistory
+      .filter(
+        (assignment) =>
+          assignment.effectiveFrom <= periodEnd &&
+          (!assignment.effectiveTo || assignment.effectiveTo >= periodStart),
+      )
+      .sort((left, right) =>
+        right.effectiveFrom.localeCompare(left.effectiveFrom),
+      )[0]?.payrollModule ?? null
+  );
+}
+
 export function employeeCommissionPayrollModule(
   employee: DemoEmployee,
 ): Exclude<PayrollModule, "CONSOLIDATED"> | null {
@@ -1171,6 +1408,60 @@ export function employeeCommissionPayrollModule(
     return employee.commissionPayrollModuleId;
   if (!employee.schemeId) return null;
   return employee.category === "CONTRACTOR" ? "CONTRACTOR" : "COMMISSION";
+}
+
+export function employeeCommissionPayrollModulesForPeriod(
+  state: Pick<DemoState, "commissionAssignments">,
+  employee: DemoEmployee,
+  periodStart: string,
+  periodEnd: string,
+): Exclude<PayrollModule, "CONSOLIDATED">[] {
+  const employeeHistory = state.commissionAssignments.filter(
+    (assignment) => assignment.employeeId === employee.id,
+  );
+  if (employeeHistory.length === 0) {
+    const fallback = employeeCommissionPayrollModule(employee);
+    return fallback ? [fallback] : [];
+  }
+  return Array.from(
+    new Set(
+      employeeHistory
+        .filter(
+          (assignment) =>
+            assignment.effectiveFrom <= periodEnd &&
+            (!assignment.effectiveTo || assignment.effectiveTo >= periodStart),
+        )
+        .map((assignment) => assignment.payrollModule)
+        .filter(
+          (module): module is Exclude<PayrollModule, "CONSOLIDATED"> =>
+            module !== null,
+        ),
+    ),
+  );
+}
+
+export function employeeCommissionPayrollModuleForPeriod(
+  state: Pick<DemoState, "commissionAssignments">,
+  employee: DemoEmployee,
+  periodStart: string,
+  periodEnd: string,
+): Exclude<PayrollModule, "CONSOLIDATED"> | null {
+  const employeeHistory = state.commissionAssignments.filter(
+    (assignment) => assignment.employeeId === employee.id,
+  );
+  if (employeeHistory.length === 0)
+    return employeeCommissionPayrollModule(employee);
+  return (
+    employeeHistory
+      .filter(
+        (assignment) =>
+          assignment.effectiveFrom <= periodEnd &&
+          (!assignment.effectiveTo || assignment.effectiveTo >= periodStart),
+      )
+      .sort((left, right) =>
+        right.effectiveFrom.localeCompare(left.effectiveFrom),
+      )[0]?.payrollModule ?? null
+  );
 }
 
 export function payrollModuleForCategory(
@@ -1192,6 +1483,21 @@ export interface TemporaryBonusStanding {
   awardAmount: number;
   tier: BonusSalesTier | null;
   rank: number;
+}
+
+export interface PersonalizedBonusProgress {
+  concept: DemoBonusFineConcept;
+  employee: DemoEmployee;
+  aggregation: PersonalizedBonusAggregation;
+  sales: number;
+  target: number;
+  remaining: number;
+  achieved: boolean;
+  awardAmount: number;
+  tier: BonusSalesTier | null;
+  participantCount: number;
+  periodStart: string;
+  periodEnd: string;
 }
 
 export function bonusFineConceptAllowsEmployee(
@@ -1375,6 +1681,139 @@ export function temporaryBonusAwardsForPeriod(
   });
 }
 
+export function personalizedBonusProgressForPeriod(
+  state: DemoState,
+  concept: DemoBonusFineConcept,
+  periodStart: string,
+  periodEnd: string,
+): PersonalizedBonusProgress[] {
+  if (
+    concept.type !== "BONUS" ||
+    !concept.personalized ||
+    !concept.active ||
+    concept.deletedAt ||
+    concept.validFrom > periodEnd ||
+    (concept.validUntil && concept.validUntil < periodStart)
+  )
+    return [];
+
+  const evaluationStart =
+    concept.validFrom > periodStart ? concept.validFrom : periodStart;
+  const evaluationEnd =
+    concept.validUntil && concept.validUntil < periodEnd
+      ? concept.validUntil
+      : periodEnd;
+  const participantIds = Array.from(new Set(concept.eligibleEmployeeIds ?? []));
+  const participants = participantIds
+    .map((employeeId) =>
+      state.employees.find((employee) => employee.id === employeeId),
+    )
+    .filter(
+      (employee): employee is DemoEmployee =>
+        Boolean(employee) &&
+        employee!.hireDate <= evaluationEnd &&
+        (!employee!.terminationDate ||
+          employee!.terminationDate >= evaluationStart),
+    );
+  if (participants.length === 0) return [];
+
+  const aggregation = concept.salesAggregation ?? "INDIVIDUAL";
+  const salesByEmployee = new Map(
+    participants.map((employee) => [
+      employee.id,
+      employeeSalesForRange(state, employee.id, evaluationStart, evaluationEnd),
+    ]),
+  );
+  const groupSales = Array.from(salesByEmployee.values()).reduce(
+    (sum, sales) => sum + sales,
+    0,
+  );
+
+  return participants.map((employee) => {
+    const sales =
+      aggregation === "GROUP"
+        ? groupSales
+        : (salesByEmployee.get(employee.id) ?? 0);
+    const award = resolveBonusConceptAward(concept, sales);
+    const nextTier = [...(concept.salesTiers ?? [])]
+      .sort((left, right) => left.from - right.from)
+      .find((tier) => sales < tier.from);
+    const attainedTarget =
+      award.tier?.from ?? nextTier?.from ?? award.threshold;
+    return {
+      concept,
+      employee,
+      aggregation,
+      sales,
+      target: attainedTarget,
+      remaining: Math.max(attainedTarget - sales, 0),
+      achieved: award.amount > 0,
+      awardAmount: award.amount,
+      tier: award.tier,
+      participantCount: participants.length,
+      periodStart: evaluationStart,
+      periodEnd: evaluationEnd,
+    };
+  });
+}
+
+export function personalizedBonusAwardsForPeriod(
+  state: DemoState,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return state.bonusFineConcepts.flatMap((concept) =>
+    personalizedBonusProgressForPeriod(state, concept, periodStart, periodEnd)
+      .filter((progress) => progress.achieved)
+      .filter(
+        (progress) =>
+          !state.movements.some(
+            (movement) =>
+              movement.catalogId === concept.id &&
+              movement.employeeId === progress.employee.id &&
+              movement.status === "APPROVED" &&
+              movement.periodStart >= periodStart &&
+              movement.periodStart <= periodEnd,
+          ),
+      )
+      .map((progress) => {
+        const saleBranchIds = Array.from(
+          new Set(
+            state.sales
+              .filter(
+                (sale) =>
+                  sale.employeeId === progress.employee.id &&
+                  sale.date >= progress.periodStart &&
+                  sale.date <= progress.periodEnd,
+              )
+              .map((sale) => sale.branchId),
+          ),
+        ).filter((branchId) =>
+          state.branches.some((branch) => branch.id === branchId),
+        );
+        const fallbackBranchIds = Array.from(
+          new Set(
+            progress.employee.costBranchIds.length
+              ? progress.employee.costBranchIds
+              : [progress.employee.branchId],
+          ),
+        ).filter((branchId) =>
+          state.branches.some((branch) => branch.id === branchId),
+        );
+        return {
+          id: `personalized-${concept.id}-${progress.employee.id}-${periodStart}`,
+          concept,
+          employee: progress.employee,
+          amount: progress.awardAmount,
+          progress,
+          appliedAt: progress.periodEnd,
+          costBranchIds:
+            saleBranchIds.length > 0 ? saleBranchIds : fallbackBranchIds,
+        };
+      }),
+  );
+}
+
 export function periodFromFrequency(
   frequency: PayrollPeriodFrequency,
   referenceDate: string,
@@ -1436,6 +1875,33 @@ function mergeSalaryAssignments(
       left.effectiveFrom.localeCompare(right.effectiveFrom),
     )
     .reduce<DemoSalaryAssignment[]>((result, addition) => {
+      const withoutSameStart = result.filter(
+        (item) =>
+          !(
+            item.employeeId === addition.employeeId &&
+            item.effectiveFrom === addition.effectiveFrom
+          ),
+      );
+      const closedPrevious = withoutSameStart.map((item) =>
+        item.employeeId === addition.employeeId &&
+        item.effectiveFrom < addition.effectiveFrom &&
+        (!item.effectiveTo || item.effectiveTo >= addition.effectiveFrom)
+          ? { ...item, effectiveTo: addDays(addition.effectiveFrom, -1) }
+          : item,
+      );
+      return [...closedPrevious, addition];
+    }, existing);
+}
+
+function mergeCommissionAssignments(
+  existing: DemoCommissionAssignment[],
+  additions: DemoCommissionAssignment[],
+) {
+  return [...additions]
+    .sort((left, right) =>
+      left.effectiveFrom.localeCompare(right.effectiveFrom),
+    )
+    .reduce<DemoCommissionAssignment[]>((result, addition) => {
       const withoutSameStart = result.filter(
         (item) =>
           !(
@@ -1606,6 +2072,17 @@ function createInitialState(): DemoState {
       registeredAt: "2026-01-05",
       deactivatedAt: null,
       lastSyncedAt: "2026-09-07T09:15:00.000Z",
+    },
+    {
+      id: "branch-chalco",
+      name: "CHALCO",
+      city: "ESTADO DE MÉXICO",
+      active: true,
+      source: "PAYROLL",
+      externalPosId: null,
+      registeredAt: "2026-11-22",
+      deactivatedAt: null,
+      lastSyncedAt: null,
     },
   ];
   const employees: DemoEmployee[] = [
@@ -2144,12 +2621,20 @@ function createInitialState(): DemoState {
       commissionRate: 0.009,
       updatedAt: isoDate(new Date()),
     },
+    {
+      branchId: "branch-chalco",
+      managerId: null,
+      monthlyTarget: 0,
+      commissionRate: 0,
+      updatedAt: isoDate(new Date()),
+    },
   ];
   const kioskFactors = [
     0.84, 0.93, 1.02, 1.08, 0.97, 1.15, 1.21, 0.89, 1.04, 1.12, 0.99, 1.18,
   ];
-  const kioskMonthlySales: DemoKioskMonthlySale[] = kioskTargets.flatMap(
-    (target, branchIndex) =>
+  const kioskMonthlySales: DemoKioskMonthlySale[] = kioskTargets
+    .filter((target) => target.monthlyTarget > 0)
+    .flatMap((target, branchIndex) =>
       Array.from({ length: 12 }, (_, offset) => {
         const monthDate = new Date(
           new Date().getFullYear(),
@@ -2173,7 +2658,7 @@ function createInitialState(): DemoState {
           ),
         };
       }),
-  );
+    );
 
   return {
     lastUpdatedAt: null,
@@ -2183,6 +2668,8 @@ function createInitialState(): DemoState {
         id: "position-seller",
         name: "VENDEDORA",
         category: "SELLER",
+        salaryPayrollModuleId: null,
+        commissionPayrollModuleId: "COMMISSION",
         defaultRoleId: "role-employee",
         active: true,
         createdAt: "2025-01-01",
@@ -2191,6 +2678,8 @@ function createInitialState(): DemoState {
         id: "position-seller-senior",
         name: "VENDEDORA SENIOR",
         category: "SELLER",
+        salaryPayrollModuleId: null,
+        commissionPayrollModuleId: "COMMISSION",
         defaultRoleId: "role-employee",
         active: true,
         createdAt: "2025-01-01",
@@ -2199,6 +2688,8 @@ function createInitialState(): DemoState {
         id: "position-facialist",
         name: "FACIALISTA",
         category: "SPECIALIST",
+        salaryPayrollModuleId: "SPECIALIST",
+        commissionPayrollModuleId: null,
         defaultRoleId: "role-employee",
         active: true,
         createdAt: "2025-01-01",
@@ -2207,6 +2698,8 @@ function createInitialState(): DemoState {
         id: "position-body-specialist",
         name: "ESPECIALISTA CORPORAL",
         category: "SPECIALIST",
+        salaryPayrollModuleId: "SPECIALIST",
+        commissionPayrollModuleId: null,
         defaultRoleId: "role-employee",
         active: true,
         createdAt: "2025-01-01",
@@ -2215,6 +2708,8 @@ function createInitialState(): DemoState {
         id: "position-branch-manager",
         name: "GERENTE DE SUCURSAL",
         category: "MANAGEMENT",
+        salaryPayrollModuleId: "FIXED",
+        commissionPayrollModuleId: null,
         defaultRoleId: "role-manager",
         active: true,
         createdAt: "2025-01-01",
@@ -2223,6 +2718,8 @@ function createInitialState(): DemoState {
         id: "position-regional-manager-seller",
         name: "GERENTE REGIONAL · VENDEDOR",
         category: "MANAGEMENT",
+        salaryPayrollModuleId: "FIXED",
+        commissionPayrollModuleId: "COMMISSION",
         defaultRoleId: "role-manager",
         active: true,
         createdAt: "2025-01-01",
@@ -2231,6 +2728,8 @@ function createInitialState(): DemoState {
         id: "position-call-center",
         name: "CALL CENTER",
         category: "CALL_CENTER",
+        salaryPayrollModuleId: "FIXED",
+        commissionPayrollModuleId: null,
         defaultRoleId: "role-employee",
         active: true,
         createdAt: "2025-01-01",
@@ -2239,6 +2738,8 @@ function createInitialState(): DemoState {
         id: "position-contractor-seller",
         name: "VENDEDORA POR HONORARIOS",
         category: "CONTRACTOR",
+        salaryPayrollModuleId: null,
+        commissionPayrollModuleId: "CONTRACTOR",
         defaultRoleId: "role-employee",
         active: true,
         createdAt: "2025-01-01",
@@ -2428,6 +2929,17 @@ function createInitialState(): DemoState {
         reason: "SUELDO INICIAL DEL EXPEDIENTE",
         createdAt: employee.hireDate,
       })),
+    commissionAssignments: employees.map((employee) => ({
+      id: `commission-initial-${employee.id}`,
+      employeeId: employee.id,
+      payrollModule: employee.commissionPayrollModuleId,
+      effectiveFrom: employee.hireDate,
+      effectiveTo: null,
+      reason: employee.commissionPayrollModuleId
+        ? "ALTA INICIAL CON COMISIÓN"
+        : "ALTA INICIAL SIN COMISIÓN",
+      createdAt: employee.hireDate,
+    })),
     schemes: [
       {
         id: "scheme-growth",
@@ -3035,7 +3547,9 @@ function createInitialState(): DemoState {
         name: "USUARIO MASTER",
         permissions: [
           ...permissionCatalog,
-          ...modulePermissionCatalog.map(({ permission }) => permission),
+          ...modulePermissionCatalog.flatMap(({ permission }) =>
+            modulePermissionBundle(permission),
+          ),
         ],
       },
       {
@@ -3351,6 +3865,48 @@ function id(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function connectBranchToPayrollDependencies(
+  current: DemoState,
+  branch: DemoBranch,
+) {
+  const branches = current.branches.some((item) => item.id === branch.id)
+    ? current.branches.map((item) => (item.id === branch.id ? branch : item))
+    : [...current.branches, branch];
+  if (!branch.active) return { ...current, branches };
+
+  const kioskTargets = current.kioskTargets.some(
+    (target) => target.branchId === branch.id,
+  )
+    ? current.kioskTargets
+    : [
+        ...current.kioskTargets,
+        {
+          branchId: branch.id,
+          managerId: null,
+          monthlyTarget: 0,
+          commissionRate: 0,
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+  const branchCommissionSchemes = current.branchCommissionSchemes.map(
+    (scheme) =>
+      scheme.scope === "ALL_COMBINED" && !scheme.branchIds.includes(branch.id)
+        ? {
+            ...scheme,
+            branchIds: [...scheme.branchIds, branch.id],
+            updatedAt: new Date().toISOString(),
+          }
+        : scheme,
+  );
+
+  return {
+    ...current,
+    branches,
+    kioskTargets,
+    branchCommissionSchemes,
+  };
+}
+
 interface DemoPayrollContextValue {
   state: DemoState;
   isAuthenticated: boolean;
@@ -3374,7 +3930,14 @@ interface DemoPayrollContextValue {
   ) => void;
   updatePosition: (
     positionId: string,
-    position: Pick<DemoPosition, "name" | "category" | "defaultRoleId">,
+    position: Pick<
+      DemoPosition,
+      | "name"
+      | "category"
+      | "salaryPayrollModuleId"
+      | "commissionPayrollModuleId"
+      | "defaultRoleId"
+    >,
   ) => void;
   togglePosition: (positionId: string) => void;
   addPayrollModule: (
@@ -3403,6 +3966,8 @@ interface DemoPayrollContextValue {
       | "branchId"
       | "costBranchIds"
       | "monthlySalary"
+      | "showSalaryInPayroll"
+      | "showCommissionInPayroll"
       | "salaryPayrollModuleId"
       | "commissionPayrollModuleId"
       | "roleId"
@@ -3414,6 +3979,13 @@ interface DemoPayrollContextValue {
       | "ivaRate"
       | "isrRetentionRate"
       | "ivaRetentionRate"
+    >,
+  ) => void;
+  setEmployeePayrollVisibility: (
+    employeeId: string,
+    visibility: Pick<
+      DemoEmployee,
+      "showSalaryInPayroll" | "showCommissionInPayroll"
     >,
   ) => void;
   updateEmployeeEmployment: (
@@ -3536,7 +4108,12 @@ interface DemoPayrollContextValue {
       payDate: string;
       label: string;
     },
-    balances: Array<{ employeeId: string; amount: number }>,
+    balances: Array<{
+      employeeId: string;
+      amount: number;
+      carriedAmount: number;
+      breakdown: DemoNegativeBalanceBreakdown;
+    }>,
   ) => void;
   setCalculationMode: (mode: DemoPayrollRun["mode"]) => void;
   setCommissionModeOverride: (
@@ -3659,6 +4236,11 @@ interface DemoPayrollContextValue {
   ) => void;
   addRole: (name: string) => void;
   togglePermission: (roleId: string, permission: string) => void;
+  setPermissions: (
+    roleId: string,
+    permissions: string[],
+    enabled: boolean,
+  ) => void;
   assignRole: (employeeId: string, roleId: string) => void;
   setEmployeeCostBranches: (employeeId: string, branchIds: string[]) => void;
   setEmployeeSecondaryAccessKey: (
@@ -3805,8 +4387,21 @@ export function PayrollDemoProvider({
             (sum, sale) => sum + sale.amount,
             0,
           );
+          const commissionModulesInPeriod = new Set(
+            employeeCommissionPayrollModulesForPeriod(
+              state,
+              employee,
+              periodStart,
+              configuredEnd,
+            ),
+          );
           const employeeCommissionModule =
-            employeeCommissionPayrollModule(employee);
+            employeeCommissionPayrollModuleForPeriod(
+              state,
+              employee,
+              periodStart,
+              configuredEnd,
+            );
           const applicableAssignment = state.schemeAssignments
             .filter(
               (assignment) =>
@@ -3820,7 +4415,9 @@ export function PayrollDemoProvider({
                 (applicableAssignment?.schemeId ?? employee.schemeId) &&
               schemeAppliesToPeriod(item, periodStart, configuredEnd),
           );
-          const hasCommissionActivity = grossSales > 0 || Boolean(scheme);
+          const hasCommissionActivity =
+            commissionModulesInPeriod.size > 0 &&
+            (grossSales > 0 || Boolean(scheme));
           const overlappingPeriods = periodOptions.filter(
             (period) =>
               period.start <= employmentEnd && period.end >= employmentStart,
@@ -3944,9 +4541,9 @@ export function PayrollDemoProvider({
             payrollModule === "CONSOLIDATED" ||
             salaryModulesInPeriod.has(payrollModule);
           const commissionAssignedHere =
-            payrollModule === "CONSOLIDATED" ||
-            commissionModuleId === payrollModule ||
-            (payrollModule === "COMMISSION" && hasCommissionActivity);
+            commissionModulesInPeriod.size > 0 &&
+            (payrollModule === "CONSOLIDATED" ||
+              commissionModulesInPeriod.has(payrollModule));
           const commission =
             commissionAssignedHere && includesConcept("COMMISSION")
               ? calculatedCommission
@@ -3981,26 +4578,52 @@ export function PayrollDemoProvider({
                 )
                 .reduce((sum, award) => sum + award.amount, 0)
             : 0;
-          const bonuses = movementBonuses + temporaryBonuses;
+          const personalizedBonuses = includesConcept("BONUS")
+            ? personalizedBonusAwardsForPeriod(
+                state,
+                periodStart,
+                configuredEnd,
+              )
+                .filter(
+                  (award) =>
+                    award.employee.id === employee.id &&
+                    (payrollModule === "CONSOLIDATED" ||
+                      award.concept.payrollModule === payrollModule ||
+                      payrollModule === "COMMISSION"),
+                )
+                .reduce((sum, award) => sum + award.amount, 0)
+            : 0;
+          const bonuses =
+            movementBonuses + temporaryBonuses + personalizedBonuses;
           const fines = periodMovements
             .filter(
               (movement) => includesConcept("FINE") && movement.type === "FINE",
             )
             .reduce((sum, movement) => sum + movement.amount, 0);
-          const loanDeduction = state.loans
-            .filter(
-              (loan) =>
-                loan.employeeId === employee.id &&
-                loan.status === "APPROVED" &&
-                loan.paidInstallments < loan.installments &&
-                loan.firstPeriod <= periodStart &&
-                (payrollModule === "CONSOLIDATED" ||
-                  loan.payrollModule === payrollModule) &&
-                includesConcept(
-                  loan.requestType === "ADVANCE" ? "ADVANCE" : "LOAN",
-                ),
-            )
-            .reduce((sum, loan) => sum + loan.amount / loan.installments, 0);
+          const applicableLoans = state.loans.filter(
+            (loan) =>
+              loan.employeeId === employee.id &&
+              loan.status === "APPROVED" &&
+              loan.paidInstallments < loan.installments &&
+              loan.firstPeriod <= periodStart &&
+              (payrollModule === "CONSOLIDATED" ||
+                loan.payrollModule === payrollModule) &&
+              includesConcept(
+                loan.requestType === "ADVANCE" ? "ADVANCE" : "LOAN",
+              ),
+          );
+          const loanDeductionBreakdown = applicableLoans.reduce(
+            (result, loan) => {
+              const installment = loan.amount / loan.installments;
+              if (loan.requestType === "ADVANCE")
+                result.advances += installment;
+              else result.loans += installment;
+              return result;
+            },
+            { loans: 0, advances: 0 },
+          );
+          const loanDeduction =
+            loanDeductionBreakdown.loans + loanDeductionBreakdown.advances;
           const payrollAdjustments = state.adjustments.filter(
             (adjustment) =>
               adjustment.status === "APPROVED" &&
@@ -4027,14 +4650,25 @@ export function PayrollDemoProvider({
                 (adjustment.type === "LOAN" && includesConcept("LOAN")),
             )
             .reduce((sum, adjustment) => sum + adjustmentShare(adjustment), 0);
-          const externalDeductions = payrollAdjustments
-            .filter(
-              (adjustment) =>
-                (adjustment.type === "MINUS" &&
-                  includesConcept("ADJUSTMENT_MINUS")) ||
-                (adjustment.type === "FINE" && includesConcept("FINE")) ||
-                (adjustment.type === "LOAN_PAYMENT" && includesConcept("LOAN")),
-            )
+          const externalDeductionAdjustments = payrollAdjustments.filter(
+            (adjustment) =>
+              (adjustment.type === "MINUS" &&
+                includesConcept("ADJUSTMENT_MINUS")) ||
+              (adjustment.type === "FINE" && includesConcept("FINE")) ||
+              (adjustment.type === "LOAN_PAYMENT" && includesConcept("LOAN")),
+          );
+          const externalDeductions = externalDeductionAdjustments.reduce(
+            (sum, adjustment) => sum + adjustmentShare(adjustment),
+            0,
+          );
+          const externalFineDeductions = externalDeductionAdjustments
+            .filter((adjustment) => adjustment.type === "FINE")
+            .reduce((sum, adjustment) => sum + adjustmentShare(adjustment), 0);
+          const externalLoanDeductions = externalDeductionAdjustments
+            .filter((adjustment) => adjustment.type === "LOAN_PAYMENT")
+            .reduce((sum, adjustment) => sum + adjustmentShare(adjustment), 0);
+          const externalOtherDeductions = externalDeductionAdjustments
+            .filter((adjustment) => adjustment.type === "MINUS")
             .reduce((sum, adjustment) => sum + adjustmentShare(adjustment), 0);
           const approvedViatics = state.viaticsEntries.filter(
             (entry) =>
@@ -4230,15 +4864,68 @@ export function PayrollDemoProvider({
               : 0;
           const ordinaryBeforeCarry =
             employee.category === "CONTRACTOR" ? invoicePayable : ordinaryNet;
-          const carriedNegativeBalance = state.negativeBalances
-            .filter(
-              (balance) =>
-                balance.employeeId === employee.id &&
-                balance.originPeriodStart < periodStart &&
-                (payrollModule === "CONSOLIDATED" ||
-                  balance.payrollModule === payrollModule),
-            )
-            .reduce((sum, balance) => sum + balance.amount, 0);
+          const fallbackPayrollModule = payrollModuleForCategory(
+            employee.category,
+          ) as Exclude<PayrollModule, "CONSOLIDATED">;
+          const carryReceiverCandidates = Array.from(
+            new Set(
+              [
+                applicableSalary.monthlySalary > 0 ? salaryModuleId : null,
+                ...commissionModulesInPeriod,
+                fallbackPayrollModule,
+              ].filter(
+                (module): module is Exclude<PayrollModule, "CONSOLIDATED"> =>
+                  Boolean(module),
+              ),
+            ),
+          );
+          const priorNegativeBalances = state.negativeBalances.filter(
+            (balance) =>
+              balance.employeeId === employee.id &&
+              balance.originPeriodStart < periodStart,
+          );
+          const currentPeriodNegativeBalances = state.negativeBalances.filter(
+            (balance) =>
+              balance.employeeId === employee.id &&
+              balance.originPeriodStart === periodStart,
+          );
+          const primaryCarryReceiver =
+            carryReceiverCandidates[0] ??
+            priorNegativeBalances[0]?.payrollModule ??
+            null;
+          const currentPeriodOriginModules = new Set(
+            currentPeriodNegativeBalances.map(
+              (balance) => balance.payrollModule,
+            ),
+          );
+          const samePeriodCarryReceiver =
+            carryReceiverCandidates.find(
+              (module) => !currentPeriodOriginModules.has(module),
+            ) ?? null;
+          const appliedNegativeBalances =
+            payrollModule === "CONSOLIDATED"
+              ? priorNegativeBalances
+              : [
+                  ...(payrollModule === primaryCarryReceiver
+                    ? priorNegativeBalances
+                    : []),
+                  ...(payrollModule === samePeriodCarryReceiver
+                    ? currentPeriodNegativeBalances
+                    : []),
+                ];
+          const carriedNegativeBalance = appliedNegativeBalances.reduce(
+            (sum, balance) => sum + balance.amount,
+            0,
+          );
+          const carriedNegativeBalanceBreakdown =
+            appliedNegativeBalances.reduce(
+              (breakdown, balance) =>
+                addNegativeBalanceBreakdowns(
+                  breakdown,
+                  negativeBalanceBreakdownFor(balance),
+                ),
+              emptyNegativeBalanceBreakdown(),
+            );
           const ordinaryBeforeDeductions =
             employee.category === "CONTRACTOR"
               ? invoiceSubtotal + ivaAmount - isrRetention - ivaRetention
@@ -4269,15 +4956,49 @@ export function PayrollDemoProvider({
             christmasBonusPayment -
             uncoveredDeductions;
           const totalBeforeWorkerTax = Math.max(totalBeforeClamp, 0);
-          const newNegativeBalance = Math.max(-totalBeforeClamp, 0);
+          const newNegativeBalanceBreakdown = unpaidNegativeBalanceBreakdown(
+            [
+              {
+                source: "fines",
+                amount: carriedNegativeBalanceBreakdown.fines,
+              },
+              {
+                source: "loans",
+                amount: carriedNegativeBalanceBreakdown.loans,
+              },
+              {
+                source: "advances",
+                amount: carriedNegativeBalanceBreakdown.advances,
+              },
+              {
+                source: "otherDeductions",
+                amount: carriedNegativeBalanceBreakdown.otherDeductions,
+              },
+              {
+                source: "loans",
+                amount: loanDeductionBreakdown.loans + externalLoanDeductions,
+              },
+              {
+                source: "advances",
+                amount: loanDeductionBreakdown.advances,
+              },
+              {
+                source: "fines",
+                amount: fines + externalFineDeductions,
+              },
+              {
+                source: "otherDeductions",
+                amount: externalOtherDeductions + viaticsDeductions,
+              },
+            ],
+            payrollBeforeDeductions,
+          );
+          const newNegativeBalance = negativeBalanceBreakdownTotal(
+            newNegativeBalanceBreakdown,
+          );
           const employeePayrollModule =
             payrollModule === "CONSOLIDATED"
-              ? (commissionModuleId ??
-                salaryModuleId ??
-                (payrollModuleForCategory(employee.category) as Exclude<
-                  PayrollModule,
-                  "CONSOLIDATED"
-                >))
+              ? (commissionModuleId ?? salaryModuleId ?? fallbackPayrollModule)
               : payrollModule;
           const taxAssignment = state.taxAssignments.find(
             (assignment) =>
@@ -4348,9 +5069,9 @@ export function PayrollDemoProvider({
           const includedInModule =
             payrollModule === "CONSOLIDATED" ||
             salaryModuleId === payrollModule ||
-            commissionModuleId === payrollModule ||
+            commissionModulesInPeriod.has(payrollModule) ||
             (payrollModule === "COMMISSION" &&
-              (grossSales > 0 || commission > 0 || bonuses > 0)) ||
+              (commission > 0 || bonuses > 0)) ||
             periodMovements.length > 0 ||
             doublePayDays.length > 0 ||
             carriedNegativeBalance > 0 ||
@@ -4378,10 +5099,13 @@ export function PayrollDemoProvider({
             doublePayDayCount: doublePayDays.length,
             doublePayAmount,
             carriedNegativeBalance,
+            carriedNegativeBalanceBreakdown,
             newNegativeBalance,
+            newNegativeBalanceBreakdown,
             bonuses,
             fines,
             loanDeduction,
+            loanDeductionBreakdown,
             externalAdditions: totalExternalAdditions,
             externalDeductions: totalExternalDeductions,
             viaticsAdditions,
@@ -4437,23 +5161,19 @@ export function PayrollDemoProvider({
       setActiveEmployee: (employeeId) =>
         update((current) => ({ ...current, activeEmployeeId: employeeId })),
       addBranch: (branch) =>
-        update((current) => ({
-          ...current,
-          branches: [
-            ...current.branches,
-            {
-              id: id("branch"),
-              name: branch.name.trim().toLocaleUpperCase("es-MX"),
-              city: branch.city.trim().toLocaleUpperCase("es-MX"),
-              active: true,
-              source: "PAYROLL",
-              externalPosId: null,
-              registeredAt: isoDate(new Date()),
-              deactivatedAt: null,
-              lastSyncedAt: null,
-            },
-          ],
-        })),
+        update((current) =>
+          connectBranchToPayrollDependencies(current, {
+            id: id("branch"),
+            name: branch.name.trim().toLocaleUpperCase("es-MX"),
+            city: branch.city.trim().toLocaleUpperCase("es-MX"),
+            active: true,
+            source: "PAYROLL",
+            externalPosId: null,
+            registeredAt: isoDate(new Date()),
+            deactivatedAt: null,
+            lastSyncedAt: null,
+          }),
+        ),
       updateBranch: (branchId, branch) =>
         update((current) => ({
           ...current,
@@ -4468,18 +5188,24 @@ export function PayrollDemoProvider({
           ),
         })),
       toggleBranch: (branchId) =>
-        update((current) => ({
-          ...current,
-          branches: current.branches.map((branch) =>
-            branch.id === branchId
-              ? {
-                  ...branch,
-                  active: !branch.active,
-                  deactivatedAt: branch.active ? isoDate(new Date()) : null,
-                }
-              : branch,
-          ),
-        })),
+        update((current) => {
+          const branch = current.branches.find((item) => item.id === branchId);
+          if (!branch) return current;
+          const nextBranch = {
+            ...branch,
+            active: !branch.active,
+            deactivatedAt: branch.active ? isoDate(new Date()) : null,
+          };
+          const nextState = {
+            ...current,
+            branches: current.branches.map((item) =>
+              item.id === branchId ? nextBranch : item,
+            ),
+          };
+          return nextBranch.active
+            ? connectBranchToPayrollDependencies(nextState, nextBranch)
+            : nextState;
+        }),
       syncPosBranch: (incoming) =>
         update((current) => {
           const normalizedName = incoming.name
@@ -4495,43 +5221,39 @@ export function PayrollDemoProvider({
               branch.name === normalizedName,
           );
           if (!match) {
-            return {
-              ...current,
-              branches: [
-                ...current.branches,
-                {
-                  id: id("branch"),
-                  name: normalizedName,
-                  city: normalizedCity,
-                  active: incoming.active,
-                  source: "POS",
-                  externalPosId: incoming.externalPosId,
-                  registeredAt: isoDate(new Date()),
-                  deactivatedAt: incoming.active ? null : isoDate(new Date()),
-                  lastSyncedAt: syncedAt,
-                },
-              ],
-            };
+            return connectBranchToPayrollDependencies(current, {
+              id: id("branch"),
+              name: normalizedName,
+              city: normalizedCity,
+              active: incoming.active,
+              source: "POS",
+              externalPosId: incoming.externalPosId,
+              registeredAt: isoDate(new Date()),
+              deactivatedAt: incoming.active ? null : isoDate(new Date()),
+              lastSyncedAt: syncedAt,
+            });
           }
-          return {
+          const nextBranch = {
+            ...match,
+            name: normalizedName,
+            city: normalizedCity,
+            active: incoming.active,
+            source: "POS" as const,
+            externalPosId: incoming.externalPosId,
+            deactivatedAt: incoming.active
+              ? null
+              : (match.deactivatedAt ?? isoDate(new Date())),
+            lastSyncedAt: syncedAt,
+          };
+          const nextState = {
             ...current,
             branches: current.branches.map((branch) =>
-              branch.id === match.id
-                ? {
-                    ...branch,
-                    name: normalizedName,
-                    city: normalizedCity,
-                    active: incoming.active,
-                    source: "POS",
-                    externalPosId: incoming.externalPosId,
-                    deactivatedAt: incoming.active
-                      ? null
-                      : (branch.deactivatedAt ?? isoDate(new Date())),
-                    lastSyncedAt: syncedAt,
-                  }
-                : branch,
+              branch.id === match.id ? nextBranch : branch,
             ),
           };
+          return nextBranch.active
+            ? connectBranchToPayrollDependencies(nextState, nextBranch)
+            : nextState;
         }),
       addPosition: (position) =>
         update((current) => ({
@@ -4568,7 +5290,6 @@ export function PayrollDemoProvider({
                 ? {
                     ...employee,
                     position: normalizedName,
-                    category: position.category,
                   }
                 : employee,
             ),
@@ -4592,6 +5313,60 @@ export function PayrollDemoProvider({
             : [...module.concepts, "FINE" as const];
           const salaryEnabled = concepts.includes("SALARY");
           const commissionEnabled = concepts.includes("COMMISSION");
+          const employees = current.employees.map((employee) => {
+            const position = current.positions.find(
+              (item) => item.name === employee.position,
+            );
+            if (!position || !selectedPositions.has(position.id))
+              return employee;
+            return {
+              ...employee,
+              salaryPayrollModuleId:
+                salaryEnabled && employee.monthlySalary > 0
+                  ? moduleId
+                  : employee.salaryPayrollModuleId,
+              commissionPayrollModuleId:
+                commissionEnabled && employee.schemeId
+                  ? moduleId
+                  : employee.commissionPayrollModuleId,
+            };
+          });
+          const salaryAdditions = employees.flatMap<DemoSalaryAssignment>(
+            (employee, index) =>
+              employee.salaryPayrollModuleId !==
+              current.employees[index]?.salaryPayrollModuleId
+                ? [
+                    {
+                      id: id("salary-assignment"),
+                      employeeId: employee.id,
+                      monthlySalary: employee.monthlySalary,
+                      payrollModule: employee.salaryPayrollModuleId,
+                      effectiveFrom: currentPeriod.start,
+                      effectiveTo: null,
+                      sourceSchemeId: null,
+                      reason: "ASIGNACIÓN DESDE MÓDULO DE NÓMINA",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : [],
+          );
+          const commissionAdditions =
+            employees.flatMap<DemoCommissionAssignment>((employee, index) =>
+              employee.commissionPayrollModuleId !==
+              current.employees[index]?.commissionPayrollModuleId
+                ? [
+                    {
+                      id: id("commission-assignment"),
+                      employeeId: employee.id,
+                      payrollModule: employee.commissionPayrollModuleId,
+                      effectiveFrom: currentPeriod.start,
+                      effectiveTo: null,
+                      reason: "ASIGNACIÓN DESDE MÓDULO DE NÓMINA",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : [],
+            );
           return {
             ...current,
             payrollModules: [
@@ -4605,26 +5380,18 @@ export function PayrollDemoProvider({
                 active: true,
                 custom: true,
                 createdAt: isoDate(new Date()),
+                deactivatedAt: null,
               },
             ],
-            employees: current.employees.map((employee) => {
-              const position = current.positions.find(
-                (item) => item.name === employee.position,
-              );
-              if (!position || !selectedPositions.has(position.id))
-                return employee;
-              return {
-                ...employee,
-                salaryPayrollModuleId:
-                  salaryEnabled && employee.monthlySalary > 0
-                    ? moduleId
-                    : employee.salaryPayrollModuleId,
-                commissionPayrollModuleId:
-                  commissionEnabled && employee.schemeId
-                    ? moduleId
-                    : employee.commissionPayrollModuleId,
-              };
-            }),
+            employees,
+            salaryAssignments: mergeSalaryAssignments(
+              current.salaryAssignments,
+              salaryAdditions,
+            ),
+            commissionAssignments: mergeCommissionAssignments(
+              current.commissionAssignments,
+              commissionAdditions,
+            ),
             periodConfigs: [
               ...current.periodConfigs,
               {
@@ -4665,6 +5432,78 @@ export function PayrollDemoProvider({
             : [...module.concepts, "FINE" as const];
           const salaryEnabled = concepts.includes("SALARY");
           const commissionEnabled = concepts.includes("COMMISSION");
+          const employees = current.employees.map((employee) => {
+            const position = current.positions.find(
+              (item) => item.name === employee.position,
+            );
+            const selected = Boolean(
+              position && selectedPositions.has(position.id),
+            );
+            const fallbackSalary =
+              employee.monthlySalary <= 0
+                ? null
+                : employee.category === "SPECIALIST"
+                  ? ("SPECIALIST" as const)
+                  : employee.category === "CONTRACTOR"
+                    ? ("CONTRACTOR" as const)
+                    : ("FIXED" as const);
+            const fallbackCommission = !employee.schemeId
+              ? null
+              : employee.category === "CONTRACTOR"
+                ? ("CONTRACTOR" as const)
+                : ("COMMISSION" as const);
+            return {
+              ...employee,
+              salaryPayrollModuleId:
+                selected && salaryEnabled && employee.monthlySalary > 0
+                  ? assignmentModuleId
+                  : employee.salaryPayrollModuleId === assignmentModuleId
+                    ? fallbackSalary
+                    : employee.salaryPayrollModuleId,
+              commissionPayrollModuleId:
+                selected && commissionEnabled && employee.schemeId
+                  ? assignmentModuleId
+                  : employee.commissionPayrollModuleId === assignmentModuleId
+                    ? fallbackCommission
+                    : employee.commissionPayrollModuleId,
+            };
+          });
+          const salaryAdditions = employees.flatMap<DemoSalaryAssignment>(
+            (employee, index) =>
+              employee.salaryPayrollModuleId !==
+              current.employees[index]?.salaryPayrollModuleId
+                ? [
+                    {
+                      id: id("salary-assignment"),
+                      employeeId: employee.id,
+                      monthlySalary: employee.monthlySalary,
+                      payrollModule: employee.salaryPayrollModuleId,
+                      effectiveFrom: currentPeriod.start,
+                      effectiveTo: null,
+                      sourceSchemeId: null,
+                      reason: "CAMBIO DESDE MÓDULO DE NÓMINA",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : [],
+          );
+          const commissionAdditions =
+            employees.flatMap<DemoCommissionAssignment>((employee, index) =>
+              employee.commissionPayrollModuleId !==
+              current.employees[index]?.commissionPayrollModuleId
+                ? [
+                    {
+                      id: id("commission-assignment"),
+                      employeeId: employee.id,
+                      payrollModule: employee.commissionPayrollModuleId,
+                      effectiveFrom: currentPeriod.start,
+                      effectiveTo: null,
+                      reason: "CAMBIO DESDE MÓDULO DE NÓMINA",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : [],
+            );
           return {
             ...current,
             payrollModules: current.payrollModules.map((item) =>
@@ -4678,62 +5517,144 @@ export function PayrollDemoProvider({
                   }
                 : item,
             ),
-            employees: current.employees.map((employee) => {
-              const position = current.positions.find(
-                (item) => item.name === employee.position,
-              );
-              const selected = Boolean(
-                position && selectedPositions.has(position.id),
-              );
-              const fallbackSalary =
-                employee.monthlySalary <= 0
-                  ? null
-                  : employee.category === "SPECIALIST"
-                    ? ("SPECIALIST" as const)
-                    : employee.category === "CONTRACTOR"
-                      ? ("CONTRACTOR" as const)
-                      : ("FIXED" as const);
-              const fallbackCommission = !employee.schemeId
-                ? null
-                : employee.category === "CONTRACTOR"
-                  ? ("CONTRACTOR" as const)
-                  : ("COMMISSION" as const);
-              return {
-                ...employee,
-                salaryPayrollModuleId:
-                  selected && salaryEnabled && employee.monthlySalary > 0
-                    ? assignmentModuleId
-                    : employee.salaryPayrollModuleId === assignmentModuleId
-                      ? fallbackSalary
-                      : employee.salaryPayrollModuleId,
-                commissionPayrollModuleId:
-                  selected && commissionEnabled && employee.schemeId
-                    ? assignmentModuleId
-                    : employee.commissionPayrollModuleId === assignmentModuleId
-                      ? fallbackCommission
-                      : employee.commissionPayrollModuleId,
-              };
-            }),
+            employees,
+            salaryAssignments: mergeSalaryAssignments(
+              current.salaryAssignments,
+              salaryAdditions,
+            ),
+            commissionAssignments: mergeCommissionAssignments(
+              current.commissionAssignments,
+              commissionAdditions,
+            ),
           };
         }),
       togglePayrollModule: (moduleId) =>
-        update((current) => ({
-          ...current,
-          payrollModules: current.payrollModules.map((module) =>
-            module.id === moduleId && module.custom
-              ? { ...module, active: !module.active }
-              : module,
-          ),
-          periodConfigs: current.periodConfigs.map((config) =>
-            config.module === moduleId
-              ? {
-                  ...config,
-                  active: !config.active,
-                  updatedAt: new Date().toISOString(),
-                }
-              : config,
-          ),
-        })),
+        update((current) => {
+          const target = current.payrollModules.find(
+            (module) => module.id === moduleId && module.custom,
+          );
+          if (!target) return current;
+
+          const assignmentModuleId = moduleId as Exclude<
+            PayrollModule,
+            "CONSOLIDATED"
+          >;
+          const activating = !target.active;
+          const effectiveFrom = addDays(currentPeriod.end, 1);
+          const selectedPositions = new Set(target.positionIds);
+          const salaryEnabled = target.concepts.includes("SALARY");
+          const commissionEnabled = target.concepts.includes("COMMISSION");
+          const employees = current.employees.map((employee) => {
+            const position = current.positions.find(
+              (item) => item.name === employee.position,
+            );
+            const selected = Boolean(
+              position && selectedPositions.has(position.id),
+            );
+            const fallbackSalary =
+              employee.monthlySalary <= 0
+                ? null
+                : employee.category === "SPECIALIST"
+                  ? ("SPECIALIST" as const)
+                  : employee.category === "CONTRACTOR"
+                    ? ("CONTRACTOR" as const)
+                    : ("FIXED" as const);
+            const fallbackCommission = !employee.schemeId
+              ? null
+              : employee.category === "CONTRACTOR"
+                ? ("CONTRACTOR" as const)
+                : ("COMMISSION" as const);
+
+            return {
+              ...employee,
+              salaryPayrollModuleId: activating
+                ? selected && salaryEnabled && employee.monthlySalary > 0
+                  ? assignmentModuleId
+                  : employee.salaryPayrollModuleId
+                : employee.salaryPayrollModuleId === assignmentModuleId
+                  ? fallbackSalary
+                  : employee.salaryPayrollModuleId,
+              commissionPayrollModuleId: activating
+                ? selected && commissionEnabled && employee.schemeId
+                  ? assignmentModuleId
+                  : employee.commissionPayrollModuleId
+                : employee.commissionPayrollModuleId === assignmentModuleId
+                  ? fallbackCommission
+                  : employee.commissionPayrollModuleId,
+            };
+          });
+          const salaryAdditions = employees.flatMap<DemoSalaryAssignment>(
+            (employee, index) =>
+              employee.salaryPayrollModuleId !==
+              current.employees[index]?.salaryPayrollModuleId
+                ? [
+                    {
+                      id: id("salary-assignment"),
+                      employeeId: employee.id,
+                      monthlySalary: employee.monthlySalary,
+                      payrollModule: employee.salaryPayrollModuleId,
+                      effectiveFrom,
+                      effectiveTo: null,
+                      sourceSchemeId: null,
+                      reason: activating
+                        ? "REACTIVACIÓN DE MÓDULO DE NÓMINA"
+                        : "BAJA FUTURA DE MÓDULO DE NÓMINA",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : [],
+          );
+          const commissionAdditions =
+            employees.flatMap<DemoCommissionAssignment>((employee, index) =>
+              employee.commissionPayrollModuleId !==
+              current.employees[index]?.commissionPayrollModuleId
+                ? [
+                    {
+                      id: id("commission-assignment"),
+                      employeeId: employee.id,
+                      payrollModule: employee.commissionPayrollModuleId,
+                      effectiveFrom,
+                      effectiveTo: null,
+                      reason: activating
+                        ? "REACTIVACIÓN DE MÓDULO DE NÓMINA"
+                        : "BAJA FUTURA DE MÓDULO DE NÓMINA",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : [],
+            );
+
+          return {
+            ...current,
+            payrollModules: current.payrollModules.map((module) =>
+              module.id === moduleId
+                ? {
+                    ...module,
+                    active: activating,
+                    deactivatedAt: activating ? null : currentPeriod.end,
+                  }
+                : module,
+            ),
+            periodConfigs: current.periodConfigs.map((config) =>
+              config.module === moduleId
+                ? {
+                    ...config,
+                    active: activating,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : config,
+            ),
+            employees,
+            salaryAssignments: mergeSalaryAssignments(
+              current.salaryAssignments,
+              salaryAdditions,
+            ),
+            commissionAssignments: mergeCommissionAssignments(
+              current.commissionAssignments,
+              commissionAdditions,
+            ),
+          };
+        }),
       addEmployee: (employee) =>
         update((current) => {
           const employeeId = id("employee");
@@ -4769,6 +5690,20 @@ export function PayrollDemoProvider({
                     },
                   ]
                 : current.salaryAssignments,
+            commissionAssignments: [
+              ...current.commissionAssignments,
+              {
+                id: id("commission-assignment"),
+                employeeId,
+                payrollModule: employee.commissionPayrollModuleId,
+                effectiveFrom: employee.hireDate,
+                effectiveTo: null,
+                reason: employee.commissionPayrollModuleId
+                  ? "ALTA CON COMISIÓN"
+                  : "ALTA SIN COMISIÓN",
+                createdAt: new Date().toISOString(),
+              },
+            ],
           };
         }),
       updateEmployeeProfile: (employeeId, input) =>
@@ -4789,6 +5724,9 @@ export function PayrollDemoProvider({
           const salaryChanged =
             previous.monthlySalary !== input.monthlySalary ||
             previous.salaryPayrollModuleId !== input.salaryPayrollModuleId;
+          const commissionChanged =
+            previous.commissionPayrollModuleId !==
+            input.commissionPayrollModuleId;
           const salaryAssignments = salaryChanged
             ? mergeSalaryAssignments(current.salaryAssignments, [
                 {
@@ -4807,9 +5745,25 @@ export function PayrollDemoProvider({
                 },
               ])
             : current.salaryAssignments;
+          const commissionAssignments = commissionChanged
+            ? mergeCommissionAssignments(current.commissionAssignments, [
+                {
+                  id: id("commission-assignment"),
+                  employeeId,
+                  payrollModule: input.commissionPayrollModuleId,
+                  effectiveFrom: currentPeriod.start,
+                  effectiveTo: null,
+                  reason: input.commissionPayrollModuleId
+                    ? "ACTIVACIÓN MANUAL DE COMISIONES"
+                    : "BAJA MANUAL DE COMISIONES",
+                  createdAt: new Date().toISOString(),
+                },
+              ])
+            : current.commissionAssignments;
           return {
             ...current,
             salaryAssignments,
+            commissionAssignments,
             employees: current.employees.map((employee) =>
               employee.id === employeeId
                 ? {
@@ -4862,6 +5816,15 @@ export function PayrollDemoProvider({
             ),
           };
         }),
+      setEmployeePayrollVisibility: (employeeId, visibility) =>
+        update((current) => ({
+          ...current,
+          employees: current.employees.map((employee) =>
+            employee.id === employeeId
+              ? { ...employee, ...visibility }
+              : employee,
+          ),
+        })),
       updateEmployeeEmployment: (employeeId, hireDate, terminationDate) =>
         update((current) => ({
           ...current,
@@ -5068,6 +6031,21 @@ export function PayrollDemoProvider({
                 : employee,
             ),
             schemeAssignments,
+            commissionAssignments:
+              current.employees.find((employee) => employee.id === employeeId)
+                ?.commissionPayrollModuleId == null
+                ? mergeCommissionAssignments(current.commissionAssignments, [
+                    {
+                      id: id("commission-assignment"),
+                      employeeId,
+                      payrollModule: "COMMISSION",
+                      effectiveFrom,
+                      effectiveTo: null,
+                      reason: "ACTIVACIÓN POR ASIGNACIÓN DE ESQUEMA",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ])
+                : current.commissionAssignments,
             salaryAssignments: mergeSalaryAssignments(
               salaryBase,
               path.salaryAssignments,
@@ -5637,7 +6615,21 @@ export function PayrollDemoProvider({
             run.id === runId ? { ...run, status } : run,
           ),
         })),
-      closeCommissionRun: (runId) =>
+      closeCommissionRun: (runId) => {
+        const commissionRun = state.runs.find((run) => run.id === runId);
+        const closureBalances = commissionRun
+          ? payrollLines(
+              commissionRun.periodStart,
+              commissionRun.mode,
+              commissionRun.periodEnd,
+              "COMMISSION",
+            ).map((line) => ({
+              employeeId: line.employee.id,
+              amount: line.newNegativeBalance,
+              carriedAmount: line.carriedNegativeBalance,
+              breakdown: line.newNegativeBalanceBreakdown,
+            }))
+          : [];
         update((current) => {
           const activeEmployee = current.employees.find(
             (employee) => employee.id === current.activeEmployeeId,
@@ -5654,8 +6646,15 @@ export function PayrollDemoProvider({
             !roleHasPermission(activeRole, "payroll.approve")
           )
             return current;
+          const negativeBalances = reconcileNegativeBalancesForClosure(
+            current.negativeBalances,
+            "COMMISSION",
+            selectedRun.periodStart,
+            closureBalances,
+          );
           return {
             ...current,
+            negativeBalances,
             runs: current.runs.map((run) =>
               run.id === runId
                 ? {
@@ -5667,8 +6666,41 @@ export function PayrollDemoProvider({
                   }
                 : run,
             ),
+            loans: current.loans.map((loan) => {
+              const appliedPeriods = loan.appliedPeriodStarts ?? [];
+              if (
+                loan.status !== "APPROVED" ||
+                loan.payrollModule !== "COMMISSION" ||
+                loan.firstPeriod > selectedRun.periodStart ||
+                loan.paidInstallments >= loan.installments ||
+                appliedPeriods.includes(selectedRun.periodStart)
+              )
+                return loan;
+              const nextPaidInstallments = Math.min(
+                loan.paidInstallments + 1,
+                loan.installments,
+              );
+              return {
+                ...loan,
+                paidInstallments: nextPaidInstallments,
+                appliedPeriodStarts: [
+                  ...appliedPeriods,
+                  selectedRun.periodStart,
+                ],
+                history: [
+                  ...loan.history,
+                  {
+                    id: id("history"),
+                    date: isoDate(new Date()),
+                    action: `CUOTA ${nextPaidInstallments} APLICADA EN EL CIERRE ${selectedRun.periodStart}`,
+                    by: activeEmployee.name,
+                  },
+                ],
+              };
+            }),
           };
-        }),
+        });
+      },
       reopenCommissionRun: (runId, masterCode, reason) =>
         update((current) => {
           const authorizingMaster = current.employees.find(
@@ -5844,25 +6876,12 @@ export function PayrollDemoProvider({
             PayrollModule,
             "CONSOLIDATED"
           >;
-          const balanceEmployeeIds = new Set(
-            balances.map((balance) => balance.employeeId),
+          const negativeBalances = reconcileNegativeBalancesForClosure(
+            current.negativeBalances,
+            payrollModule,
+            run.periodStart,
+            balances,
           );
-          const negativeBalances = [
-            ...current.negativeBalances.filter(
-              (balance) =>
-                balance.payrollModule !== payrollModule ||
-                !balanceEmployeeIds.has(balance.employeeId),
-            ),
-            ...balances
-              .filter((balance) => balance.amount > 0.005)
-              .map((balance) => ({
-                employeeId: balance.employeeId,
-                payrollModule,
-                amount: balance.amount,
-                originPeriodStart: run.periodStart,
-                updatedAt: new Date().toISOString(),
-              })),
-          ];
           const nextRun = current.runs.find(
             (item) =>
               item.module === run.module &&
@@ -6645,28 +7664,130 @@ export function PayrollDemoProvider({
       togglePermission: (roleId, permission) =>
         update((current) => ({
           ...current,
-          roles: current.roles.map((role) =>
-            role.id === roleId
-              ? {
-                  ...role,
-                  permissions:
-                    role.id === "role-admin"
-                      ? Array.from(
-                          new Set([
-                            ...role.permissions,
-                            ...permissionCatalog,
-                            ...modulePermissionCatalog.map(
-                              ({ permission: modulePermission }) =>
-                                modulePermission,
-                            ),
-                          ]),
-                        )
-                      : role.permissions.includes(permission)
-                        ? role.permissions.filter((item) => item !== permission)
-                        : [...role.permissions, permission],
+          roles: current.roles.map((role) => {
+            if (role.id !== roleId) return role;
+            if (role.id === "role-admin") {
+              const customModulePermissions = current.payrollModules
+                .filter((module) => module.custom && module.active)
+                .flatMap((module) =>
+                  modulePermissionBundle(
+                    customPayrollModulePermission(module.id),
+                  ),
+                );
+              return {
+                ...role,
+                permissions: Array.from(
+                  new Set([
+                    ...role.permissions,
+                    ...permissionCatalog,
+                    ...modulePermissionCatalog.flatMap(
+                      ({ permission: modulePermission }) =>
+                        modulePermissionBundle(modulePermission),
+                    ),
+                    ...customModulePermissions,
+                  ]),
+                ),
+              };
+            }
+
+            const actionMarker = ".action.";
+            const actionIndex = permission.indexOf(actionMarker);
+            const isActionPermission = actionIndex >= 0;
+            const basePermission = isActionPermission
+              ? permission.slice(0, actionIndex)
+              : permission;
+            const currentlyEnabled = role.permissions.includes(permission);
+
+            if (!isActionPermission && currentlyEnabled) {
+              return {
+                ...role,
+                permissions: role.permissions.filter(
+                  (item) =>
+                    item !== basePermission &&
+                    !item.startsWith(`${basePermission}${actionMarker}`),
+                ),
+              };
+            }
+
+            if (currentlyEnabled) {
+              return {
+                ...role,
+                permissions: role.permissions.filter(
+                  (item) => item !== permission,
+                ),
+              };
+            }
+
+            return {
+              ...role,
+              permissions: Array.from(
+                new Set([
+                  ...role.permissions,
+                  ...(isActionPermission ? [basePermission] : []),
+                  permission,
+                ]),
+              ),
+            };
+          }),
+        })),
+      setPermissions: (roleId, permissions, enabled) =>
+        update((current) => ({
+          ...current,
+          roles: current.roles.map((role) => {
+            if (role.id !== roleId) return role;
+            const customModulePermissions = current.payrollModules
+              .filter((module) => module.custom && module.active)
+              .flatMap((module) =>
+                modulePermissionBundle(
+                  customPayrollModulePermission(module.id),
+                ),
+              );
+            if (role.id === "role-admin") {
+              return {
+                ...role,
+                permissions: Array.from(
+                  new Set([
+                    ...role.permissions,
+                    ...permissionCatalog,
+                    ...modulePermissionCatalog.flatMap(
+                      ({ permission: modulePermission }) =>
+                        modulePermissionBundle(modulePermission),
+                    ),
+                    ...customModulePermissions,
+                  ]),
+                ),
+              };
+            }
+
+            const actionMarker = ".action.";
+            const permissionSet = new Set(role.permissions);
+            if (enabled) {
+              permissions.forEach((permission) => {
+                const actionIndex = permission.indexOf(actionMarker);
+                if (actionIndex >= 0) {
+                  permissionSet.add(permission.slice(0, actionIndex));
                 }
-              : role,
-          ),
+                permissionSet.add(permission);
+              });
+            } else {
+              permissions.forEach((permission) => {
+                permissionSet.delete(permission);
+                if (!permission.includes(actionMarker)) {
+                  Array.from(permissionSet).forEach((assignedPermission) => {
+                    if (
+                      assignedPermission.startsWith(
+                        `${permission}${actionMarker}`,
+                      )
+                    ) {
+                      permissionSet.delete(assignedPermission);
+                    }
+                  });
+                }
+              });
+            }
+
+            return { ...role, permissions: Array.from(permissionSet) };
+          }),
         })),
       assignRole: (employeeId, roleId) =>
         update((current) => ({
@@ -6722,7 +7843,24 @@ export function PayrollDemoProvider({
               : employee,
           ),
         })),
-      setDecision: (employeeId, periodStart, status, note) =>
+      setDecision: (employeeId, periodStart, status, note) => {
+        const commissionRunForClosure = state.runs.find(
+          (run) =>
+            run.module === "COMMISSION" && run.periodStart === periodStart,
+        );
+        const closureBalances = commissionRunForClosure
+          ? payrollLines(
+              commissionRunForClosure.periodStart,
+              commissionRunForClosure.mode,
+              commissionRunForClosure.periodEnd,
+              "COMMISSION",
+            ).map((line) => ({
+              employeeId: line.employee.id,
+              amount: line.newNegativeBalance,
+              carriedAmount: line.carriedNegativeBalance,
+              breakdown: line.newNegativeBalanceBreakdown,
+            }))
+          : [];
         update((current) => {
           const decisions = [
             ...current.decisions.filter(
@@ -6768,13 +7906,26 @@ export function PayrollDemoProvider({
           const allReceiptsAuthorized =
             eligibleSellerIds.length > 0 &&
             eligibleSellerIds.every((sellerId) => authorizedIds.has(sellerId));
+          const closesCommissionRun = Boolean(
+            commissionRun?.status === "DRAFT" && allReceiptsAuthorized,
+          );
+          const negativeBalances = closesCommissionRun
+            ? reconcileNegativeBalancesForClosure(
+                current.negativeBalances,
+                "COMMISSION",
+                periodStart,
+                closureBalances,
+              )
+            : current.negativeBalances;
+          const closingEmployee = current.employees.find(
+            (employee) => employee.id === employeeId,
+          );
           return {
             ...current,
             decisions,
+            negativeBalances,
             runs: current.runs.map((run) =>
-              run.id === commissionRun?.id &&
-              run.status === "DRAFT" &&
-              allReceiptsAuthorized
+              run.id === commissionRun?.id && closesCommissionRun
                 ? {
                     ...run,
                     status: "APPROVED" as const,
@@ -6784,8 +7935,40 @@ export function PayrollDemoProvider({
                   }
                 : run,
             ),
+            loans: closesCommissionRun
+              ? current.loans.map((loan) => {
+                  const appliedPeriods = loan.appliedPeriodStarts ?? [];
+                  if (
+                    loan.status !== "APPROVED" ||
+                    loan.payrollModule !== "COMMISSION" ||
+                    loan.firstPeriod > periodStart ||
+                    loan.paidInstallments >= loan.installments ||
+                    appliedPeriods.includes(periodStart)
+                  )
+                    return loan;
+                  const nextPaidInstallments = Math.min(
+                    loan.paidInstallments + 1,
+                    loan.installments,
+                  );
+                  return {
+                    ...loan,
+                    paidInstallments: nextPaidInstallments,
+                    appliedPeriodStarts: [...appliedPeriods, periodStart],
+                    history: [
+                      ...loan.history,
+                      {
+                        id: id("history"),
+                        date: isoDate(new Date()),
+                        action: `CUOTA ${nextPaidInstallments} APLICADA EN EL CIERRE ${periodStart}`,
+                        by: closingEmployee?.name ?? "SISTEMA MOCK",
+                      },
+                    ],
+                  };
+                })
+              : current.loans,
           };
-        }),
+        });
+      },
       setKioskReceiptDecision: (managerId, month, status, note) =>
         update((current) => ({
           ...current,

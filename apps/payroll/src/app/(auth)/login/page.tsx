@@ -98,10 +98,7 @@ export default function LoginPage() {
     const role = state.roles.find((item) => item.id === employee?.roleId);
     setSubmitting(true);
     startSession(employeeId);
-    window.setTimeout(
-      () => router.replace(role?.id === "role-admin" ? "/" : "/mi-nomina"),
-      350,
-    );
+    router.replace(role?.id === "role-admin" ? "/" : "/mi-nomina");
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {

@@ -69,6 +69,15 @@ import {
   CostBranchSelector,
   employeeCostBranchIds,
 } from "./payroll-cost-branch-selector";
+import { ReportExportButtons } from "./report-export-buttons";
+import type { ReportExportConfig } from "@/lib/report-export";
+import {
+  nextTableSort,
+  SortableTableHead,
+  sortTableRows,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -219,6 +228,7 @@ function AdjustmentDialog({
   const availableCatalogConcepts = state.bonusFineConcepts.filter(
     (item) =>
       item.active &&
+      !item.personalized &&
       item.type === type &&
       item.payrollModule === payrollModule &&
       bonusFineConceptAllowsEmployee(item, employeeId) &&
@@ -777,7 +787,12 @@ function AdjustmentDialog({
 }
 
 export function PayrollAdjustmentsDemo() {
-  const { state, setPayrollAdjustmentStatus } = usePayrollDemo();
+  const {
+    state,
+    periodOptions,
+    currentPeriod,
+    setPayrollAdjustmentStatus,
+  } = usePayrollDemo();
   const [dialog, setDialog] = useState<{
     adjustment: DemoPayrollAdjustment | null;
     type: PayrollAdjustmentType;
@@ -789,12 +804,33 @@ export function PayrollAdjustmentsDemo() {
   const [statusFilter, setStatusFilter] = useState<
     PayrollAdjustmentStatus | "ALL"
   >("ALL");
+  const [selectedPeriodStart, setSelectedPeriodStart] = useState(
+    currentPeriod.start,
+  );
   const [pageSize, setPageSize] = useState("20");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const rows = useMemo(
+  type AdjustmentSortKey =
+    | "date"
+    | "typeEmployee"
+    | "payrollBranch"
+    | "concept"
+    | "amount"
+    | "status";
+  const [sort, setSort] = useState<TableSortState<AdjustmentSortKey>>(null);
+  const selectedPeriod =
+    periodOptions.find((period) => period.start === selectedPeriodStart) ??
+    currentPeriod;
+  const periodAdjustments = useMemo(
     () =>
-      state.adjustments
+      state.adjustments.filter(
+        (adjustment) => adjustment.periodStart === selectedPeriod.start,
+      ),
+    [selectedPeriod.start, state.adjustments],
+  );
+  const filteredRows = useMemo(
+    () =>
+      periodAdjustments
         .filter((adjustment) => {
           const employee = state.employees.find(
             (item) => item.id === adjustment.employeeId,
@@ -814,8 +850,34 @@ export function PayrollAdjustmentsDemo() {
           );
         })
         .sort((a, b) => b.payrollDate.localeCompare(a.payrollDate)),
-    [search, state.adjustments, state.employees, statusFilter, typeFilter],
+    [periodAdjustments, search, state.employees, statusFilter, typeFilter],
   );
+  const rows = useMemo(
+    () =>
+      sortTableRows(filteredRows, sort, {
+        date: (row) => Date.parse(row.payrollDate),
+        typeEmployee: (row) => {
+          const employee = state.employees.find(
+            (item) => item.id === row.employeeId,
+          );
+          return `${adjustmentLabels[row.type]} ${employee?.name ?? ""}`;
+        },
+        payrollBranch: (row) => {
+          const branch = state.branches.find(
+            (item) => item.id === row.branchId,
+          );
+          return `${payrollModuleLabel(state, row.payrollModule)} ${branch?.name ?? ""}`;
+        },
+        concept: (row) => row.concept,
+        amount: (row) => row.amount,
+        status: (row) => statusLabels[row.status],
+      }),
+    [filteredRows, sort, state],
+  );
+  function changeSort(key: AdjustmentSortKey, kind: TableSortKind) {
+    setSort((current) => nextTableSort(current, key, kind));
+    setPage(1);
+  }
   const effectivePageSize =
     pageSize === "ALL" ? Math.max(rows.length, 1) : Number(pageSize);
   const totalPages = Math.max(1, Math.ceil(rows.length / effectivePageSize));
@@ -833,10 +895,10 @@ export function PayrollAdjustmentsDemo() {
   );
   const allSelectableRowsSelected =
     selectableRows.length > 0 && selectedRows.length === selectableRows.length;
-  const pending = state.adjustments.filter(
+  const pending = periodAdjustments.filter(
     (item) => item.status === "PENDING",
   ).length;
-  const approved = state.adjustments.filter(
+  const approved = periodAdjustments.filter(
     (item) => item.status === "APPROVED",
   );
   const positive = approved
@@ -853,6 +915,130 @@ export function PayrollAdjustmentsDemo() {
         item.type === "LOAN_PAYMENT",
     )
     .reduce((sum, item) => sum + item.amount, 0);
+  const reportConfig: ReportExportConfig<DemoPayrollAdjustment> = {
+    title: "Movimientos de nómina",
+    subtitle: `${selectedPeriod.label} · ${rows.length} registros de la selección actual`,
+    filename: `movimientos-nomina-${selectedPeriod.start}-${selectedPeriod.end}`,
+    sheetName: "Movimientos de nómina",
+    orientation: "landscape",
+    metadata: [
+      {
+        label: "Periodo",
+        value: `${selectedPeriod.start} — ${selectedPeriod.end}`,
+      },
+      {
+        label: "Búsqueda",
+        value: search.trim() || "TODOS LOS EMPLEADOS Y CONCEPTOS",
+      },
+      {
+        label: "Tipo",
+        value:
+          typeFilter === "ALL" ? "TODOS LOS TIPOS" : adjustmentLabels[typeFilter],
+      },
+      {
+        label: "Estatus",
+        value:
+          statusFilter === "ALL"
+            ? "TODOS LOS ESTATUS"
+            : statusLabels[statusFilter],
+      },
+    ],
+    metrics: [
+      {
+        label: "Registros",
+        value: String(rows.length),
+        detail: "Movimientos que cumplen la selección",
+      },
+      {
+        label: "Por aprobar",
+        value: String(pending),
+        detail: "Pendientes del periodo",
+      },
+      {
+        label: "Ajustes de más",
+        value: money.format(positive),
+        detail: "Movimientos aprobados",
+      },
+      {
+        label: "Ajustes de menos",
+        value: money.format(negative),
+        detail: "Descuentos aprobados",
+      },
+    ],
+    analysis: [
+      `El reporte considera exclusivamente el periodo ${selectedPeriod.start} — ${selectedPeriod.end}.`,
+      `Se incluyen ${rows.length} movimientos que cumplen los filtros visibles del módulo.`,
+      `Los movimientos aprobados del periodo acumulan ${money.format(positive)} en ajustes positivos y ${money.format(negative)} en descuentos.`,
+    ],
+    columns: [
+      {
+        header: "Fecha de nómina",
+        accessor: (row) => row.payrollDate,
+        width: 14,
+      },
+      {
+        header: "Tipo",
+        accessor: (row) => adjustmentLabels[row.type],
+        width: 19,
+      },
+      {
+        header: "Empleado",
+        accessor: (row) =>
+          state.employees.find((employee) => employee.id === row.employeeId)
+            ?.name ?? "SIN EMPLEADO",
+        width: 24,
+      },
+      {
+        header: "Nómina",
+        accessor: (row) => payrollModuleLabel(state, row.payrollModule),
+        width: 18,
+      },
+      {
+        header: "Sucursal de costo",
+        accessor: (row) => {
+          const branchIds = row.costBranchIds.length
+            ? row.costBranchIds
+            : [row.branchId];
+          return branchIds
+            .map(
+              (branchId) =>
+                state.branches.find((branch) => branch.id === branchId)?.name,
+            )
+            .filter(Boolean)
+            .join(", ");
+        },
+        width: 24,
+      },
+      {
+        header: "Concepto",
+        accessor: (row) => row.concept,
+        width: 28,
+      },
+      {
+        header: "Comentarios",
+        accessor: (row) => row.comments,
+        width: 36,
+      },
+      {
+        header: "Monto",
+        accessor: (row) =>
+          row.amount *
+          (row.type === "MINUS" ||
+          row.type === "FINE" ||
+          row.type === "LOAN_PAYMENT"
+            ? -1
+            : 1),
+        width: 15,
+        format: "currency",
+      },
+      {
+        header: "Estatus",
+        accessor: (row) => statusLabels[row.status],
+        width: 16,
+      },
+    ],
+    rows,
+  };
 
   function setStatus(
     adjustment: DemoPayrollAdjustment,
@@ -915,14 +1101,17 @@ export function PayrollAdjustmentsDemo() {
             sueldo base indicando la nómina y reportes afectados.
           </p>
         </div>
-        <Button
-          size="sm"
-          className="h-9 self-start rounded-xl px-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] shadow-[0_8px_20px_rgba(82,53,33,0.16)] xl:self-auto"
-          onClick={() => setDialog({ adjustment: null, type: "PLUS" })}
-        >
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          Nuevo movimiento
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 self-start xl:self-auto">
+          <ReportExportButtons config={reportConfig} disabled={!rows.length} />
+          <Button
+            size="sm"
+            className="h-9 rounded-xl px-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] shadow-[0_8px_20px_rgba(82,53,33,0.16)]"
+            onClick={() => setDialog({ adjustment: null, type: "PLUS" })}
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Nuevo movimiento
+          </Button>
+        </div>
       </header>
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
@@ -988,7 +1177,26 @@ export function PayrollAdjustmentsDemo() {
                 únicamente los destinos elegidos.
               </CardDescription>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <Select
+                value={selectedPeriod.start}
+                onValueChange={(value) => {
+                  setSelectedPeriodStart(value);
+                  setPage(1);
+                  setSelectedIds([]);
+                }}
+              >
+                <SelectTrigger aria-label="Periodo de movimientos">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {periodOptions.map((period) => (
+                    <SelectItem key={period.value} value={period.start}>
+                      {period.label.toLocaleUpperCase("es-MX")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
                 value={search}
                 onChange={(event) => {
@@ -1088,12 +1296,49 @@ export function PayrollAdjustmentsDemo() {
                   <TableHead className="w-10">
                     <span className="sr-only">Seleccionar</span>
                   </TableHead>
-                  <TableHead>FECHA NÓMINA / REGISTRO</TableHead>
-                  <TableHead>TIPO / EMPLEADO</TableHead>
-                  <TableHead>NÓMINA / SUCURSAL</TableHead>
-                  <TableHead>CONCEPTO / DESTINOS</TableHead>
-                  <TableHead className="text-right">MONTO</TableHead>
-                  <TableHead>ESTATUS</TableHead>
+                  <SortableTableHead
+                    column="date"
+                    label="FECHA NÓMINA / REGISTRO"
+                    kind="number"
+                    sort={sort}
+                    onSort={changeSort}
+                  />
+                  <SortableTableHead
+                    column="typeEmployee"
+                    label="TIPO / EMPLEADO"
+                    kind="text"
+                    sort={sort}
+                    onSort={changeSort}
+                  />
+                  <SortableTableHead
+                    column="payrollBranch"
+                    label="NÓMINA / SUCURSAL"
+                    kind="text"
+                    sort={sort}
+                    onSort={changeSort}
+                  />
+                  <SortableTableHead
+                    column="concept"
+                    label="CONCEPTO / DESTINOS"
+                    kind="text"
+                    sort={sort}
+                    onSort={changeSort}
+                  />
+                  <SortableTableHead
+                    column="amount"
+                    label="MONTO"
+                    kind="number"
+                    sort={sort}
+                    onSort={changeSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="status"
+                    label="ESTATUS"
+                    kind="text"
+                    sort={sort}
+                    onSort={changeSort}
+                  />
                   <TableHead className="text-right">ACCIONES</TableHead>
                 </TableRow>
               </TableHeader>

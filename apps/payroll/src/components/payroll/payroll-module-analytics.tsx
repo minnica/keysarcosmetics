@@ -28,10 +28,7 @@ import {
   type EmployeePayrollLine,
   usePayrollDemo,
 } from "./payroll-demo-context";
-import {
-  employeeCostAllocationShares,
-  payrollCostAllocationMode,
-} from "./payroll-cost-branch-selector";
+import { employeeMixedCostAllocationShares } from "./payroll-cost-branch-selector";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -85,8 +82,14 @@ export function PayrollModuleAnalytics({
   title: string;
 }) {
   const { state, listSortMode } = usePayrollDemo();
+  const periodBranches = state.branches.filter(
+    (branch) =>
+      branch.registeredAt <= periodEnd &&
+      (branch.active ||
+        Boolean(branch.deactivatedAt && branch.deactivatedAt > periodEnd)),
+  );
   const rows: BranchAnalytics[] = sortByListMode(
-    state.branches.map((branch) => {
+    periodBranches.map((branch) => {
       let sales = 0;
       let payroll = 0;
       let workerTax = 0;
@@ -109,20 +112,16 @@ export function PayrollModuleAnalytics({
           .reduce((sum, sale) => sum + sale.amount, 0);
         const salesShare =
           totalEmployeeSales > 0 ? employeeBranchSales / totalEmployeeSales : 0;
-        const allocationMode = payrollCostAllocationMode(
-          state.payrollCostAllocationModes,
-          line.employee.id,
-          periodStart,
-          periodEnd,
-        );
+        const fixedAmount = line.fixedSalary + line.doublePayAmount;
         const costShare =
-          employeeCostAllocationShares({
+          employeeMixedCostAllocationShares({
             employee: line.employee,
-            branches: state.branches,
+            branches: periodBranches,
             sales: state.sales,
             periodStart,
             periodEnd,
-            mode: allocationMode,
+            fixedAmount,
+            variableAmount: Math.max(line.total - fixedAmount, 0),
           }).find((allocation) => allocation.branchId === branch.id)?.share ??
           0;
         if (costShare > 0) employees.add(line.employee.id);

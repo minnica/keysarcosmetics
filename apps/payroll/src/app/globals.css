@@ -788,3 +788,36 @@ main tbody tr:hover {
     font-size: 8pt;
   }
 }
+
+th[data-auto-sortable="true"] {
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+th[data-auto-sortable="true"]:hover,
+th[data-auto-sortable="true"]:focus-visible {
+  color: #f1c99e;
+  background-color: rgb(255 255 255 / 0.04);
+  outline: none;
+}
+
+th[data-auto-sortable="true"]::after {
+  content: "↕";
+  display: inline-block;
+  margin-inline-start: 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1;
+  opacity: 0.48;
+}
+
+th[data-auto-sort-direction="asc"]::after {
+  content: "↑";
+  color: #f1c99e;
+  opacity: 1;
+}
+
+th[data-auto-sort-direction="desc"]::after {
+  content: "↓";
+  color: #f1c99e;
+  opacity: 1;
+}

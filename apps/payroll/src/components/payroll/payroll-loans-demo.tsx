@@ -53,6 +53,7 @@ import {
   Textarea,
   toast,
 } from "@cosmetics/ui";
+import type { ReportExportConfig } from "@/lib/report-export";
 import {
   type DemoLoan,
   type PayrollModule,
@@ -61,6 +62,7 @@ import {
   usePayrollDemo,
 } from "./payroll-demo-context";
 import { evaluateFinancialRequest } from "./payroll-financial-request-policy";
+import { ReportExportButtons } from "./report-export-buttons";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -610,6 +612,8 @@ export function PayrollLoansDemo() {
   const [historyMonth, setHistoryMonth] = useState(
     (allEvents[0]?.date ?? new Date().toISOString().slice(0, 10)).slice(0, 7),
   );
+  const [historyPageSize, setHistoryPageSize] = useState("20");
+  const [historyPage, setHistoryPage] = useState(1);
   const filteredLoans = state.loans.filter(
     (loan) => employeeFilter === "ALL" || loan.employeeId === employeeFilter,
   );
@@ -622,6 +626,120 @@ export function PayrollLoansDemo() {
   const monthlyEvents = filteredEvents.filter((event) =>
     event.date.startsWith(historyMonth),
   );
+  const effectiveHistoryPageSize =
+    historyPageSize === "ALL"
+      ? Math.max(monthlyEvents.length, 1)
+      : Number(historyPageSize);
+  const historyPageCount = Math.max(
+    1,
+    Math.ceil(monthlyEvents.length / effectiveHistoryPageSize),
+  );
+  const currentHistoryPage = Math.min(historyPage, historyPageCount);
+  const paginatedMonthlyEvents = monthlyEvents.slice(
+    (currentHistoryPage - 1) * effectiveHistoryPageSize,
+    currentHistoryPage * effectiveHistoryPageSize,
+  );
+  const historyVisibleStart =
+    monthlyEvents.length === 0
+      ? 0
+      : (currentHistoryPage - 1) * effectiveHistoryPageSize + 1;
+  const historyVisibleEnd = Math.min(
+    currentHistoryPage * effectiveHistoryPageSize,
+    monthlyEvents.length,
+  );
+  const selectedEmployeeName =
+    employeeFilter === "ALL"
+      ? "TODOS LOS EMPLEADOS"
+      : (state.employees.find((employee) => employee.id === employeeFilter)
+          ?.name ?? "EMPLEADO SELECCIONADO");
+  const monthlyHistoryReport: ReportExportConfig<
+    (typeof allEvents)[number]
+  > = {
+    title: "Historial mensual de préstamos y adelantos",
+    subtitle: `PERIODO ${historyMonth} · ${selectedEmployeeName} · DATOS DEMOSTRATIVOS`,
+    filename: `historial-prestamos-adelantos-${historyMonth}-${selectedEmployeeName}`,
+    sheetName: "Historial mensual",
+    orientation: "landscape",
+    metadata: [
+      { label: "Periodo seleccionado", value: historyMonth },
+      { label: "Empleado", value: selectedEmployeeName },
+      {
+        label: "Alcance",
+        value: "ÚNICAMENTE MOVIMIENTOS DEL PERIODO SELECCIONADO",
+      },
+    ],
+    metrics: [
+      {
+        label: "Registros",
+        value: String(monthlyEvents.length),
+        detail: "Movimientos incluidos",
+      },
+      {
+        label: "Importe relacionado",
+        value: money.format(
+          monthlyEvents.reduce((sum, event) => sum + event.amount, 0),
+        ),
+        detail: "Suma informativa de los movimientos",
+      },
+      {
+        label: "Empleados",
+        value: String(
+          new Set(monthlyEvents.map((event) => event.employeeId)).size,
+        ),
+        detail: "Personal con actividad",
+      },
+    ],
+    analysis: [
+      `La salida contiene ${monthlyEvents.length} movimientos registrados exclusivamente en ${historyMonth}.`,
+      employeeFilter === "ALL"
+        ? "El reporte incluye a todos los empleados con actividad dentro del periodo."
+        : `El reporte está filtrado únicamente para ${selectedEmployeeName}.`,
+    ],
+    columns: [
+      {
+        header: "FECHA",
+        accessor: (event) => event.date,
+        width: 13,
+      },
+      {
+        header: "EMPLEADO",
+        accessor: (event) => event.employee?.name ?? "SIN EMPLEADO",
+        width: 24,
+      },
+      {
+        header: "MOVIMIENTO",
+        accessor: (event) => event.action,
+        width: 31,
+      },
+      {
+        header: "IMPORTE",
+        accessor: (event) => event.amount,
+        format: "currency",
+        width: 17,
+      },
+      {
+        header: "REGISTRADO POR",
+        accessor: (event) => event.by,
+        width: 23,
+      },
+      {
+        header: "NÓMINA",
+        accessor: (event) => payrollModuleLabel(state, event.payrollModule),
+        width: 19,
+      },
+      {
+        header: "PERIODO DE APLICACIÓN",
+        accessor: (event) => event.periodStart,
+        width: 21,
+      },
+      {
+        header: "COMENTARIOS",
+        accessor: (event) => event.comments,
+        width: 34,
+      },
+    ],
+    rows: monthlyEvents,
+  };
   const adjustmentLoanBalance = state.adjustments
     .filter(
       (item) =>
@@ -718,7 +836,13 @@ export function PayrollLoansDemo() {
         <CardContent className="grid gap-4 p-5 md:grid-cols-3">
           <div className="space-y-2">
             <Label>Buscar por vendedor / empleado</Label>
-            <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
+            <Select
+              value={employeeFilter}
+              onValueChange={(value) => {
+                setEmployeeFilter(value);
+                setHistoryPage(1);
+              }}
+            >
               <SelectTrigger>
                 <Search className="mr-2 h-4 w-4" />
                 <SelectValue />
@@ -750,7 +874,10 @@ export function PayrollLoansDemo() {
               id="loan-history-month"
               type="month"
               value={historyMonth}
-              onChange={(event) => setHistoryMonth(event.target.value)}
+              onChange={(event) => {
+                setHistoryMonth(event.target.value);
+                setHistoryPage(1);
+              }}
             />
           </div>
         </CardContent>
@@ -957,41 +1084,163 @@ export function PayrollLoansDemo() {
             )}
           </CardContent>
         </Card>
-        <Card className="border-[color:var(--border-color)]">
-          <CardHeader>
-            <CardTitle className="section-heading uppercase">
-              Historial completo del mes
-            </CardTitle>
-            <CardDescription>
-              {historyMonth} · solicitudes, autorizaciones, ediciones y cuotas.
-            </CardDescription>
+        <Card className="overflow-hidden border-[color:var(--border-color)]">
+          <CardHeader className="gap-3 border-b border-[color:var(--border-color)] p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle className="section-heading uppercase">
+                Historial completo del mes
+              </CardTitle>
+              <CardDescription className="mt-1">
+                {historyMonth} · solicitudes, autorizaciones, ediciones y cuotas.
+              </CardDescription>
+            </div>
+            <ReportExportButtons
+              config={monthlyHistoryReport}
+              disabled={!monthlyEvents.length}
+            />
           </CardHeader>
-          <CardContent className="max-h-96 space-y-3 overflow-y-auto">
-            {monthlyEvents.length ? (
-              monthlyEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="flex items-start justify-between gap-4 rounded-xl border border-[color:var(--border-color)] p-4"
+          <CardContent className="p-0">
+            <div className="flex flex-col gap-2 border-b border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/20 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-semibold text-[color:var(--text-muted)]">
+                {monthlyEvents.length} REGISTROS DEL PERIODO SELECCIONADO
+              </p>
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="loan-history-page-size"
+                  className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-muted)]"
                 >
-                  <div>
-                    <p className="font-semibold">{event.action}</p>
-                    <p className="text-sm">
-                      {event.employee?.name} · {money.format(event.amount)}
-                    </p>
-                    <p className="text-xs text-[color:var(--text-muted)]">
-                      {event.by} ·{" "}
-                      {payrollModuleLabel(state, event.payrollModule)} · desde{" "}
-                      {event.periodStart}
-                    </p>
-                  </div>
-                  <Badge variant="outline">{event.date}</Badge>
-                </div>
-              ))
+                  Visualizar
+                </Label>
+                <Select
+                  value={historyPageSize}
+                  onValueChange={(value) => {
+                    setHistoryPageSize(value);
+                    setHistoryPage(1);
+                  }}
+                >
+                  <SelectTrigger
+                    id="loan-history-page-size"
+                    className="h-8 w-24 text-xs"
+                    aria-label="Registros del historial mensual por página"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["20", "40", "60", "80", "100"].map((size) => (
+                      <SelectItem key={size} value={size}>
+                        {size}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="ALL">TODOS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {monthlyEvents.length ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="h-9">
+                      <TableHead className="h-9 px-3 py-1.5">FECHA</TableHead>
+                      <TableHead className="h-9 px-3 py-1.5">
+                        EMPLEADO
+                      </TableHead>
+                      <TableHead className="h-9 px-3 py-1.5">
+                        MOVIMIENTO
+                      </TableHead>
+                      <TableHead className="h-9 px-3 py-1.5 text-right">
+                        IMPORTE
+                      </TableHead>
+                      <TableHead className="h-9 px-3 py-1.5">
+                        NÓMINA / APLICACIÓN
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedMonthlyEvents.map((event) => (
+                      <TableRow key={event.id} className="h-12">
+                        <TableCell className="whitespace-nowrap px-3 py-2">
+                          <Badge
+                            variant="outline"
+                            className="px-1.5 py-0 text-[10px]"
+                          >
+                            {event.date}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="min-w-40 px-3 py-2">
+                          <p className="text-xs font-semibold">
+                            {event.employee?.name ?? "SIN EMPLEADO"}
+                          </p>
+                          <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
+                            {event.by}
+                          </p>
+                        </TableCell>
+                        <TableCell className="min-w-56 px-3 py-2">
+                          <p className="text-xs font-semibold">
+                            {event.action}
+                          </p>
+                          <p
+                            className="max-w-64 truncate text-[10px] leading-4 text-[color:var(--text-muted)]"
+                            title={event.comments}
+                          >
+                            {event.comments || "SIN COMENTARIOS"}
+                          </p>
+                        </TableCell>
+                        <TableCell className="number-display whitespace-nowrap px-3 py-2 text-right text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          {money.format(event.amount)}
+                        </TableCell>
+                        <TableCell className="min-w-44 px-3 py-2">
+                          <p className="text-xs font-semibold">
+                            {payrollModuleLabel(state, event.payrollModule)}
+                          </p>
+                          <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
+                            DESDE {event.periodStart}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             ) : (
-              <p className="rounded-xl border border-dashed border-[color:var(--border-color)] p-8 text-center text-sm text-[color:var(--text-muted)]">
+              <p className="m-4 rounded-xl border border-dashed border-[color:var(--border-color)] p-8 text-center text-sm text-[color:var(--text-muted)]">
                 No hay actividad en el mes seleccionado.
               </p>
             )}
+            <div className="flex flex-col gap-2 border-t border-[color:var(--border-color)] px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[11px] text-[color:var(--text-muted)]">
+                Mostrando {historyVisibleStart}–{historyVisibleEnd} de{" "}
+                {monthlyEvents.length} registros
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={currentHistoryPage <= 1}
+                  onClick={() =>
+                    setHistoryPage(Math.max(1, currentHistoryPage - 1))
+                  }
+                >
+                  Anterior
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={currentHistoryPage >= historyPageCount}
+                  onClick={() =>
+                    setHistoryPage(
+                      Math.min(historyPageCount, currentHistoryPage + 1),
+                    )
+                  }
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

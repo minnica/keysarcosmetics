@@ -21,6 +21,7 @@ import {
   Cell,
   ComposedChart,
   Legend,
+  LabelList,
   Line,
   Pie,
   PieChart,
@@ -100,6 +101,14 @@ export function PayrollConsolidatedSalesAnalytics({
   const totalCost = payrollBase + workerTax + socialCost + isrCost;
   const costRatio = totalSales > 0 ? totalCost / totalSales : null;
   const rankedBranches = [...branches].sort((a, b) => b.sales - a.sales);
+  const branchSalesTotal = rankedBranches.reduce(
+    (sum, branch) => sum + branch.sales,
+    0,
+  );
+  const branchCostTotal = rankedBranches.reduce(
+    (sum, branch) => sum + branch.cost,
+    0,
+  );
   const salesLeader = rankedBranches[0] ?? null;
   const efficientBranch =
     branches
@@ -181,7 +190,7 @@ export function PayrollConsolidatedSalesAnalytics({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,0.8fr)]">
+      <div>
         <Card className="border-[color:var(--border-color)]">
           <CardHeader className="pb-2">
             <div className="flex items-start justify-between gap-3">
@@ -260,7 +269,9 @@ export function PayrollConsolidatedSalesAnalytics({
             </div>
           </CardContent>
         </Card>
+      </div>
 
+      <div className="grid gap-4 lg:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.7fr)]">
         <Card className="border-[color:var(--border-color)]">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -334,9 +345,8 @@ export function PayrollConsolidatedSalesAnalytics({
             )}
           </CardContent>
         </Card>
-      </div>
 
-      <Card className="border-[color:var(--border-color)]">
+        <Card className="border-[color:var(--border-color)]">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Building2 className="h-4 w-4 text-[color:var(--accent)]" />
@@ -344,7 +354,8 @@ export function PayrollConsolidatedSalesAnalytics({
           </CardTitle>
           <CardDescription>
             Comparativo ordenado por ventas; el costo conserva la misma carga
-            por sucursal usada en reportes y conciliación.
+            por sucursal usada en reportes y conciliación. El porcentaje al
+            final de cada barra indica su aportación al 100% del total.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -352,13 +363,13 @@ export function PayrollConsolidatedSalesAnalytics({
             <div
               className="h-[340px] w-full"
               role="img"
-              aria-label="Gráfica comparativa horizontal de ventas y costo laboral total por sucursal"
+              aria-label="Gráfica comparativa horizontal de ventas y costo laboral total por sucursal con porcentaje de aportación sobre el total"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={rankedBranches}
                   layout="vertical"
-                  margin={{ top: 12, right: 24, left: 8, bottom: 0 }}
+                  margin={{ top: 12, right: 76, left: 8, bottom: 0 }}
                 >
                   <CartesianGrid
                     stroke={chartColors.grid}
@@ -396,13 +407,45 @@ export function PayrollConsolidatedSalesAnalytics({
                     name="VENTAS"
                     fill={chartColors.sales}
                     radius={[0, 5, 5, 0]}
-                  />
+                  >
+                    <LabelList
+                      dataKey="sales"
+                      position="right"
+                      offset={7}
+                      fill={chartColors.sales}
+                      fontSize={11}
+                      fontWeight={700}
+                      formatter={(value: number | string) =>
+                        percentage.format(
+                          branchSalesTotal > 0
+                            ? Number(value) / branchSalesTotal
+                            : 0,
+                        )
+                      }
+                    />
+                  </Bar>
                   <Bar
                     dataKey="cost"
                     name="COSTO TOTAL"
                     fill={chartColors.payroll}
                     radius={[0, 5, 5, 0]}
-                  />
+                  >
+                    <LabelList
+                      dataKey="cost"
+                      position="right"
+                      offset={7}
+                      fill={chartColors.payroll}
+                      fontSize={11}
+                      fontWeight={700}
+                      formatter={(value: number | string) =>
+                        percentage.format(
+                          branchCostTotal > 0
+                            ? Number(value) / branchCostTotal
+                            : 0,
+                        )
+                      }
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -412,7 +455,8 @@ export function PayrollConsolidatedSalesAnalytics({
             </p>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </section>
   );
 }

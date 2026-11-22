@@ -21,7 +21,7 @@ type ReportExportButtonsProps<T> = {
 export function ReportExportButtons<T>({
   config,
   disabled,
-  iconOnly = false,
+  iconOnly = true,
   appearance = "default",
   onAction,
 }: ReportExportButtonsProps<T>) {
@@ -56,20 +56,22 @@ export function ReportExportButtons<T>({
         type="button"
         variant="outline"
         size={iconOnly ? "icon" : "sm"}
-        className={appearance === "on-dark" ? "border-white/40 bg-[#f7efe7] text-[#2d241d] shadow-[0_5px_16px_rgba(0,0,0,0.2)] hover:border-white hover:bg-white hover:text-[#17130f]" : undefined}
+        className={`group rounded-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${appearance === "on-dark" ? "border-white/40 bg-[#f7efe7] text-[#2d241d] shadow-[0_5px_16px_rgba(0,0,0,0.2)] hover:border-white hover:bg-white hover:text-[#17130f]" : ""}`}
         disabled={disabled || exporting !== null}
         onClick={printSelectedReport}
         aria-label="Imprimir reporte ejecutivo"
         title="Imprimir reporte"
       >
-        <Printer className={`${iconOnly ? "h-5 w-5" : "mr-2 h-4 w-4"}`} />
+        <Printer
+          className={`${iconOnly ? "h-[18px] w-[18px]" : "mr-2 h-4 w-4"} transition-transform duration-200 group-hover:scale-110`}
+        />
         {!iconOnly && "Imprimir"}
       </Button>
       <Button
         type="button"
         variant="outline"
         size={iconOnly ? "icon" : "sm"}
-        className={appearance === "on-dark" ? "border-white/40 bg-[#f7efe7] text-[#2d241d] shadow-[0_5px_16px_rgba(0,0,0,0.2)] hover:border-white hover:bg-white hover:text-[#17130f] disabled:border-white/20 disabled:bg-white/20 disabled:text-white/45" : undefined}
+        className={`group rounded-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${appearance === "on-dark" ? "border-white/40 bg-[#f7efe7] text-[#2d241d] shadow-[0_5px_16px_rgba(0,0,0,0.2)] hover:border-white hover:bg-white hover:text-[#17130f] disabled:border-white/20 disabled:bg-white/20 disabled:text-white/45" : ""}`}
         disabled={disabled || exporting !== null}
         onClick={() => void exportReport("pdf")}
         aria-label={exporting === "pdf" ? "Generando reporte PDF" : "Exportar reporte PDF"}
@@ -78,7 +80,9 @@ export function ReportExportButtons<T>({
         {exporting === "pdf" ? (
           <Loader2 className={`${iconOnly ? "" : "mr-2"} h-4 w-4 animate-spin`} />
         ) : (
-          <FileDown className={`${iconOnly ? "h-5 w-5" : "mr-2 h-4 w-4"}`} />
+          <FileDown
+            className={`${iconOnly ? "h-[18px] w-[18px]" : "mr-2 h-4 w-4"} transition-transform duration-200 group-hover:translate-y-0.5`}
+          />
         )}
         {!iconOnly && (exporting === "pdf" ? "Generando PDF…" : "Exportar PDF")}
       </Button>
@@ -86,7 +90,7 @@ export function ReportExportButtons<T>({
         type="button"
         variant="outline"
         size={iconOnly ? "icon" : "sm"}
-        className={appearance === "on-dark" ? "border-white/40 bg-[#f7efe7] text-[#2d241d] shadow-[0_5px_16px_rgba(0,0,0,0.2)] hover:border-white hover:bg-white hover:text-[#17130f] disabled:border-white/20 disabled:bg-white/20 disabled:text-white/45" : undefined}
+        className={`group rounded-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${appearance === "on-dark" ? "border-white/40 bg-[#f7efe7] text-[#2d241d] shadow-[0_5px_16px_rgba(0,0,0,0.2)] hover:border-white hover:bg-white hover:text-[#17130f] disabled:border-white/20 disabled:bg-white/20 disabled:text-white/45" : ""}`}
         disabled={disabled || exporting !== null}
         onClick={() => void exportReport("excel")}
         aria-label={exporting === "excel" ? "Generando reporte Excel" : "Exportar reporte Excel"}
@@ -95,7 +99,9 @@ export function ReportExportButtons<T>({
         {exporting === "excel" ? (
           <Loader2 className={`${iconOnly ? "" : "mr-2"} h-4 w-4 animate-spin`} />
         ) : (
-          <FileSpreadsheet className={`${iconOnly ? "h-5 w-5" : "mr-2 h-4 w-4"}`} />
+          <FileSpreadsheet
+            className={`${iconOnly ? "h-[18px] w-[18px]" : "mr-2 h-4 w-4"} transition-transform duration-200 group-hover:scale-110`}
+          />
         )}
         {!iconOnly && (exporting === "excel" ? "Generando Excel…" : "Exportar Excel")}
       </Button>
