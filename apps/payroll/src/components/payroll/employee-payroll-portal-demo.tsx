@@ -408,6 +408,9 @@ export function EmployeePayrollPortalDemo() {
     managerReceiptMonth,
   ).managerRows.find((row) => row.manager.id === employee?.id);
   const closedManagerCommission = closedManagerPayroll?.commission ?? 0;
+  const closedManagerWorkerTax = closedManagerPayroll?.workerTax ?? 0;
+  const closedManagerNetPayment =
+    closedManagerPayroll?.netPayment ?? closedManagerCommission;
   const closedManagerSocialCost = closedManagerPayroll?.socialCost ?? 0;
   const closedManagerIsr = closedManagerPayroll?.isr ?? 0;
   const closedManagerTotalCost =
@@ -789,9 +792,7 @@ export function EmployeePayrollPortalDemo() {
                 {receiptNetLabel}
               </p>
               <p className="number-display mt-2 text-4xl">
-                {money.format(
-                  commissionReceiptNet(line, includeBaseSalary),
-                )}
+                {money.format(commissionReceiptNet(line, includeBaseSalary))}
               </p>
               <p className="mt-2 text-xs text-white/65">
                 Cuenta {employee.bank} · {employee.account}
@@ -939,9 +940,9 @@ export function EmployeePayrollPortalDemo() {
               </p>
               <div className="mt-4 flex items-end justify-between gap-4">
                 <div>
-                  <p className="label-caps">COMISIÓN EXTRA</p>
+                  <p className="label-caps">NETO DE COMISIÓN</p>
                   <p className="number-display mt-1 text-2xl">
-                    {money.format(closedManagerCommission)}
+                    {money.format(closedManagerNetPayment)}
                   </p>
                   <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
                     Costo total {money.format(closedManagerTotalCost)}
@@ -1867,6 +1868,14 @@ export function EmployeePayrollPortalDemo() {
                   <span>Comisión gerencial</span>
                   <strong>{money.format(closedManagerCommission)}</strong>
                 </div>
+                <div className="flex justify-between gap-4 text-amber-800 dark:text-amber-200">
+                  <span>Impuesto sobre el trabajador</span>
+                  <strong>−{money.format(closedManagerWorkerTax)}</strong>
+                </div>
+                <div className="flex justify-between gap-4 font-semibold">
+                  <span>Neto a pagar</span>
+                  <strong>{money.format(closedManagerNetPayment)}</strong>
+                </div>
                 <div className="flex justify-between gap-4">
                   <span>Costo social</span>
                   <strong>{money.format(closedManagerSocialCost)}</strong>
@@ -1882,7 +1891,7 @@ export function EmployeePayrollPortalDemo() {
                   {money.format(closedManagerTotalCost)}
                 </p>
                 <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-                  Comisión y cargas fiscales del periodo
+                  Neto después de retención + cargas fiscales del periodo
                 </p>
               </div>
               <div className="flex justify-end">

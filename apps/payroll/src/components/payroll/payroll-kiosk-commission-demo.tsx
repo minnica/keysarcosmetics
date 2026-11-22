@@ -67,6 +67,8 @@ type KioskSortKey =
   | "achievement"
   | "rate"
   | "commission"
+  | "workerTax"
+  | "netPayment"
   | "socialCost"
   | "isr"
   | "totalCost";
@@ -286,13 +288,16 @@ export function PayrollKioskCommissionDemo() {
   }));
   const rows = sortTableRows(rawRows, tableSort, {
     branch: (row) => `${row.branch?.name ?? ""} ${row.manager?.name ?? ""}`,
-    account: (row) => `${row.manager?.bank ?? ""} ${row.manager?.account ?? ""}`,
+    account: (row) =>
+      `${row.manager?.bank ?? ""} ${row.manager?.account ?? ""}`,
     scheme: (row) => row.branchScheme?.name ?? "META INDIVIDUAL",
     target: (row) => row.target.monthlyTarget,
     sales: (row) => row.sales,
     achievement: (row) => row.achievement,
     rate: (row) => row.appliedRate,
     commission: (row) => row.commission,
+    workerTax: (row) => row.workerTax,
+    netPayment: (row) => row.netPayment,
     socialCost: (row) => row.socialCost,
     isr: (row) => row.isr,
     totalCost: (row) => row.totalCost,
@@ -360,6 +365,8 @@ export function PayrollKioskCommissionDemo() {
     0,
   );
   const totalCommission = kioskPayroll.totals.commission;
+  const totalWorkerTax = kioskPayroll.totals.workerTax;
+  const totalNetPayment = kioskPayroll.totals.netPayment;
   const totalSocialCost = kioskPayroll.totals.socialCost;
   const totalIsr = kioskPayroll.totals.isr;
   const totalCost = kioskPayroll.totals.totalCost;
@@ -429,6 +436,8 @@ export function PayrollKioskCommissionDemo() {
     achievement: row.achievement,
     rate: row.appliedRate,
     commission: row.commission,
+    workerTax: row.workerTax,
+    netPayment: row.netPayment,
     socialCost: row.socialCost,
     isr: row.isr,
     totalCost: row.totalCost,
@@ -464,6 +473,18 @@ export function PayrollKioskCommissionDemo() {
         detail: "Recibos gerenciales",
       },
       {
+        label: "Impuesto trabajador",
+        value: money.format(totalWorkerTax),
+        detail: kioskPayroll.taxInclusion.includeWorkerTax
+          ? `${(kioskPayroll.taxInclusion.workerTaxRate * 100).toFixed(2)}% global`
+          : "Apagado",
+      },
+      {
+        label: "Neto a pagar",
+        value: money.format(totalNetPayment),
+        detail: "Comisión menos retención",
+      },
+      {
         label: "Costo social",
         value: money.format(totalSocialCost),
         detail: kioskPayroll.taxInclusion.includeSocialCost
@@ -480,7 +501,7 @@ export function PayrollKioskCommissionDemo() {
       {
         label: "Costo total",
         value: money.format(totalCost),
-        detail: "Comisión + cargas fiscales",
+        detail: "Neto + impuesto trabajador + cargas fiscales",
       },
     ],
     analysis: [
@@ -489,7 +510,7 @@ export function PayrollKioskCommissionDemo() {
         : "Aún no existe un récord histórico de venta disponible.",
       `${achievedBranches} de ${rows.length} sucursales alcanzaron la meta en el mes seleccionado.`,
       "La comisión se presenta por punto de venta y conserva al gerente responsable del periodo.",
-      `La carga fiscal efectiva del periodo es costo social ${kioskPayroll.taxInclusion.includeSocialCost ? "incluido" : "excluido"} e ISR ${kioskPayroll.taxInclusion.includeIsr ? "incluido" : "excluido"}.`,
+      `La carga fiscal efectiva del periodo es costo social ${kioskPayroll.taxInclusion.includeSocialCost ? "incluido" : "excluido"}, ISR ${kioskPayroll.taxInclusion.includeIsr ? "incluido" : "excluido"} e impuesto al trabajador ${kioskPayroll.taxInclusion.includeWorkerTax ? `activo al ${(kioskPayroll.taxInclusion.workerTaxRate * 100).toFixed(2)}%` : "apagado"}.`,
     ],
     filename: `comision-kiosco-${selectedMonth}`,
     sheetName: "Comision kiosco",
@@ -547,6 +568,18 @@ export function PayrollKioskCommissionDemo() {
       {
         header: "COMISIÓN",
         accessor: (row: (typeof exportRows)[number]) => row.commission,
+        format: "currency" as const,
+        width: 18,
+      },
+      {
+        header: "IMPUESTO TRABAJADOR",
+        accessor: (row: (typeof exportRows)[number]) => row.workerTax,
+        format: "currency" as const,
+        width: 19,
+      },
+      {
+        header: "NETO A PAGAR",
+        accessor: (row: (typeof exportRows)[number]) => row.netPayment,
         format: "currency" as const,
         width: 18,
       },
@@ -670,7 +703,7 @@ export function PayrollKioskCommissionDemo() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
         <Card>
           <CardContent className="p-5">
             <WalletCards className="h-5 w-5 text-emerald-600" />
@@ -722,6 +755,18 @@ export function PayrollKioskCommissionDemo() {
         </Card>
         <Card>
           <CardContent className="p-5">
+            <Landmark className="h-5 w-5 text-amber-600" />
+            <p className="label-caps mt-4">IMPUESTO TRABAJADOR</p>
+            <p className="number-display mt-2 text-2xl">
+              {money.format(totalWorkerTax)}
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+              Neto {money.format(totalNetPayment)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
             <ShieldPlus className="h-5 w-5 text-sky-600" />
             <p className="label-caps mt-4">COSTO SOCIAL</p>
             <p className="number-display mt-2 text-2xl">
@@ -765,17 +810,106 @@ export function PayrollKioskCommissionDemo() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableTableHead column="branch" label="SUCURSAL / GERENTE" kind="text" sort={tableSort} onSort={changeTableSort} />
-                  <SortableTableHead column="account" label="CUENTA PARA TRANSFERENCIA" kind="text" sort={tableSort} onSort={changeTableSort} />
-                  <SortableTableHead column="scheme" label="ESQUEMA APLICADO" kind="text" sort={tableSort} onSort={changeTableSort} />
-                  <SortableTableHead column="target" label="META" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="sales" label="VENTA DEL MES" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="achievement" label="CUMPLIMIENTO" kind="number" sort={tableSort} onSort={changeTableSort} />
-                  <SortableTableHead column="rate" label="TASA" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="commission" label="COMISIÓN" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="socialCost" label="COSTO SOCIAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="isr" label="ISR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="totalCost" label="COSTO TOTAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead
+                    column="branch"
+                    label="SUCURSAL / GERENTE"
+                    kind="text"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                  />
+                  <SortableTableHead
+                    column="account"
+                    label="CUENTA PARA TRANSFERENCIA"
+                    kind="text"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                  />
+                  <SortableTableHead
+                    column="scheme"
+                    label="ESQUEMA APLICADO"
+                    kind="text"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                  />
+                  <SortableTableHead
+                    column="target"
+                    label="META"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="sales"
+                    label="VENTA DEL MES"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="achievement"
+                    label="CUMPLIMIENTO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                  />
+                  <SortableTableHead
+                    column="rate"
+                    label="TASA"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="commission"
+                    label="COMISIÓN"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="workerTax"
+                    label="IMPUESTO TRABAJADOR"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="netPayment"
+                    label="NETO A PAGAR"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="socialCost"
+                    label="COSTO SOCIAL"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="isr"
+                    label="ISR"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="totalCost"
+                    label="COSTO TOTAL"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
                   <TableHead className="text-right">CONFIGURAR</TableHead>
                 </TableRow>
               </TableHeader>
@@ -843,6 +977,12 @@ export function PayrollKioskCommissionDemo() {
                     <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
                       {money.format(row.commission)}
                     </TableCell>
+                    <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                      −{money.format(row.workerTax)}
+                    </TableCell>
+                    <TableCell className="number-display text-right font-semibold">
+                      {money.format(row.netPayment)}
+                    </TableCell>
                     <TableCell className="number-display text-right">
                       {money.format(row.socialCost)}
                     </TableCell>
@@ -884,6 +1024,12 @@ export function PayrollKioskCommissionDemo() {
                   <TableCell />
                   <TableCell className="number-display text-right">
                     {money.format(totalCommission)}
+                  </TableCell>
+                  <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                    −{money.format(totalWorkerTax)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(totalNetPayment)}
                   </TableCell>
                   <TableCell className="number-display text-right">
                     {money.format(totalSocialCost)}
@@ -996,12 +1142,51 @@ export function PayrollKioskCommissionDemo() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <SortableTableHead column="month" label="MES" kind="text" sort={historySort} onSort={changeHistorySort} />
-                      <SortableTableHead column="branch" label="SUCURSAL" kind="text" sort={historySort} onSort={changeHistorySort} />
-                      <SortableTableHead column="scheme" label="ESQUEMA / GERENTE" kind="text" sort={historySort} onSort={changeHistorySort} />
-                      <SortableTableHead column="sales" label="VENTA" kind="number" sort={historySort} onSort={changeHistorySort} align="right" />
-                      <SortableTableHead column="rate" label="TASA" kind="number" sort={historySort} onSort={changeHistorySort} align="right" />
-                      <SortableTableHead column="commission" label="COMISIÓN" kind="number" sort={historySort} onSort={changeHistorySort} align="right" />
+                      <SortableTableHead
+                        column="month"
+                        label="MES"
+                        kind="text"
+                        sort={historySort}
+                        onSort={changeHistorySort}
+                      />
+                      <SortableTableHead
+                        column="branch"
+                        label="SUCURSAL"
+                        kind="text"
+                        sort={historySort}
+                        onSort={changeHistorySort}
+                      />
+                      <SortableTableHead
+                        column="scheme"
+                        label="ESQUEMA / GERENTE"
+                        kind="text"
+                        sort={historySort}
+                        onSort={changeHistorySort}
+                      />
+                      <SortableTableHead
+                        column="sales"
+                        label="VENTA"
+                        kind="number"
+                        sort={historySort}
+                        onSort={changeHistorySort}
+                        align="right"
+                      />
+                      <SortableTableHead
+                        column="rate"
+                        label="TASA"
+                        kind="number"
+                        sort={historySort}
+                        onSort={changeHistorySort}
+                        align="right"
+                      />
+                      <SortableTableHead
+                        column="commission"
+                        label="COMISIÓN"
+                        kind="number"
+                        sort={historySort}
+                        onSort={changeHistorySort}
+                        align="right"
+                      />
                     </TableRow>
                   </TableHeader>
                   <TableBody>

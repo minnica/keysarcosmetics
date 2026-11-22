@@ -50,6 +50,7 @@ interface ConsolidatedSalesAnalyticsProps {
   trend: ConsolidatedSalesTrendPoint[];
   branches: ConsolidatedBranchSalesPoint[];
   payrollBase: number;
+  workerTax: number;
   socialCost: number;
   isrCost: number;
   totalSales: number;
@@ -91,11 +92,12 @@ export function PayrollConsolidatedSalesAnalytics({
   trend,
   branches,
   payrollBase,
+  workerTax,
   socialCost,
   isrCost,
   totalSales,
 }: ConsolidatedSalesAnalyticsProps) {
-  const totalCost = payrollBase + socialCost + isrCost;
+  const totalCost = payrollBase + workerTax + socialCost + isrCost;
   const costRatio = totalSales > 0 ? totalCost / totalSales : null;
   const rankedBranches = [...branches].sort((a, b) => b.sales - a.sales);
   const salesLeader = rankedBranches[0] ?? null;
@@ -130,7 +132,7 @@ export function PayrollConsolidatedSalesAnalytics({
         <Badge variant="outline">PERIODO {periodLabel}</Badge>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-4">
           <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-muted)]">
             Sucursal líder en ventas
@@ -140,6 +142,17 @@ export function PayrollConsolidatedSalesAnalytics({
           </p>
           <p className="number-display text-sm text-[color:var(--accent)]">
             {money.format(salesLeader?.sales ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-amber-300/70 bg-amber-50/70 p-4 dark:border-amber-800 dark:bg-amber-950/20">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-amber-800 dark:text-amber-200">
+            Impuesto retenido al trabajador
+          </p>
+          <p className="number-display mt-2 text-lg text-amber-900 dark:text-amber-100">
+            {money.format(workerTax)}
+          </p>
+          <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
+            Descontado del neto y sumado a la obligación patronal total.
           </p>
         </div>
         <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-4">
@@ -178,7 +191,8 @@ export function PayrollConsolidatedSalesAnalytics({
                   Ventas frente a costo laboral
                 </CardTitle>
                 <CardDescription>
-                  Evolución de los últimos seis meses hasta el periodo elegido.
+                  Evolución de los últimos seis meses; el costo usa el neto
+                  después del impuesto al trabajador.
                 </CardDescription>
               </div>
               <Badge variant="outline">6 MESES</Badge>

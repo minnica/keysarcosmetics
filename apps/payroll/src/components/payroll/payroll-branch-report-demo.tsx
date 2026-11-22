@@ -9,6 +9,7 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
+  Landmark,
   Layers3,
   Scale,
   TrendingUp,
@@ -81,6 +82,7 @@ interface BranchSummaryRow {
   christmasBonusPayroll: number;
   movements: number;
   payrollCost: number;
+  workerTax: number;
   socialCost: number;
   isrCost: number;
   totalCost: number;
@@ -100,6 +102,7 @@ type BranchSummarySortKey =
   | "christmasBonusPayroll"
   | "movements"
   | "payrollCost"
+  | "workerTax"
   | "socialCost"
   | "isrCost"
   | "totalCost";
@@ -109,6 +112,7 @@ interface MonthlyTrend {
   label: string;
   sales: number;
   payroll: number;
+  workerTax: number;
   social: number;
   isr: number;
   totalCost: number;
@@ -323,6 +327,7 @@ export function PayrollBranchReportDemo() {
           let settlementPayroll = 0;
           let christmasBonusPayroll = 0;
           let movements = 0;
+          let workerTax = 0;
           let socialCost = 0;
           let isrCost = 0;
           const employeeIds = new Set<string>();
@@ -428,6 +433,7 @@ export function PayrollBranchReportDemo() {
             socialCost +=
               Math.max(0, line.socialCost - specialSocial) * costShare;
             isrCost += Math.max(0, line.isrCost - specialIsr) * costShare;
+            workerTax += line.workerTax * costShare;
           });
 
           state.movements
@@ -562,6 +568,7 @@ export function PayrollBranchReportDemo() {
 
           const kioskBranch = kioskBranchById.get(branch.id);
           kioskPayroll = kioskBranch?.commission ?? 0;
+          workerTax += kioskBranch?.workerTax ?? 0;
           socialCost += kioskBranch?.socialCost ?? 0;
           isrCost += kioskBranch?.isr ?? 0;
           if (kioskBranch?.manager) employeeIds.add(kioskBranch.manager.id);
@@ -590,13 +597,15 @@ export function PayrollBranchReportDemo() {
             christmasBonusPayroll,
             movements,
             payrollCost,
+            workerTax,
             socialCost,
             isrCost,
-            totalCost: payrollCost + socialCost + isrCost,
+            totalCost: payrollCost + workerTax + socialCost + isrCost,
             employees: employeeIds.size,
           };
         });
         const payroll = rows.reduce((sum, row) => sum + row.payrollCost, 0);
+        const workerTax = rows.reduce((sum, row) => sum + row.workerTax, 0);
         const social = rows.reduce((sum, row) => sum + row.socialCost, 0);
         const isr = rows.reduce((sum, row) => sum + row.isrCost, 0);
         return {
@@ -610,9 +619,10 @@ export function PayrollBranchReportDemo() {
               .toLocaleUpperCase("es-MX"),
             sales: rows.reduce((sum, row) => sum + row.sales, 0),
             payroll,
+            workerTax,
             social,
             isr,
-            totalCost: payroll + social + isr,
+            totalCost: payroll + workerTax + social + isr,
           },
         };
       },
@@ -658,6 +668,7 @@ export function PayrollBranchReportDemo() {
         ),
         movements: entries.reduce((sum, row) => sum + row.movements, 0),
         payrollCost: entries.reduce((sum, row) => sum + row.payrollCost, 0),
+        workerTax: entries.reduce((sum, row) => sum + row.workerTax, 0),
         socialCost: entries.reduce((sum, row) => sum + row.socialCost, 0),
         isrCost: entries.reduce((sum, row) => sum + row.isrCost, 0),
         totalCost: entries.reduce((sum, row) => sum + row.totalCost, 0),
@@ -815,6 +826,7 @@ export function PayrollBranchReportDemo() {
         christmasBonusPayroll: (row) => row.christmasBonusPayroll,
         movements: (row) => row.movements,
         payrollCost: (row) => row.payrollCost,
+        workerTax: (row) => row.workerTax,
         socialCost: (row) => row.socialCost,
         isrCost: (row) => row.isrCost,
         totalCost: (row) => row.totalCost,
@@ -826,6 +838,7 @@ export function PayrollBranchReportDemo() {
   }
   const totalSales = rows.reduce((sum, row) => sum + row.sales, 0);
   const totalPayroll = rows.reduce((sum, row) => sum + row.payrollCost, 0);
+  const totalWorkerTax = rows.reduce((sum, row) => sum + row.workerTax, 0);
   const totalSocial = rows.reduce((sum, row) => sum + row.socialCost, 0);
   const totalIsr = rows.reduce((sum, row) => sum + row.isrCost, 0);
   const totalCost = rows.reduce((sum, row) => sum + row.totalCost, 0);
@@ -890,7 +903,7 @@ export function PayrollBranchReportDemo() {
       {
         label: "Costo integral",
         value: money.format(totalCost),
-        detail: "Nómina + social + ISR",
+        detail: "Neto + retención + social + ISR",
       },
       {
         label: "Costo / venta",
@@ -999,6 +1012,12 @@ export function PayrollBranchReportDemo() {
         accessor: (row: BranchSummaryRow) => row.payrollCost,
         format: "currency" as const,
         width: 18,
+      },
+      {
+        header: "IMPUESTO TRABAJADOR",
+        accessor: (row: BranchSummaryRow) => row.workerTax,
+        format: "currency" as const,
+        width: 19,
       },
       {
         header: "COSTO SOCIAL",
@@ -1148,7 +1167,7 @@ export function PayrollBranchReportDemo() {
         </div>
       </section>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric
           icon={TrendingUp}
           label="VENTAS"
@@ -1159,7 +1178,13 @@ export function PayrollBranchReportDemo() {
           icon={WalletCards}
           label="COSTO INTEGRAL"
           value={money.format(totalCost)}
-          detail="Nómina + social + ISR"
+          detail="Neto + retención + social + ISR"
+        />
+        <Metric
+          icon={Landmark}
+          label="IMPUESTO TRABAJADOR"
+          value={money.format(totalWorkerTax)}
+          detail="Obligación patronal por enterar"
         />
         <Metric
           icon={CircleDollarSign}
@@ -1314,6 +1339,11 @@ export function PayrollBranchReportDemo() {
                 color: "bg-[#9a744c]",
               },
               {
+                label: "IMP. TRABAJADOR",
+                value: totalWorkerTax,
+                color: "bg-[#c99752]",
+              },
+              {
                 label: "COSTO SOCIAL",
                 value: totalSocial,
                 color: "bg-[#648672]",
@@ -1462,21 +1492,133 @@ export function PayrollBranchReportDemo() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableTableHead column="branch" label="SUCURSAL" kind="text" sort={tableSort} onSort={changeTableSort} />
-                  <SortableTableHead column="fixedPayroll" label="FIJO" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="specialistPayroll" label="ESPECIALISTAS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="doublePayPayroll" label="PAGO DOBLE" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="negativeBalanceApplied" label="SALDO ARRASTRADO" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="commissionPayroll" label="COMISIONES" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="kioskPayroll" label="KIOSCO" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="contractorPayroll" label="HONORARIOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="settlementPayroll" label="LIQUIDACIONES" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="christmasBonusPayroll" label="AGUINALDOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="movements" label="MOVIMIENTOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="payrollCost" label="NÓMINA" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="socialCost" label="SOCIAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="isrCost" label="ISR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                  <SortableTableHead column="totalCost" label="TOTAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                  <SortableTableHead
+                    column="branch"
+                    label="SUCURSAL"
+                    kind="text"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                  />
+                  <SortableTableHead
+                    column="fixedPayroll"
+                    label="FIJO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="specialistPayroll"
+                    label="ESPECIALISTAS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="doublePayPayroll"
+                    label="PAGO DOBLE"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="negativeBalanceApplied"
+                    label="SALDO ARRASTRADO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="commissionPayroll"
+                    label="COMISIONES"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="kioskPayroll"
+                    label="KIOSCO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="contractorPayroll"
+                    label="HONORARIOS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="settlementPayroll"
+                    label="LIQUIDACIONES"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="christmasBonusPayroll"
+                    label="AGUINALDOS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="movements"
+                    label="MOVIMIENTOS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="payrollCost"
+                    label="NÓMINA"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="workerTax"
+                    label="IMP. TRABAJADOR"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="socialCost"
+                    label="SOCIAL"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="isrCost"
+                    label="ISR"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="totalCost"
+                    label="TOTAL"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1522,6 +1664,9 @@ export function PayrollBranchReportDemo() {
                     </TableCell>
                     <TableCell className="number-display text-right font-semibold">
                       {money.format(row.payrollCost)}
+                    </TableCell>
+                    <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                      {money.format(row.workerTax)}
                     </TableCell>
                     <TableCell className="number-display text-right">
                       {money.format(row.socialCost)}
@@ -1570,6 +1715,9 @@ export function PayrollBranchReportDemo() {
                   </TableCell>
                   <TableCell className="number-display text-right">
                     {money.format(totalPayroll)}
+                  </TableCell>
+                  <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                    {money.format(totalWorkerTax)}
                   </TableCell>
                   <TableCell colSpan={2} />
                   <TableCell className="number-display text-right">

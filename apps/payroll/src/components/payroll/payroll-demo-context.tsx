@@ -461,6 +461,8 @@ export interface DemoPeriodTaxInclusion {
   periodEnd: string;
   includeSocialCost: boolean;
   includeIsr: boolean;
+  includeWorkerTax: boolean;
+  workerTaxRate: number;
   updatedAt: string;
   updatedByEmployeeId: string;
 }
@@ -562,10 +564,7 @@ export function christmasBonusPaidAmountForRange(
         period.paymentDate >= periodStart &&
         period.paymentDate <= periodEnd,
     )
-    .reduce(
-      (sum, period) => sum + bonus.grossAmount * period.percentage,
-      0,
-    );
+    .reduce((sum, period) => sum + bonus.grossAmount * period.percentage, 0);
 }
 
 export function terminationSettlementTotal(
@@ -613,11 +612,7 @@ export function effectiveTaxInclusionForRange(
   periodEnd: string,
   payrollModule: Exclude<PayrollModule, "CONSOLIDATED">,
 ) {
-  const global = periodTaxInclusionForRange(
-    inclusions,
-    periodStart,
-    periodEnd,
-  );
+  const global = periodTaxInclusionForRange(inclusions, periodStart, periodEnd);
   const moduleOverride = moduleTaxInclusionForRange(
     inclusions,
     periodStart,
@@ -630,6 +625,8 @@ export function effectiveTaxInclusionForRange(
       (moduleOverride?.includeSocialCost ?? false),
     includeIsr:
       (global?.includeIsr ?? true) || (moduleOverride?.includeIsr ?? false),
+    includeWorkerTax: global?.includeWorkerTax ?? false,
+    workerTaxRate: Math.min(Math.max(global?.workerTaxRate ?? 0.03, 0), 1),
     global,
     moduleOverride,
   };
@@ -641,6 +638,16 @@ export interface DemoEmployeeDecision {
   status: "PENDING" | "AUTHORIZED" | "CLARIFICATION";
   note: string;
   updatedAt: string;
+}
+
+export interface DemoDisbursementPayment {
+  id: string;
+  payrollModule: PayrollModule;
+  periodStart: string;
+  periodEnd: string;
+  employeeId: string;
+  paidAt: string;
+  paidByEmployeeId: string;
 }
 
 function invalidateAuthorizedDecisions(
@@ -703,10 +710,7 @@ export interface DemoViaticsEntry {
   createdAt: string;
 }
 
-export type DemoListSortMode =
-  | "DEFAULT"
-  | "ALPHABETICAL"
-  | "AMOUNT_DESC";
+export type DemoListSortMode = "DEFAULT" | "ALPHABETICAL" | "AMOUNT_DESC";
 
 export function sortByListMode<T>(
   rows: readonly T[],
@@ -757,6 +761,7 @@ export interface DemoState {
   christmasBonuses: DemoChristmasBonus[];
   christmasBonusPaymentPeriods: DemoChristmasBonusPaymentPeriod[];
   decisions: DemoEmployeeDecision[];
+  disbursementPayments: DemoDisbursementPayment[];
   kioskReceiptDecisions: DemoKioskReceiptDecision[];
   viaticsConcepts: DemoViaticsConcept[];
   viaticsEntries: DemoViaticsEntry[];
@@ -800,6 +805,7 @@ export interface EmployeePayrollLine {
   baseSalaryOverride: number | null;
   payrollBeforeDeductions: number;
   totalDeductions: number;
+  workerTax: number;
   total: number;
   socialCost: number;
   isrCost: number;
@@ -1426,7 +1432,9 @@ function mergeSalaryAssignments(
   additions: DemoSalaryAssignment[],
 ) {
   return [...additions]
-    .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom))
+    .sort((left, right) =>
+      left.effectiveFrom.localeCompare(right.effectiveFrom),
+    )
     .reduce<DemoSalaryAssignment[]>((result, addition) => {
       const withoutSameStart = result.filter(
         (item) =>
@@ -3128,6 +3136,8 @@ function createInitialState(): DemoState {
         periodEnd: period.end,
         includeSocialCost: true,
         includeIsr: true,
+        includeWorkerTax: false,
+        workerTaxRate: 0.03,
         updatedAt: new Date().toISOString(),
         updatedByEmployeeId: "emp-monica",
       },
@@ -3328,6 +3338,7 @@ function createInitialState(): DemoState {
       },
     ],
     decisions: [],
+    disbursementPayments: [],
     kioskReceiptDecisions: [],
     calculationMode: "WITH_VAT",
     commissionModeOverrides: {},
@@ -3480,9 +3491,7 @@ interface DemoPayrollContextValue {
   deleteLoan: (loanId: string) => void;
   setLoanStatus: (loanId: string, status: ApprovalStatus) => void;
   updateFinancialRequestPolicy: (policy: DemoFinancialRequestPolicy) => void;
-  updateReceiptConfiguration: (
-    configuration: DemoReceiptConfiguration,
-  ) => void;
+  updateReceiptConfiguration: (configuration: DemoReceiptConfiguration) => void;
   setNotificationModuleApproval: (moduleId: string, approved: boolean) => void;
   updateNotificationTemplate: (
     templateId: string,
@@ -3506,6 +3515,18 @@ interface DemoPayrollContextValue {
     periodStart: string,
     employeeIds: string[],
     reason: string,
+  ) => void;
+  reopenEmployeeReceipt: (
+    employeeId: string,
+    periodStart: string,
+    masterCode: string,
+    reason: string,
+  ) => void;
+  markDisbursementPaymentPaid: (
+    payrollModule: PayrollModule,
+    periodStart: string,
+    periodEnd: string,
+    employeeId: string,
   ) => void;
   closeRunAndOpenNextPeriod: (
     runId: string,
@@ -3564,7 +3585,13 @@ interface DemoPayrollContextValue {
     periodStart: string,
     periodEnd: string,
     patch: Partial<
-      Pick<DemoPeriodTaxInclusion, "includeSocialCost" | "includeIsr">
+      Pick<
+        DemoPeriodTaxInclusion,
+        | "includeSocialCost"
+        | "includeIsr"
+        | "includeWorkerTax"
+        | "workerTaxRate"
+      >
     >,
   ) => void;
   setModuleTaxInclusion: (
@@ -3583,12 +3610,8 @@ interface DemoPayrollContextValue {
   ) => void;
   deleteDoublePayDay: (entryId: string) => void;
   upsertTerminationSettlement: (settlement: DemoTerminationSettlement) => void;
-  approveTerminationSettlement: (
-    settlement: DemoTerminationSettlement,
-  ) => void;
-  archiveTerminationSettlement: (
-    settlement: DemoTerminationSettlement,
-  ) => void;
+  approveTerminationSettlement: (settlement: DemoTerminationSettlement) => void;
+  archiveTerminationSettlement: (settlement: DemoTerminationSettlement) => void;
   upsertChristmasBonus: (bonus: DemoChristmasBonus) => void;
   replaceChristmasBonusPaymentPeriods: (
     year: number,
@@ -3678,8 +3701,7 @@ export function PayrollDemoProvider({
 }) {
   const [state, setState] = useState<DemoState>(() => createInitialState());
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [listSortMode, setListSortMode] =
-    useState<DemoListSortMode>("DEFAULT");
+  const [listSortMode, setListSortMode] = useState<DemoListSortMode>("DEFAULT");
   const periodOptions = useMemo(() => buildPeriodOptions(), []);
   const currentPeriod =
     periodOptions[0]?.start === periodForDate(new Date()).start
@@ -3816,15 +3838,12 @@ export function PayrollDemoProvider({
                 ];
           const commissionSegments = calculationPeriods.map((period) => {
             const segmentStart =
-              period.start > employmentStart
-                ? period.start
-                : employmentStart;
+              period.start > employmentStart ? period.start : employmentStart;
             const segmentEnd =
               period.end < employmentEnd ? period.end : employmentEnd;
             const segmentGrossSales = employeeSales
               .filter(
-                (sale) =>
-                  sale.date >= segmentStart && sale.date <= segmentEnd,
+                (sale) => sale.date >= segmentStart && sale.date <= segmentEnd,
               )
               .reduce((sum, sale) => sum + sale.amount, 0);
             const closedCommissionRun = state.runs.find(
@@ -3940,8 +3959,7 @@ export function PayrollDemoProvider({
               movement.status === "APPROVED" &&
               (payrollModule === "CONSOLIDATED" ||
                 movement.payrollModule === payrollModule ||
-                (payrollModule === "COMMISSION" &&
-                  movement.type === "BONUS")),
+                (payrollModule === "COMMISSION" && movement.type === "BONUS")),
           );
           const movementBonuses = periodMovements
             .filter(
@@ -4110,25 +4128,25 @@ export function PayrollDemoProvider({
               ? 0
               : isFullCalendarMonth
                 ? ((payrollModule === "CONSOLIDATED" ||
-                    salaryAt(`${periodStart.slice(0, 8)}15`).payrollModule ===
-                      payrollModule
-                      ? salaryAt(`${periodStart.slice(0, 8)}15`).monthlySalary
-                      : 0) /
+                  salaryAt(`${periodStart.slice(0, 8)}15`).payrollModule ===
+                    payrollModule
+                    ? salaryAt(`${periodStart.slice(0, 8)}15`).monthlySalary
+                    : 0) /
                     2) *
                     (Math.min(firstHalfWorkedDays, 15) / 15) +
                   ((payrollModule === "CONSOLIDATED" ||
-                    salaryAt(configuredEnd).payrollModule === payrollModule
-                      ? salaryAt(configuredEnd).monthlySalary
-                      : 0) /
+                  salaryAt(configuredEnd).payrollModule === payrollModule
+                    ? salaryAt(configuredEnd).monthlySalary
+                    : 0) /
                     2) *
                     (Math.min(secondHalfWorkedDays, monthEndDay - 15) /
                       (monthEndDay - 15))
                 : isStandardFortnight
-                  ? (payrollModule === "CONSOLIDATED" ||
+                  ? payrollModule === "CONSOLIDATED" ||
                     applicableSalary.payrollModule === payrollModule
-                      ? (applicableSalary.monthlySalary / 2) *
-                        (workedDays / periodDays)
-                      : 0)
+                    ? (applicableSalary.monthlySalary / 2) *
+                      (workedDays / periodDays)
+                    : 0
                   : 0;
           const fixedSalary =
             baseSalaryOverride === null
@@ -4233,7 +4251,7 @@ export function PayrollDemoProvider({
             ordinaryBeforeDeductions +
             settlementPayment +
             christmasBonusPayment;
-          const totalDeductions =
+          const deductionsBeforeWorkerTax =
             fines +
             loanDeduction +
             totalExternalDeductions +
@@ -4250,7 +4268,7 @@ export function PayrollDemoProvider({
             settlementPayment +
             christmasBonusPayment -
             uncoveredDeductions;
-          const total = Math.max(totalBeforeClamp, 0);
+          const totalBeforeWorkerTax = Math.max(totalBeforeClamp, 0);
           const newNegativeBalance = Math.max(-totalBeforeClamp, 0);
           const employeePayrollModule =
             payrollModule === "CONSOLIDATED"
@@ -4272,6 +4290,11 @@ export function PayrollDemoProvider({
             configuredEnd,
             employeePayrollModule,
           );
+          const workerTax = ordinaryTaxInclusion.includeWorkerTax
+            ? totalBeforeWorkerTax * ordinaryTaxInclusion.workerTaxRate
+            : 0;
+          const total = Math.max(totalBeforeWorkerTax - workerTax, 0);
+          const totalDeductions = deductionsBeforeWorkerTax + workerTax;
           const settlementTaxInclusion = effectiveTaxInclusionForRange(
             state.periodTaxInclusions,
             periodStart,
@@ -4368,10 +4391,11 @@ export function PayrollDemoProvider({
             baseSalaryOverride,
             payrollBeforeDeductions,
             totalDeductions,
+            workerTax,
             total,
             socialCost,
             isrCost,
-            totalCost: total + socialCost + isrCost,
+            totalCost: total + workerTax + socialCost + isrCost,
             invoiceSubtotal,
             ivaAmount,
             isrRetention,
@@ -4847,9 +4871,7 @@ export function PayrollDemoProvider({
                   ...employee,
                   hireDate,
                   terminationDate,
-                  active:
-                    hireDate <= isoDate(new Date()) &&
-                    !terminationDate,
+                  active: hireDate <= isoDate(new Date()) && !terminationDate,
                 }
               : employee,
           ),
@@ -5684,8 +5706,7 @@ export function PayrollDemoProvider({
           const selectedIds = new Set(employeeIds);
           const run = current.runs.find(
             (item) =>
-              item.module === "COMMISSION" &&
-              item.periodStart === periodStart,
+              item.module === "COMMISSION" && item.periodStart === periodStart,
           );
           if (!run || run.status !== "DRAFT" || selectedIds.size === 0)
             return current;
@@ -5703,6 +5724,104 @@ export function PayrollDemoProvider({
                   }
                 : decision,
             ),
+          };
+        }),
+      reopenEmployeeReceipt: (employeeId, periodStart, masterCode, reason) =>
+        update((current) => {
+          const authorizingMaster = current.employees.find(
+            (employee) =>
+              employee.active &&
+              employee.roleId === "role-admin" &&
+              employee.secondaryAccessKey === masterCode,
+          );
+          const authorizedDecision = current.decisions.find(
+            (decision) =>
+              decision.employeeId === employeeId &&
+              decision.periodStart === periodStart &&
+              decision.status === "AUTHORIZED",
+          );
+          if (!authorizingMaster || !authorizedDecision) return current;
+          const reopenedAt = new Date().toISOString();
+          const reopenReason =
+            reason.trim() || "RECIBO REABIERTO PARA CORRECCIÓN";
+          return {
+            ...current,
+            decisions: current.decisions.map((decision) =>
+              decision.employeeId === employeeId &&
+              decision.periodStart === periodStart
+                ? {
+                    ...decision,
+                    status: "PENDING" as const,
+                    note: reopenReason,
+                    updatedAt: reopenedAt,
+                  }
+                : decision,
+            ),
+            runs: current.runs.map((run) =>
+              (run.module === "COMMISSION" || run.module === "CONSOLIDATED") &&
+              run.periodStart <= periodStart &&
+              run.periodEnd >= periodStart
+                ? {
+                    ...run,
+                    status: "DRAFT" as const,
+                    reopenedAt,
+                    reopenedByEmployeeId: authorizingMaster.id,
+                    reopenReason,
+                    revision: (run.revision ?? 0) + 1,
+                  }
+                : run,
+            ),
+            disbursementPayments: current.disbursementPayments.filter(
+              (payment) =>
+                !(
+                  payment.employeeId === employeeId &&
+                  (payment.payrollModule === "COMMISSION" ||
+                    payment.payrollModule === "CONSOLIDATED") &&
+                  payment.periodStart <= periodStart &&
+                  payment.periodEnd >= periodStart
+                ),
+            ),
+          };
+        }),
+      markDisbursementPaymentPaid: (
+        payrollModule,
+        periodStart,
+        periodEnd,
+        employeeId,
+      ) =>
+        update((current) => {
+          const activeEmployee = current.employees.find(
+            (employee) => employee.id === current.activeEmployeeId,
+          );
+          const activeRole = current.roles.find(
+            (role) => role.id === activeEmployee?.roleId,
+          );
+          if (
+            !activeEmployee ||
+            !roleHasPermission(activeRole, "payroll.approve") ||
+            current.disbursementPayments.some(
+              (payment) =>
+                payment.payrollModule === payrollModule &&
+                payment.periodStart === periodStart &&
+                payment.periodEnd === periodEnd &&
+                payment.employeeId === employeeId,
+            )
+          )
+            return current;
+          return {
+            ...current,
+            disbursementPayments: [
+              ...current.disbursementPayments,
+              {
+                id: id("disbursement-payment"),
+                payrollModule,
+                periodStart,
+                periodEnd,
+                employeeId,
+                paidAt: new Date().toISOString(),
+                paidByEmployeeId: activeEmployee.id,
+              },
+            ],
           };
         }),
       closeRunAndOpenNextPeriod: (runId, nextPeriod, balances) =>
@@ -5861,8 +5980,7 @@ export function PayrollDemoProvider({
         update((current) => {
           const run = current.runs.find(
             (item) =>
-              item.module === "COMMISSION" &&
-              item.periodStart === periodStart,
+              item.module === "COMMISSION" && item.periodStart === periodStart,
           );
           if (run && run.status !== "DRAFT") return current;
           const commissionModeOverrides = {
@@ -6068,6 +6186,8 @@ export function PayrollDemoProvider({
             periodEnd,
             includeSocialCost: existing?.includeSocialCost ?? true,
             includeIsr: existing?.includeIsr ?? true,
+            includeWorkerTax: existing?.includeWorkerTax ?? false,
+            workerTaxRate: existing?.workerTaxRate ?? 0.03,
             ...patch,
             updatedAt: new Date().toISOString(),
             updatedByEmployeeId: activeEmployee.id,
@@ -6103,6 +6223,8 @@ export function PayrollDemoProvider({
             periodEnd,
             includeSocialCost: existing?.includeSocialCost ?? false,
             includeIsr: existing?.includeIsr ?? false,
+            includeWorkerTax: existing?.includeWorkerTax ?? false,
+            workerTaxRate: existing?.workerTaxRate ?? 0.03,
             ...patch,
             updatedAt: new Date().toISOString(),
             updatedByEmployeeId: activeEmployee.id,
@@ -6156,7 +6278,8 @@ export function PayrollDemoProvider({
             salaryAmount <= 0 ||
             salaryModule !== entry.payrollModule ||
             entry.date < employee.hireDate ||
-            (employee.terminationDate && entry.date > employee.terminationDate) ||
+            (employee.terminationDate &&
+              entry.date > employee.terminationDate) ||
             current.doublePayDays.some(
               (item) =>
                 item.employeeId === entry.employeeId &&
@@ -6619,8 +6742,7 @@ export function PayrollDemoProvider({
           ];
           const commissionRun = current.runs.find(
             (run) =>
-              run.module === "COMMISSION" &&
-              run.periodStart === periodStart,
+              run.module === "COMMISSION" && run.periodStart === periodStart,
           );
           const eligibleSellerIds = current.employees
             .filter(
@@ -6645,9 +6767,7 @@ export function PayrollDemoProvider({
           );
           const allReceiptsAuthorized =
             eligibleSellerIds.length > 0 &&
-            eligibleSellerIds.every((sellerId) =>
-              authorizedIds.has(sellerId),
-            );
+            eligibleSellerIds.every((sellerId) => authorizedIds.has(sellerId));
           return {
             ...current,
             decisions,

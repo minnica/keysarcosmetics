@@ -19,6 +19,8 @@ export interface KioskBranchPayrollRow {
   transactions: number;
   achievement: number;
   commission: number;
+  workerTax: number;
+  netPayment: number;
   socialCost: number;
   isr: number;
   totalCost: number;
@@ -34,6 +36,8 @@ export interface KioskManagerPayrollRow {
   transactions: number;
   rate: number;
   commission: number;
+  workerTax: number;
+  netPayment: number;
   socialCost: number;
   isr: number;
   totalCost: number;
@@ -174,6 +178,10 @@ export function kioskPayrollForMonth(state: DemoState, month: string) {
         value: assignment?.isrCostValue,
         fallbackRate: row.manager.isrCostRate,
       });
+      const workerTax = taxInclusion.includeWorkerTax
+        ? row.commission * taxInclusion.workerTaxRate
+        : 0;
+      const netPayment = Math.max(row.commission - workerTax, 0);
       return {
         manager: row.manager,
         branchIds: Array.from(row.branchIds),
@@ -184,9 +192,11 @@ export function kioskPayrollForMonth(state: DemoState, month: string) {
         transactions: row.transactions,
         rate: row.sales > 0 ? row.commission / row.sales : 0,
         commission: row.commission,
+        workerTax,
+        netPayment,
         socialCost,
         isr,
-        totalCost: row.commission + socialCost + isr,
+        totalCost: netPayment + workerTax + socialCost + isr,
       };
     })
     .sort((left, right) =>
@@ -204,11 +214,15 @@ export function kioskPayrollForMonth(state: DemoState, month: string) {
         : 0;
     const socialCost = (managerRow?.socialCost ?? 0) * share;
     const isr = (managerRow?.isr ?? 0) * share;
+    const workerTax = (managerRow?.workerTax ?? 0) * share;
+    const netPayment = Math.max(row.commission - workerTax, 0);
     return {
       ...row,
+      workerTax,
+      netPayment,
       socialCost,
       isr,
-      totalCost: row.commission + socialCost + isr,
+      totalCost: netPayment + workerTax + socialCost + isr,
     };
   });
 
@@ -220,11 +234,20 @@ export function kioskPayrollForMonth(state: DemoState, month: string) {
     totals: managerRows.reduce(
       (total, row) => ({
         commission: total.commission + row.commission,
+        workerTax: total.workerTax + row.workerTax,
+        netPayment: total.netPayment + row.netPayment,
         socialCost: total.socialCost + row.socialCost,
         isr: total.isr + row.isr,
         totalCost: total.totalCost + row.totalCost,
       }),
-      { commission: 0, socialCost: 0, isr: 0, totalCost: 0 },
+      {
+        commission: 0,
+        workerTax: 0,
+        netPayment: 0,
+        socialCost: 0,
+        isr: 0,
+        totalCost: 0,
+      },
     ),
   };
 }

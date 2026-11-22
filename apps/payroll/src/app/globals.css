@@ -513,6 +513,91 @@ main .bg-card {
   box-shadow: 0 18px 42px rgba(54, 40, 30, 0.085), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
+/* Densidad operativa
+   Mantiene compactos los paneles repetidos de todos los módulos sin reducir
+   las áreas táctiles de formularios ni alterar el contenido de las tablas. */
+main .bg-card > .p-6 {
+  padding: 1rem;
+}
+
+main .bg-card > .p-6.pt-0 {
+  padding-top: 0;
+}
+
+main .bg-card > .p-5 {
+  padding: 0.875rem 1rem;
+}
+
+main .space-y-7 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 1.125rem;
+}
+
+/* Los grupos de indicadores se reconocen por sus tarjetas con label-caps.
+   Así también quedan compactos los módulos que se agreguen después. */
+main .grid:has(> .bg-card > div > .label-caps) {
+  gap: 0.75rem;
+}
+
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card {
+  min-height: 0;
+}
+
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  align-content: start;
+  column-gap: 0.625rem;
+  row-gap: 0.2rem;
+  padding: 0.75rem 0.875rem;
+}
+
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div > svg:first-child {
+  grid-column: 1;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.05rem;
+}
+
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div > .label-caps {
+  grid-column: 2;
+  align-self: center;
+  margin-top: 0;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  line-height: 1.25;
+}
+
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div > :not(svg):not(.label-caps) {
+  grid-column: 1 / -1;
+}
+
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div > .number-display {
+  margin-top: 0.25rem;
+  font-size: 1.125rem;
+  line-height: 1.2;
+}
+
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div > p:not(.label-caps):not(.number-display) {
+  margin-top: 0.15rem;
+  font-size: 0.675rem;
+  line-height: 1.35;
+}
+
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div > a,
+main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div > button {
+  min-height: 1.75rem;
+  height: auto;
+  margin-top: 0.35rem;
+  padding-block: 0.3rem;
+  font-size: 0.675rem;
+}
+
+@media (max-width: 639px) {
+  main .grid:has(> .bg-card > div > .label-caps) > .bg-card > div {
+    padding: 0.8rem 0.875rem;
+  }
+}
+
 main .bg-card.text-white {
   border-color: rgba(213, 173, 137, 0.34);
   background:

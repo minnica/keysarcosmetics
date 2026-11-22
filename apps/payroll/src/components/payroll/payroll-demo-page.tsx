@@ -19,6 +19,7 @@ import {
   Plus,
   Search,
   Settings2,
+  ShieldPlus,
   Sparkles,
   Trash2,
   TrendingUp,
@@ -116,6 +117,7 @@ type PayrollColumnSortKey =
   | "settlement"
   | "payrollBeforeDeductions"
   | "totalDeductions"
+  | "workerTax"
   | "payroll"
   | "socialCost"
   | "isr"
@@ -213,21 +215,24 @@ function Metric({
   detail: string;
 }) {
   return (
-    <Card className="overflow-hidden border-[color:var(--border-color)] bg-[color:var(--bg-card)]">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="label-caps">{label}</p>
-            <p className="number-display mt-2 text-2xl text-[color:var(--text-primary)]">
-              {value}
-            </p>
-            <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-              {detail}
-            </p>
-          </div>
-          <span className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)] p-2.5 text-[color:var(--text-secondary)]">
-            <Icon className="h-5 w-5" aria-hidden="true" />
-          </span>
+    <Card className="overflow-hidden border-[color:var(--border-color)] bg-[color:var(--bg-card)] shadow-sm">
+      <CardContent className="flex min-h-[88px] items-center gap-3 p-3.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/65 text-[color:var(--text-secondary)]">
+          <Icon className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase leading-4 tracking-[0.1em] text-[color:var(--text-secondary)]">
+            {label}
+          </p>
+          <p className="number-display mt-0.5 text-xl leading-6 text-[color:var(--text-primary)]">
+            {value}
+          </p>
+          <p
+            className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[color:var(--text-muted)]"
+            title={detail}
+          >
+            {detail}
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -393,6 +398,142 @@ function MasterReopenDialog({ runId }: { runId: string }) {
             </Button>
             <Button onClick={reopen} disabled={code.length !== 4}>
               Autorizar reapertura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function MasterReceiptReopenDialog({
+  employeeId,
+  employeeName,
+  periodStart,
+  periodEnd,
+}: {
+  employeeId: string;
+  employeeName: string;
+  periodStart: string;
+  periodEnd: string;
+}) {
+  const { state, reopenEmployeeReceipt } = usePayrollDemo();
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [reason, setReason] = useState("");
+  const decision = state.decisions.find(
+    (item) =>
+      item.employeeId === employeeId &&
+      item.periodStart >= periodStart &&
+      item.periodStart <= periodEnd &&
+      item.status === "AUTHORIZED",
+  );
+  if (!decision) return null;
+  const approvedPeriodStart = decision.periodStart;
+
+  const authorizedCodes = state.employees.flatMap((employee) =>
+    employee.active &&
+    employee.roleId === "role-admin" &&
+    employee.secondaryAccessKey
+      ? [employee.secondaryAccessKey]
+      : [],
+  );
+
+  function close() {
+    setOpen(false);
+    setCode("");
+    setReason("");
+  }
+
+  function reopenReceipt() {
+    if (!authorizedCodes.includes(code)) {
+      toast.error("Código de administrador Master incorrecto.");
+      setCode("");
+      return;
+    }
+    if (!reason.trim()) {
+      toast.error("Indica el motivo de la reapertura del recibo.");
+      return;
+    }
+    reopenEmployeeReceipt(employeeId, approvedPeriodStart, code, reason);
+    close();
+    toast.success(
+      `Recibo de ${employeeName} reabierto. La aprobación volvió a pendiente y debe confirmarse nuevamente.`,
+    );
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="mt-1 h-7 px-2 text-[9px] text-amber-800 dark:text-amber-200"
+        onClick={() => setOpen(true)}
+      >
+        <KeyRound className="mr-1 h-3 w-3" />
+        Reabrir
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => (next ? setOpen(true) : close())}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reabrir recibo aprobado</DialogTitle>
+            <DialogDescription>
+              Esta acción cancela la aprobación de {employeeName}, reabre las
+              corridas relacionadas y vuelve a mostrar el botón de aprobación en
+              su portal. Requiere la clave privada de un administrador Master.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor={`receipt-reopen-code-${employeeId}`}>
+                Código Master
+              </Label>
+              <Input
+                id={`receipt-reopen-code-${employeeId}`}
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={code}
+                placeholder="4 DÍGITOS"
+                onChange={(event) =>
+                  setCode(event.target.value.replace(/\D/g, "").slice(0, 4))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") reopenReceipt();
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`receipt-reopen-reason-${employeeId}`}>
+                Motivo de la corrección
+              </Label>
+              <Input
+                id={`receipt-reopen-reason-${employeeId}`}
+                value={reason}
+                placeholder="EJ. CORRECCIÓN DE VENTA O MOVIMIENTO"
+                onChange={(event) => setReason(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") reopenReceipt();
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={close}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={code.length !== 4 || !reason.trim()}
+              onClick={reopenReceipt}
+            >
+              <KeyRound className="mr-2 h-4 w-4" />
+              Reabrir recibo
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -815,10 +956,7 @@ function DoublePayDaysPanel({
               </SelectTrigger>
               <SelectContent>
                 {eligibleLines.map((line) => (
-                  <SelectItem
-                    key={line.employee.id}
-                    value={line.employee.id}
-                  >
+                  <SelectItem key={line.employee.id} value={line.employee.id}>
                     {line.employee.name} · {line.employee.position}
                   </SelectItem>
                 ))}
@@ -948,6 +1086,13 @@ function PayrollTable({
   includeIsr: boolean;
 }) {
   const { state } = usePayrollDemo();
+  const workerTaxInclusion = periodTaxInclusionForRange(
+    state.periodTaxInclusions,
+    periodStart,
+    periodEnd,
+  );
+  const includeWorkerTax = workerTaxInclusion?.includeWorkerTax ?? false;
+  const workerTaxRate = workerTaxInclusion?.workerTaxRate ?? 0.03;
   const moduleDefinition = state.payrollModules.find(
     (module) => module.id === view,
   );
@@ -979,9 +1124,8 @@ function PayrollTable({
       commissionFilters
         ? lines.filter((line) => {
             const branch =
-              state.branches.find(
-                (item) => item.id === line.employee.branchId,
-              )?.name ?? "SIN SUCURSAL";
+              state.branches.find((item) => item.id === line.employee.branchId)
+                ?.name ?? "SIN SUCURSAL";
             const matchesSearch =
               !normalizedSearch ||
               `${line.employee.name} ${line.employee.position} ${branch} ${line.schemeName}`
@@ -1038,6 +1182,7 @@ function PayrollTable({
         settlement: (line) => line.settlementPayment,
         payrollBeforeDeductions: (line) => line.payrollBeforeDeductions,
         totalDeductions: (line) => line.totalDeductions,
+        workerTax: (line) => line.workerTax,
         payroll: (line) => line.total,
         socialCost: (line) => line.socialCost,
         isr: (line) => line.isrCost,
@@ -1051,14 +1196,11 @@ function PayrollTable({
           )
             ? "APROBADO"
             : "PENDIENTE",
-        totalCost: (line) => line.total + line.socialCost + line.isrCost,
+        totalCost: (line) => line.totalCost,
       }),
     [filteredLines, periodEnd, periodStart, state.decisions, tableSort],
   );
-  function changeTableSort(
-    key: PayrollColumnSortKey,
-    kind: TableSortKind,
-  ) {
+  function changeTableSort(key: PayrollColumnSortKey, kind: TableSortKind) {
     setTableSort((current) => nextTableSort(current, key, kind));
     setPage(1);
   }
@@ -1074,17 +1216,12 @@ function PayrollTable({
     currentPage * effectivePageSize,
   );
   const visibleStart =
-    sortedLines.length === 0
-      ? 0
-      : (currentPage - 1) * effectivePageSize + 1;
+    sortedLines.length === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1;
   const visibleEnd = Math.min(
     currentPage * effectivePageSize,
     sortedLines.length,
   );
-  const payrollTotal = filteredLines.reduce(
-    (sum, line) => sum + line.total,
-    0,
-  );
+  const payrollTotal = filteredLines.reduce((sum, line) => sum + line.total, 0);
   const payrollBeforeDeductionsTotal = filteredLines.reduce(
     (sum, line) => sum + line.payrollBeforeDeductions,
     0,
@@ -1093,15 +1230,16 @@ function PayrollTable({
     (sum, line) => sum + line.totalDeductions,
     0,
   );
+  const workerTaxTotal = filteredLines.reduce(
+    (sum, line) => sum + line.workerTax,
+    0,
+  );
   const socialTotal = filteredLines.reduce(
     (sum, line) => sum + line.socialCost,
     0,
   );
-  const isrTotal = filteredLines.reduce(
-    (sum, line) => sum + line.isrCost,
-    0,
-  );
-  const total = payrollTotal + socialTotal + isrTotal;
+  const isrTotal = filteredLines.reduce((sum, line) => sum + line.isrCost, 0);
+  const total = payrollTotal + workerTaxTotal + socialTotal + isrTotal;
   const contractor = view === "CONTRACTOR";
   const showSales =
     view === "CONSOLIDATED" ||
@@ -1111,15 +1249,12 @@ function PayrollTable({
     view === "CONSOLIDATED" ||
     Boolean(moduleDefinition?.concepts.includes("SALARY"));
   const showDoublePay =
-    (view === "FIXED" ||
-      view === "SPECIALIST" ||
-      view === "CONSOLIDATED") &&
+    (view === "FIXED" || view === "SPECIALIST" || view === "CONSOLIDATED") &&
     (view !== "CONSOLIDATED" ||
       filteredLines.some((line) => line.doublePayAmount > 0));
   const showApproval = view !== "FIXED" && view !== "SPECIALIST";
   const showNegativeBalances = filteredLines.some(
-    (line) =>
-      line.carriedNegativeBalance > 0 || line.newNegativeBalance > 0,
+    (line) => line.carriedNegativeBalance > 0 || line.newNegativeBalance > 0,
   );
   const showCommission =
     view === "CONSOLIDATED" ||
@@ -1214,19 +1349,19 @@ function PayrollTable({
       line.christmasBonusPayment > 0 ? line.christmasBonusPayment : null,
     payrollBeforeDeductions: line.payrollBeforeDeductions,
     totalDeductions: line.totalDeductions,
+    workerTax: line.workerTax,
     payroll: line.total,
     socialCost: line.socialCost,
     isr: line.isrCost,
     approval: approvedEmployeeIds.has(line.employee.id) ? "APROBADO" : "",
-    total:
-      line.total + line.socialCost + line.isrCost,
+    total: line.totalCost,
   }));
   const reportConfig = {
     title:
       view === "CONSOLIDATED"
         ? "Consolidado general de nómina"
         : `Detalle de ${payrollModuleLabel(state, view)}`,
-    subtitle: `${periodStart} — ${periodEnd} · Costo social ${includeSocialCost ? "incluido" : "general excluido; excepciones por nómina vigentes"} · ISR ${includeIsr ? "incluido" : "general excluido; excepciones por nómina vigentes"}`,
+    subtitle: `${periodStart} — ${periodEnd} · Costo social ${includeSocialCost ? "incluido" : "general excluido; excepciones por nómina vigentes"} · ISR ${includeIsr ? "incluido" : "general excluido; excepciones por nómina vigentes"} · Impuesto trabajador ${includeWorkerTax ? `${(workerTaxRate * 100).toFixed(2)}%` : "apagado"}`,
     metadata: [
       { label: "Periodo", value: `${periodStart} — ${periodEnd}` },
       {
@@ -1240,9 +1375,7 @@ function PayrollTable({
         label: "Alcance",
         value:
           commissionFilters &&
-          (search.trim() ||
-            positionFilter !== "ALL" ||
-            branchFilter !== "ALL")
+          (search.trim() || positionFilter !== "ALL" || branchFilter !== "ALL")
             ? "SELECCIÓN FILTRADA"
             : "REPORTE GENERAL · EMPRESA COMPLETA",
       },
@@ -1250,28 +1383,39 @@ function PayrollTable({
         ? [
             {
               label: "Puesto",
-              value:
-                positionFilter === "ALL" ? "TODOS" : positionFilter,
+              value: positionFilter === "ALL" ? "TODOS" : positionFilter,
             },
             {
               label: "Sucursal",
               value:
                 branchFilter === "ALL"
                   ? "TODAS"
-                  : (state.branches.find(
-                      (branch) => branch.id === branchFilter,
-                    )?.name ?? "SUCURSAL"),
+                  : (state.branches.find((branch) => branch.id === branchFilter)
+                      ?.name ?? "SUCURSAL"),
             },
           ]
         : []),
       {
         label: "Cargas incluidas",
-        value: `COSTO SOCIAL ${includeSocialCost ? "GENERAL" : "SOLO EXCEPCIONES"} · ISR ${includeIsr ? "GENERAL" : "SOLO EXCEPCIONES"}`,
+        value: `COSTO SOCIAL ${includeSocialCost ? "GENERAL" : "SOLO EXCEPCIONES"} · ISR ${includeIsr ? "GENERAL" : "SOLO EXCEPCIONES"} · IMPUESTO TRABAJADOR ${includeWorkerTax ? `${(workerTaxRate * 100).toFixed(2)}%` : "APAGADO"}`,
       },
     ],
     metrics: [
-      { label: "Personal", value: String(filteredLines.length), detail: "Registros incluidos" },
-      { label: "Nómina", value: money.format(payrollTotal), detail: "Pago del periodo" },
+      {
+        label: "Personal",
+        value: String(filteredLines.length),
+        detail: "Registros incluidos",
+      },
+      {
+        label: "Nómina",
+        value: money.format(payrollTotal),
+        detail: "Pago del periodo",
+      },
+      {
+        label: "Impuesto trabajador",
+        value: money.format(workerTaxTotal),
+        detail: "Retención global del periodo",
+      },
       ...(showDoublePay
         ? [
             {
@@ -1281,8 +1425,16 @@ function PayrollTable({
             },
           ]
         : []),
-      { label: "Cargas", value: money.format(socialTotal + isrTotal), detail: "Costo social + ISR" },
-      { label: "Costo total", value: money.format(total), detail: "Nómina + cargas" },
+      {
+        label: "Cargas",
+        value: money.format(socialTotal + isrTotal),
+        detail: "Costo social + ISR",
+      },
+      {
+        label: "Costo total",
+        value: money.format(total),
+        detail: "Nómina + cargas",
+      },
     ],
     analysis: [
       ...(showApproval
@@ -1293,6 +1445,7 @@ function PayrollTable({
             "Esta nómina no requiere aprobación individual del empleado; el control se realiza mediante el cierre de la corrida.",
           ]),
       `El costo social está ${includeSocialCost ? "incluido de forma general" : "excluido de forma general, conservando excepciones por nómina"} y el ISR está ${includeIsr ? "incluido de forma general" : "excluido de forma general, conservando excepciones por nómina"} en esta salida.`,
+      `El impuesto sobre el trabajador está ${includeWorkerTax ? `activo al ${(workerTaxRate * 100).toFixed(2)}% y reduce el neto a pagar` : "apagado para este periodo"}.`,
       ...(showDoublePay
         ? [
             `${filteredLines.reduce((sum, line) => sum + line.doublePayDayCount, 0)} días festivos o feriados agregan ${money.format(doublePayTotal)} a la nómina; el día ordinario permanece dentro del sueldo base.`,
@@ -1456,6 +1609,12 @@ function PayrollTable({
         width: 19,
       },
       {
+        header: "IMPUESTO TRABAJADOR",
+        accessor: (row: (typeof reportRows)[number]) => row.workerTax,
+        format: "currency" as const,
+        width: 19,
+      },
+      {
         header: "NETO A PAGAR",
         accessor: (row: (typeof reportRows)[number]) => row.payroll,
         format: "currency" as const,
@@ -1490,10 +1649,7 @@ function PayrollTable({
       },
     ],
   };
-  useEffect(
-    () => setPage(1),
-    [branchFilter, pageSize, positionFilter, search],
-  );
+  useEffect(() => setPage(1), [branchFilter, pageSize, positionFilter, search]);
   return (
     <Card className="overflow-hidden border-[color:var(--border-color)]">
       <CardHeader className="border-b border-[color:var(--border-color)]">
@@ -1747,6 +1903,14 @@ function PayrollTable({
                   align="right"
                 />
                 <SortableTableHead
+                  column="workerTax"
+                  label="IMPUESTO TRABAJADOR"
+                  kind="number"
+                  sort={tableSort}
+                  onSort={changeTableSort}
+                  align="right"
+                />
+                <SortableTableHead
                   column="payroll"
                   label="NETO A PAGAR"
                   kind="number"
@@ -1799,9 +1963,9 @@ function PayrollTable({
                       ? "bg-sky-50/80 ring-1 ring-inset ring-sky-200/70 dark:bg-sky-950/15 dark:ring-sky-800/50"
                       : line.newNegativeBalance > 0
                         ? "bg-rose-50/80 ring-1 ring-inset ring-rose-200/80 dark:bg-rose-950/15 dark:ring-rose-800/50"
-                      : line.doublePayAmount > 0
-                        ? "bg-amber-50/80 ring-1 ring-inset ring-amber-200/80 dark:bg-amber-950/15 dark:ring-amber-800/50"
-                      : undefined
+                        : line.doublePayAmount > 0
+                          ? "bg-amber-50/80 ring-1 ring-inset ring-amber-200/80 dark:bg-amber-950/15 dark:ring-amber-800/50"
+                          : undefined
                   }
                 >
                   <TableCell>
@@ -1985,6 +2149,9 @@ function PayrollTable({
                   <TableCell className="number-display bg-rose-50/50 text-right text-rose-700 dark:bg-rose-950/15 dark:text-rose-300">
                     −{money.format(line.totalDeductions)}
                   </TableCell>
+                  <TableCell className="number-display bg-amber-50/50 text-right text-amber-700 dark:bg-amber-950/15 dark:text-amber-300">
+                    −{money.format(line.workerTax)}
+                  </TableCell>
                   <TableCell className="number-display text-right text-base">
                     {money.format(line.total)}
                   </TableCell>
@@ -2013,18 +2180,22 @@ function PayrollTable({
                           <span className="text-[9px] font-semibold tracking-[0.08em]">
                             APROBADO
                           </span>
+                          {view === "CONSOLIDATED" ? (
+                            <MasterReceiptReopenDialog
+                              employeeId={line.employee.id}
+                              employeeName={line.employee.name}
+                              periodStart={periodStart}
+                              periodEnd={periodEnd}
+                            />
+                          ) : null}
                         </span>
                       ) : (
-                        <span className="sr-only">
-                          Pendiente de aprobación
-                        </span>
+                        <span className="sr-only">Pendiente de aprobación</span>
                       )}
                     </TableCell>
                   )}
                   <TableCell className="number-display text-right text-base font-semibold">
-                    {money.format(
-                      line.total + line.socialCost + line.isrCost,
-                    )}
+                    {money.format(line.totalCost)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -2063,6 +2234,9 @@ function PayrollTable({
                 </TableCell>
                 <TableCell className="number-display bg-rose-50/50 text-right font-semibold text-rose-700 dark:bg-rose-950/15 dark:text-rose-300">
                   −{money.format(deductionsTotal)}
+                </TableCell>
+                <TableCell className="number-display bg-amber-50/50 text-right font-semibold text-amber-700 dark:bg-amber-950/15 dark:text-amber-300">
+                  −{money.format(workerTaxTotal)}
                 </TableCell>
                 <TableCell className="number-display text-right">
                   {money.format(payrollTotal)}
@@ -2176,10 +2350,11 @@ function ConsolidatedDashboard({
     (sum, line) => sum + line.totalDeductions,
     0,
   );
+  const workerTax = lines.reduce((sum, line) => sum + line.workerTax, 0);
   const payrollBase = lines.reduce((sum, line) => sum + line.total, 0);
   const socialCost = lines.reduce((sum, line) => sum + line.socialCost, 0);
   const isrCost = lines.reduce((sum, line) => sum + line.isrCost, 0);
-  const totalPayroll = payrollBase + socialCost + isrCost;
+  const totalPayroll = payrollBase + workerTax + socialCost + isrCost;
   const totalVariable = lines.reduce(
     (sum, line) => sum + line.commission + line.bonuses,
     0,
@@ -2239,12 +2414,15 @@ function ConsolidatedDashboard({
         0,
       );
       const payrollGross = branchAllocations.reduce(
-        (sum, { line, share }) =>
-          sum + line.payrollBeforeDeductions * share,
+        (sum, { line, share }) => sum + line.payrollBeforeDeductions * share,
         0,
       );
       const deductions = branchAllocations.reduce(
         (sum, { line, share }) => sum + line.totalDeductions * share,
+        0,
+      );
+      const workerTax = branchAllocations.reduce(
+        (sum, { line, share }) => sum + line.workerTax * share,
         0,
       );
       const social = branchAllocations.reduce(
@@ -2269,11 +2447,12 @@ function ConsolidatedDashboard({
         ...branch,
         payrollGross,
         deductions,
+        workerTax,
         payroll,
         social,
         isr,
         movements,
-        total: payroll + social + isr,
+        total: payroll + workerTax + social + isr,
         employees: new Set(
           branchAllocations.map(({ line }) => line.employee.id),
         ).size,
@@ -2304,7 +2483,7 @@ function ConsolidatedDashboard({
       );
       const sales = monthLines.reduce((sum, line) => sum + line.sales, 0);
       const totalCost = monthLines.reduce(
-        (sum, line) => sum + line.total + line.socialCost + line.isrCost,
+        (sum, line) => sum + line.totalCost,
         0,
       );
 
@@ -2399,6 +2578,7 @@ function ConsolidatedDashboard({
       moduleAmounts: Record<string, number>;
       payrollGross: number;
       deductions: number;
+      workerTax: number;
       payroll: number;
       social: number;
       isr: number;
@@ -2417,6 +2597,7 @@ function ConsolidatedDashboard({
       moduleAmounts: {},
       payrollGross: 0,
       deductions: 0,
+      workerTax: 0,
       payroll: 0,
       social: 0,
       isr: 0,
@@ -2425,6 +2606,7 @@ function ConsolidatedDashboard({
     const payroll = line.total * share;
     const payrollGross = line.payrollBeforeDeductions * share;
     const deductions = line.totalDeductions * share;
+    const workerTax = line.workerTax * share;
     const social = line.socialCost * share;
     const isr = line.isrCost * share;
     row.employees.add(line.employee.id);
@@ -2451,10 +2633,11 @@ function ConsolidatedDashboard({
     }
     row.payrollGross += payrollGross;
     row.deductions += deductions;
+    row.workerTax += workerTax;
     row.payroll += payroll;
     row.social += social;
     row.isr += isr;
-    row.total += payroll + social + isr;
+    row.total += payroll + workerTax + social + isr;
     positionCostMap.set(key, row);
   });
   const positionCosts = sortByListMode(
@@ -2565,6 +2748,7 @@ function ConsolidatedDashboard({
     moduleAmounts: row.moduleAmounts,
     payrollGross: row.payrollGross,
     deductions: row.deductions,
+    workerTax: row.workerTax,
     payroll: row.payroll,
     social: row.social,
     isr: row.isr,
@@ -2574,21 +2758,55 @@ function ConsolidatedDashboard({
     title: "Conciliación de nómina por punto de venta y puesto",
     subtitle: `${config.periodStart} — ${config.periodEnd} · ${reconciliationSuccessful ? "Comparación exitosa" : "Requiere revisión"}`,
     metadata: [
-      { label: "Periodo", value: `${config.periodStart} — ${config.periodEnd}` },
+      {
+        label: "Periodo",
+        value: `${config.periodStart} — ${config.periodEnd}`,
+      },
       { label: "Reporte", value: "CONCILIACIÓN FINAL" },
       { label: "Alcance", value: "REPORTE GENERAL · EMPRESA COMPLETA" },
       {
         label: "Estado",
-        value: reconciliationSuccessful ? "COMPARACIÓN EXITOSA" : "REQUIERE REVISIÓN",
+        value: reconciliationSuccessful
+          ? "COMPARACIÓN EXITOSA"
+          : "REQUIERE REVISIÓN",
       },
     ],
     metrics: [
-      { label: "Ventas", value: money.format(totalSales), detail: "Periodo conciliado" },
-      { label: "Antes de descuentos", value: money.format(payrollBeforeDeductions), detail: "Cargo bruto de nómina" },
-      { label: "Descuentos", value: money.format(payrollDeductions), detail: "Movimiento de reducción" },
-      { label: "Neto a pagar", value: money.format(payrollBase), detail: "Bruto menos descuentos" },
-      { label: "Cargas", value: money.format(socialCost + isrCost), detail: "Social + ISR" },
-      { label: "Costo general", value: money.format(totalPayroll), detail: `${lines.length} empleados` },
+      {
+        label: "Ventas",
+        value: money.format(totalSales),
+        detail: "Periodo conciliado",
+      },
+      {
+        label: "Antes de descuentos",
+        value: money.format(payrollBeforeDeductions),
+        detail: "Cargo bruto de nómina",
+      },
+      {
+        label: "Descuentos",
+        value: money.format(payrollDeductions),
+        detail: "Movimiento de reducción",
+      },
+      {
+        label: "Impuesto trabajador",
+        value: money.format(workerTax),
+        detail: "Incluido en descuentos",
+      },
+      {
+        label: "Neto a pagar",
+        value: money.format(payrollBase),
+        detail: "Bruto menos descuentos",
+      },
+      {
+        label: "Cargas",
+        value: money.format(socialCost + isrCost),
+        detail: "Social + ISR",
+      },
+      {
+        label: "Costo general",
+        value: money.format(totalPayroll),
+        detail: `${lines.length} empleados`,
+      },
     ],
     analysis: [
       reconciliationSuccessful
@@ -2643,6 +2861,13 @@ function ConsolidatedDashboard({
         width: 16,
       },
       {
+        header: "IMPUESTO TRABAJADOR",
+        accessor: (row: (typeof reconciliationReportRows)[number]) =>
+          row.workerTax,
+        format: "currency" as const,
+        width: 19,
+      },
+      {
         header: "NETO NÓMINA",
         accessor: (row: (typeof reconciliationReportRows)[number]) =>
           row.payroll,
@@ -2673,7 +2898,7 @@ function ConsolidatedDashboard({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         <Metric
           icon={TrendingUp}
           label="VENTAS DEL PERIODO"
@@ -2690,7 +2915,13 @@ function ConsolidatedDashboard({
           icon={CircleMinus}
           label="DESCUENTOS"
           value={money.format(payrollDeductions)}
-          detail="Multas, préstamos, ajustes y saldos"
+          detail={`Incluye impuesto trabajador ${money.format(workerTax)}`}
+        />
+        <Metric
+          icon={ShieldPlus}
+          label="IMPUESTO TRABAJADOR"
+          value={money.format(workerTax)}
+          detail="Retención global descontada del neto"
         />
         <Metric
           icon={Sparkles}
@@ -2702,7 +2933,7 @@ function ConsolidatedDashboard({
           icon={BadgeCheck}
           label="COSTO GENERAL"
           value={money.format(totalPayroll)}
-          detail={`Neto + social ${money.format(socialCost)} + ISR ${money.format(isrCost)} · ${authorized}/${lines.length} validados`}
+          detail={`Neto + impuesto trabajador ${money.format(workerTax)} + social ${money.format(socialCost)} + ISR ${money.format(isrCost)} · ${authorized}/${lines.length} validados`}
         />
       </div>
 
@@ -2769,6 +3000,7 @@ function ConsolidatedDashboard({
         trend={salesTrend}
         branches={branchSales}
         payrollBase={payrollBase}
+        workerTax={workerTax}
         socialCost={socialCost}
         isrCost={isrCost}
         totalSales={totalSales}
@@ -2858,9 +3090,7 @@ function ConsolidatedDashboard({
             (line) => line.employee.category === category,
           );
           const total = categoryLines.reduce(
-            (sum, line) =>
-              sum +
-              line.total + line.socialCost + line.isrCost,
+            (sum, line) => sum + line.totalCost,
             0,
           );
           return (
@@ -2959,6 +3189,10 @@ function ConsolidatedDashboard({
                 (sum, row) => sum + row.deductions,
                 0,
               );
+              const branchWorkerTax = rows.reduce(
+                (sum, row) => sum + row.workerTax,
+                0,
+              );
               const branchPayroll = rows.reduce(
                 (sum, row) => sum + row.payroll,
                 0,
@@ -3010,6 +3244,12 @@ function ConsolidatedDashboard({
                         </strong>
                       </span>
                       <span>
+                        Impuesto trabajador{" "}
+                        <strong className="number-display text-amber-200">
+                          −{money.format(branchWorkerTax)}
+                        </strong>
+                      </span>
+                      <span>
                         Social{" "}
                         <strong className="number-display">
                           {money.format(branchSocial)}
@@ -3052,6 +3292,9 @@ function ConsolidatedDashboard({
                             DESCUENTOS
                           </TableHead>
                           <TableHead className="text-right">
+                            IMPUESTO TRABAJADOR
+                          </TableHead>
+                          <TableHead className="text-right">
                             NETO NÓMINA
                           </TableHead>
                           <TableHead className="text-right">
@@ -3087,6 +3330,9 @@ function ConsolidatedDashboard({
                             </TableCell>
                             <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
                               −{money.format(row.deductions)}
+                            </TableCell>
+                            <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                              −{money.format(row.workerTax)}
                             </TableCell>
                             <TableCell className="number-display text-right">
                               {money.format(row.payroll)}
@@ -3126,6 +3372,9 @@ function ConsolidatedDashboard({
                           </TableCell>
                           <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
                             −{money.format(branchDeductions)}
+                          </TableCell>
+                          <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                            −{money.format(branchWorkerTax)}
                           </TableCell>
                           <TableCell className="number-display text-right">
                             {money.format(branchPayroll)}
@@ -3238,12 +3487,10 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
         selectedPeriod.end,
         view as Exclude<PayrollModule, "CONSOLIDATED">,
       );
-  const globalIncludeSocialCost =
-    periodTaxInclusion?.includeSocialCost ?? true;
+  const globalIncludeSocialCost = periodTaxInclusion?.includeSocialCost ?? true;
   const globalIncludeIsr = periodTaxInclusion?.includeIsr ?? true;
   const includeSocialCost =
-    globalIncludeSocialCost ||
-    (moduleTaxInclusion?.includeSocialCost ?? false);
+    globalIncludeSocialCost || (moduleTaxInclusion?.includeSocialCost ?? false);
   const includeIsr =
     globalIncludeIsr || (moduleTaxInclusion?.includeIsr ?? false);
   const calculationConfig = useMemo<DemoPayrollPeriodConfig>(
@@ -3669,12 +3916,7 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
               icon={Clock3}
               label="COSTO TOTAL"
               value={money.format(
-                lines.reduce(
-                  (sum, line) =>
-                    sum +
-                    line.total + line.socialCost + line.isrCost,
-                  0,
-                ),
+                lines.reduce((sum, line) => sum + line.totalCost, 0),
               )}
               detail="Nómina + cargas generales o excepciones individuales"
             />
@@ -3737,8 +3979,7 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
                               })()
                             : [...periodOptions]
                                 .filter(
-                                  (period) =>
-                                    period.start > selectedPeriod.end,
+                                  (period) => period.start > selectedPeriod.end,
                                 )
                                 .sort((left, right) =>
                                   left.start.localeCompare(right.start),
@@ -3749,9 +3990,7 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
                           );
                           return;
                         }
-                        const payDate = new Date(
-                          `${nextPeriod.end}T12:00:00`,
-                        );
+                        const payDate = new Date(`${nextPeriod.end}T12:00:00`);
                         payDate.setDate(payDate.getDate() + 3);
                         closeRunAndOpenNextPeriod(
                           selectedRun.id,

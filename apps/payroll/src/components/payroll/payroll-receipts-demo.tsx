@@ -60,7 +60,8 @@ export function commissionReceiptNet(
       line.fines -
       line.loanDeduction -
       line.externalDeductions -
-      line.carriedNegativeBalance,
+      line.carriedNegativeBalance -
+      line.workerTax,
     0,
   );
 }
@@ -95,7 +96,8 @@ export function hasCommissionReceiptActivity(
     line.loanDeduction !== 0 ||
     line.externalAdditions !== 0 ||
     line.externalDeductions !== 0 ||
-    line.carriedNegativeBalance !== 0
+    line.carriedNegativeBalance !== 0 ||
+    line.workerTax !== 0
   );
 }
 
@@ -238,36 +240,40 @@ export function Receipt({
         {showCommission &&
           (receiptConfiguration.showSales ||
             receiptConfiguration.showScheme) && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {receiptConfiguration.showSales && (
-              <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
-              <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
-                Ventas compactadas ·{" "}
-                {line.calculationMode === "WITH_VAT" ? "con IVA" : "sin IVA"}
-              </p>
-              <p className="number-display mt-1 text-xl">
-                {money.format(line.sales)}
-              </p>
-              </div>
-            )}
-            {receiptConfiguration.showScheme && (
-              <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
-              <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
-                Tasa / esquema al corte
-              </p>
-              <p className="mt-1 font-semibold">
-                {line.rate > 0
-                  ? `${(line.rate * 100).toFixed(1)}%`
-                  : "NO APLICA"}
-              </p>
-              <p className="text-xs text-[color:var(--text-muted)]">
-                {line.schemeName} ·{" "}
-                {line.calculationMode === "WITH_VAT" ? "CON IVA" : "SIN IVA"}
-              </p>
-              </div>
-            )}
-          </div>
-        )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {receiptConfiguration.showSales && (
+                <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
+                  <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+                    Ventas compactadas ·{" "}
+                    {line.calculationMode === "WITH_VAT"
+                      ? "con IVA"
+                      : "sin IVA"}
+                  </p>
+                  <p className="number-display mt-1 text-xl">
+                    {money.format(line.sales)}
+                  </p>
+                </div>
+              )}
+              {receiptConfiguration.showScheme && (
+                <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
+                  <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+                    Tasa / esquema al corte
+                  </p>
+                  <p className="mt-1 font-semibold">
+                    {line.rate > 0
+                      ? `${(line.rate * 100).toFixed(1)}%`
+                      : "NO APLICA"}
+                  </p>
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    {line.schemeName} ·{" "}
+                    {line.calculationMode === "WITH_VAT"
+                      ? "CON IVA"
+                      : "SIN IVA"}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         {dualCommission && (
           <div className="rounded-xl border border-amber-300/70 bg-amber-50/60 p-4 dark:bg-amber-950/20">
             <p className="text-xs font-semibold uppercase tracking-wider text-amber-900 dark:text-amber-100">
@@ -383,8 +389,8 @@ export function Receipt({
                       loanRelated
                         ? "text-amber-700 dark:text-amber-300"
                         : positive
-                        ? "text-emerald-700 dark:text-emerald-300"
-                        : "text-rose-700 dark:text-rose-300"
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : "text-rose-700 dark:text-rose-300"
                     }
                   >
                     {positive ? "+" : "−"}
@@ -427,6 +433,14 @@ export function Receipt({
               </strong>
             </div>
           )}
+          {line.workerTax > 0 && (
+            <div className="flex justify-between gap-4">
+              <span>Impuesto sobre el trabajador</span>
+              <strong className="text-amber-700 dark:text-amber-300">
+                −{money.format(line.workerTax)}
+              </strong>
+            </div>
+          )}
           {line.carriedNegativeBalance > 0 && (
             <div className="flex justify-between gap-4">
               <span>Saldo negativo del periodo anterior</span>
@@ -448,56 +462,56 @@ export function Receipt({
         </div>
         {receiptConfiguration.showTemporaryBonusProgress &&
           temporaryChallenges.length > 0 && (
-          <div className="space-y-3 rounded-xl border border-amber-300/60 bg-amber-50/50 p-4 dark:bg-amber-950/20">
-            <div className="flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-amber-600" />
-              <p className="text-xs font-semibold uppercase tracking-wider">
-                Avance de bonos temporales
-              </p>
-            </div>
-            {temporaryChallenges.map((standing) => {
-              const percent = Math.min(
-                (standing.value / standing.target) * 100,
-                100,
-              );
-              return (
-                <div key={standing.concept.id}>
-                  <div className="flex flex-wrap items-end justify-between gap-2">
-                    <div>
-                      <p className="text-xs font-semibold">
-                        {standing.concept.name}
-                      </p>
-                      <p className="text-[10px] text-[color:var(--text-muted)]">
-                        {standing.achieved
-                          ? `LOGRADO · POSICIÓN ${standing.rank}`
-                          : standing.concept.condition === "BONUS_COUNT"
-                            ? `TE FALTAN ${standing.remaining} BONOS`
-                            : `TE FALTAN ${money.format(standing.remaining)}`}
-                      </p>
+            <div className="space-y-3 rounded-xl border border-amber-300/60 bg-amber-50/50 p-4 dark:bg-amber-950/20">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-amber-600" />
+                <p className="text-xs font-semibold uppercase tracking-wider">
+                  Avance de bonos temporales
+                </p>
+              </div>
+              {temporaryChallenges.map((standing) => {
+                const percent = Math.min(
+                  (standing.value / standing.target) * 100,
+                  100,
+                );
+                return (
+                  <div key={standing.concept.id}>
+                    <div className="flex flex-wrap items-end justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">
+                          {standing.concept.name}
+                        </p>
+                        <p className="text-[10px] text-[color:var(--text-muted)]">
+                          {standing.achieved
+                            ? `LOGRADO · POSICIÓN ${standing.rank}`
+                            : standing.concept.condition === "BONUS_COUNT"
+                              ? `TE FALTAN ${standing.remaining} BONOS`
+                              : `TE FALTAN ${money.format(standing.remaining)}`}
+                        </p>
+                      </div>
+                      <span className="number-display text-sm">
+                        {percent.toFixed(0)}%
+                      </span>
                     </div>
-                    <span className="number-display text-sm">
-                      {percent.toFixed(0)}%
-                    </span>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100 dark:bg-amber-950/50">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-500 to-emerald-600"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100 dark:bg-amber-950/50">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-emerald-600"
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
         <Separator />
         <div className="flex items-end justify-between gap-4">
           {receiptConfiguration.showBankAccount ? (
             <div>
-            <p className="text-xs text-[color:var(--text-muted)]">
-              Pago a {line.employee.bank}
-            </p>
-            <p className="text-sm font-medium">{line.employee.account}</p>
+              <p className="text-xs text-[color:var(--text-muted)]">
+                Pago a {line.employee.bank}
+              </p>
+              <p className="text-sm font-medium">{line.employee.account}</p>
             </div>
           ) : (
             <div />

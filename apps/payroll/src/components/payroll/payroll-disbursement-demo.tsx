@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
@@ -19,6 +20,7 @@ import {
   TableFooter,
   TableHeader,
   TableRow,
+  toast,
 } from "@cosmetics/ui";
 import {
   AlertTriangle,
@@ -34,10 +36,7 @@ import {
   ShieldPlus,
   UsersRound,
 } from "lucide-react";
-import {
-  type PayrollModule,
-  usePayrollDemo,
-} from "./payroll-demo-context";
+import { type PayrollModule, usePayrollDemo } from "./payroll-demo-context";
 import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
 import { ReportExportButtons } from "./report-export-buttons";
 import {
@@ -103,16 +102,19 @@ interface DisbursementRow {
   clabe: string;
   grossPayment: number;
   deductions: number;
+  workerTax: number;
   payment: number;
   isr: number;
   socialCost: number;
   total: number;
   branch: string;
+  paid: boolean;
 }
 
 interface DisbursementTotals {
   grossPayment: number;
   deductions: number;
+  workerTax: number;
   payment: number;
   isr: number;
   socialCost: number;
@@ -134,10 +136,12 @@ type DisbursementSortKey =
   | "bank"
   | "grossPayment"
   | "deductions"
+  | "workerTax"
   | "payment"
   | "isr"
   | "socialCost"
-  | "total";
+  | "total"
+  | "paid";
 
 function fallbackName(fullName: string) {
   const parts = fullName.trim().split(/\s+/);
@@ -173,6 +177,7 @@ function sumDisbursementRows(rows: DisbursementRow[]): DisbursementTotals {
     (result, row) => ({
       grossPayment: result.grossPayment + row.grossPayment,
       deductions: result.deductions + row.deductions,
+      workerTax: result.workerTax + row.workerTax,
       payment: result.payment + row.payment,
       isr: result.isr + row.isr,
       socialCost: result.socialCost + row.socialCost,
@@ -181,6 +186,7 @@ function sumDisbursementRows(rows: DisbursementRow[]): DisbursementTotals {
     {
       grossPayment: 0,
       deductions: 0,
+      workerTax: 0,
       payment: 0,
       isr: 0,
       socialCost: 0,
@@ -264,6 +270,8 @@ export function PayrollDisbursementDemo() {
     periodOptions,
     currentPeriod,
     setModuleTaxInclusion,
+    setRunStatus,
+    markDisbursementPaymentPaid,
   } = usePayrollDemo();
   const [module, setModule] = useState<DisbursementModule>("CONSOLIDATED");
   const [selectedRunId, setSelectedRunId] = useState("");
@@ -408,12 +416,14 @@ export function PayrollDisbursementDemo() {
               row.manager.clabe ??
               `CLABE DEMO ${row.manager.account.replace(/\D/g, "").padStart(18, "0")}`,
             grossPayment: row.commission,
-            deductions: 0,
-            payment: row.commission,
+            deductions: row.workerTax,
+            workerTax: row.workerTax,
+            payment: row.netPayment,
             isr: row.isr,
             socialCost: row.socialCost,
             total: row.totalCost,
             branch: row.branchNames.join(" · "),
+            paid: false,
           };
         });
 
@@ -446,11 +456,13 @@ export function PayrollDisbursementDemo() {
           `CLABE DEMO ${line.employee.account.replace(/\D/g, "").padStart(18, "0")}`,
         grossPayment: line.payrollBeforeDeductions,
         deductions: line.totalDeductions,
+        workerTax: line.workerTax,
         payment: line.total,
         isr: line.isrCost,
         socialCost: line.socialCost,
         total: line.totalCost,
         branch,
+        paid: false,
       };
     });
 
@@ -479,6 +491,7 @@ export function PayrollDisbursementDemo() {
         ...existing,
         grossPayment: existing.grossPayment + kioskRow.grossPayment,
         deductions: existing.deductions + kioskRow.deductions,
+        workerTax: existing.workerTax + kioskRow.workerTax,
         payment: existing.payment + kioskRow.payment,
         isr: existing.isr + kioskRow.isr,
         socialCost: existing.socialCost + kioskRow.socialCost,
@@ -501,31 +514,65 @@ export function PayrollDisbursementDemo() {
   }, [module, payrollLines, run, state]);
 
   const rawRows = dispersionPreview.rows;
+  const paidEmployeeIds = useMemo(
+    () =>
+      new Set(
+        state.disbursementPayments
+          .filter(
+            (payment) =>
+              payment.payrollModule === module &&
+              payment.periodStart === run?.periodStart &&
+              payment.periodEnd === run?.periodEnd,
+          )
+          .map((payment) => payment.employeeId),
+      ),
+    [module, run?.periodEnd, run?.periodStart, state.disbursementPayments],
+  );
 
   const rows = useMemo(
     () =>
-      sortTableRows(rawRows, tableSort, {
-        paternalSurname: (row) => row.paternalSurname,
-        maternalSurname: (row) => row.maternalSurname,
-        firstName: (row) => row.firstName,
-        position: (row) => `${row.position} ${row.branch}`,
-        bank: (row) => `${row.bank} ${row.clabe}`,
-        grossPayment: (row) => row.grossPayment,
-        deductions: (row) => row.deductions,
-        payment: (row) => row.payment,
-        isr: (row) => row.isr,
-        socialCost: (row) => row.socialCost,
-        total: (row) => row.total,
-      }),
-    [rawRows, tableSort],
+      sortTableRows(
+        rawRows.map((row) => ({
+          ...row,
+          paid: run?.status === "PAID" || paidEmployeeIds.has(row.id),
+        })),
+        tableSort,
+        {
+          paternalSurname: (row) => row.paternalSurname,
+          maternalSurname: (row) => row.maternalSurname,
+          firstName: (row) => row.firstName,
+          position: (row) => `${row.position} ${row.branch}`,
+          bank: (row) => `${row.bank} ${row.clabe}`,
+          grossPayment: (row) => row.grossPayment,
+          deductions: (row) => row.deductions,
+          workerTax: (row) => row.workerTax,
+          payment: (row) => row.payment,
+          isr: (row) => row.isr,
+          socialCost: (row) => row.socialCost,
+          total: (row) => row.total,
+          paid: (row) => (row.paid ? 1 : 0),
+        },
+      ),
+    [paidEmployeeIds, rawRows, run?.status, tableSort],
   );
 
-  function changeTableSort(
-    key: DisbursementSortKey,
-    kind: TableSortKind,
-  ) {
+  function changeTableSort(key: DisbursementSortKey, kind: TableSortKind) {
     setTableSort((current) => nextTableSort(current, key, kind));
     setPage(1);
+  }
+
+  function markRowPaid(row: DisbursementRow) {
+    if (!run || row.paid || run.status === "DRAFT") return;
+    markDisbursementPaymentPaid(module, run.periodStart, run.periodEnd, row.id);
+    if (
+      paidRows.length + 1 === rows.length &&
+      state.runs.some((stateRun) => stateRun.id === run.id)
+    ) {
+      setRunStatus(run.id, "PAID");
+    }
+    toast.success(
+      `${row.firstName} ${row.paternalSurname} quedó marcado como pagado.`,
+    );
   }
 
   const effectivePageSize =
@@ -541,6 +588,9 @@ export function PayrollDisbursementDemo() {
   const visibleEnd = Math.min(currentPage * effectivePageSize, rows.length);
 
   const totals = useMemo(() => sumDisbursementRows(rows), [rows]);
+  const paidRows = rows.filter((row) => row.paid);
+  const paidPaymentTotal = paidRows.reduce((sum, row) => sum + row.payment, 0);
+  const pendingPaymentTotal = Math.max(totals.payment - paidPaymentTotal, 0);
   const consolidatedSourceTotals = useMemo(
     () => sumDisbursementRows(dispersionPreview.consolidatedRows),
     [dispersionPreview.consolidatedRows],
@@ -623,7 +673,13 @@ export function PayrollDisbursementDemo() {
     }
 
     return warnings;
-  }, [currentPeriod.start, dispersionPreview.kioskRows.length, module, run, state.runs]);
+  }, [
+    currentPeriod.start,
+    dispersionPreview.kioskRows.length,
+    module,
+    run,
+    state.runs,
+  ]);
 
   const footerRow: DisbursementRow = {
     id: "total",
@@ -635,11 +691,13 @@ export function PayrollDisbursementDemo() {
     clabe: "",
     grossPayment: totals.grossPayment,
     deductions: totals.deductions,
+    workerTax: totals.workerTax,
     payment: totals.payment,
     isr: totals.isr,
     socialCost: totals.socialCost,
     total: totals.total,
     branch: "",
+    paid: paidRows.length === rows.length && rows.length > 0,
   };
 
   const exportConfig: ReportExportConfig<DisbursementRow> = {
@@ -686,7 +744,12 @@ export function PayrollDisbursementDemo() {
       {
         label: "Personal",
         value: String(rows.length),
-        detail: "Registros para dispersión",
+        detail: `${paidRows.length} pagados · ${rows.length - paidRows.length} pendientes`,
+      },
+      {
+        label: "Pendiente por pagar",
+        value: money.format(pendingPaymentTotal),
+        detail: `${money.format(paidPaymentTotal)} ya liquidado`,
       },
       {
         label: "Antes de descuentos",
@@ -696,7 +759,12 @@ export function PayrollDisbursementDemo() {
       {
         label: "Descuentos",
         value: money.format(totals.deductions),
-        detail: "Movimiento de reducción",
+        detail: "Incluye impuesto al trabajador",
+      },
+      {
+        label: "Impuesto trabajador",
+        value: money.format(totals.workerTax),
+        detail: "Retención global del periodo",
       },
       {
         label: "Neto precalculado",
@@ -711,7 +779,7 @@ export function PayrollDisbursementDemo() {
       {
         label: "Costo total",
         value: money.format(totals.total),
-        detail: "Pago + cargas",
+        detail: "Neto + impuesto trabajador + cargas",
       },
     ],
     analysis: [
@@ -773,6 +841,12 @@ export function PayrollDisbursementDemo() {
         width: 17,
       },
       {
+        header: "Impuesto trabajador",
+        accessor: (row) => row.workerTax,
+        format: "currency",
+        width: 19,
+      },
+      {
         header: "Neto a cobrar",
         accessor: (row) => row.payment,
         format: "currency",
@@ -795,6 +869,11 @@ export function PayrollDisbursementDemo() {
         accessor: (row) => row.total,
         format: "currency",
         width: 17,
+      },
+      {
+        header: "Estatus de pago",
+        accessor: (row) => (row.paid ? "PAGADO" : "PENDIENTE"),
+        width: 16,
       },
     ],
     rows,
@@ -881,8 +960,8 @@ export function PayrollDisbursementDemo() {
                 Precálculo con nóminas todavía abiertas
               </p>
               <p className="mt-1 text-xs text-rose-800 dark:text-rose-200">
-                Estos importes ya se suman al total del periodo aunque la
-                nómina aún no esté cerrada ni marcada como pagada.
+                Estos importes ya se suman al total del periodo aunque la nómina
+                aún no esté cerrada ni marcada como pagada.
               </p>
               <ul className="mt-3 grid gap-2 lg:grid-cols-2">
                 {openPayrollWarnings.map((warning) => (
@@ -890,7 +969,8 @@ export function PayrollDisbursementDemo() {
                     key={warning.id}
                     className="rounded-xl border border-rose-200 bg-white/70 px-3 py-2 text-xs font-semibold text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100"
                   >
-                    {warning.label} · {warning.periodStart} — {warning.periodEnd}
+                    {warning.label} · {warning.periodStart} —{" "}
+                    {warning.periodEnd}
                     <span className="ml-1 font-normal">no está cerrada.</span>
                   </li>
                 ))}
@@ -1057,12 +1137,12 @@ export function PayrollDisbursementDemo() {
               </CardContent>
             </Card>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
               <Metric
                 icon={UsersRound}
                 label="PERSONAL"
                 value={String(rows.length)}
-                detail="REGISTROS PARA DISPERSIÓN"
+                detail={`${paidRows.length} PAGADOS · ${rows.length - paidRows.length} PENDIENTES`}
               />
               <Metric
                 icon={Calculator}
@@ -1074,7 +1154,13 @@ export function PayrollDisbursementDemo() {
                 icon={AlertTriangle}
                 label="DESCUENTOS"
                 value={money.format(totals.deductions)}
-                detail="MOVIMIENTO DE REDUCCIÓN"
+                detail="TOTAL DE REDUCCIONES"
+              />
+              <Metric
+                icon={ShieldPlus}
+                label="IMPUESTO TRABAJADOR"
+                value={money.format(totals.workerTax)}
+                detail="RETENCIÓN DEL PERIODO"
               />
               <Metric
                 icon={CircleDollarSign}
@@ -1107,9 +1193,12 @@ export function PayrollDisbursementDemo() {
                       Conciliación del precálculo
                     </p>
                     <p className="mt-1 text-xs opacity-80">
-                      Consolidado vivo {money.format(consolidatedSourceTotals.total)}
-                      {" + "}comisión de kiosco {money.format(kioskSourceTotals.total)}
-                      {" = "}{money.format(expectedConsolidatedTotal)}.
+                      Consolidado vivo{" "}
+                      {money.format(consolidatedSourceTotals.total)}
+                      {" + "}comisión de kiosco{" "}
+                      {money.format(kioskSourceTotals.total)}
+                      {" = "}
+                      {money.format(expectedConsolidatedTotal)}.
                     </p>
                     <p className="mt-1 text-[10px] opacity-70">
                       Kiosco se integra una sola vez al cierre mensual y se suma
@@ -1146,7 +1235,15 @@ export function PayrollDisbursementDemo() {
                       nombre. Las CLABE mostradas son ficticias.
                     </CardDescription>
                   </div>
-                  <Badge variant="outline">{rows.length} REGISTROS</Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{rows.length} REGISTROS</Badge>
+                    <Badge className="border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                      {paidRows.length} PAGADOS
+                    </Badge>
+                    <Badge className="border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                      PENDIENTE {money.format(pendingPaymentTotal)}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
@@ -1154,22 +1251,117 @@ export function PayrollDisbursementDemo() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <SortableTableHead column="paternalSurname" label="APELLIDO PATERNO" kind="text" sort={tableSort} onSort={changeTableSort} />
-                        <SortableTableHead column="maternalSurname" label="APELLIDO MATERNO" kind="text" sort={tableSort} onSort={changeTableSort} />
-                        <SortableTableHead column="firstName" label="NOMBRE(S)" kind="text" sort={tableSort} onSort={changeTableSort} />
-                        <SortableTableHead column="position" label="PUESTO" kind="text" sort={tableSort} onSort={changeTableSort} />
-                        <SortableTableHead column="bank" label="BANCO / CLABE" kind="text" sort={tableSort} onSort={changeTableSort} />
-                        <SortableTableHead column="grossPayment" label="ANTES DE DESCUENTOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                        <SortableTableHead column="deductions" label="DESCUENTOS" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                        <SortableTableHead column="payment" label="NETO A COBRAR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                        <SortableTableHead column="isr" label="ISR" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                        <SortableTableHead column="socialCost" label="COSTO SOCIAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
-                        <SortableTableHead column="total" label="COSTO TOTAL" kind="number" sort={tableSort} onSort={changeTableSort} align="right" />
+                        <SortableTableHead
+                          column="paternalSurname"
+                          label="APELLIDO PATERNO"
+                          kind="text"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                        />
+                        <SortableTableHead
+                          column="maternalSurname"
+                          label="APELLIDO MATERNO"
+                          kind="text"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                        />
+                        <SortableTableHead
+                          column="firstName"
+                          label="NOMBRE(S)"
+                          kind="text"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                        />
+                        <SortableTableHead
+                          column="position"
+                          label="PUESTO"
+                          kind="text"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                        />
+                        <SortableTableHead
+                          column="bank"
+                          label="BANCO / CLABE"
+                          kind="text"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                        />
+                        <SortableTableHead
+                          column="grossPayment"
+                          label="ANTES DE DESCUENTOS"
+                          kind="number"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                          align="right"
+                        />
+                        <SortableTableHead
+                          column="deductions"
+                          label="DESCUENTOS"
+                          kind="number"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                          align="right"
+                        />
+                        <SortableTableHead
+                          column="workerTax"
+                          label="IMPUESTO TRABAJADOR"
+                          kind="number"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                          align="right"
+                        />
+                        <SortableTableHead
+                          column="payment"
+                          label="NETO A COBRAR"
+                          kind="number"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                          align="right"
+                        />
+                        <SortableTableHead
+                          column="isr"
+                          label="ISR"
+                          kind="number"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                          align="right"
+                        />
+                        <SortableTableHead
+                          column="socialCost"
+                          label="COSTO SOCIAL"
+                          kind="number"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                          align="right"
+                        />
+                        <SortableTableHead
+                          column="total"
+                          label="COSTO TOTAL"
+                          kind="number"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                          align="right"
+                        />
+                        <SortableTableHead
+                          column="paid"
+                          label="ESTATUS"
+                          kind="number"
+                          sort={tableSort}
+                          onSort={changeTableSort}
+                          align="center"
+                        />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {pagedRows.map((row) => (
-                        <TableRow key={row.id}>
+                        <TableRow
+                          key={row.id}
+                          className={
+                            row.paid
+                              ? "bg-emerald-50/60 dark:bg-emerald-950/15"
+                              : undefined
+                          }
+                        >
                           <TableCell className="font-semibold">
                             {row.paternalSurname}
                           </TableCell>
@@ -1195,6 +1387,9 @@ export function PayrollDisbursementDemo() {
                           <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
                             −{money.format(row.deductions)}
                           </TableCell>
+                          <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                            −{money.format(row.workerTax)}
+                          </TableCell>
                           <TableCell className="number-display text-right">
                             {money.format(row.payment)}
                           </TableCell>
@@ -1206,6 +1401,25 @@ export function PayrollDisbursementDemo() {
                           </TableCell>
                           <TableCell className="number-display text-right font-semibold">
                             {money.format(row.total)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {row.paid ? (
+                              <Badge className="border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                                <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                                PAGADO
+                              </Badge>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="payroll-dispersion-controls h-8 whitespace-nowrap text-[10px]"
+                                disabled={run.status === "DRAFT"}
+                                onClick={() => markRowPaid(row)}
+                              >
+                                Marcar pagado
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1224,6 +1438,9 @@ export function PayrollDisbursementDemo() {
                         <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
                           −{money.format(totals.deductions)}
                         </TableCell>
+                        <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                          −{money.format(totals.workerTax)}
+                        </TableCell>
                         <TableCell className="number-display text-right">
                           {money.format(totals.payment)}
                         </TableCell>
@@ -1236,13 +1453,19 @@ export function PayrollDisbursementDemo() {
                         <TableCell className="number-display text-right text-base">
                           {money.format(totals.total)}
                         </TableCell>
+                        <TableCell className="text-center">
+                          {paidRows.length}/{rows.length} PAGADOS
+                        </TableCell>
                       </TableRow>
                     </TableFooter>
                   </Table>
                 </div>
                 <div className="divide-y divide-[color:var(--border-color)] xl:hidden">
                   {pagedRows.map((row, index) => (
-                    <article key={row.id} className="p-4">
+                    <article
+                      key={row.id}
+                      className={`p-4 ${row.paid ? "bg-emerald-50/60 dark:bg-emerald-950/15" : ""}`}
+                    >
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-secondary)]">
@@ -1261,6 +1484,23 @@ export function PayrollDisbursementDemo() {
                           <p className="number-display mt-1 text-base">
                             {money.format(row.payment)}
                           </p>
+                          {row.paid ? (
+                            <Badge className="mt-2 border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                              <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                              PAGADO
+                            </Badge>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="payroll-dispersion-controls mt-2 h-8 text-[10px]"
+                              disabled={run.status === "DRAFT"}
+                              onClick={() => markRowPaid(row)}
+                            >
+                              Marcar pagado
+                            </Button>
+                          )}
                         </div>
                       </div>
                       <div className="mt-3 grid gap-2 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/25 p-3 sm:grid-cols-2">
@@ -1281,6 +1521,12 @@ export function PayrollDisbursementDemo() {
                             <p className="label-caps">DESCUENTOS</p>
                             <p className="number-display mt-1 text-xs text-rose-700 dark:text-rose-300">
                               −{money.format(row.deductions)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="label-caps">IMP. TRABAJADOR</p>
+                            <p className="number-display mt-1 text-xs text-amber-700 dark:text-amber-300">
+                              −{money.format(row.workerTax)}
                             </p>
                           </div>
                           <div>

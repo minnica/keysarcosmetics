@@ -1,6 +1,13 @@
 "use client";
 
-import { BarChart3, Building2, CircleDollarSign, ShieldPlus, TrendingUp } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  CircleDollarSign,
+  Landmark,
+  ShieldPlus,
+  TrendingUp,
+} from "lucide-react";
 import {
   Badge,
   Card,
@@ -21,9 +28,15 @@ import {
   type EmployeePayrollLine,
   usePayrollDemo,
 } from "./payroll-demo-context";
-import { employeeCostAllocationShares, payrollCostAllocationMode } from "./payroll-cost-branch-selector";
+import {
+  employeeCostAllocationShares,
+  payrollCostAllocationMode,
+} from "./payroll-cost-branch-selector";
 
-const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const money = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+});
 
 interface BranchAnalytics {
   id: string;
@@ -31,13 +44,33 @@ interface BranchAnalytics {
   employees: number;
   sales: number;
   payroll: number;
+  workerTax: number;
   socialCost: number;
   isr: number;
   totalCost: number;
 }
 
-function Kpi({ icon: Icon, label, value, detail }: { icon: React.ElementType; label: string; value: string; detail: string }) {
-  return <Card className="border-[color:var(--border-color)]"><CardContent className="p-5"><Icon className="h-5 w-5 text-[color:var(--text-secondary)]" /><p className="label-caps mt-4">{label}</p><p className="number-display mt-2 text-2xl">{value}</p><p className="mt-1 text-xs text-[color:var(--text-muted)]">{detail}</p></CardContent></Card>;
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <Card className="border-[color:var(--border-color)]">
+      <CardContent className="p-5">
+        <Icon className="h-5 w-5 text-[color:var(--text-secondary)]" />
+        <p className="label-caps mt-4">{label}</p>
+        <p className="number-display mt-2 text-2xl">{value}</p>
+        <p className="mt-1 text-xs text-[color:var(--text-muted)]">{detail}</p>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function PayrollModuleAnalytics({
@@ -52,33 +85,254 @@ export function PayrollModuleAnalytics({
   title: string;
 }) {
   const { state, listSortMode } = usePayrollDemo();
-  const rows: BranchAnalytics[] = sortByListMode(state.branches.map((branch) => {
-    let sales = 0;
-    let payroll = 0;
-    let socialCost = 0;
-    let isr = 0;
-    const employees = new Set<string>();
-    lines.forEach((line) => {
-      const employeeSales = state.sales.filter((sale) => sale.employeeId === line.employee.id && sale.date >= periodStart && sale.date <= periodEnd);
-      const totalEmployeeSales = employeeSales.reduce((sum, sale) => sum + sale.amount, 0);
-      const employeeBranchSales = employeeSales.filter((sale) => sale.branchId === branch.id).reduce((sum, sale) => sum + sale.amount, 0);
-      const salesShare = totalEmployeeSales > 0 ? employeeBranchSales / totalEmployeeSales : 0;
-      const allocationMode = payrollCostAllocationMode(state.payrollCostAllocationModes, line.employee.id, periodStart, periodEnd);
-      const costShare = employeeCostAllocationShares({ employee: line.employee, branches: state.branches, sales: state.sales, periodStart, periodEnd, mode: allocationMode }).find((allocation) => allocation.branchId === branch.id)?.share ?? 0;
-      if (costShare > 0) employees.add(line.employee.id);
-      sales += line.sales * salesShare;
-      payroll += line.total * costShare;
-      socialCost += line.socialCost * costShare;
-      isr += line.isrCost * costShare;
-    });
-    return { id: branch.id, name: branch.name, employees: employees.size, sales, payroll, socialCost, isr, totalCost: payroll + socialCost + isr };
-  }), listSortMode, (row) => row.name, (row) => row.totalCost);
+  const rows: BranchAnalytics[] = sortByListMode(
+    state.branches.map((branch) => {
+      let sales = 0;
+      let payroll = 0;
+      let workerTax = 0;
+      let socialCost = 0;
+      let isr = 0;
+      const employees = new Set<string>();
+      lines.forEach((line) => {
+        const employeeSales = state.sales.filter(
+          (sale) =>
+            sale.employeeId === line.employee.id &&
+            sale.date >= periodStart &&
+            sale.date <= periodEnd,
+        );
+        const totalEmployeeSales = employeeSales.reduce(
+          (sum, sale) => sum + sale.amount,
+          0,
+        );
+        const employeeBranchSales = employeeSales
+          .filter((sale) => sale.branchId === branch.id)
+          .reduce((sum, sale) => sum + sale.amount, 0);
+        const salesShare =
+          totalEmployeeSales > 0 ? employeeBranchSales / totalEmployeeSales : 0;
+        const allocationMode = payrollCostAllocationMode(
+          state.payrollCostAllocationModes,
+          line.employee.id,
+          periodStart,
+          periodEnd,
+        );
+        const costShare =
+          employeeCostAllocationShares({
+            employee: line.employee,
+            branches: state.branches,
+            sales: state.sales,
+            periodStart,
+            periodEnd,
+            mode: allocationMode,
+          }).find((allocation) => allocation.branchId === branch.id)?.share ??
+          0;
+        if (costShare > 0) employees.add(line.employee.id);
+        sales += line.sales * salesShare;
+        payroll += line.total * costShare;
+        workerTax += line.workerTax * costShare;
+        socialCost += line.socialCost * costShare;
+        isr += line.isrCost * costShare;
+      });
+      return {
+        id: branch.id,
+        name: branch.name,
+        employees: employees.size,
+        sales,
+        payroll,
+        workerTax,
+        socialCost,
+        isr,
+        totalCost: payroll + workerTax + socialCost + isr,
+      };
+    }),
+    listSortMode,
+    (row) => row.name,
+    (row) => row.totalCost,
+  );
   const payroll = lines.reduce((sum, line) => sum + line.total, 0);
+  const workerTax = lines.reduce((sum, line) => sum + line.workerTax, 0);
   const socialCost = lines.reduce((sum, line) => sum + line.socialCost, 0);
   const isr = lines.reduce((sum, line) => sum + line.isrCost, 0);
   const totalCost = lines.reduce((sum, line) => sum + line.totalCost, 0);
   const totalSales = rows.reduce((sum, row) => sum + row.sales, 0);
   const maxCost = Math.max(...rows.map((row) => row.totalCost), 1);
 
-  return <section className="space-y-5 pt-2" aria-labelledby="module-analytics-title"><div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="label-caps">REPORTES AUTOMÁTICOS</p><h2 id="module-analytics-title" className="mt-1 text-xl font-semibold">Analítica de {title.toLocaleLowerCase("es-MX")}</h2><p className="mt-1 text-sm text-[color:var(--text-muted)]">Se actualiza automáticamente con el periodo activo, movimientos y costos configurados.</p></div><Badge variant="outline">{periodStart} — {periodEnd}</Badge></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Kpi icon={CircleDollarSign} label="NÓMINA" value={money.format(payroll)} detail="Pago neto del módulo" /><Kpi icon={ShieldPlus} label="COSTO SOCIAL" value={money.format(socialCost)} detail="Carga patronal configurada" /><Kpi icon={TrendingUp} label="ISR" value={money.format(isr)} detail="Provisión configurada" /><Kpi icon={Building2} label="COSTO TOTAL" value={money.format(totalCost)} detail="Nómina + costo social + ISR" /></div><div className="grid gap-6 xl:grid-cols-[0.85fr_1.4fr]"><Card className="border-[color:var(--border-color)]"><CardHeader><CardTitle className="section-heading uppercase">Dispersión de costo</CardTitle><CardDescription>Participación automática por sucursal.</CardDescription></CardHeader><CardContent className="space-y-5">{rows.map((row) => <div key={row.id}><div className="mb-2 flex items-center justify-between gap-3 text-sm"><span className="font-semibold">{row.name}</span><span className="number-display">{money.format(row.totalCost)}</span></div><div className="h-3 overflow-hidden rounded-full bg-[color:var(--accent-hover)]"><div className="h-full rounded-full bg-gradient-to-r from-[#c3a583] via-[#a88662] to-[#648672]" style={{ width: `${Math.max(row.totalCost / maxCost * 100, row.totalCost > 0 ? 4 : 0)}%` }} /></div><p className="mt-1 text-xs text-[color:var(--text-muted)]">{row.employees} empleados · {totalCost > 0 ? (row.totalCost / totalCost * 100).toFixed(1) : "0.0"}% del costo</p></div>)}</CardContent></Card><Card className="overflow-hidden border-[color:var(--border-color)]"><CardHeader><div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-[color:var(--text-secondary)]" /><CardTitle className="section-heading uppercase">Detalle por sucursal</CardTitle></div><CardDescription>Ventas, dispersión y costo integral del módulo.</CardDescription></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>SUCURSAL</TableHead><TableHead className="text-right">VENTAS</TableHead><TableHead className="text-right">NÓMINA</TableHead><TableHead className="text-right">SOCIAL</TableHead><TableHead className="text-right">ISR</TableHead><TableHead className="text-right">TOTAL</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><p className="font-semibold">{row.name}</p><p className="text-xs text-[color:var(--text-muted)]">{row.employees} empleados</p></TableCell><TableCell className="number-display text-right">{money.format(row.sales)}</TableCell><TableCell className="number-display text-right">{money.format(row.payroll)}</TableCell><TableCell className="number-display text-right">{money.format(row.socialCost)}</TableCell><TableCell className="number-display text-right">{money.format(row.isr)}</TableCell><TableCell className="number-display text-right">{money.format(row.totalCost)}</TableCell></TableRow>)}</TableBody><TableFooter><TableRow><TableCell>TOTAL</TableCell><TableCell className="number-display text-right">{money.format(totalSales)}</TableCell><TableCell colSpan={3} /><TableCell className="number-display text-right">{money.format(totalCost)}</TableCell></TableRow></TableFooter></Table></div></CardContent></Card></div></section>;
+  return (
+    <section
+      className="space-y-5 pt-2"
+      aria-labelledby="module-analytics-title"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="label-caps">REPORTES AUTOMÁTICOS</p>
+          <h2
+            id="module-analytics-title"
+            className="mt-1 text-xl font-semibold"
+          >
+            Analítica de {title.toLocaleLowerCase("es-MX")}
+          </h2>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+            Se actualiza automáticamente con el periodo activo, movimientos y
+            costos configurados.
+          </p>
+        </div>
+        <Badge variant="outline">
+          {periodStart} — {periodEnd}
+        </Badge>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Kpi
+          icon={CircleDollarSign}
+          label="NÓMINA"
+          value={money.format(payroll)}
+          detail="Pago neto del módulo"
+        />
+        <Kpi
+          icon={Landmark}
+          label="IMPUESTO TRABAJADOR"
+          value={money.format(workerTax)}
+          detail="Retención patronal por enterar"
+        />
+        <Kpi
+          icon={ShieldPlus}
+          label="COSTO SOCIAL"
+          value={money.format(socialCost)}
+          detail="Carga patronal configurada"
+        />
+        <Kpi
+          icon={TrendingUp}
+          label="ISR"
+          value={money.format(isr)}
+          detail="Provisión configurada"
+        />
+        <Kpi
+          icon={Building2}
+          label="COSTO TOTAL"
+          value={money.format(totalCost)}
+          detail="Neto + retención + cargas"
+        />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-[0.85fr_1.4fr]">
+        <Card className="border-[color:var(--border-color)]">
+          <CardHeader>
+            <CardTitle className="section-heading uppercase">
+              Dispersión de costo
+            </CardTitle>
+            <CardDescription>
+              Participación automática por sucursal.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {rows.map((row) => (
+              <div key={row.id}>
+                <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                  <span className="font-semibold">{row.name}</span>
+                  <span className="number-display">
+                    {money.format(row.totalCost)}
+                  </span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-[color:var(--accent-hover)]">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#c3a583] via-[#a88662] to-[#648672]"
+                    style={{
+                      width: `${Math.max((row.totalCost / maxCost) * 100, row.totalCost > 0 ? 4 : 0)}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                  {row.employees} empleados ·{" "}
+                  {totalCost > 0
+                    ? ((row.totalCost / totalCost) * 100).toFixed(1)
+                    : "0.0"}
+                  % del costo
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Card className="overflow-hidden border-[color:var(--border-color)]">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-[color:var(--text-secondary)]" />
+              <CardTitle className="section-heading uppercase">
+                Detalle por sucursal
+              </CardTitle>
+            </div>
+            <CardDescription>
+              Ventas, dispersión y costo integral del módulo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>SUCURSAL</TableHead>
+                    <TableHead className="text-right">VENTAS</TableHead>
+                    <TableHead className="text-right">NÓMINA</TableHead>
+                    <TableHead className="text-right">IMP. TRAB.</TableHead>
+                    <TableHead className="text-right">SOCIAL</TableHead>
+                    <TableHead className="text-right">ISR</TableHead>
+                    <TableHead className="text-right">TOTAL</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>
+                        <p className="font-semibold">{row.name}</p>
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          {row.employees} empleados
+                        </p>
+                      </TableCell>
+                      <TableCell className="number-display text-right">
+                        {money.format(row.sales)}
+                      </TableCell>
+                      <TableCell className="number-display text-right">
+                        {money.format(row.payroll)}
+                      </TableCell>
+                      <TableCell className="number-display text-right">
+                        {money.format(row.workerTax)}
+                      </TableCell>
+                      <TableCell className="number-display text-right">
+                        {money.format(row.socialCost)}
+                      </TableCell>
+                      <TableCell className="number-display text-right">
+                        {money.format(row.isr)}
+                      </TableCell>
+                      <TableCell className="number-display text-right">
+                        {money.format(row.totalCost)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell>TOTAL</TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(totalSales)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(payroll)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(workerTax)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(socialCost)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(isr)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(totalCost)}
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  );
 }

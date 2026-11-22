@@ -485,6 +485,7 @@ function CostConfigDialog({
   const [search, setSearch] = useState("");
   const [employeePageSize, setEmployeePageSize] = useState("20");
   const [employeePage, setEmployeePage] = useState(1);
+  const [workerTaxRateInput, setWorkerTaxRateInput] = useState("3");
   const [rows, setRows] = useState<Record<string, TaxRowState>>({});
   const [copyToAll, setCopyToAll] = useState(false);
   const [bulkRow, setBulkRow] = useState<TaxRowState>({
@@ -506,6 +507,8 @@ function CostConfigDialog({
   );
   const includeSocialCost = periodTaxInclusion?.includeSocialCost ?? true;
   const includeIsr = periodTaxInclusion?.includeIsr ?? true;
+  const includeWorkerTax = periodTaxInclusion?.includeWorkerTax ?? false;
+  const workerTaxRate = periodTaxInclusion?.workerTaxRate ?? 0.03;
   const periodLocked = state.runs.some(
     (run) =>
       run.periodStart === currentPeriod.start &&
@@ -556,6 +559,11 @@ function CostConfigDialog({
     );
     setCopyToAll(false);
   }, [module, open, state.employees, state.taxAssignments]);
+
+  useEffect(() => {
+    if (!open) return;
+    setWorkerTaxRateInput(String(workerTaxRate * 100));
+  }, [open, workerTaxRate]);
 
   const employees = state.employees.filter(
     (employee) =>
@@ -688,11 +696,30 @@ function CostConfigDialog({
     onOpenChange(false);
   }
 
+  function saveWorkerTaxRate() {
+    const percentage = Number(workerTaxRateInput);
+    if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+      setWorkerTaxRateInput(String(workerTaxRate * 100));
+      toast.error(
+        "El impuesto sobre el trabajador debe estar entre 0% y 100%.",
+      );
+      return;
+    }
+    setPeriodTaxInclusion(currentPeriod.start, currentPeriod.end, {
+      workerTaxRate: percentage / 100,
+    });
+    toast.success(
+      `Tasa del impuesto sobre el trabajador actualizada a ${percentage}%.`,
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Aplicación de costo social e ISR</DialogTitle>
+          <DialogTitle>
+            Aplicación de costo social, ISR e impuesto del trabajador
+          </DialogTitle>
           <DialogDescription>
             Elige porcentaje o monto fijo y configura una regla general o una
             nómina mixta por empleado.
@@ -770,14 +797,14 @@ function CostConfigDialog({
                 </p>
                 <p className="mt-0.5 text-[10px] text-[color:var(--text-muted)]">
                   {currentPeriod.start} — {currentPeriod.end} · controla
-                  nóminas, consolidado, recibos y reportes.
+                  nóminas, consolidado, dispersión, recibos y reportes.
                 </p>
               </div>
               <Badge variant="outline" className="self-start sm:self-auto">
                 CONTROL MÁSTER · SOLO ESTE PERIODO
               </Badge>
             </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
               <TaxMasterSwitch
                 label="Costo social del periodo"
                 detail={
@@ -822,6 +849,57 @@ function CostConfigDialog({
                   );
                 }}
               />
+              <div className="space-y-2 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] p-3">
+                <TaxMasterSwitch
+                  label="Impuesto sobre el trabajador"
+                  detail={
+                    includeWorkerTax
+                      ? "Retención activa en todas las nóminas"
+                      : "Sin descuento al trabajador"
+                  }
+                  checked={includeWorkerTax}
+                  disabled={periodLocked || !isMaster}
+                  onChange={(checked) => {
+                    setPeriodTaxInclusion(
+                      currentPeriod.start,
+                      currentPeriod.end,
+                      { includeWorkerTax: checked },
+                    );
+                    toast.success(
+                      "Impuesto sobre el trabajador " +
+                        (checked ? "activado" : "apagado") +
+                        " en todas las nóminas del periodo.",
+                    );
+                  }}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="worker-tax-rate" className="text-[10px]">
+                    Tasa global del periodo
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="worker-tax-rate"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={workerTaxRateInput}
+                      disabled={periodLocked || !isMaster}
+                      onChange={(event) =>
+                        setWorkerTaxRateInput(event.target.value)
+                      }
+                      onBlur={saveWorkerTaxRate}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                      }}
+                      className="h-9 pr-8 text-xs"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[color:var(--text-muted)]">
+                      %
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
             {lastUpdatedBy && (
               <p className="mt-2 text-[10px] text-[color:var(--text-muted)]">
@@ -987,11 +1065,13 @@ function CostConfigDialog({
             {filteredEmployees.length > 0 && (
               <div className="flex flex-col gap-3 border-t border-[color:var(--border-color)] p-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[10px] text-[color:var(--text-muted)]">
-                  Mostrando {(safeEmployeePage - 1) * effectiveEmployeePageSize + 1}–
+                  Mostrando{" "}
+                  {(safeEmployeePage - 1) * effectiveEmployeePageSize + 1}–
                   {Math.min(
                     safeEmployeePage * effectiveEmployeePageSize,
                     filteredEmployees.length,
-                  )} de {filteredEmployees.length}
+                  )}{" "}
+                  de {filteredEmployees.length}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <Label className="text-[10px]">Filas</Label>
