@@ -1,18 +1,12 @@
 "use client";
 
-import { whatsappPhoneNumber } from "@/lib/contact";
+import { privacyContact, whatsappPhoneNumber } from "@/lib/contact";
+import { bookingBranches as branches } from "@/data/locations";
 import { treatmentGroups } from "@/data/treatments";
 import Image from "next/image";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
-
-const branches = {
-  "sucursal-1": "Sucursal Masaryk",
-  "sucursal-2": "Keysar Cosmétics Mítikah Luxury",
-  "sucursal-3": "Sucursal Parque Delta Beauty Córner",
-  "sucursal-4": "Opatra Galería Insurgentes",
-} as const;
 
 const channelLabels = {
   whatsapp: "WhatsApp",
@@ -124,7 +118,17 @@ export function AppointmentSection({
   });
   const channel = watch("channel");
 
-  useEffect(() => setToday(localDate()), []);
+  useEffect(() => {
+    setToday(localDate());
+    const query = new URLSearchParams(window.location.search);
+    const branch = query.get("sucursal");
+    if (branch && Object.hasOwn(branches, branch)) setValue("branch", branch);
+    const slug = query.get("tratamiento");
+    if (slug) {
+      const treatment = treatmentGroups.flatMap((group) => group.treatments).find((item) => item.slug === slug);
+      if (treatment) onServiceChange(treatment.title);
+    }
+  }, [onServiceChange, setValue]);
 
   useEffect(() => {
     setValue("service", service);
@@ -261,10 +265,32 @@ export function AppointmentSection({
               <h3 className="mt-1 text-lg font-semibold text-keysar-dark">
                 Reserva tu cita
               </h3>
-              <p className="mt-2 text-sm leading-6 text-keysar-gray">
-                Comparte tus preferencias y te confirmaremos los detalles por el
-                canal que elijas.
-              </p>
+              <details className="mt-2 text-sm leading-6 text-keysar-gray">
+                <summary
+                  aria-label="Comparte tus preferencias. Consultar el aviso de privacidad simplificado de tu cita"
+                  title="Consultar el aviso de privacidad de tu cita"
+                  className="cursor-pointer list-none hover:underline focus-visible:underline [&::-webkit-details-marker]:hidden"
+                >
+                  Comparte tus preferencias y te confirmaremos los detalles por el
+                  canal que elijas.
+                </summary>
+                <div data-nosnippet="" className="mt-3 space-y-2 rounded border border-keysar-gold/25 p-3">
+                  <p>
+                    {privacyContact.name}, con domicilio en {privacyContact.address}, utiliza tu
+                    nombre, datos de contacto, preferencias de cita y los comentarios que elijas
+                    incluir para responder y confirmar tu solicitud. Al abrir WhatsApp, los datos
+                    pasan al servicio para preparar el mensaje.
+                  </p>
+                  <p>
+                    Para limitar el uso o la divulgación de tus datos, llama al{" "}
+                    <a className="underline" href={privacyContact.phoneHref}>{privacyContact.phone}</a>.
+                    Consulta el{" "}
+                    <a className="underline" href="/aviso-de-privacidad" target="_blank" rel="noopener noreferrer">
+                      aviso de privacidad integral
+                    </a>.
+                  </p>
+                </div>
+              </details>
               <form
                 className="mt-6 space-y-5"
                 onSubmit={handleSubmit(submit)}
@@ -428,13 +454,22 @@ export function AppointmentSection({
                 </p>
                 <button
                   type="submit"
+                  disabled={!today}
                   className="w-full rounded-full bg-keysar-gold px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-keysar-dark focus:outline-none focus:ring-4 focus:ring-keysar-gold/30"
                 >
                   Enviar solicitud
                 </button>
                 <p className="text-center text-xs leading-5 text-keysar-gray">
-                  Se abrirá WhatsApp con tu solicitud. Pulsa Enviar en el chat
-                  para que llegue a Keysar.
+                  Se abrirá WhatsApp con{" "}
+                  <a
+                    href="/aviso-de-privacidad"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Aviso de privacidad de tu solicitud (abre en otra pestaña)"
+                    className="hover:underline focus-visible:underline"
+                  >
+                    tu solicitud
+                  </a>. Pulsa Enviar en el chat para que llegue a Keysar.
                 </p>
               </form>
               <p className="mt-5 text-center text-xs text-keysar-gray">
