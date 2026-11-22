@@ -1,29 +1,30 @@
 import type { Metadata } from "next";
+import localFont from "next/font/local";
+import { indexable, metadataBase } from "@/lib/site";
 import "./globals.css";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const bodyFont = localFont({
+  src: "./fonts/afacad-latin.woff2",
+  weight: "400 700",
+  fallback: ["Afacad Symbols"],
+  adjustFontFallback: false,
+  display: "swap",
+  variable: "--font-afacad",
+});
+const titleFont = localFont({
+  src: [
+    { path: "./fonts/libre-baskerville-latin.woff2", weight: "400" },
+    { path: "./fonts/libre-baskerville-latin.woff2", weight: "700" },
+  ],
+  adjustFontFallback: false,
+  display: "swap",
+  variable: "--font-libre-baskerville",
+});
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  title: "Keysar Cosmetics | Belleza y bienestar",
-  description:
-    "Masajes y tratamientos faciales premium diseñados para realzar tu belleza desde el equilibrio, la calma y el detalle.",
-  icons: { icon: "/favicon.svg" },
-  openGraph: {
-    title: "Keysar Cosmetics | Belleza y bienestar",
-    description:
-      "Masajes y tratamientos faciales premium diseñados para realzar tu belleza desde el equilibrio, la calma y el detalle.",
-    locale: "es_MX",
-    type: "website",
-    images: ["/images/hero-keysar-brand.png"],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Keysar Cosmetics | Belleza y bienestar",
-    description:
-      "Masajes y tratamientos faciales premium diseñados para realzar tu belleza desde el equilibrio, la calma y el detalle.",
-    images: ["/images/hero-keysar-brand.png"],
-  },
+  metadataBase,
+  icons: { icon: { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" } },
+  robots: { index: indexable, follow: indexable },
 };
 
 export default function RootLayout({
@@ -32,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es-MX">
+    <html lang="es-MX" className={`${bodyFont.variable} ${titleFont.variable}`}>
       <body>{children}</body>
     </html>
   );

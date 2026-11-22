@@ -925,6 +925,14 @@ La migración en Supabase dev, el backend `cosmetics-api-dev`, el login `SUPER_A
 **Notas importantes:**
 
 - Frontend en Vercel se despliega automáticamente por push a `master`/`develop`.
+- El catálogo público genera fichas estáticas en `/tratamientos/{categoria}/{slug}`
+  y `/sucursales/{slug}`. Sus enlaces vuelven al formulario con el tratamiento
+  o la sucursal seleccionados. Los datos de origen están en
+  `apps/landing/src/data/treatments.ts` y `apps/landing/src/data/locations.ts`.
+- El dominio canónico es `https://keysarcosmetics.com`. La compilación de
+  producción genera `/robots.txt` y `/sitemap.xml` con las páginas públicas del
+  catálogo y la portada. Los entornos de pruebas usan `noindex`. El aviso de
+  privacidad, los términos y la información sobre cookies se consultan desde el pie.
 - `keysarcosmetics-landing` compila `apps/landing` del monorepo. El flujo para el
   dominio oficial usa `develop` en Preview para pruebas y `master` en Production
   para `keysarcosmetics.com`. Asignar el subdominio de pruebas a la rama `develop`
