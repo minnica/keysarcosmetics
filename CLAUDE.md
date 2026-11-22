@@ -114,6 +114,14 @@ el diseño y el autocuidado.
 - La migración funcional quedó completada el 2026-09-25: `/` se prerenderiza,
   TypeScript y ESLint pasan, el build de producción termina correctamente y se
   verificaron flujos desktop/móvil. Consultar la bitácora del plan para el QA.
+- El catálogo público genera fichas estáticas en `/tratamientos/{categoria}/{slug}`
+  y `/sucursales/{slug}`. Sus enlaces vuelven al formulario con el tratamiento
+  o la sucursal seleccionados. Los datos de origen están en
+  `apps/landing/src/data/treatments.ts` y `apps/landing/src/data/locations.ts`.
+- El dominio canónico es `https://keysarcosmetics.com`. La compilación de
+  producción genera `/robots.txt` y `/sitemap.xml` con las páginas públicas del
+  catálogo y la portada. Los entornos de pruebas usan `noindex`. El aviso de
+  privacidad, los términos y la información sobre cookies se consultan desde el pie.
 - La persona responsable del repositorio hará los commits y push; los chats de
   migración deben dejar cambios sin confirmar.
 

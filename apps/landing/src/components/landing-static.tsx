@@ -1,31 +1,7 @@
 import { defaultWhatsAppUrl } from "@/lib/contact";
+import { locations, openingHours } from "@/data/locations";
+import { instagramUrl } from "@/lib/site";
 import Image from "next/image";
-
-const locations = [
-  {
-    name: "Sucursal Masaryk",
-    address:
-      "Presidente Masaryk 407, Polanco III Secc, Miguel Hidalgo, 11540 CDMX",
-    mapUrl: "https://maps.app.goo.gl/F1WFQTv1jn2vUycj6",
-  },
-  {
-    name: "Keysar Cosmétics Mítikah Luxury",
-    address:
-      "Av. Río Churubusco 601, Centro Comercial Mítikah, Mezzanine PB, Benito Juárez, CDMX",
-    mapUrl: "https://maps.app.goo.gl/H9raXcMT46Mbsk5R7",
-  },
-  {
-    name: "Parque Delta Beauty Córner",
-    address:
-      "Av. Cuauhtémoc 462, Piedad Narvarte, Benito Juárez, 03000, CDMX — Local K17",
-    mapUrl: "https://maps.app.goo.gl/ca9VwBwbok2Dqv9E8",
-  },
-  {
-    name: "Opatra Galería Insurgentes",
-    address: "Galería Insurgentes, Ciudad de México",
-    mapUrl: "https://maps.app.goo.gl/fG5fEZa4ZTY1ibYH6",
-  },
-] as const;
 
 function UserIcon() {
   return (
@@ -177,13 +153,14 @@ export function Hero() {
       <div className="absolute inset-0 z-0 bg-[linear-gradient(90deg,rgba(247,241,232,0.82)_0%,rgba(247,241,232,0.62)_28%,rgba(247,241,232,0.08)_54%,rgba(247,241,232,0)_100%)]" />
       <div className="relative z-10 mx-auto flex min-h-[620px] max-w-7xl items-center px-5 pt-20 md:min-h-[640px] md:px-10 md:pt-16 lg:min-h-[590px]">
         <div className="max-w-[470px] pb-8 md:pb-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-keysar-gold">
-            Spa &amp; facial care
-          </p>
-          <h1 className="mt-4 font-title text-[42px] leading-[1.02] text-white drop-shadow-[0_2px_12px_rgba(74,64,56,0.22)] sm:text-6xl lg:text-7xl">
-            Keysar
-            <br />
-            Cosmetics
+          <h1 aria-labelledby="hero-brand hero-specialty">
+            <span id="hero-specialty" className="block text-xs font-semibold uppercase tracking-[0.28em] text-keysar-gold">
+              Spa &amp; facial care
+            </span>{" "}
+            <span id="hero-brand" className="mt-4 block font-title text-[42px] leading-[1.02] text-white drop-shadow-[0_2px_12px_rgba(74,64,56,0.22)] sm:text-6xl lg:text-7xl">
+              Keysar{" "}<br />
+              Cosmetics
+            </span>
           </h1>
           <div className="mt-6 max-w-md space-y-4 text-sm leading-7 text-keysar-text sm:text-base md:mt-8 md:text-sm">
             <p>
@@ -239,7 +216,7 @@ export function EssenceSection() {
 
 export function LocationsSection() {
   return (
-    <section className="ks-section-b px-5 py-16 sm:px-6 md:px-10 md:py-20 lg:py-24">
+    <section id="sucursales" className="ks-section-b px-5 py-16 sm:px-6 md:px-10 md:py-20 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="font-title text-3xl leading-tight tracking-[-0.03em] text-keysar-text sm:text-4xl md:text-5xl">
@@ -276,7 +253,7 @@ export function LocationsSection() {
                 aria-hidden="true"
               />
               <h3 className="mt-5 font-title text-xl leading-snug text-keysar-dark">
-                {location.name}
+                <a href={`/sucursales/${location.slug}`}>{location.name}</a>
               </h3>
               <p className="mt-4 flex-1 text-sm leading-6 text-keysar-gray">
                 {location.address}
@@ -345,7 +322,7 @@ export function LandingFooter() {
             </p>
             <div className="mt-7 flex items-center gap-4 text-white/70">
               <a
-                href="https://www.instagram.com/keysarcosmetics/"
+                href={instagramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
@@ -368,12 +345,12 @@ export function LandingFooter() {
             <h3 className="text-sm font-semibold">Servicios</h3>
             <ul className="mt-5 space-y-3 text-sm text-white/60">
               <li>
-                <a href="#servicios" className="hover:text-white">
+                <a href="/tratamientos/faciales" className="hover:text-white">
                   Faciales
                 </a>
               </li>
               <li>
-                <a href="#servicios" className="hover:text-white">
+                <a href="/tratamientos/corporales" className="hover:text-white">
                   Corporales
                 </a>
               </li>
@@ -395,9 +372,7 @@ export function LandingFooter() {
               {locations.map((location) => (
                 <li key={location.name}>
                   <a
-                    href={location.mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={`/sucursales/${location.slug}`}
                     className="transition hover:text-white"
                   >
                     {location.name}
@@ -421,7 +396,7 @@ export function LandingFooter() {
               </li>
               <li>
                 <a
-                  href="https://www.instagram.com/keysarcosmetics/"
+                  href={instagramUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-white"
@@ -432,7 +407,7 @@ export function LandingFooter() {
               <li className="leading-6">
                 Lun – Dom
                 <br />
-                11:00 – 20:00
+                {openingHours.opens} – {openingHours.closes}
               </li>
             </ul>
           </div>
@@ -443,13 +418,13 @@ export function LandingFooter() {
             reservados.
           </p>
           <div className="flex flex-wrap gap-5">
-            <a href="#" className="hover:text-white">
+            <a href="/aviso-de-privacidad" className="hover:text-white">
               Política de Privacidad
             </a>
-            <a href="#" className="hover:text-white">
+            <a href="/terminos-de-servicio" className="hover:text-white">
               Términos de Servicio
             </a>
-            <a href="#" className="hover:text-white">
+            <a href="/cookies" className="hover:text-white">
               Configuración de Cookies
             </a>
           </div>
