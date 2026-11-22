@@ -1,8 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=Afacad:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@font-face {
+  font-family: "Afacad Symbols";
+  src: url("./fonts/afacad-symbols.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 @layer base {
   html {
@@ -13,7 +19,7 @@
     margin: 0;
     background: #f7f1e8;
     color: #4a4038;
-    font-family: "Afacad", sans-serif;
+    font-family: var(--font-afacad), sans-serif;
   }
 
   button,

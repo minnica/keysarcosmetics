@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 export function VideoReelsSection() {
   const [cardIndex, setCardIndex] = useState(0);
   const [atEnd, setAtEnd] = useState(false);
+  const [showPosters, setShowPosters] = useState(false);
   const [activeVideo, setActiveVideo] = useState<
     (typeof videos)[number] | null
   >(null);
@@ -14,6 +15,25 @@ export function VideoReelsSection() {
   const playerRef = useRef<HTMLVideoElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const activeTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const carousel = carouselRef.current;
+    if (!carousel || !("IntersectionObserver" in window)) {
+      setShowPosters(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setShowPosters(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "800px 0px" },
+    );
+    observer.observe(carousel);
+    return () => observer.disconnect();
+  }, []);
 
   const getStep = () => {
     const carousel = carouselRef.current;
@@ -118,13 +138,11 @@ export function VideoReelsSection() {
                 className="group relative snap-start overflow-hidden rounded-[4px] bg-keysar-rose-100 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-keysar-gold focus:ring-offset-2"
               >
                 <div className="relative aspect-[9/16] overflow-hidden">
-                  <Image
-                    src={video.poster}
-                    alt={`Experiencia Keysar Cosmetics — momento ${video.id}`}
-                    fill
-                    sizes="(min-width: 1024px) 20vw, (min-width: 640px) 33vw, 67vw"
-                    className="object-cover transition duration-500 group-hover:scale-105"
-                  />
+                  {showPosters ? (
+                    <ReelPoster video={video} />
+                  ) : (
+                    <noscript><ReelPoster video={video} /></noscript>
+                  )}
                 </div>
                 <div className="absolute inset-0 flex items-center justify-center bg-black/10 transition duration-300 group-hover:bg-black/30 group-focus-visible:bg-black/30">
                   <span
@@ -190,6 +208,18 @@ export function VideoReelsSection() {
         </div>
       )}
     </section>
+  );
+}
+
+function ReelPoster({ video }: { video: (typeof videos)[number] }) {
+  return (
+    <Image
+      src={video.poster}
+      alt={`Experiencia Keysar Cosmetics — momento ${video.id}`}
+      fill
+      sizes="(min-width: 1024px) 20vw, (min-width: 640px) 33vw, 67vw"
+      className="object-cover transition duration-500 group-hover:scale-105"
+    />
   );
 }
 

@@ -5,8 +5,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        title: ["Libre Baskerville", "serif"],
-        body: ["Afacad", "sans-serif"],
+        title: ["var(--font-libre-baskerville)", "serif"],
+        body: ["var(--font-afacad)", "sans-serif"],
       },
       colors: {
         keysar: {

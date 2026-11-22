@@ -14,7 +14,7 @@ export function TreatmentsSection({
   const [atEnd, setAtEnd] = useState(false);
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
-  const returnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const returnFocusRef = useRef<HTMLAnchorElement | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const group = treatmentGroups[groupIndex] ?? treatmentGroups[0]!;
 
@@ -75,6 +75,12 @@ export function TreatmentsSection({
   };
 
   const treatment = detailIndex === null ? null : group.treatments[detailIndex];
+  const selectTreatmentForBooking = () => {
+    if (!treatment) return;
+    returnFocusRef.current = null;
+    onSelectService(treatment.title);
+    setDetailIndex(null);
+  };
 
   return (
     <section
@@ -133,82 +139,93 @@ export function TreatmentsSection({
             </div>
           </div>
 
-          <div
-            ref={carouselRef}
-            onScroll={updateCardIndex}
-            role="region"
-            aria-label={`Carrusel de ${group.ariaLabel}`}
-            tabIndex={0}
-            className="mt-4 grid auto-cols-[88%] grid-flow-col snap-x snap-mandatory items-stretch gap-5 overflow-x-auto scroll-smooth pb-4 [scrollbar-width:none] sm:auto-cols-[calc((100%_-_1.5rem)/2)] sm:gap-6 lg:auto-cols-[calc((100%_-_3rem)/3)] [&::-webkit-scrollbar]:hidden"
-          >
-            {group.treatments.map((item, index) => (
-              <article
-                key={item.title}
-                data-treatment-card
-                className="group flex snap-start flex-col overflow-hidden rounded-[8px] border border-keysar-gold/15 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-keysar-gold/45 hover:shadow-lg"
-              >
-                <div className="relative aspect-[1.42/1] overflow-hidden bg-keysar-sand">
-                  <Image
-                    src={item.imageSrc ?? group.imageSrc}
-                    alt={`${group.imageAltPrefix} ${item.title}`}
-                    fill
-                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 88vw"
-                    className="object-cover transition duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/35 to-transparent" />
-                  <span className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-keysar-text shadow-sm">
-                    {item.tag}
-                  </span>
-                  {item.feature && (
-                    <>
-                      <span className="absolute right-4 top-4 drop-shadow-[0_2px_5px_rgba(0,0,0,0.35)]">
-                        <ItalianFlag />
-                      </span>
-                      <span className="absolute bottom-4 right-4 rounded-full bg-keysar-gold px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-sm">
-                        {item.feature.badge}
-                      </span>
-                    </>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <h3 className="font-title text-xl leading-tight text-keysar-text">
-                      {item.title}
-                    </h3>
-                    <span className="shrink-0 rounded-full border border-keysar-gold/25 px-3 py-1 text-xs font-medium text-keysar-gold">
-                      {item.duration}
+          {treatmentGroups.map((category, categoryIndex) => (
+            <div
+              key={category.key}
+              ref={categoryIndex === groupIndex ? carouselRef : null}
+              onScroll={categoryIndex === groupIndex ? updateCardIndex : undefined}
+              role="region"
+              aria-label={`Carrusel de ${category.ariaLabel}`}
+              tabIndex={0}
+              className={`${categoryIndex === groupIndex ? "grid" : "hidden"} mt-4 auto-cols-[88%] grid-flow-col snap-x snap-mandatory items-stretch gap-5 overflow-x-auto scroll-smooth pb-4 [scrollbar-width:none] sm:auto-cols-[calc((100%_-_1.5rem)/2)] sm:gap-6 lg:auto-cols-[calc((100%_-_3rem)/3)] [&::-webkit-scrollbar]:hidden`}
+            >
+              {category.treatments.map((item, index) => (
+                <article
+                  key={item.title}
+                  data-treatment-card
+                  className="group flex snap-start flex-col overflow-hidden rounded-[8px] border border-keysar-gold/15 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-keysar-gold/45 hover:shadow-lg"
+                >
+                  <div className="relative aspect-[1.42/1] overflow-hidden bg-keysar-sand">
+                    <Image
+                      src={item.imageSrc}
+                      alt={`${category.imageAltPrefix} ${item.title}`}
+                      fill
+                      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 88vw"
+                      className="object-cover transition duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/35 to-transparent" />
+                    <span className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-keysar-text shadow-sm">
+                      {item.tag}
                     </span>
+                    {item.feature && (
+                      <>
+                        <span className="absolute right-4 top-4 drop-shadow-[0_2px_5px_rgba(0,0,0,0.35)]">
+                          <ItalianFlag />
+                        </span>
+                        <span className="absolute bottom-4 right-4 rounded-full bg-keysar-gold px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-sm">
+                          {item.feature.badge}
+                        </span>
+                      </>
+                    )}
                   </div>
-                  <p className="mt-4 min-h-[72px] text-sm leading-6 text-keysar-gray">
-                    {item.description}
-                  </p>
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {item.benefits.slice(0, 2).map((benefit) => (
-                      <span
-                        key={benefit}
-                        className="rounded-full bg-keysar-sand px-3 py-1 text-xs font-medium text-keysar-text"
-                      >
-                        {benefit}
+                  <div className="flex flex-1 flex-col p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <h3 className="font-title text-xl leading-tight text-keysar-text">
+                        {item.title}
+                      </h3>
+                      <span className="shrink-0 rounded-full border border-keysar-gold/25 px-3 py-1 text-xs font-medium text-keysar-gold">
+                        {item.duration}
                       </span>
-                    ))}
+                    </div>
+                    <p className="mt-4 min-h-[72px] text-sm leading-6 text-keysar-gray">
+                      {item.description}
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {item.benefits.slice(0, 2).map((benefit) => (
+                        <span
+                          key={benefit}
+                          className="rounded-full bg-keysar-sand px-3 py-1 text-xs font-medium text-keysar-text"
+                        >
+                          {benefit}
+                        </span>
+                      ))}
+                    </div>
+                    <a
+                      href={`/tratamientos/${category.key}/${item.slug}`}
+                      aria-label={`Descubrir tratamiento: ${item.title}`}
+                      aria-haspopup="dialog"
+                      onClick={(event) => {
+                        if (
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        ) return;
+                        event.preventDefault();
+                        returnFocusRef.current = event.currentTarget;
+                        setDetailIndex(index);
+                      }}
+                      className="mt-auto inline-flex items-center justify-between gap-3 pt-6 text-left text-sm font-semibold text-keysar-gold transition hover:text-keysar-text"
+                    >
+                      <span>Descubrir tratamiento</span>
+                      <span aria-hidden="true">→</span>
+                    </a>
                   </div>
-                  <button
-                    ref={index === detailIndex ? returnFocusRef : undefined}
-                    type="button"
-                    aria-haspopup="dialog"
-                    onClick={(event) => {
-                      returnFocusRef.current = event.currentTarget;
-                      setDetailIndex(index);
-                    }}
-                    className="mt-auto inline-flex items-center justify-between gap-3 pt-6 text-left text-sm font-semibold text-keysar-gold transition hover:text-keysar-text"
-                  >
-                    <span>Descubrir tratamiento</span>
-                    <span aria-hidden="true">→</span>
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
+                </article>
+              ))}
+            </div>
+          ))}
           <div
             className="mt-2 flex items-center justify-center gap-2"
             aria-hidden="true"
@@ -364,20 +381,14 @@ export function TreatmentsSection({
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                   <a
                     href="#agenda"
-                    onClick={() => {
-                      onSelectService(treatment.title);
-                      setDetailIndex(null);
-                    }}
+                    onClick={selectTreatmentForBooking}
                     className="inline-flex items-center justify-center rounded-full bg-keysar-gold px-6 py-3 text-sm font-semibold text-white transition hover:bg-keysar-dark"
                   >
                     Agendar este ritual
                   </a>
                   <a
                     href="#agenda"
-                    onClick={() => {
-                      onSelectService(treatment.title);
-                      setDetailIndex(null);
-                    }}
+                    onClick={selectTreatmentForBooking}
                     className="inline-flex items-center justify-center rounded-full border border-keysar-gold/45 px-6 py-3 text-sm font-semibold text-keysar-text transition hover:bg-white/60"
                   >
                     Pedir valoración

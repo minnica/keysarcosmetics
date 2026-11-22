@@ -1,4 +1,5 @@
 type Treatment = {
+  slug: string;
   title: string;
   tag: string;
   duration: string;
@@ -19,6 +20,7 @@ type Treatment = {
 
 const facialTreatments: Treatment[] = [
   {
+    slug: "micro-lifting",
     title: "Micro Lifting",
     tag: "Lifting no invasivo",
     duration: "Según valoración",
@@ -39,6 +41,7 @@ const facialTreatments: Treatment[] = [
     },
   },
   {
+    slug: "limpieza-facial-profunda",
     title: "Limpieza Facial Profunda",
     tag: "Purificación",
     duration: "60 min",
@@ -52,6 +55,7 @@ const facialTreatments: Treatment[] = [
       "Se realiza mediante varios pasos y productos especializados para lograr una limpieza profunda y dejar la piel más fresca y equilibrada.",
   },
   {
+    slug: "peel-off",
     title: "Peel Off",
     tag: "Luminosidad",
     duration: "45-60 min",
@@ -64,6 +68,7 @@ const facialTreatments: Treatment[] = [
       "Un ritual de mascarilla peel off que renueva visualmente el rostro y deja una sensación tersa, fresca y luminosa.",
   },
   {
+    slug: "peel-off-vitamin-c",
     title: "Peel Off Vitamin C",
     tag: "Vitamina C",
     duration: "45-60 min",
@@ -76,6 +81,7 @@ const facialTreatments: Treatment[] = [
       "Combina luminosidad antioxidante e hidratación para mejorar el aspecto de la piel cansada y aportar un acabado más radiante.",
   },
   {
+    slug: "peel-off-aloe-vera",
     title: "Peel Off Aloe Vera",
     tag: "Calma",
     duration: "45-60 min",
@@ -88,6 +94,7 @@ const facialTreatments: Treatment[] = [
       "Un cuidado suave que busca calmar la piel, aportar hidratación y ayudar a mantener una apariencia joven y confortable.",
   },
   {
+    slug: "24k-golden-glow",
     title: "24K Golden Glow",
     tag: "Oro 24K",
     duration: "60 min",
@@ -100,6 +107,7 @@ const facialTreatments: Treatment[] = [
       "Un ritual premium que ayuda a reparar visualmente la piel, estimular la circulación sanguínea y dejar un acabado radiante.",
   },
   {
+    slug: "hilos-tensores",
     title: "Hilos Tensores",
     tag: "Efecto lifting",
     duration: "Según valoración",
@@ -113,6 +121,7 @@ const facialTreatments: Treatment[] = [
       "Tratamiento progresivo con resultados visibles al momento y mejora gradual con el paso de los meses.",
   },
   {
+    slug: "oxycura",
     title: "Oxycura",
     tag: "Oxígeno",
     duration: "50 min",
@@ -125,6 +134,7 @@ const facialTreatments: Treatment[] = [
       "Oxigenación intensiva para ayudar a que la piel se vea más luminosa, fresca y revitalizada.",
   },
   {
+    slug: "facial-hidratante-24k",
     title: "Facial Hidratante 24K",
     tag: "Hidratación",
     duration: "60 min",
@@ -137,6 +147,7 @@ const facialTreatments: Treatment[] = [
       "Gracias a su concentración de agua y humectantes, la piel absorbe humedad rápidamente y luce más radiante.",
   },
   {
+    slug: "facial-anti-acne",
     title: "Facial Anti Acné",
     tag: "Control",
     duration: "50-60 min",
@@ -149,6 +160,7 @@ const facialTreatments: Treatment[] = [
       "Un protocolo de limpieza y equilibrio que ayuda a mantener la piel más limpia, calmada e hidratada.",
   },
   {
+    slug: "neck-and-chest",
     title: "Neck and Chest",
     tag: "Cuello y escote",
     duration: "45 min",
@@ -162,6 +174,7 @@ const facialTreatments: Treatment[] = [
       "Utiliza una mascarilla de hidrogel rica en activos hidratantes, antioxidantes y reafirmantes para una absorción profunda.",
   },
   {
+    slug: "cabina-doble-vip",
     title: "Cabina Doble VIP",
     tag: "Experiencia compartida",
     duration: "Según ritual",
@@ -175,6 +188,7 @@ const facialTreatments: Treatment[] = [
       "Puedes combinar un tratamiento facial con un exquisito masaje corporal para vivir una experiencia doble y personalizada.",
   },
   {
+    slug: "eye-ritual",
     title: "Eye Ritual",
     tag: "Mirada",
     duration: "45-50 min",
@@ -190,6 +204,7 @@ const facialTreatments: Treatment[] = [
 
 const bodyTreatments: Treatment[] = [
   {
+    slug: "masaje-relajante",
     title: "Masaje Relajante",
     tag: "Calma",
     duration: "50-60 min",
@@ -202,6 +217,7 @@ const bodyTreatments: Treatment[] = [
       "Movimientos relajantes de ritmo envolvente para bajar la tensión, liberar carga física y recuperar calma.",
   },
   {
+    slug: "masaje-reductivo",
     title: "Masaje Reductivo",
     tag: "Silueta",
     duration: "60 min",
@@ -214,6 +230,7 @@ const bodyTreatments: Treatment[] = [
       "Se realiza con maniobras intensas para estimular zonas localizadas y apoyar una figura más estética.",
   },
   {
+    slug: "reflexologia",
     title: "Reflexología",
     tag: "Puntos reflejos",
     duration: "40-50 min",
@@ -226,6 +243,7 @@ const bodyTreatments: Treatment[] = [
       "Se trabaja mediante masaje en puntos reflejos de manos o pies para inducir bienestar y relajación.",
   },
   {
+    slug: "masaje-descontracturante",
     title: "Masaje Descontracturante",
     tag: "Descarga muscular",
     duration: "60 min",
@@ -239,6 +257,7 @@ const bodyTreatments: Treatment[] = [
       "Aplica presión controlada, amasamientos, fricciones y estiramientos para restaurar el estado natural del músculo.",
   },
   {
+    slug: "piernas-cansadas",
     title: "Piernas Cansadas",
     tag: "Ligereza",
     duration: "45-50 min",
@@ -252,6 +271,7 @@ const bodyTreatments: Treatment[] = [
       "Se aplica presión en puntos adecuados para recuperar comodidad, ligereza y movilidad en las piernas.",
   },
   {
+    slug: "presoterapia",
     title: "Presoterapia",
     tag: "Bienestar de piernas",
     duration: "Según valoración",
@@ -265,6 +285,7 @@ const bodyTreatments: Treatment[] = [
       "En una sesión personalizada, las botas aplican ciclos suaves de compresión y liberación mientras disfrutas de un momento de descanso.",
   },
   {
+    slug: "body-vip",
     title: "Body VIP",
     tag: "Firma Keysar",
     duration: "90 min",
@@ -287,6 +308,7 @@ export const treatmentGroups = [
   {
     key: "faciales",
     label: "Faciales",
+    introduction: "Compara los faciales de Keysar Cosmetics en Ciudad de México por duración, técnica y necesidades de tu piel.",
     ariaLabel: "tratamientos faciales",
     imageSrc: "/images/treatment-facial.png",
     imageAltPrefix: "Tratamiento",
@@ -295,6 +317,7 @@ export const treatmentGroups = [
   {
     key: "corporales",
     label: "Corporales",
+    introduction: "Explora los masajes y tratamientos corporales de Keysar Cosmetics en Ciudad de México, desde un masaje relajante hasta presoterapia.",
     ariaLabel: "tratamientos corporales",
     imageSrc: "/images/body-massage.png",
     imageAltPrefix: "Tratamiento corporal",
