@@ -133,6 +133,8 @@ const settingsItems = [
   ["notifications", "Notificaciones"],
   ["clients", "Clientes y preguntas"],
   ["surveys", "Encuestas"],
+  ["users", "Usuarios"],
+  ["roles", "Roles y accesos"],
   ["authorizations", "Códigos personales"],
 ] as const;
 
@@ -463,7 +465,7 @@ export function SettingsNavMenu() {
   const pathname = usePathname();
   const { bootstrap } = useSchedulerSession();
   const visibleItems = settingsItems.filter(([section]) =>
-    section === "authorizations"
+    ["users", "roles", "authorizations"].includes(section)
       ? bootstrap?.canManageAccess
       : bootstrap?.permissions.some(
           (permission) =>
@@ -500,7 +502,7 @@ export function SettingsNavMenu() {
             onClick={() => setOpen(false)}
           >
             <span className="flex items-center gap-3">
-              {section === "authorizations" ? (
+              {["users", "roles", "authorizations"].includes(section) ? (
                 <KeyRound className="h-4 w-4 text-[#c3a583]" />
               ) : (
                 <SlidersHorizontal className="h-4 w-4 text-[#c3a583]" />

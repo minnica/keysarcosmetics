@@ -333,6 +333,9 @@ export function SchedulerBookingDialog({
             visitor.attendanceStatus !== "PENDING") &&
           (visitor.attendanceStatus !== "NO_SHOW" ||
             visitor.purchaseKind === "NONE") &&
+          (visitor.attendanceStatus === "ATTENDED" ||
+            visitor.purchaseKind === null ||
+            visitor.purchaseKind === "NONE") &&
           (visitor.purchaseKind === null ||
             visitor.purchaseKind === "NONE" ||
             (Number(visitor.saleAmount) > 0 &&
@@ -1306,10 +1309,16 @@ export function SchedulerBookingDialog({
                                         | "ARRIVED"
                                         | "ATTENDED"
                                         | "NO_SHOW",
-                                      ...(value === "NO_SHOW"
+                                      ...(value !== "ATTENDED"
                                         ? {
-                                            purchaseKind: "NONE",
-                                            purchased: false,
+                                            purchaseKind:
+                                              value === "NO_SHOW"
+                                                ? "NONE"
+                                                : null,
+                                            purchased:
+                                              value === "NO_SHOW"
+                                                ? false
+                                                : null,
                                             purchaseAmount: "",
                                             saleAmount: "",
                                             depositAmount: "",
@@ -1340,6 +1349,12 @@ export function SchedulerBookingDialog({
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
+                                {visitor.attendanceStatus !== "ATTENDED" ? (
+                                  <p className="text-xs leading-5 text-amber-700">
+                                    Los campos de venta se habilitan después de
+                                    marcar la asistencia como Atendida.
+                                  </p>
+                                ) : null}
                               </div>
                               <div className="space-y-2 2xl:col-span-2">
                                 <label className="scheduler-modal-label flex min-h-10 items-end">
@@ -1347,7 +1362,7 @@ export function SchedulerBookingDialog({
                                 </label>
                                 <Select
                                   disabled={
-                                    visitor.attendanceStatus === "NO_SHOW"
+                                    visitor.attendanceStatus !== "ATTENDED"
                                   }
                                   value={visitor.purchaseKind ?? "PENDING"}
                                   onValueChange={(value) =>
@@ -1410,8 +1425,9 @@ export function SchedulerBookingDialog({
                                 </label>
                                 <Select
                                   disabled={
-                                    visitor.purchaseKind !== "FULL" &&
-                                    visitor.purchaseKind !== "LAYAWAY"
+                                    visitor.attendanceStatus !== "ATTENDED" ||
+                                    (visitor.purchaseKind !== "FULL" &&
+                                      visitor.purchaseKind !== "LAYAWAY")
                                   }
                                   value={visitor.saleCategory ?? "SERVICE"}
                                   onValueChange={(value) =>
@@ -1455,8 +1471,9 @@ export function SchedulerBookingDialog({
                                   <Input
                                     className="scheduler-modal-input pl-10"
                                     disabled={
-                                      visitor.purchaseKind !== "FULL" &&
-                                      visitor.purchaseKind !== "LAYAWAY"
+                                      visitor.attendanceStatus !== "ATTENDED" ||
+                                      (visitor.purchaseKind !== "FULL" &&
+                                        visitor.purchaseKind !== "LAYAWAY")
                                     }
                                     inputMode="decimal"
                                     min="0"
@@ -1473,7 +1490,8 @@ export function SchedulerBookingDialog({
                                   />
                                 </div>
                               </div>
-                              {visitor.saleCategory === "MEMBERSHIP" ? (
+                              {visitor.attendanceStatus === "ATTENDED" &&
+                              visitor.saleCategory === "MEMBERSHIP" ? (
                                 <>
                                   <div className="space-y-2 2xl:col-span-3">
                                     <label className="scheduler-modal-label flex min-h-10 items-end">
@@ -1524,7 +1542,8 @@ export function SchedulerBookingDialog({
                                   </div>
                                 </>
                               ) : null}
-                              {visitor.posTicket ? (
+                              {visitor.attendanceStatus === "ATTENDED" &&
+                              visitor.posTicket ? (
                                 <SchedulerPosTicketPreview
                                   branchName={
                                     branches.find(
@@ -1553,6 +1572,7 @@ export function SchedulerBookingDialog({
                                   <Input
                                     className="scheduler-modal-input pl-10"
                                     disabled={
+                                      visitor.attendanceStatus !== "ATTENDED" ||
                                       visitor.purchaseKind !== "LAYAWAY"
                                     }
                                     inputMode="decimal"
@@ -1572,7 +1592,8 @@ export function SchedulerBookingDialog({
                               </div>
                             </>
                           ) : null}
-                          {visitor.purchaseKind === "LAYAWAY" ? (
+                          {visitor.attendanceStatus === "ATTENDED" &&
+                          visitor.purchaseKind === "LAYAWAY" ? (
                             <p className="rounded-xl border border-[#e6d8ca] bg-[#fbf7f2] px-3 py-2 text-sm text-[#795f45] md:col-span-2 2xl:col-span-12">
                               El total de esta venta queda asignado a{" "}
                               <strong>

@@ -8,6 +8,8 @@ import {
   Palette,
   Pencil,
   Plus,
+  Power,
+  PowerOff,
   Save,
   ShieldCheck,
   WalletCards,
@@ -1932,6 +1934,10 @@ export function RestoredServiceExtensions() {
   const [packageOpen, setPackageOpen] = useState(false);
   const [packageDraft, setPackageDraft] = useState({
     posPackageId: "",
+    name: "",
+    sku: "",
+    price: "",
+    kind: "PACKAGE" as "PACKAGE" | "MEMBERSHIP",
     commerceId: "",
     branchProfileIds: [] as string[],
     serviceProfileIds: [] as string[],
@@ -2001,43 +2007,98 @@ export function RestoredServiceExtensions() {
       (item) => item.posPackageId === packageDraft.posPackageId,
     );
     setSaving(true);
+    const input = {
+      commerceId: packageDraft.commerceId,
+      name: packageDraft.name.trim(),
+      price: Number(packageDraft.price || 0).toFixed(2),
+      kind: packageDraft.kind,
+      branchProfileIds: packageDraft.branchProfileIds,
+      sessions: Number(packageDraft.sessions),
+      simultaneous: packageDraft.simultaneous,
+      acceptsOnline: packageDraft.acceptsOnline,
+      active: packageDraft.active,
+      serviceLines: packageDraft.serviceProfileIds.map(
+        (serviceProfileId, index) => ({
+          serviceProfileId,
+          quantity:
+            profile?.serviceLines.find(
+              (line) => line.serviceProfileId === serviceProfileId,
+            )?.quantity ?? 1,
+          priceOverride:
+            profile?.serviceLines.find(
+              (line) => line.serviceProfileId === serviceProfileId,
+            )?.priceOverride ?? null,
+          sortOrder:
+            profile?.serviceLines.find(
+              (line) => line.serviceProfileId === serviceProfileId,
+            )?.sortOrder ?? index,
+        }),
+      ),
+    };
     await runSchedulerMutation(
       () =>
-        schedulerApi.updatePackageProfile(packageDraft.posPackageId, {
-          commerceId: packageDraft.commerceId,
-          branchProfileIds: packageDraft.branchProfileIds,
-          sessions: Number(packageDraft.sessions),
-          simultaneous: packageDraft.simultaneous,
-          acceptsOnline: packageDraft.acceptsOnline,
-          active: packageDraft.active,
-          ...(packageDraft.expectedVersion
-            ? { expectedVersion: packageDraft.expectedVersion }
-            : {}),
-          serviceLines: packageDraft.serviceProfileIds.map(
-            (serviceProfileId, index) => ({
-              serviceProfileId,
-              quantity:
-                profile?.serviceLines.find(
-                  (line) => line.serviceProfileId === serviceProfileId,
-                )?.quantity ?? 1,
-              priceOverride:
-                profile?.serviceLines.find(
-                  (line) => line.serviceProfileId === serviceProfileId,
-                )?.priceOverride ?? null,
-              sortOrder:
-                profile?.serviceLines.find(
-                  (line) => line.serviceProfileId === serviceProfileId,
-                )?.sortOrder ?? index,
-            }),
-          ),
+        packageDraft.posPackageId
+          ? schedulerApi.updatePackageProfile(packageDraft.posPackageId, {
+              ...input,
+              sku: packageDraft.sku,
+              ...(packageDraft.expectedVersion
+                ? { expectedVersion: packageDraft.expectedVersion }
+                : {}),
+            })
+          : schedulerApi.createPackageProfile(input),
+      {
+        onSuccess: async () => {
+          toast.success(
+            profile
+              ? "Membresía o paquete actualizado."
+              : "Membresía o paquete creado.",
+          );
+          await onSaved();
+          setPackageOpen(false);
+        },
+        onError: toast.error,
+        onConflict: toast.error,
+        invalidate: schedulerAdministrationInvalidations(),
+      },
+    );
+    setSaving(false);
+  }
+
+  async function updatePackageStatus(
+    item: NonNullable<typeof data>["administration"]["packages"][number],
+    active: boolean,
+  ) {
+    if (item.active === active) return;
+    setSaving(true);
+    await runSchedulerMutation(
+      () =>
+        schedulerApi.updatePackageProfile(item.posPackageId, {
+          commerceId: item.commerceId,
+          name: item.name,
+          sku: item.sku,
+          price: item.price,
+          kind: item.kind,
+          branchProfileIds: item.branchProfileIds,
+          sessions: item.sessions,
+          simultaneous: item.simultaneous,
+          acceptsOnline: item.acceptsOnline,
+          active,
+          expectedVersion: item.version,
+          serviceLines: item.serviceLines.map((line) => ({
+            serviceProfileId: line.serviceProfileId,
+            quantity: line.quantity,
+            priceOverride: line.priceOverride,
+            sortOrder: line.sortOrder,
+          })),
         }),
       {
         onSuccess: async () => {
           toast.success(
-            profile ? "Paquete actualizado." : "Paquete activado en Scheduler.",
+            `${item.kind === "MEMBERSHIP" ? "Membresía" : "Paquete"} ${
+              active ? "activado" : "desactivado"
+            }.`,
           );
           await onSaved();
-          setPackageOpen(false);
         },
         onError: toast.error,
         onConflict: toast.error,
@@ -2179,13 +2240,17 @@ export function RestoredServiceExtensions() {
             <Card className="admin-card">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <h3 className="admin-section-title">Paquetes</h3>
+                  <h3 className="admin-section-title">Membresías y paquetes</h3>
                   {canAdmin ? (
                     <Button
                       size="sm"
                       onClick={() => {
                         setPackageDraft({
-                          posPackageId: data?.pos.packages[0]?.id ?? "",
+                          posPackageId: "",
+                          name: "",
+                          sku: "",
+                          price: "",
+                          kind: "PACKAGE",
                           commerceId: data?.operations.commerces[0]?.id ?? "",
                           branchProfileIds: [],
                           serviceProfileIds: [],
@@ -2198,43 +2263,88 @@ export function RestoredServiceExtensions() {
                         setPackageOpen(true);
                       }}
                     >
-                      <Plus className="mr-2 h-4 w-4" /> Configurar
+                      <Plus className="mr-2 h-4 w-4" /> Nueva membresía o
+                      paquete
                     </Button>
                   ) : null}
                 </div>
                 <div className="mt-4 space-y-3">
                   {packagePagination.rows.map((item) => (
-                    <button
+                    <article
                       key={item.id}
-                      type="button"
-                      className="block w-full rounded-xl border border-slate-200 p-3 text-left"
-                      onClick={() => {
-                        setPackageDraft({
-                          posPackageId: item.posPackageId,
-                          commerceId: item.commerceId,
-                          branchProfileIds: item.branchProfileIds,
-                          serviceProfileIds: item.serviceLines.map(
-                            (line) => line.serviceProfileId,
-                          ),
-                          sessions: String(item.sessions),
-                          simultaneous: item.simultaneous,
-                          acceptsOnline: item.acceptsOnline,
-                          active: item.active,
-                          expectedVersion: item.version,
-                        });
-                        setPackageOpen(true);
-                      }}
+                      className="rounded-xl border border-slate-200 bg-white p-3"
                     >
-                      <span className="font-medium">{item.name}</span>
-                      <span className="mt-1 block text-xs text-slate-500">
-                        {item.sku} · {item.sessions} sesiones · v{item.version}
-                      </span>
-                    </button>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-900">
+                            {item.name}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {item.kind === "MEMBERSHIP"
+                              ? "Membresía"
+                              : "Paquete"}{" "}
+                            · {item.sku} · {item.sessions} sesiones
+                          </p>
+                        </div>
+                        <Badge variant={item.active ? "default" : "secondary"}>
+                          {item.active ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </div>
+                      {canAdmin ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant={item.active ? "default" : "outline"}
+                            disabled={saving || item.active}
+                            onClick={() => void updatePackageStatus(item, true)}
+                          >
+                            <Power className="mr-1.5 h-3.5 w-3.5" /> Activo
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={!item.active ? "destructive" : "outline"}
+                            disabled={saving || !item.active}
+                            onClick={() =>
+                              void updatePackageStatus(item, false)
+                            }
+                          >
+                            <PowerOff className="mr-1.5 h-3.5 w-3.5" /> Inactivo
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={saving}
+                            onClick={() => {
+                              setPackageDraft({
+                                posPackageId: item.posPackageId,
+                                name: item.name,
+                                sku: item.sku,
+                                price: item.price,
+                                kind: item.kind,
+                                commerceId: item.commerceId,
+                                branchProfileIds: item.branchProfileIds,
+                                serviceProfileIds: item.serviceLines.map(
+                                  (line) => line.serviceProfileId,
+                                ),
+                                sessions: String(item.sessions),
+                                simultaneous: item.simultaneous,
+                                acceptsOnline: item.acceptsOnline,
+                                active: item.active,
+                                expectedVersion: item.version,
+                              });
+                              setPackageOpen(true);
+                            }}
+                          >
+                            <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editar
+                          </Button>
+                        </div>
+                      ) : null}
+                    </article>
                   ))}
                 </div>
                 <SchedulerPagination
                   {...packagePagination}
-                  label="paquetes"
+                  label="membresías y paquetes"
                   onPageChange={setPackagePage}
                   onPageSizeChange={setPackagePageSize}
                   pageSize={packagePageSize}
@@ -2494,7 +2604,11 @@ export function RestoredServiceExtensions() {
           <Dialog open={packageOpen} onOpenChange={setPackageOpen}>
             <DialogContent className="admin-dialog max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden">
               <DialogHeader>
-                <DialogTitle>Configurar paquete</DialogTitle>
+                <DialogTitle>
+                  {packageDraft.posPackageId
+                    ? "Editar membresía o paquete"
+                    : "Nueva membresía o paquete"}
+                </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
@@ -2520,29 +2634,68 @@ export function RestoredServiceExtensions() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Paquete POS</Label>
-                  <Select
-                    value={packageDraft.posPackageId}
-                    disabled={Boolean(packageDraft.expectedVersion)}
-                    onValueChange={(value) =>
-                      setPackageDraft((current) => ({
-                        ...current,
-                        posPackageId: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="mt-1.5">
-                      <SelectValue placeholder="Selecciona" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {data.pos.packages.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.name} · {item.sku}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>Tipo</Label>
+                    <Select
+                      value={packageDraft.kind}
+                      onValueChange={(value: "PACKAGE" | "MEMBERSHIP") =>
+                        setPackageDraft((current) => ({
+                          ...current,
+                          kind: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="mt-1.5">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MEMBERSHIP">Membresía</SelectItem>
+                        <SelectItem value="PACKAGE">Paquete</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Nombre</Label>
+                    <Input
+                      className="mt-1.5"
+                      value={packageDraft.name}
+                      onChange={(event) =>
+                        setPackageDraft((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>Precio</Label>
+                    <Input
+                      className="mt-1.5"
+                      min="0"
+                      step="0.01"
+                      type="number"
+                      value={packageDraft.price}
+                      onChange={(event) =>
+                        setPackageDraft((current) => ({
+                          ...current,
+                          price: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="rounded-xl border border-[#e7ddd4] bg-[#f8f5f1] px-4 py-3 sm:col-span-2">
+                    <p className="text-sm font-medium text-slate-800">
+                      SKU automático y consecutivo
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      {packageDraft.sku
+                        ? `SKU asignado: ${packageDraft.sku}`
+                        : packageDraft.kind === "MEMBERSHIP"
+                          ? "Se asignará el siguiente consecutivo MEM al guardar."
+                          : "Se asignará el siguiente consecutivo PAQ al guardar."}
+                    </p>
+                  </div>
                 </div>
                 <div>
                   <Label>Sucursales</Label>
@@ -2640,13 +2793,17 @@ export function RestoredServiceExtensions() {
                     onClick={() => void savePackage()}
                     disabled={
                       saving ||
-                      !packageDraft.posPackageId ||
+                      !packageDraft.name.trim() ||
                       !packageDraft.commerceId ||
                       !packageDraft.branchProfileIds.length ||
                       !packageDraft.serviceProfileIds.length
                     }
                   >
-                    <WalletCards className="mr-2 h-4 w-4" /> Guardar paquete
+                    <WalletCards className="mr-2 h-4 w-4" />
+                    Guardar{" "}
+                    {packageDraft.kind === "MEMBERSHIP"
+                      ? "membresía"
+                      : "paquete"}
                   </Button>
                 </div>
               </div>

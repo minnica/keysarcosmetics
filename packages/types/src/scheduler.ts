@@ -134,11 +134,77 @@ export interface SchedulerAuthorizationConsumeRequestDto {
 export interface SchedulerManagedPositionDto {
   id: string;
   name: string;
+  description?: string | null;
   active: boolean;
   canManageSchedulerAccess: boolean;
   selfProfessionalOnly: boolean;
   branchIds: string[];
   permissions: SchedulerPermissionDto[];
+  version?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SchedulerManagedRoleWriteDto {
+  name: string;
+  description?: string | null;
+  active: boolean;
+  canManageSchedulerAccess: boolean;
+  selfProfessionalOnly: boolean;
+  branchIds: string[];
+  permissions: SchedulerPermissionDto[];
+  expectedVersion?: number;
+}
+
+export interface SchedulerManagedUserDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  roleId: string;
+  roleName: string;
+  branchIds: string[];
+  active: boolean;
+  twoFactorEnabled: boolean;
+  passwordResetSentAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchedulerManagedUserWriteDto {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string | null;
+  roleId: string;
+  branchIds: string[];
+  active: boolean;
+  twoFactorEnabled: boolean;
+  expectedVersion?: number;
+}
+
+export interface SchedulerPasswordResetDispatchDto {
+  userId: string;
+  email: string;
+  sentAt: string;
+  delivery: "QUEUED" | "SENT";
+  previewUrl?: string;
+}
+
+export interface SchedulerPasswordResetConfirmDto {
+  token: string;
+  password: string;
+  passwordConfirmation: string;
+}
+
+export interface SchedulerUserAccessManagementDto {
+  users: SchedulerManagedUserDto[];
+  roles: SchedulerManagedPositionDto[];
+  branches: SchedulerAuthorizedBranchDto[];
+  screens: readonly SchedulerScreenKey[];
+  capabilities: readonly SchedulerCapability[];
 }
 
 export interface SchedulerAccessManagementDto {
@@ -167,6 +233,10 @@ export const SCHEDULER_RESOURCE_KINDS = [
 ] as const;
 export type SchedulerResourceKind = (typeof SCHEDULER_RESOURCE_KINDS)[number];
 export type SchedulerServiceMode = "INDIVIDUAL" | "CLASS";
+export type SchedulerServiceMarketingType =
+  | "STANDARD"
+  | "PROMOTION"
+  | "CAMPAIGN";
 export type SchedulerAvailabilityOwnerType =
   | "BRANCH"
   | "PROFESSIONAL"
@@ -252,6 +322,10 @@ export interface SchedulerServiceProfileDto {
   mode: SchedulerServiceMode;
   acceptsOnline: boolean;
   active: boolean;
+  listPrice: string;
+  categoryId: string;
+  marketingType: SchedulerServiceMarketingType;
+  campaignName: string | null;
   effectiveFrom: string;
   effectiveTo: string | null;
   version: number;
@@ -343,6 +417,7 @@ export interface SchedulerOperationalCatalogDto {
   branches: SchedulerBranchProfileDto[];
   professionals: SchedulerProfessionalProfileDto[];
   services: SchedulerServiceProfileDto[];
+  serviceCategories: SchedulerServiceCategoryDto[];
   resources: SchedulerResourceDto[];
   specialties: SchedulerSpecialtyDto[];
   groups: SchedulerProfessionalGroupDto[];
@@ -392,10 +467,42 @@ export interface SchedulerServiceProfileWriteDto {
   mode: SchedulerServiceMode;
   acceptsOnline: boolean;
   active: boolean;
+  listPrice: string;
+  categoryId: string;
+  marketingType: SchedulerServiceMarketingType;
+  campaignName?: string | null;
   branchProfileIds: string[];
   effectiveFrom?: string;
   effectiveTo?: string | null;
   expectedVersion?: number;
+}
+
+export interface SchedulerServiceCategoryDto {
+  id: string;
+  commerceId: string;
+  name: string;
+  description: string | null;
+  color: string;
+  active: boolean;
+  version: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface SchedulerServiceCategoryWriteDto {
+  commerceId: string;
+  name: string;
+  description?: string | null;
+  color: string;
+  active: boolean;
+  expectedVersion?: number;
+}
+
+export interface SchedulerServiceCreateDto extends Omit<
+  SchedulerServiceProfileWriteDto,
+  "expectedVersion"
+> {
+  name: string;
 }
 
 export interface SchedulerResourceWriteDto {
@@ -750,6 +857,7 @@ export interface SchedulerPackageProfileDto {
   sku: string;
   price: string;
   posStatus: "DRAFT" | "PUBLISHED" | "INACTIVE";
+  kind: "PACKAGE" | "MEMBERSHIP";
   acceptsOnline: boolean;
   simultaneous: boolean;
   sessions: number;
@@ -769,6 +877,10 @@ export interface SchedulerPackageProfileDto {
 
 export interface SchedulerPackageProfileWriteDto {
   commerceId: string;
+  name: string;
+  sku: string;
+  price: string;
+  kind: "PACKAGE" | "MEMBERSHIP";
   acceptsOnline: boolean;
   simultaneous: boolean;
   sessions: number;
@@ -784,6 +896,11 @@ export interface SchedulerPackageProfileWriteDto {
     sortOrder: number;
   }>;
 }
+
+export type SchedulerPackageProfileCreateDto = Omit<
+  SchedulerPackageProfileWriteDto,
+  "sku" | "expectedVersion"
+>;
 
 export interface SchedulerAddonProfileDto {
   id: string;

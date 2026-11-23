@@ -3,6 +3,7 @@ import type {
   SchedulerCustomerFieldDefinitionDto,
   SchedulerCustomerSummaryDto,
   SchedulerCustomerVisitHistoryDto,
+  SchedulerServiceMarketingType,
   SchedulerWeekday,
 } from "@cosmetics/types";
 
@@ -339,6 +340,7 @@ export interface DesignAppointmentJournalFilters {
   branchIds: string[];
   kinds: DesignAppointmentJournalKind[];
   query?: string;
+  marketingType?: SchedulerServiceMarketingType;
 }
 
 export interface DesignAppointmentJournalReport {
@@ -370,6 +372,7 @@ export interface DesignCabinSalesReportFilters {
   status?: SchedulerAppointmentStatus;
   purchaseKind?: Exclude<DesignPurchaseKind, null>;
   serviceProfileId?: string;
+  marketingType?: SchedulerServiceMarketingType;
   specialistProfileId?: string;
   sellerName?: string;
   minSaleAmount?: number;
@@ -394,6 +397,9 @@ export interface DesignCabinSalesReportRow {
   visitorName: string;
   serviceProfileIds: string[];
   serviceNames: string[];
+  serviceMarketingTypes: SchedulerServiceMarketingType[];
+  promotionLabels: string[];
+  hasPromotion: boolean;
   sellerName: string;
   representativeName: string;
   representativeSource: DesignOperationAgentSource;
@@ -439,6 +445,8 @@ export interface DesignCabinSalesSpecialistBreakdown extends DesignCabinSalesRep
 export interface DesignCabinServiceAnalytics {
   serviceProfileId: string;
   serviceName: string;
+  marketingType: SchedulerServiceMarketingType;
+  campaignName: string | null;
   appointments: number;
   visitors: number;
   attended: number;

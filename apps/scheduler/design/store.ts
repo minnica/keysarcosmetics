@@ -14,6 +14,8 @@ import {
   type SchedulerOperationalCatalogDto,
   type SchedulerScheduleBlockDto,
   type SchedulerAdministrationCatalogDto,
+  type SchedulerManagedPositionDto,
+  type SchedulerManagedUserDto,
 } from "@cosmetics/types";
 import {
   schedulerAdministrationCandidatesFixture,
@@ -809,6 +811,66 @@ export function createDesignState(
         },
       ],
     }));
+  const accessBranches = catalog.branches.map((branch) => branch.branchId);
+  const managedRoles: SchedulerManagedPositionDto[] = designDemoAccounts.map(
+    (account, index) => ({
+      id: `design-position-${account.id}`,
+      name: account.positionName,
+      description:
+        account.role === "master"
+          ? "Administración y configuración de la operación."
+          : account.role === "specialist"
+            ? "Operación de agenda limitada a sucursales asignadas."
+            : "Consulta de información sin permisos de edición.",
+      active: true,
+      canManageSchedulerAccess: account.role === "master",
+      selfProfessionalOnly: account.role === "specialist",
+      branchIds:
+        account.role === "master" ? accessBranches : accessBranches.slice(0, 1),
+      permissions: SCHEDULER_SCREEN_KEYS.filter(
+        (key) =>
+          account.role === "master" ||
+          (!key.includes("/administration/") && !key.includes("/settings/")),
+      ).map((screenKey) => ({
+        screenKey,
+        capabilities:
+          account.role === "master"
+            ? [...SCHEDULER_CAPABILITIES]
+            : account.role === "read-only"
+              ? (["READ"] as const)
+              : (["READ", "WRITE"] as const),
+      })),
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  );
+  const managedUsers: SchedulerManagedUserDto[] = designDemoAccounts.map(
+    (account, index) => {
+      const displayName = account.name.split(" · ")[0] ?? account.name;
+      const nameParts = displayName.trim().split(/\s+/);
+      const firstName = nameParts.shift() ?? displayName;
+      return {
+        id: `design-user-${account.id}`,
+        firstName,
+        lastName: nameParts.join(" ") || "Demo",
+        email: account.email,
+        phone: index < 3 ? `+52 55 5000 000${index + 1}` : null,
+        roleId: `design-position-${account.id}`,
+        roleName: account.positionName,
+        branchIds:
+          account.role === "master"
+            ? accessBranches
+            : accessBranches.slice(0, 1),
+        active: true,
+        twoFactorEnabled: account.role === "master",
+        passwordResetSentAt: null,
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+    },
+  );
   const state = {
     controls: normalizedControls,
     catalog,
@@ -839,6 +901,16 @@ export function createDesignState(
     messageOutbox: structuredClone(
       schedulerMessageOutboxRv6Fixture,
     ) as DesignRow[],
+    managedRoles,
+    managedUsers,
+    passwordResetTokens: new Map<
+      string,
+      { userId: string; expiresAt: number; usedAt: string | null }
+    >(),
+    passwordResetConfirmations: [] as Array<{
+      userId: string;
+      changedAt: string;
+    }>,
     notificationRules: structuredClone(
       schedulerNotificationRulesRv8Fixture,
     ) as DesignRow[],

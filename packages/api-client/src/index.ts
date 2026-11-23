@@ -80,6 +80,12 @@ import type {
   PosAgendaMembershipReservationRequestDto,
   PosAgendaSlotDto,
   SchedulerAccessManagementDto,
+  SchedulerManagedUserDto,
+  SchedulerManagedUserWriteDto,
+  SchedulerManagedRoleWriteDto,
+  SchedulerPasswordResetDispatchDto,
+  SchedulerPasswordResetConfirmDto,
+  SchedulerUserAccessManagementDto,
   SchedulerAuthorizationDto,
   SchedulerAuthorizationConsumeRequestDto,
   SchedulerAuthorizationRequestDto,
@@ -100,6 +106,9 @@ import type {
   SchedulerProfessionalServiceWriteDto,
   SchedulerResourceWriteDto,
   SchedulerServiceProfileWriteDto,
+  SchedulerServiceCreateDto,
+  SchedulerServiceCategoryDto,
+  SchedulerServiceCategoryWriteDto,
   SchedulerServiceResourceRequirementWriteDto,
   SchedulerSpecialtyWriteDto,
   SchedulerCustomerDetailDto,
@@ -137,6 +146,7 @@ import type {
   SchedulerCommissionPolicyWriteDto,
   SchedulerGiftCardTemplateWriteDto,
   SchedulerPackageProfileWriteDto,
+  SchedulerPackageProfileCreateDto,
   SchedulerPosReferencesDto,
   SchedulerResolvedSettingDto,
   SchedulerSettingSection,
@@ -226,6 +236,29 @@ export interface SchedulerApiClient {
     input: SchedulerAuthorizationConsumeRequestDto,
   ): Promise<{ authorized: true }>;
   accessManagement(): Promise<SchedulerAccessManagementDto>;
+  userAccessManagement(): Promise<SchedulerUserAccessManagementDto>;
+  createManagedUser(
+    input: SchedulerManagedUserWriteDto,
+  ): Promise<SchedulerManagedUserDto>;
+  updateManagedUser(
+    userId: string,
+    input: SchedulerManagedUserWriteDto,
+  ): Promise<SchedulerManagedUserDto>;
+  deleteManagedUser(userId: string): Promise<{ deleted: true }>;
+  sendManagedUserPasswordReset(
+    userId: string,
+  ): Promise<SchedulerPasswordResetDispatchDto>;
+  confirmManagedUserPasswordReset(
+    input: SchedulerPasswordResetConfirmDto,
+  ): Promise<{ changed: true }>;
+  createManagedRole(
+    input: SchedulerManagedRoleWriteDto,
+  ): Promise<SchedulerManagedPositionDto>;
+  updateManagedRole(
+    roleId: string,
+    input: SchedulerManagedRoleWriteDto,
+  ): Promise<SchedulerManagedPositionDto>;
+  deleteManagedRole(roleId: string): Promise<{ deleted: true }>;
   updatePositionPermissions(
     positionId: string,
     input: {
@@ -240,6 +273,16 @@ export interface SchedulerApiClient {
   ): Promise<SchedulerManagedPositionDto>;
   operationalCandidates(): Promise<SchedulerOperationalCandidatesDto>;
   operationalCatalog(): Promise<SchedulerOperationalCatalogDto>;
+  createServiceCategory(
+    input: SchedulerServiceCategoryWriteDto,
+  ): Promise<SchedulerServiceCategoryDto>;
+  updateServiceCategory(
+    id: string,
+    input: SchedulerServiceCategoryWriteDto,
+  ): Promise<SchedulerServiceCategoryDto>;
+  createService(
+    input: SchedulerServiceCreateDto,
+  ): Promise<SchedulerMutationResultDto>;
   createCommerce(
     input: SchedulerCommerceWriteDto,
   ): Promise<SchedulerCommerceDto>;
@@ -374,6 +417,9 @@ export interface SchedulerApiClient {
     input: { expectedVersion: number; reason: string },
   ): Promise<SchedulerScheduleBlockDto>;
   administrationCatalog(): Promise<SchedulerAdministrationCatalogDto>;
+  createPackageProfile(
+    input: SchedulerPackageProfileCreateDto,
+  ): Promise<{ id: string; version: number }>;
   updatePackageProfile(
     posPackageId: string,
     input: SchedulerPackageProfileWriteDto,
@@ -658,6 +704,42 @@ export function createSchedulerApiClient(
       data(client.post("/api/scheduler/authorizations/consume", input)),
     accessManagement: () =>
       data<SchedulerAccessManagementDto>(client.get("/api/scheduler/access")),
+    userAccessManagement: () =>
+      data<SchedulerUserAccessManagementDto>(
+        client.get("/api/scheduler/access/users"),
+      ),
+    createManagedUser: (input) =>
+      data<SchedulerManagedUserDto>(
+        client.post("/api/scheduler/access/users", input),
+      ),
+    updateManagedUser: (userId, input) =>
+      data<SchedulerManagedUserDto>(
+        client.put(`/api/scheduler/access/users/${userId}`, input),
+      ),
+    deleteManagedUser: (userId) =>
+      data<{ deleted: true }>(
+        client.delete(`/api/scheduler/access/users/${userId}`),
+      ),
+    sendManagedUserPasswordReset: (userId) =>
+      data<SchedulerPasswordResetDispatchDto>(
+        client.post(`/api/scheduler/access/users/${userId}/password-reset`),
+      ),
+    confirmManagedUserPasswordReset: (input) =>
+      data<{ changed: true }>(
+        client.post("/api/scheduler/access/password-reset/confirm", input),
+      ),
+    createManagedRole: (input) =>
+      data<SchedulerManagedPositionDto>(
+        client.post("/api/scheduler/access/roles", input),
+      ),
+    updateManagedRole: (roleId, input) =>
+      data<SchedulerManagedPositionDto>(
+        client.put(`/api/scheduler/access/roles/${roleId}`, input),
+      ),
+    deleteManagedRole: (roleId) =>
+      data<{ deleted: true }>(
+        client.delete(`/api/scheduler/access/roles/${roleId}`),
+      ),
     updatePositionPermissions: (positionId, input) =>
       data<SchedulerManagedPositionDto>(
         client.put(
@@ -678,6 +760,18 @@ export function createSchedulerApiClient(
     operationalCatalog: () =>
       data<SchedulerOperationalCatalogDto>(
         client.get("/api/scheduler/operations/catalog"),
+      ),
+    createServiceCategory: (input) =>
+      data<SchedulerServiceCategoryDto>(
+        client.post("/api/scheduler/operations/service-categories", input),
+      ),
+    updateServiceCategory: (id, input) =>
+      data<SchedulerServiceCategoryDto>(
+        client.put(`/api/scheduler/operations/service-categories/${id}`, input),
+      ),
+    createService: (input) =>
+      data<SchedulerMutationResultDto>(
+        client.post("/api/scheduler/operations/services", input),
       ),
     createCommerce: (input) =>
       data(client.post("/api/scheduler/operations/commerces", input)),
@@ -832,6 +926,10 @@ export function createSchedulerApiClient(
     administrationCatalog: () =>
       data<SchedulerAdministrationCatalogDto>(
         client.get("/api/scheduler/administration/catalog"),
+      ),
+    createPackageProfile: (input) =>
+      data<{ id: string; version: number }>(
+        client.post("/api/scheduler/administration/packages", input),
       ),
     updatePackageProfile: (posPackageId, input) =>
       data<{ id: string; version: number }>(

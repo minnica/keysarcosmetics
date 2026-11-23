@@ -2123,6 +2123,9 @@ export function ApiAgendaWorkspace() {
               visitor.attendanceStatus === "PENDING") ||
             (visitor.attendanceStatus === "NO_SHOW" &&
               visitor.purchaseKind !== "NONE") ||
+            (visitor.attendanceStatus !== "ATTENDED" &&
+              (visitor.purchaseKind === "FULL" ||
+                visitor.purchaseKind === "LAYAWAY")) ||
             ((visitor.purchaseKind === "FULL" ||
               visitor.purchaseKind === "LAYAWAY") &&
               (!Number.isFinite(Number(visitor.saleAmount)) ||
@@ -2136,7 +2139,7 @@ export function ApiAgendaWorkspace() {
         )
       ) {
         toast.error(
-          "Marca la asistencia de cada visitante. Quien no asistió no puede tener compra; las compras y apartados requieren montos válidos y toda membresía debe indicar qué facialista la colocó.",
+          "Marca la asistencia de cada visitante. La venta sólo se registra al marcar Atendida; las compras y apartados requieren montos válidos y toda membresía debe indicar qué facialista la colocó.",
         );
         return;
       }

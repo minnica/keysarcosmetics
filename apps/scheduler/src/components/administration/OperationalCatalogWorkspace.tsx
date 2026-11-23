@@ -7,10 +7,15 @@ import {
   Box,
   Building2,
   DoorOpen,
+  Megaphone,
+  Pencil,
   Plus,
+  Power,
+  PowerOff,
   RefreshCw,
   Save,
   Sparkles,
+  Tags,
   UserRound,
   UsersRound,
 } from "lucide-react";
@@ -44,6 +49,7 @@ import type {
   SchedulerOperationalCatalogDto,
   SchedulerResourceKind,
   SchedulerScreenKey,
+  SchedulerServiceMarketingType,
   SchedulerServiceMode,
 } from "@cosmetics/types";
 import { schedulerApi, schedulerApiErrorMessage } from "@/lib/api";
@@ -453,6 +459,15 @@ function ProfessionalEditor({
 
 const serviceFormSchema = z
   .object({
+    listPrice: z
+      .string()
+      .refine(
+        (value) => Number.isFinite(Number(value)) && Number(value) >= 0,
+        "Captura un precio válido",
+      ),
+    categoryId: z.string().min(1, "Selecciona una categoría"),
+    marketingType: z.enum(["STANDARD", "PROMOTION", "CAMPAIGN"]),
+    campaignName: z.string().trim().max(100),
     durationMinutes: z.coerce.number().int().min(1).max(1440),
     preparationMinutes: z.coerce.number().int().min(0).max(1440),
     cleanupMinutes: z.coerce.number().int().min(0).max(1440),
@@ -474,6 +489,12 @@ const serviceFormSchema = z
         code: z.ZodIssueCode.custom,
         path: ["capacity"],
         message: "Un servicio individual debe tener capacidad 1",
+      });
+    if (value.marketingType !== "STANDARD" && !value.campaignName)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["campaignName"],
+        message: "Indica el nombre de la promoción o campaña",
       });
   });
 type ServiceForm = z.infer<typeof serviceFormSchema>;
@@ -502,6 +523,13 @@ function ServiceEditor({
     formState: { errors },
   } = useForm<ServiceForm>({
     defaultValues: {
+      listPrice: profile?.listPrice ?? "0.00",
+      categoryId:
+        profile?.categoryId ??
+        catalog.serviceCategories.find((item) => item.active)?.id ??
+        "",
+      marketingType: profile?.marketingType ?? "STANDARD",
+      campaignName: profile?.campaignName ?? "",
       durationMinutes: profile?.durationMinutes ?? 60,
       preparationMinutes: profile?.preparationMinutes ?? 0,
       cleanupMinutes: profile?.cleanupMinutes ?? 0,
@@ -547,6 +575,43 @@ function ServiceEditor({
         <form className="space-y-5" onSubmit={submit} noValidate>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
+              <Label htmlFor="service-price">Precio</Label>
+              <Input
+                id="service-price"
+                type="number"
+                min="0"
+                step="0.01"
+                className="mt-2"
+                {...register("listPrice")}
+                disabled={!canAdmin || saving}
+              />
+              <FieldError message={errors.listPrice?.message} />
+            </div>
+            <div>
+              <Label htmlFor="service-category">Categoría</Label>
+              <Select
+                value={watch("categoryId")}
+                onValueChange={(value) =>
+                  setValue("categoryId", value, { shouldDirty: true })
+                }
+                disabled={!canAdmin || saving}
+              >
+                <SelectTrigger id="service-category" className="mt-2">
+                  <SelectValue placeholder="Selecciona una categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  {catalog.serviceCategories
+                    .filter((item) => item.active)
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <FieldError message={errors.categoryId?.message} />
+            </div>
+            <div>
               <Label htmlFor="service-duration">Duración (min)</Label>
               <Input
                 id="service-duration"
@@ -589,6 +654,44 @@ function ServiceEditor({
                 disabled={!canAdmin || saving}
               />
               <FieldError message={errors.capacity?.message} />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="service-marketing">Clasificación comercial</Label>
+              <Select
+                value={watch("marketingType")}
+                onValueChange={(value: SchedulerServiceMarketingType) => {
+                  setValue("marketingType", value, { shouldDirty: true });
+                  if (value === "STANDARD")
+                    setValue("campaignName", "", { shouldDirty: true });
+                }}
+                disabled={!canAdmin || saving}
+              >
+                <SelectTrigger id="service-marketing" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="STANDARD">Servicio regular</SelectItem>
+                  <SelectItem value="PROMOTION">Promoción</SelectItem>
+                  <SelectItem value="CAMPAIGN">Campaña</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="service-campaign">
+                Nombre de promoción o campaña
+              </Label>
+              <Input
+                id="service-campaign"
+                className="mt-2"
+                placeholder="Ej. Hidratación de temporada"
+                {...register("campaignName")}
+                disabled={
+                  !canAdmin || saving || watch("marketingType") === "STANDARD"
+                }
+              />
+              <FieldError message={errors.campaignName?.message} />
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -668,6 +771,590 @@ function ServiceEditor({
           </Button>
         </form>
       </CardContent>
+    </Card>
+  );
+}
+
+type ServiceCategoryDraft = {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  active: boolean;
+  version?: number;
+};
+
+const emptyServiceDraft = {
+  name: "",
+  listPrice: "",
+  durationMinutes: "60",
+  categoryId: "",
+  marketingType: "STANDARD" as SchedulerServiceMarketingType,
+  campaignName: "",
+  mode: "INDIVIDUAL" as SchedulerServiceMode,
+  capacity: "1",
+  branchProfileIds: [] as string[],
+  acceptsOnline: true,
+  active: true,
+};
+
+function ServiceCatalogManager({
+  catalog,
+  canAdmin,
+  onSaved,
+}: {
+  catalog: SchedulerOperationalCatalogDto;
+  canAdmin: boolean;
+  onSaved: () => Promise<void>;
+}) {
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [serviceOpen, setServiceOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState<ServiceCategoryDraft>({
+    id: "",
+    name: "",
+    description: "",
+    color: "#ad8b67",
+    active: true,
+  });
+  const [serviceDraft, setServiceDraft] = useState(emptyServiceDraft);
+
+  const openCategory = (
+    category?: SchedulerOperationalCatalogDto["serviceCategories"][number],
+  ) => {
+    setCategoryDraft(
+      category
+        ? {
+            id: category.id,
+            name: category.name,
+            description: category.description ?? "",
+            color: category.color,
+            active: category.active,
+            version: category.version,
+          }
+        : {
+            id: "",
+            name: "",
+            description: "",
+            color: "#ad8b67",
+            active: true,
+          },
+    );
+    setCategoryOpen(true);
+  };
+
+  const saveCategory = async () => {
+    const name = categoryDraft.name.trim();
+    const commerceId = catalog.commerces.find((item) => item.active)?.id;
+    if (!name || !commerceId) {
+      toast.warning("Escribe el nombre de la categoría.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const input = {
+        commerceId,
+        name,
+        description: categoryDraft.description.trim() || null,
+        color: categoryDraft.color,
+        active: categoryDraft.active,
+        ...(categoryDraft.version
+          ? { expectedVersion: categoryDraft.version }
+          : {}),
+      };
+      if (categoryDraft.id)
+        await schedulerApi.updateServiceCategory(categoryDraft.id, input);
+      else await schedulerApi.createServiceCategory(input);
+      toast.success(
+        categoryDraft.id ? "Categoría actualizada." : "Categoría creada.",
+      );
+      await onSaved();
+      setCategoryOpen(false);
+    } catch (error) {
+      toast.error(
+        schedulerApiErrorMessage(error, "No fue posible guardar la categoría."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setCategoryStatus = async (
+    category: SchedulerOperationalCatalogDto["serviceCategories"][number],
+    active: boolean,
+  ) => {
+    setSaving(true);
+    try {
+      await schedulerApi.updateServiceCategory(category.id, {
+        commerceId: category.commerceId,
+        name: category.name,
+        description: category.description,
+        color: category.color,
+        active,
+        expectedVersion: category.version,
+      });
+      await onSaved();
+      toast.success(active ? "Categoría activada." : "Categoría desactivada.");
+    } catch (error) {
+      toast.error(
+        schedulerApiErrorMessage(error, "No fue posible cambiar el estatus."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveService = async () => {
+    const price = Number(serviceDraft.listPrice);
+    const duration = Number(serviceDraft.durationMinutes);
+    const capacity = Number(serviceDraft.capacity);
+    if (
+      !serviceDraft.name.trim() ||
+      !serviceDraft.categoryId ||
+      !serviceDraft.branchProfileIds.length ||
+      !Number.isFinite(price) ||
+      price < 0 ||
+      !Number.isInteger(duration) ||
+      duration < 1 ||
+      !Number.isInteger(capacity) ||
+      capacity < 1
+    ) {
+      toast.warning(
+        "Completa nombre, precio, categoría, duración y sucursales.",
+      );
+      return;
+    }
+    if (
+      serviceDraft.marketingType !== "STANDARD" &&
+      !serviceDraft.campaignName.trim()
+    ) {
+      toast.warning("Indica el nombre de la promoción o campaña.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await schedulerApi.createService({
+        name: serviceDraft.name.trim(),
+        listPrice: price.toFixed(2),
+        durationMinutes: duration,
+        preparationMinutes: 0,
+        cleanupMinutes: 0,
+        capacity: serviceDraft.mode === "INDIVIDUAL" ? 1 : capacity,
+        mode: serviceDraft.mode,
+        acceptsOnline: serviceDraft.acceptsOnline,
+        active: serviceDraft.active,
+        branchProfileIds: serviceDraft.branchProfileIds,
+        categoryId: serviceDraft.categoryId,
+        marketingType: serviceDraft.marketingType,
+        campaignName:
+          serviceDraft.marketingType === "STANDARD"
+            ? null
+            : serviceDraft.campaignName.trim(),
+      });
+      toast.success("Servicio creado y asignado a su categoría.");
+      await onSaved();
+      setServiceOpen(false);
+      setServiceDraft(emptyServiceDraft);
+    } catch (error) {
+      toast.error(
+        schedulerApiErrorMessage(error, "No fue posible crear el servicio."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="admin-card overflow-hidden">
+      <CardContent className="p-0">
+        <div className="flex flex-col gap-4 border-b border-[#eadfd5] bg-[linear-gradient(120deg,#fff,#f7f0e8)] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div>
+            <p className="admin-eyebrow">Catálogo comercial</p>
+            <h2 className="admin-section-title mt-1">
+              Categorías y altas de servicio
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-500">
+              Organiza el catálogo, identifica promociones y crea servicios con
+              su categoría desde el inicio.
+            </p>
+          </div>
+          {canAdmin ? (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => openCategory()}>
+                <Tags className="mr-2 h-4 w-4" /> Nueva categoría
+              </Button>
+              <Button
+                onClick={() => {
+                  setServiceDraft({
+                    ...emptyServiceDraft,
+                    categoryId:
+                      catalog.serviceCategories.find((item) => item.active)
+                        ?.id ?? "",
+                    branchProfileIds: catalog.branches
+                      .filter((item) => item.active)
+                      .map((item) => item.id),
+                  });
+                  setServiceOpen(true);
+                }}
+                disabled={
+                  !catalog.serviceCategories.some((item) => item.active)
+                }
+              >
+                <Plus className="mr-2 h-4 w-4" /> Nuevo servicio
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
+          {catalog.serviceCategories.map((category) => (
+            <article
+              className="rounded-2xl border border-[#eadfd5] bg-white p-4 shadow-sm"
+              key={category.id}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: category.color }}
+                  />
+                  <h3 className="truncate font-semibold text-slate-800">
+                    {category.name}
+                  </h3>
+                </div>
+                <StatusBadge active={category.active} />
+              </div>
+              <p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">
+                {category.description ?? "Sin descripción."}
+              </p>
+              <p className="mt-2 text-xs font-medium text-[#947252]">
+                {
+                  catalog.services.filter(
+                    (item) => item.categoryId === category.id,
+                  ).length
+                }{" "}
+                servicios
+              </p>
+              {canAdmin ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openCategory(category)}
+                  >
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={saving || category.active}
+                    onClick={() => void setCategoryStatus(category, true)}
+                  >
+                    <Power className="mr-1.5 h-3.5 w-3.5" /> Activo
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={saving || !category.active}
+                    onClick={() => void setCategoryStatus(category, false)}
+                  >
+                    <PowerOff className="mr-1.5 h-3.5 w-3.5" /> Inactivo
+                  </Button>
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      </CardContent>
+
+      <Dialog open={categoryOpen} onOpenChange={setCategoryOpen}>
+        <DialogContent className="admin-dialog max-w-xl overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>
+              {categoryDraft.id ? "Editar categoría" : "Nueva categoría"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="category-name">Nombre</Label>
+              <Input
+                id="category-name"
+                className="mt-1.5"
+                value={categoryDraft.name}
+                onChange={(event) =>
+                  setCategoryDraft((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="category-description">Descripción</Label>
+              <Textarea
+                id="category-description"
+                className="mt-1.5"
+                value={categoryDraft.description}
+                onChange={(event) =>
+                  setCategoryDraft((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="grid grid-cols-[1fr_auto] items-end gap-3">
+              <div>
+                <Label htmlFor="category-color">Color de identificación</Label>
+                <Input
+                  id="category-color"
+                  className="mt-1.5"
+                  value={categoryDraft.color}
+                  onChange={(event) =>
+                    setCategoryDraft((current) => ({
+                      ...current,
+                      color: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <input
+                aria-label="Seleccionar color"
+                className="h-10 w-14 rounded-lg border border-slate-200 p-1"
+                type="color"
+                value={categoryDraft.color}
+                onChange={(event) =>
+                  setCategoryDraft((current) => ({
+                    ...current,
+                    color: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button
+                onClick={() => void saveCategory()}
+                disabled={saving || !categoryDraft.name.trim()}
+              >
+                <Save className="mr-2 h-4 w-4" /> Guardar categoría
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={serviceOpen} onOpenChange={setServiceOpen}>
+        <DialogContent className="admin-dialog admin-dialog-wide max-h-[calc(100dvh-2rem)] max-w-4xl overflow-y-auto overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>Nuevo servicio</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Nombre del servicio</Label>
+                <Input
+                  className="mt-1.5"
+                  value={serviceDraft.name}
+                  onChange={(event) =>
+                    setServiceDraft((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Precio</Label>
+                <Input
+                  className="mt-1.5"
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  value={serviceDraft.listPrice}
+                  onChange={(event) =>
+                    setServiceDraft((current) => ({
+                      ...current,
+                      listPrice: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="rounded-xl border border-[#e7ddd4] bg-[#f8f5f1] px-4 py-3 sm:col-span-2">
+                <p className="text-sm font-medium text-slate-800">
+                  SKU automático y consecutivo
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Se generará al guardar usando la categoría seleccionada y su
+                  siguiente número disponible.
+                </p>
+              </div>
+              <div>
+                <Label>Duración (min)</Label>
+                <Input
+                  className="mt-1.5"
+                  min="1"
+                  type="number"
+                  value={serviceDraft.durationMinutes}
+                  onChange={(event) =>
+                    setServiceDraft((current) => ({
+                      ...current,
+                      durationMinutes: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Categoría</Label>
+                <Select
+                  value={serviceDraft.categoryId}
+                  onValueChange={(value) =>
+                    setServiceDraft((current) => ({
+                      ...current,
+                      categoryId: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Selecciona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {catalog.serviceCategories
+                      .filter((item) => item.active)
+                      .map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo comercial</Label>
+                <Select
+                  value={serviceDraft.marketingType}
+                  onValueChange={(value: SchedulerServiceMarketingType) =>
+                    setServiceDraft((current) => ({
+                      ...current,
+                      marketingType: value,
+                      campaignName:
+                        value === "STANDARD" ? "" : current.campaignName,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="STANDARD">Regular</SelectItem>
+                    <SelectItem value="PROMOTION">Promoción</SelectItem>
+                    <SelectItem value="CAMPAIGN">Campaña</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {serviceDraft.marketingType !== "STANDARD" ? (
+                <div className="sm:col-span-2">
+                  <Label>Nombre de promoción o campaña</Label>
+                  <Input
+                    className="mt-1.5"
+                    value={serviceDraft.campaignName}
+                    onChange={(event) =>
+                      setServiceDraft((current) => ({
+                        ...current,
+                        campaignName: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ) : null}
+              <div>
+                <Label>Modalidad</Label>
+                <Select
+                  value={serviceDraft.mode}
+                  onValueChange={(value: SchedulerServiceMode) =>
+                    setServiceDraft((current) => ({
+                      ...current,
+                      mode: value,
+                      capacity: value === "INDIVIDUAL" ? "1" : current.capacity,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INDIVIDUAL">Individual</SelectItem>
+                    <SelectItem value="CLASS">Clase</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Capacidad</Label>
+                <Input
+                  className="mt-1.5"
+                  disabled={serviceDraft.mode === "INDIVIDUAL"}
+                  min="1"
+                  type="number"
+                  value={serviceDraft.capacity}
+                  onChange={(event) =>
+                    setServiceDraft((current) => ({
+                      ...current,
+                      capacity: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Sucursales</Label>
+              <MultiCombobox
+                className="mt-1.5"
+                options={catalog.branches
+                  .filter((item) => item.active)
+                  .map((item) => ({ value: item.id, label: item.branchName }))}
+                value={serviceDraft.branchProfileIds}
+                onValueChange={(value) =>
+                  setServiceDraft((current) => ({
+                    ...current,
+                    branchProfileIds: value,
+                  }))
+                }
+                placeholder="Selecciona sucursales"
+                selectedCountLabel="sucursales seleccionadas"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={serviceDraft.active ? "default" : "outline"}
+                onClick={() =>
+                  setServiceDraft((current) => ({
+                    ...current,
+                    active: !current.active,
+                  }))
+                }
+              >
+                {serviceDraft.active ? "Activo" : "Inactivo"}
+              </Button>
+              <Button
+                variant={serviceDraft.acceptsOnline ? "default" : "outline"}
+                onClick={() =>
+                  setServiceDraft((current) => ({
+                    ...current,
+                    acceptsOnline: !current.acceptsOnline,
+                  }))
+                }
+              >
+                {serviceDraft.acceptsOnline
+                  ? "Reserva en línea"
+                  : "Sólo interno"}
+              </Button>
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={() => void saveService()} disabled={saving}>
+                <Save className="mr-2 h-4 w-4" /> Guardar servicio
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -871,7 +1558,8 @@ function ResourceEditor({
                   disabled={!canAdmin || saving}
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Cada unidad tendrá su propia columna, numeración y disponibilidad.
+                  Cada unidad tendrá su propia columna, numeración y
+                  disponibilidad.
                 </p>
               </div>
             ) : null}
@@ -1120,10 +1808,86 @@ export function OperationalCatalogWorkspace({
     ],
     [],
   );
+
+  const updateServiceStatus = useCallback(
+    async (candidate: ServiceCandidate, active: boolean) => {
+      const profile = catalog?.services.find(
+        (item) => item.catalogItemId === candidate.id,
+      );
+      if (!profile) {
+        setSelectedId(candidate.id);
+        setActiveEditor("service");
+        setEditorOpen(true);
+        return;
+      }
+      try {
+        await schedulerApi.updateServiceProfile(candidate.id, {
+          durationMinutes: profile.durationMinutes,
+          preparationMinutes: profile.preparationMinutes,
+          cleanupMinutes: profile.cleanupMinutes,
+          capacity: profile.capacity,
+          mode: profile.mode,
+          acceptsOnline: profile.acceptsOnline,
+          active,
+          listPrice: profile.listPrice,
+          categoryId: profile.categoryId,
+          marketingType: profile.marketingType,
+          campaignName: profile.campaignName,
+          branchProfileIds: profile.branchProfileIds,
+          expectedVersion: profile.version,
+        });
+        toast.success(active ? "Servicio activado." : "Servicio desactivado.");
+        await refreshAfterMutation();
+      } catch (error) {
+        toast.error(
+          schedulerApiErrorMessage(error, "No fue posible cambiar el estatus."),
+        );
+      }
+    },
+    [catalog?.services, refreshAfterMutation],
+  );
+
   const serviceColumns = useMemo<ColumnDef<ServiceCandidate>[]>(
     () => [
       { accessorKey: "name", header: "SERVICIO" },
       { accessorKey: "sku", header: "SKU" },
+      {
+        id: "category",
+        header: "CATEGORÍA",
+        accessorFn: (row) => {
+          const profile = catalog?.services.find(
+            (item) => item.catalogItemId === row.id,
+          );
+          return (
+            catalog?.serviceCategories.find(
+              (item) => item.id === profile?.categoryId,
+            )?.name ?? "Sin categoría"
+          );
+        },
+      },
+      {
+        id: "campaign",
+        header: "PROMOCIÓN / CAMPAÑA",
+        accessorFn: (row) =>
+          catalog?.services.find((item) => item.catalogItemId === row.id)
+            ?.campaignName ?? "Servicio regular",
+        cell: ({ row }) => {
+          const profile = catalog?.services.find(
+            (item) => item.catalogItemId === row.original.id,
+          );
+          return profile?.marketingType !== "STANDARD" ? (
+            <Badge
+              className="border-amber-200 bg-amber-50 text-amber-800"
+              variant="outline"
+            >
+              <Megaphone className="mr-1 h-3 w-3" />
+              {profile?.campaignName}
+            </Badge>
+          ) : (
+            <span className="text-xs text-slate-400">Regular</span>
+          );
+        },
+      },
       {
         id: "duration",
         header: "DURACIÓN",
@@ -1155,21 +1919,39 @@ export function OperationalCatalogWorkspace({
         enableSorting: false,
         enableGlobalFilter: false,
         cell: ({ row }) => (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setSelectedId(row.original.id);
-              setActiveEditor("service");
-              setEditorOpen(true);
-            }}
-          >
-            {row.original.profileId ? "Configurar" : "Activar"}
-          </Button>
+          <div className="flex flex-wrap gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canAdmin || row.original.profileActive === true}
+              onClick={() => void updateServiceStatus(row.original, true)}
+            >
+              <Power className="mr-1.5 h-3.5 w-3.5" /> Activo
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canAdmin || row.original.profileActive !== true}
+              onClick={() => void updateServiceStatus(row.original, false)}
+            >
+              <PowerOff className="mr-1.5 h-3.5 w-3.5" /> Inactivo
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedId(row.original.id);
+                setActiveEditor("service");
+                setEditorOpen(true);
+              }}
+            >
+              <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editar
+            </Button>
+          </div>
         ),
       },
     ],
-    [],
+    [canAdmin, catalog, updateServiceStatus],
   );
 
   async function saveCommerce() {
@@ -1239,7 +2021,9 @@ export function OperationalCatalogWorkspace({
     const branchResources = catalog.resources.filter(
       (resource) => resource.branchProfileId === branch.id && resource.active,
     );
-    const cabins = branchResources.filter((resource) => resource.kind === "ROOM");
+    const cabins = branchResources.filter(
+      (resource) => resource.kind === "ROOM",
+    );
     return {
       branch,
       cabins: cabins.length,
@@ -1249,7 +2033,8 @@ export function OperationalCatalogWorkspace({
       ),
       specialists: catalog.professionals.filter(
         (professional) =>
-          professional.active && professional.branchProfileIds.includes(branch.id),
+          professional.active &&
+          professional.branchProfileIds.includes(branch.id),
       ).length,
     };
   });
@@ -1441,6 +2226,11 @@ export function OperationalCatalogWorkspace({
 
         {section === "services" ? (
           <>
+            <ServiceCatalogManager
+              catalog={catalog}
+              canAdmin={canAdmin}
+              onSaved={refreshAfterMutation}
+            />
             <Card className="admin-card">
               <CardContent className="p-5 sm:p-6">
                 <div className="mb-4 flex items-center gap-2">
@@ -1463,11 +2253,10 @@ export function OperationalCatalogWorkspace({
               canAdmin={canAdmin}
               onSaved={refreshAfterMutation}
             />
-            <AdministrationCoverageNotice title="Precio y categorías bajo autoridad comercial">
-              Scheduler configura duración, capacidad y disponibilidad. La
-              edición o importación masiva de precios y categorías debe
-              realizarse en POS; aquí no se presenta como una operación
-              soportada.
+            <AdministrationCoverageNotice title="Sincronización comercial">
+              Las altas creadas aquí quedan disponibles para agenda y reportes.
+              El SKU se genera automáticamente con el prefijo de la categoría y
+              el siguiente consecutivo disponible.
             </AdministrationCoverageNotice>
           </>
         ) : null}
@@ -1478,40 +2267,54 @@ export function OperationalCatalogWorkspace({
               className="grid scroll-mt-28 gap-4 sm:grid-cols-2 xl:grid-cols-3"
               id="cabinas-recursos"
             >
-              {resourceSummary.map(({ branch, cabins, cabinCapacity, specialists }) => (
-                <Card className="admin-card" key={branch.id}>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ad8b67]">
-                          Sucursal
-                        </p>
-                        <h2 className="mt-1 text-lg font-semibold text-slate-800">
-                          {branch.branchName}
-                        </h2>
+              {resourceSummary.map(
+                ({ branch, cabins, cabinCapacity, specialists }) => (
+                  <Card className="admin-card" key={branch.id}>
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ad8b67]">
+                            Sucursal
+                          </p>
+                          <h2 className="mt-1 text-lg font-semibold text-slate-800">
+                            {branch.branchName}
+                          </h2>
+                        </div>
+                        <StatusBadge active={branch.active} />
                       </div>
-                      <StatusBadge active={branch.active} />
-                    </div>
-                    <div className="mt-4 grid grid-cols-3 gap-2">
-                      <div className="rounded-xl bg-[#fbf7f2] p-3">
-                        <DoorOpen className="h-4 w-4 text-[#ad8b67]" />
-                        <strong className="mt-2 block text-lg text-slate-800">{cabins}</strong>
-                        <span className="text-[0.68rem] text-slate-500">Cabinas</span>
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        <div className="rounded-xl bg-[#fbf7f2] p-3">
+                          <DoorOpen className="h-4 w-4 text-[#ad8b67]" />
+                          <strong className="mt-2 block text-lg text-slate-800">
+                            {cabins}
+                          </strong>
+                          <span className="text-[0.68rem] text-slate-500">
+                            Cabinas
+                          </span>
+                        </div>
+                        <div className="rounded-xl bg-[#fbf7f2] p-3">
+                          <UsersRound className="h-4 w-4 text-[#ad8b67]" />
+                          <strong className="mt-2 block text-lg text-slate-800">
+                            {cabinCapacity}
+                          </strong>
+                          <span className="text-[0.68rem] text-slate-500">
+                            Personas
+                          </span>
+                        </div>
+                        <div className="rounded-xl bg-[#fbf7f2] p-3">
+                          <UserRound className="h-4 w-4 text-[#60758a]" />
+                          <strong className="mt-2 block text-lg text-slate-800">
+                            {specialists}
+                          </strong>
+                          <span className="text-[0.68rem] text-slate-500">
+                            Especialistas
+                          </span>
+                        </div>
                       </div>
-                      <div className="rounded-xl bg-[#fbf7f2] p-3">
-                        <UsersRound className="h-4 w-4 text-[#ad8b67]" />
-                        <strong className="mt-2 block text-lg text-slate-800">{cabinCapacity}</strong>
-                        <span className="text-[0.68rem] text-slate-500">Personas</span>
-                      </div>
-                      <div className="rounded-xl bg-[#fbf7f2] p-3">
-                        <UserRound className="h-4 w-4 text-[#60758a]" />
-                        <strong className="mt-2 block text-lg text-slate-800">{specialists}</strong>
-                        <span className="text-[0.68rem] text-slate-500">Especialistas</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ),
+              )}
             </div>
             <Card className="admin-card">
               <CardContent className="p-5 sm:p-6">

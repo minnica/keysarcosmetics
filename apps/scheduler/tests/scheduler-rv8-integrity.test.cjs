@@ -77,6 +77,7 @@ test("keeps the complete RV0 route inventory mounted", () => {
     .map(sourcePath)
     .sort();
   assert.deepEqual(pages, [
+    "app/(auth)/cambiar-contrasena/page.tsx",
     "app/(auth)/login/page.tsx",
     "app/(dashboard)/administracion/page.tsx",
     "app/(dashboard)/clientes/[section]/page.tsx",

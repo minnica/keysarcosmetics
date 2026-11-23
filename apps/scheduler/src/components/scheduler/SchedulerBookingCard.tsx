@@ -849,35 +849,35 @@ export function SchedulerBookingCard({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[rgba(236,209,200,0.88)] pt-3">
+      <div className="flex flex-nowrap items-center justify-end gap-1.5 border-t border-[rgba(236,209,200,0.88)] pt-3">
         {canWrite && booking.status === "attended" && showSellerComments ? (
           <button
-            className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
+            className="flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-2.5 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
             onClick={() => onOpenSellerComment(booking)}
             type="button"
           >
             <MessageCircle className="h-3.5 w-3.5" />
-            <span className="text-[0.86rem] font-medium">Comentario</span>
+            <span className="text-[0.8rem] font-medium">Comentario</span>
           </button>
         ) : null}
         {canWrite && booking.status === "attended" && showPostSaleComments ? (
           <button
-            className="flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
+            className="flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-2.5 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
             onClick={() => onOpenPostSaleComment(booking)}
             type="button"
           >
             <History className="h-3.5 w-3.5" />
-            <span className="text-[0.86rem] font-medium">Postventa</span>
+            <span className="text-[0.8rem] font-medium">Postventa</span>
           </button>
         ) : null}
         {canWrite && canCaptureCabinVisit ? (
           <button
-            className="mr-auto flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
+            className="flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-2.5 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
             onClick={() => onEdit(booking)}
             type="button"
           >
             <ShoppingBag className="h-3.5 w-3.5" />
-            <span className="text-[0.9rem] font-medium">Atención y compra</span>
+            <span className="text-[0.8rem] font-medium">Atención y compra</span>
           </button>
         ) : null}
         {canShowReschedule ? (
@@ -913,7 +913,7 @@ export function SchedulerBookingCard({
           </div>
         ) : null}
         <button
-          className="inline-flex items-center gap-2 rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-3 py-2 text-[0.9rem] text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
+          className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-2.5 py-2 text-[0.8rem] text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
           onClick={() => onOpenDetail(booking, "record")}
           type="button"
         >

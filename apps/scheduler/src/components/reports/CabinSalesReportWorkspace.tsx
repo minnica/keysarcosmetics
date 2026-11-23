@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Badge,
   Button,
   Input,
   Label,
@@ -24,6 +25,7 @@ import {
   Search,
   SlidersHorizontal,
   ShoppingBag,
+  Megaphone,
   TrendingUp,
   UsersRound,
   WalletCards,
@@ -179,6 +181,7 @@ export function CabinSalesReportWorkspace({
   const [groupMode, setGroupMode] = useState<GroupMode>("DAY");
   const [status, setStatus] = useState("ALL");
   const [purchaseKind, setPurchaseKind] = useState("ALL");
+  const [marketingType, setMarketingType] = useState("ALL");
   const [serviceProfileId, setServiceProfileId] = useState("ALL");
   const [specialistProfileId, setSpecialistProfileId] = useState("ALL");
   const [sellerName, setSellerName] = useState("ALL");
@@ -187,12 +190,16 @@ export function CabinSalesReportWorkspace({
   const [applied, setApplied] = useState<DesignCabinSalesReportFilters>(() => ({
     dateFrom: dateInput(),
     dateTo: dateInput(),
-    branchIds: fixedBranch ? [fixedBranch.id] : branches.map((branch) => branch.id),
+    branchIds: fixedBranch
+      ? [fixedBranch.id]
+      : branches.map((branch) => branch.id),
   }));
   const [report, setReport] = useState<DesignCabinSalesReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState<CabinSalesExportFormat | null>(null);
+  const [exporting, setExporting] = useState<CabinSalesExportFormat | null>(
+    null,
+  );
   const [detailPageSize, setDetailPageSize] =
     useState<SchedulerReportPageSize>(20);
   const [detailPage, setDetailPage] = useState(1);
@@ -221,6 +228,13 @@ export function CabinSalesReportWorkspace({
             >,
           }
         : {}),
+      ...(marketingType !== "ALL"
+        ? {
+            marketingType: marketingType as NonNullable<
+              DesignCabinSalesReportFilters["marketingType"]
+            >,
+          }
+        : {}),
       ...(serviceProfileId !== "ALL" ? { serviceProfileId } : {}),
       ...(specialistProfileId !== "ALL" ? { specialistProfileId } : {}),
       ...(sellerName !== "ALL" ? { sellerName } : {}),
@@ -236,6 +250,7 @@ export function CabinSalesReportWorkspace({
       dateTo,
       fixedBranch,
       maxSaleAmount,
+      marketingType,
       minSaleAmount,
       purchaseKind,
       query,
@@ -296,7 +311,8 @@ export function CabinSalesReportWorkspace({
     const max = Math.max(1, ...values.map((item) => item.saleAmount));
     return values
       .map((item, index) => {
-        const x = values.length === 1 ? 50 : (index / (values.length - 1)) * 100;
+        const x =
+          values.length === 1 ? 50 : (index / (values.length - 1)) * 100;
         const y = 88 - (item.saleAmount / max) * 70;
         return `${x},${y}`;
       })
@@ -357,7 +373,9 @@ export function CabinSalesReportWorkspace({
 
   function printReport() {
     if (!report || reportActionsDisabled) {
-      toast.error("Aplica los filtros antes de imprimir el periodo seleccionado.");
+      toast.error(
+        "Aplica los filtros antes de imprimir el periodo seleccionado.",
+      );
       return;
     }
     try {
@@ -372,7 +390,9 @@ export function CabinSalesReportWorkspace({
 
   async function download(format: CabinSalesExportFormat) {
     if (!report || reportActionsDisabled) {
-      toast.error("Aplica los filtros antes de descargar el periodo seleccionado.");
+      toast.error(
+        "Aplica los filtros antes de descargar el periodo seleccionado.",
+      );
       return;
     }
     setExporting(format);
@@ -500,8 +520,13 @@ export function CabinSalesReportWorkspace({
               </div>
               <div>
                 <Label>Agrupar evolución</Label>
-                <Select value={groupMode} onValueChange={(value) => setGroupMode(value as GroupMode)}>
-                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                <Select
+                  value={groupMode}
+                  onValueChange={(value) => setGroupMode(value as GroupMode)}
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="DAY">Por día</SelectItem>
                     <SelectItem value="WEEK">Por semana</SelectItem>
@@ -610,13 +635,130 @@ export function CabinSalesReportWorkspace({
               Filtros avanzados combinables
             </summary>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div><Label>Status</Label><Select value={status} onValueChange={setStatus}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem>{Object.entries(statusLabels).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Resultado de compra</Label><Select value={purchaseKind} onValueChange={setPurchaseKind}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem><SelectItem value="FULL">Liquidada</SelectItem><SelectItem value="LAYAWAY">Apartado</SelectItem><SelectItem value="NONE">No compró</SelectItem></SelectContent></Select></div>
-              <div><Label>Servicio</Label><Select value={serviceProfileId} onValueChange={setServiceProfileId}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem>{report?.filterOptions.services.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Especialista</Label><Select value={specialistProfileId} onValueChange={setSpecialistProfileId}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem>{report?.filterOptions.specialists.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Vendedor asignado</Label><Select value={sellerName} onValueChange={setSellerName}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Todos</SelectItem>{report?.filterOptions.sellers.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label htmlFor="cabin-sales-min">Venta mínima</Label><Input id="cabin-sales-min" className="mt-1.5" min="0" inputMode="decimal" type="number" value={minSaleAmount} onChange={(event) => setMinSaleAmount(event.target.value)} /></div>
-              <div><Label htmlFor="cabin-sales-max">Venta máxima</Label><Input id="cabin-sales-max" className="mt-1.5" min="0" inputMode="decimal" type="number" value={maxSaleAmount} onChange={(event) => setMaxSaleAmount(event.target.value)} /></div>
+              <div>
+                <Label>Status</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos</SelectItem>
+                    {Object.entries(statusLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Resultado de compra</Label>
+                <Select value={purchaseKind} onValueChange={setPurchaseKind}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos</SelectItem>
+                    <SelectItem value="FULL">Liquidada</SelectItem>
+                    <SelectItem value="LAYAWAY">Apartado</SelectItem>
+                    <SelectItem value="NONE">No compró</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Promoción o campaña</Label>
+                <Select value={marketingType} onValueChange={setMarketingType}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos</SelectItem>
+                    <SelectItem value="PROMOTION">Promociones</SelectItem>
+                    <SelectItem value="CAMPAIGN">Campañas</SelectItem>
+                    <SelectItem value="STANDARD">
+                      Servicios regulares
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Servicio</Label>
+                <Select
+                  value={serviceProfileId}
+                  onValueChange={setServiceProfileId}
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos</SelectItem>
+                    {report?.filterOptions.services.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Especialista</Label>
+                <Select
+                  value={specialistProfileId}
+                  onValueChange={setSpecialistProfileId}
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos</SelectItem>
+                    {report?.filterOptions.specialists.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Vendedor asignado</Label>
+                <Select value={sellerName} onValueChange={setSellerName}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos</SelectItem>
+                    {report?.filterOptions.sellers.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="cabin-sales-min">Venta mínima</Label>
+                <Input
+                  id="cabin-sales-min"
+                  className="mt-1.5"
+                  min="0"
+                  inputMode="decimal"
+                  type="number"
+                  value={minSaleAmount}
+                  onChange={(event) => setMinSaleAmount(event.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="cabin-sales-max">Venta máxima</Label>
+                <Input
+                  id="cabin-sales-max"
+                  className="mt-1.5"
+                  min="0"
+                  inputMode="decimal"
+                  type="number"
+                  value={maxSaleAmount}
+                  onChange={(event) => setMaxSaleAmount(event.target.value)}
+                />
+              </div>
             </div>
           </details>
         </section>
@@ -650,17 +792,35 @@ export function CabinSalesReportWorkspace({
                     key={card.label}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <p className={index === 0 ? "label-caps !text-white/60" : "label-caps"}>
+                      <p
+                        className={
+                          index === 0
+                            ? "label-caps !text-white/60"
+                            : "label-caps"
+                        }
+                      >
                         {card.label}
                       </p>
-                      <span className={index === 0 ? "report-metric-icon !bg-white/10 !text-white" : "report-metric-icon"}>
+                      <span
+                        className={
+                          index === 0
+                            ? "report-metric-icon !bg-white/10 !text-white"
+                            : "report-metric-icon"
+                        }
+                      >
                         <Icon className="h-4 w-4" aria-hidden="true" />
                       </span>
                     </div>
                     <p className="number-display mt-5 break-words text-[clamp(1.2rem,2.3vw,1.75rem)] leading-tight tracking-[-0.04em]">
                       {card.value}
                     </p>
-                    <p className={index === 0 ? "mt-4 text-xs text-white/55" : "mt-4 text-xs text-slate-400"}>
+                    <p
+                      className={
+                        index === 0
+                          ? "mt-4 text-xs text-white/55"
+                          : "mt-4 text-xs text-slate-400"
+                      }
+                    >
                       {card.detail}
                     </p>
                   </article>
@@ -672,9 +832,12 @@ export function CabinSalesReportWorkspace({
               <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-5">
                   <p className="label-caps">Consolidado</p>
-                  <h2 className="mt-1 text-xl font-semibold">Totales por sucursal</h2>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    Totales por sucursal
+                  </h2>
                   <p className="mt-1 text-xs text-slate-400">
-                    {report.summary.branches} sucursales · {report.summary.cabins} cabinas en el filtro
+                    {report.summary.branches} sucursales ·{" "}
+                    {report.summary.cabins} cabinas en el filtro
                   </p>
                 </div>
                 <div className="space-y-4">
@@ -695,12 +858,15 @@ export function CabinSalesReportWorkspace({
                           />
                         </div>
                         <p className="mt-1 text-xs text-slate-400">
-                          {item.appointments} citas · {item.visitors} visitantes · {money.format(item.depositAmount)} recibido
+                          {item.appointments} citas · {item.visitors} visitantes
+                          · {money.format(item.depositAmount)} recibido
                         </p>
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-slate-500">Sin sucursales para el filtro actual.</p>
+                    <p className="text-sm text-slate-500">
+                      Sin sucursales para el filtro actual.
+                    </p>
                   )}
                 </div>
               </article>
@@ -708,7 +874,9 @@ export function CabinSalesReportWorkspace({
               <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-5">
                   <p className="label-caps">Comparativo</p>
-                  <h2 className="mt-1 text-xl font-semibold">Venta por cabina</h2>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    Venta por cabina
+                  </h2>
                 </div>
                 <div className="space-y-4">
                   {report.byCabin.length ? (
@@ -728,12 +896,15 @@ export function CabinSalesReportWorkspace({
                           />
                         </div>
                         <p className="mt-1 text-xs text-slate-400">
-                          {item.visitors} visitantes · {money.format(item.depositAmount)} recibido
+                          {item.visitors} visitantes ·{" "}
+                          {money.format(item.depositAmount)} recibido
                         </p>
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-slate-500">Sin cabinas para el filtro actual.</p>
+                    <p className="text-sm text-slate-500">
+                      Sin cabinas para el filtro actual.
+                    </p>
                   )}
                 </div>
               </article>
@@ -742,7 +913,12 @@ export function CabinSalesReportWorkspace({
                 <div className="mb-4">
                   <p className="label-caps">Evolución</p>
                   <h2 className="mt-1 text-xl font-semibold">
-                    Venta por {groupMode === "DAY" ? "día" : groupMode === "WEEK" ? "semana" : "mes"}
+                    Venta por{" "}
+                    {groupMode === "DAY"
+                      ? "día"
+                      : groupMode === "WEEK"
+                        ? "semana"
+                        : "mes"}
                   </h2>
                 </div>
                 {periodSeries.length ? (
@@ -754,7 +930,14 @@ export function CabinSalesReportWorkspace({
                       role="img"
                       viewBox="0 0 100 100"
                     >
-                      <line x1="0" x2="100" y1="88" y2="88" stroke="#ded6ce" strokeWidth="0.7" />
+                      <line
+                        x1="0"
+                        x2="100"
+                        y1="88"
+                        y2="88"
+                        stroke="#ded6ce"
+                        strokeWidth="0.7"
+                      />
                       <polyline
                         fill="none"
                         points={trendPoints}
@@ -767,7 +950,13 @@ export function CabinSalesReportWorkspace({
                         const [x, y] = point.split(",");
                         const item = periodSeries[index]!;
                         return (
-                          <circle key={item.key} cx={x} cy={y} fill="#263649" r="2.2">
+                          <circle
+                            key={item.key}
+                            cx={x}
+                            cy={y}
+                            fill="#263649"
+                            r="2.2"
+                          >
                             <title>{`${item.label}: ${money.format(item.saleAmount)}`}</title>
                           </circle>
                         );
@@ -779,7 +968,9 @@ export function CabinSalesReportWorkspace({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500">Sin evolución para el filtro actual.</p>
+                  <p className="text-sm text-slate-500">
+                    Sin evolución para el filtro actual.
+                  </p>
                 )}
               </article>
             </section>
@@ -788,33 +979,120 @@ export function CabinSalesReportWorkspace({
               <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-5">
                   <p className="label-caps">Desempeño comercial</p>
-                  <h2 className="mt-1 text-xl font-semibold">Top de especialistas por sucursal</h2>
-                  <p className="mt-1 text-xs text-slate-400">Ordenado de mayor a menor monto vendido dentro de los filtros activos.</p>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    Top de especialistas por sucursal
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Ordenado de mayor a menor monto vendido dentro de los
+                    filtros activos.
+                  </p>
                 </div>
                 <div className="space-y-3">
                   {report.bySpecialist.map((item, index) => (
-                    <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-3 rounded-2xl border border-slate-100 p-3 sm:grid-cols-[2rem_minmax(0,1fr)_auto]" key={item.key}>
-                      <span className="number-display text-lg text-[#9a7658]">{index + 1}</span>
-                      <div className="min-w-0"><p className="truncate font-medium" title={item.specialistName}>{item.specialistName}</p><p className="text-xs text-slate-400">{item.branchName} · {item.buyers} compradores · {item.conversionRate}% conversión</p></div>
-                      <div className="col-span-2 min-w-0 text-left sm:col-span-1 sm:text-right"><p className="break-words font-semibold">{money.format(item.saleAmount)}</p><p className="break-words text-xs text-slate-400">{money.format(item.depositAmount)} recibido</p></div>
+                    <div
+                      className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-3 rounded-2xl border border-slate-100 p-3 sm:grid-cols-[2rem_minmax(0,1fr)_auto]"
+                      key={item.key}
+                    >
+                      <span className="number-display text-lg text-[#9a7658]">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p
+                          className="truncate font-medium"
+                          title={item.specialistName}
+                        >
+                          {item.specialistName}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {item.branchName} · {item.buyers} compradores ·{" "}
+                          {item.conversionRate}% conversión
+                        </p>
+                      </div>
+                      <div className="col-span-2 min-w-0 text-left sm:col-span-1 sm:text-right">
+                        <p className="break-words font-semibold">
+                          {money.format(item.saleAmount)}
+                        </p>
+                        <p className="break-words text-xs text-slate-400">
+                          {money.format(item.depositAmount)} recibido
+                        </p>
+                      </div>
                     </div>
                   ))}
-                  {!report.bySpecialist.length ? <p className="text-sm text-slate-500">Sin ventas para construir el ranking.</p> : null}
+                  {!report.bySpecialist.length ? (
+                    <p className="text-sm text-slate-500">
+                      Sin ventas para construir el ranking.
+                    </p>
+                  ) : null}
                 </div>
               </article>
 
               <article className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-5"><p className="label-caps">Comportamiento de agenda</p><h2 className="mt-1 text-xl font-semibold">Asistencia y cancelación por servicio</h2><p className="mt-1 text-xs text-slate-400">Índice = clientes con el resultado ÷ clientes del servicio en la población filtrada.</p></div>
+                <div className="mb-5">
+                  <p className="label-caps">Comportamiento de agenda</p>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    Asistencia y cancelación por servicio
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Índice = clientes con el resultado ÷ clientes del servicio
+                    en la población filtrada.
+                  </p>
+                </div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Mayor asistencia</p>
-                    {attendanceRanking.map((item) => <div className="mt-3" key={`attendance-${item.serviceProfileId}`}><div className="flex justify-between gap-2 text-sm"><span>{item.serviceName}</span><strong>{item.attendanceRate}%</strong></div><div className="mt-1 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-emerald-500" style={{ width: `${item.attendanceRate}%` }} /></div></div>)}
-                    {attendanceRanking.length ? <p className="mt-4 text-xs text-slate-400">Menor: {attendanceRanking.at(-1)!.serviceName} · {attendanceRanking.at(-1)!.attendanceRate}%</p> : null}
+                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                      Mayor asistencia
+                    </p>
+                    {attendanceRanking.map((item) => (
+                      <div
+                        className="mt-3"
+                        key={`attendance-${item.serviceProfileId}`}
+                      >
+                        <div className="flex justify-between gap-2 text-sm">
+                          <span>{item.serviceName}</span>
+                          <strong>{item.attendanceRate}%</strong>
+                        </div>
+                        <div className="mt-1 h-2 rounded-full bg-slate-100">
+                          <div
+                            className="h-2 rounded-full bg-emerald-500"
+                            style={{ width: `${item.attendanceRate}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    {attendanceRanking.length ? (
+                      <p className="mt-4 text-xs text-slate-400">
+                        Menor: {attendanceRanking.at(-1)!.serviceName} ·{" "}
+                        {attendanceRanking.at(-1)!.attendanceRate}%
+                      </p>
+                    ) : null}
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-rose-700">Mayor cancelación</p>
-                    {cancellationRanking.map((item) => <div className="mt-3" key={`cancel-${item.serviceProfileId}`}><div className="flex justify-between gap-2 text-sm"><span>{item.serviceName}</span><strong>{item.cancellationRate}%</strong></div><div className="mt-1 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-rose-400" style={{ width: `${item.cancellationRate}%` }} /></div></div>)}
-                    {cancellationRanking.length ? <p className="mt-4 text-xs text-slate-400">Menor: {cancellationRanking.at(-1)!.serviceName} · {cancellationRanking.at(-1)!.cancellationRate}%</p> : null}
+                    <p className="text-xs font-semibold uppercase tracking-wider text-rose-700">
+                      Mayor cancelación
+                    </p>
+                    {cancellationRanking.map((item) => (
+                      <div
+                        className="mt-3"
+                        key={`cancel-${item.serviceProfileId}`}
+                      >
+                        <div className="flex justify-between gap-2 text-sm">
+                          <span>{item.serviceName}</span>
+                          <strong>{item.cancellationRate}%</strong>
+                        </div>
+                        <div className="mt-1 h-2 rounded-full bg-slate-100">
+                          <div
+                            className="h-2 rounded-full bg-rose-400"
+                            style={{ width: `${item.cancellationRate}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    {cancellationRanking.length ? (
+                      <p className="mt-4 text-xs text-slate-400">
+                        Menor: {cancellationRanking.at(-1)!.serviceName} ·{" "}
+                        {cancellationRanking.at(-1)!.cancellationRate}%
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -824,10 +1102,12 @@ export function CabinSalesReportWorkspace({
               <div className="flex flex-col gap-4 border-b border-slate-100 p-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <p className="label-caps">Detalle auditable</p>
-                  <h2 className="mt-1 text-xl font-semibold">Citas, visitantes y venta</h2>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    Citas, visitantes y venta
+                  </h2>
                   <p className="mt-1 text-xs text-slate-500">
-                    Periodo aplicado: <strong>{report.filters.dateFrom}</strong> a{" "}
-                    <strong>{report.filters.dateTo}</strong>
+                    Periodo aplicado: <strong>{report.filters.dateFrom}</strong>{" "}
+                    a <strong>{report.filters.dateTo}</strong>
                   </p>
                 </div>
                 <div className="flex flex-col items-start gap-3 lg:items-end">
@@ -840,7 +1120,8 @@ export function CabinSalesReportWorkspace({
                     onPrint={printReport}
                   />
                   <p className="text-xs text-slate-400">
-                    {report.rows.length} filas · generado {dateTime.format(new Date(report.generatedAt))}
+                    {report.rows.length} filas · generado{" "}
+                    {dateTime.format(new Date(report.generatedAt))}
                   </p>
                 </div>
               </div>
@@ -852,11 +1133,15 @@ export function CabinSalesReportWorkspace({
                       : "Hay filtros pendientes. Pulsa Aplicar para actualizar la tabla y habilitar las exportaciones."}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-400">
-                    La vista de filas no limita el contenido de PDF, Excel o impresión.
+                    La vista de filas no limita el contenido de PDF, Excel o
+                    impresión.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="cabin-sales-page-size" className="whitespace-nowrap text-xs">
+                  <Label
+                    htmlFor="cabin-sales-page-size"
+                    className="whitespace-nowrap text-xs"
+                  >
                     Filas por vista
                   </Label>
                   <Select
@@ -865,12 +1150,18 @@ export function CabinSalesReportWorkspace({
                       setDetailPageSize(
                         value === "ALL"
                           ? "ALL"
-                          : (Number(value) as Exclude<SchedulerReportPageSize, "ALL">),
+                          : (Number(value) as Exclude<
+                              SchedulerReportPageSize,
+                              "ALL"
+                            >),
                       );
                       setDetailPage(1);
                     }}
                   >
-                    <SelectTrigger id="cabin-sales-page-size" className="h-9 w-[110px] bg-white">
+                    <SelectTrigger
+                      id="cabin-sales-page-size"
+                      className="h-9 w-[110px] bg-white"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -898,33 +1189,99 @@ export function CabinSalesReportWorkspace({
                       <th className="px-4 py-3 text-right">Venta</th>
                       <th className="px-4 py-3 text-right">Recibido</th>
                       <th className="px-4 py-3 text-right">Saldo</th>
-                      <th className="px-4 py-3">Asistencia individual / origen</th>
+                      <th className="px-4 py-3">
+                        Asistencia individual / origen
+                      </th>
                       <th className="px-4 py-3">Comentarios</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {detailPagination.rows.map((row) => (
-                      <tr key={`${row.appointmentId}:${row.visitorId}`} className="align-top hover:bg-[#fbfaf8]">
+                      <tr
+                        key={`${row.appointmentId}:${row.visitorId}`}
+                        className={
+                          row.hasPromotion
+                            ? "align-top bg-amber-50/60 hover:bg-amber-50"
+                            : "align-top hover:bg-[#fbfaf8]"
+                        }
+                      >
                         <td className="px-4 py-4">
-                          <p className="font-medium">{dateTime.format(new Date(row.appointmentStartsAt))}</p>
-                          <p className="mt-1 text-xs text-slate-400">Creada: {dateTime.format(new Date(row.appointmentCreatedAt))}</p>
-                          <p className="text-xs text-slate-400">Confirmada: {row.confirmedAt ? dateTime.format(new Date(row.confirmedAt)) : "Sin registro"}</p>
-                          <p className="mt-1 max-w-[180px] truncate font-mono text-[10px] text-slate-400" title={row.appointmentId}>{row.appointmentId}</p>
+                          <p className="font-medium">
+                            {dateTime.format(new Date(row.appointmentStartsAt))}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            Creada:{" "}
+                            {dateTime.format(
+                              new Date(row.appointmentCreatedAt),
+                            )}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Confirmada:{" "}
+                            {row.confirmedAt
+                              ? dateTime.format(new Date(row.confirmedAt))
+                              : "Sin registro"}
+                          </p>
+                          <p
+                            className="mt-1 max-w-[180px] truncate font-mono text-[10px] text-slate-400"
+                            title={row.appointmentId}
+                          >
+                            {row.appointmentId}
+                          </p>
                         </td>
-                        <td className="px-4 py-4"><p className="font-medium">{row.branchName}</p><p className="text-slate-500">{row.cabinName} · {row.cabinCapacity} personas</p></td>
-                        <td className="px-4 py-4"><p className="font-medium">{row.customerName}</p><p className="text-slate-500">{row.visitorName}</p></td>
-                        <td className="px-4 py-4">{row.serviceNames.join(", ")}</td>
-                        <td className="px-4 py-4">{row.sellerName}</td>
-                        <td className="px-4 py-4"><p className="font-medium">{row.representativeName}</p><p className="text-xs text-slate-400">{row.representativeSource === "POS_CRM" ? "Sincronizado con POS" : "Alta local de Agenda"}</p></td>
-                        <td className="px-4 py-4">{row.nextAppointmentAt ? dateTime.format(new Date(row.nextAppointmentAt)) : <span className="font-medium text-amber-700">No cuenta con una próxima cita</span>}</td>
                         <td className="px-4 py-4">
-                          <p className="font-medium">{row.attendingSpecialistName}</p>
+                          <p className="font-medium">{row.branchName}</p>
+                          <p className="text-slate-500">
+                            {row.cabinName} · {row.cabinCapacity} personas
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-medium">{row.customerName}</p>
+                          <p className="text-slate-500">{row.visitorName}</p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <p>{row.serviceNames.join(", ")}</p>
+                          {row.promotionLabels.length ? (
+                            <Badge
+                              className="mt-2 border-amber-200 bg-amber-100 text-amber-900"
+                              variant="outline"
+                            >
+                              <Megaphone className="mr-1 h-3 w-3" />
+                              {row.promotionLabels.join(", ")}
+                            </Badge>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-4">{row.sellerName}</td>
+                        <td className="px-4 py-4">
+                          <p className="font-medium">
+                            {row.representativeName}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {row.representativeSource === "POS_CRM"
+                              ? "Sincronizado con POS"
+                              : "Alta local de Agenda"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          {row.nextAppointmentAt ? (
+                            dateTime.format(new Date(row.nextAppointmentAt))
+                          ) : (
+                            <span className="font-medium text-amber-700">
+                              No cuenta con una próxima cita
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-medium">
+                            {row.attendingSpecialistName}
+                          </p>
                           <p className="mt-1 text-xs text-slate-400">
                             Venta: {row.saleOwnerSpecialistName}
                           </p>
                         </td>
                         <td className="px-4 py-4">
-                          <span className="inline-flex rounded-full bg-[#eee8e1] px-2.5 py-1 text-xs font-medium">{purchaseLabel(row.purchaseKind)}</span>
+                          <span className="inline-flex rounded-full bg-[#eee8e1] px-2.5 py-1 text-xs font-medium">
+                            {purchaseLabel(row.purchaseKind)}
+                          </span>
                           <p className="mt-1 text-xs text-slate-400">
                             {row.settlementStatus === "OPEN"
                               ? "Saldo pendiente · conserva especialista"
@@ -933,15 +1290,36 @@ export function CabinSalesReportWorkspace({
                                 : "Sin venta"}
                           </p>
                         </td>
-                        <td className="px-4 py-4 text-right font-medium">{money.format(row.saleAmount)}</td>
-                        <td className="px-4 py-4 text-right">{money.format(row.depositAmount)}</td>
-                        <td className="px-4 py-4 text-right">{money.format(row.balanceAmount)}</td>
-                        <td className="px-4 py-4"><p className="font-medium">{statusLabels[row.status] ?? row.status}</p><p className="text-xs text-slate-400">{row.origin}</p></td>
-                        <td className="max-w-[260px] whitespace-normal px-4 py-4 text-slate-600">{row.notes || "—"}</td>
+                        <td className="px-4 py-4 text-right font-medium">
+                          {money.format(row.saleAmount)}
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          {money.format(row.depositAmount)}
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          {money.format(row.balanceAmount)}
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-medium">
+                            {statusLabels[row.status] ?? row.status}
+                          </p>
+                          <p className="text-xs text-slate-400">{row.origin}</p>
+                        </td>
+                        <td className="max-w-[260px] whitespace-normal px-4 py-4 text-slate-600">
+                          {row.notes || "—"}
+                        </td>
                       </tr>
                     ))}
                     {!report.rows.length ? (
-                      <tr><td className="px-4 py-10 text-center text-slate-500" colSpan={14}>No hay atenciones de cabina que coincidan con los filtros.</td></tr>
+                      <tr>
+                        <td
+                          className="px-4 py-10 text-center text-slate-500"
+                          colSpan={14}
+                        >
+                          No hay atenciones de cabina que coincidan con los
+                          filtros.
+                        </td>
+                      </tr>
                     ) : null}
                   </tbody>
                 </table>
@@ -956,7 +1334,9 @@ export function CabinSalesReportWorkspace({
                     <Button
                       aria-label="Página anterior"
                       disabled={detailPagination.page <= 1}
-                      onClick={() => setDetailPage(Math.max(1, detailPagination.page - 1))}
+                      onClick={() =>
+                        setDetailPage(Math.max(1, detailPagination.page - 1))
+                      }
                       size="sm"
                       variant="outline"
                     >
@@ -964,11 +1344,14 @@ export function CabinSalesReportWorkspace({
                       Anterior
                     </Button>
                     <span className="min-w-[92px] text-center text-xs font-medium text-slate-500">
-                      Página {detailPagination.page} de {detailPagination.totalPages}
+                      Página {detailPagination.page} de{" "}
+                      {detailPagination.totalPages}
                     </span>
                     <Button
                       aria-label="Página siguiente"
-                      disabled={detailPagination.page >= detailPagination.totalPages}
+                      disabled={
+                        detailPagination.page >= detailPagination.totalPages
+                      }
                       onClick={() =>
                         setDetailPage(
                           Math.min(

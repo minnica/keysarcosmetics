@@ -10,10 +10,13 @@ import type {
   SchedulerAestheticVisitPhotoDto,
   SchedulerSettingSection,
   SchedulerSettingScope,
+  SchedulerServiceMarketingType,
   SchedulerAvailabilitySlotDto,
 } from "@cosmetics/types";
 import {
   SCHEDULER_APPOINTMENT_STATUSES,
+  SCHEDULER_CAPABILITIES,
+  SCHEDULER_SCREEN_KEYS,
   SCHEDULER_SETTING_SECTIONS,
   SCHEDULER_WEEKDAYS,
 } from "@cosmetics/types";
@@ -144,6 +147,37 @@ const textKey = (value: unknown) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+
+function skuPrefix(value: unknown, fallback: string) {
+  const words = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(
+      (word) =>
+        word && !["DE", "DEL", "LA", "LAS", "EL", "LOS", "Y"].includes(word),
+    );
+  if (!words.length) return fallback;
+  return words.length === 1
+    ? words[0]!.slice(0, 3).padEnd(3, "X")
+    : words
+        .map((word) => word[0])
+        .join("")
+        .slice(0, 3)
+        .padEnd(3, "X");
+}
+
+function nextSequentialSku(existingSkus: string[], prefix: string) {
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`, "i");
+  let highest = 0;
+  for (const existingSku of existingSkus) {
+    const match = existingSku.match(pattern);
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return `${prefix}-${String(highest + 1).padStart(4, "0")}`;
+}
 const reportCellValue = (value: unknown): string | number | boolean | null =>
   value === null ||
   typeof value === "string" ||
@@ -510,6 +544,7 @@ function authorizeRequest(state: DesignState, request: DesignRequest) {
     request.method === "POST" &&
     path === "/api/scheduler/design-proposals/customers/advanced-search";
   if (path === "/api/auth/login") return;
+  if (path === "/api/scheduler/access/password-reset/confirm") return;
   if (path.startsWith("/api/scheduler/customer-portal/")) return;
   if (
     request.headers.get("authorization") !==
@@ -1197,6 +1232,11 @@ function buildCabinSalesReport(
           : purchaseKind === "LAYAWAY"
             ? Number(visitor.depositAmount ?? 0)
             : 0;
+      const serviceProfiles = appointmentItem.services.map((scheduledService) =>
+        state.catalog.services.find(
+          (profile) => profile.id === scheduledService.serviceProfileId,
+        ),
+      );
       const row: DesignCabinSalesReportRow = {
         appointmentId: appointmentItem.id,
         visitorId: visitor.id,
@@ -1217,6 +1257,17 @@ function buildCabinSalesReport(
         ),
         serviceNames: appointmentItem.services.map(
           (service) => service.serviceName,
+        ),
+        serviceMarketingTypes: serviceProfiles.map(
+          (service) => service?.marketingType ?? "STANDARD",
+        ),
+        promotionLabels: serviceProfiles.flatMap((service) =>
+          service?.marketingType !== "STANDARD" && service?.campaignName
+            ? [service.campaignName]
+            : [],
+        ),
+        hasPromotion: serviceProfiles.some(
+          (service) => service?.marketingType !== "STANDARD",
         ),
         sellerName,
         representativeName: visit.representativeName,
@@ -1266,6 +1317,11 @@ function buildCabinSalesReport(
     if (input.purchaseKind && row.purchaseKind !== input.purchaseKind)
       return false;
     if (
+      input.marketingType &&
+      !row.serviceMarketingTypes.includes(input.marketingType)
+    )
+      return false;
+    if (
       input.serviceProfileId &&
       !row.serviceProfileIds.includes(input.serviceProfileId)
     )
@@ -1295,6 +1351,7 @@ function buildCabinSalesReport(
         row.branchName,
         row.cabinName,
         row.serviceNames.join(" "),
+        row.promotionLabels.join(" "),
         row.sellerName,
         row.representativeName,
         row.specialistName,
@@ -1349,6 +1406,12 @@ function buildCabinSalesReport(
       return {
         serviceProfileId,
         serviceName: group.name,
+        marketingType:
+          state.catalog.services.find((item) => item.id === serviceProfileId)
+            ?.marketingType ?? "STANDARD",
+        campaignName:
+          state.catalog.services.find((item) => item.id === serviceProfileId)
+            ?.campaignName ?? null,
         appointments,
         visitors: group.statuses.length,
         attended,
@@ -1400,6 +1463,7 @@ function buildCabinSalesReport(
         : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.purchaseKind ? { purchaseKind: input.purchaseKind } : {}),
+      ...(input.marketingType ? { marketingType: input.marketingType } : {}),
       ...(input.serviceProfileId
         ? { serviceProfileId: input.serviceProfileId }
         : {}),
@@ -3729,6 +3793,14 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               >,
             }
           : {}),
+        ...(["STANDARD", "PROMOTION", "CAMPAIGN"].includes(
+          String(body.marketingType ?? ""),
+        )
+          ? {
+              marketingType:
+                body.marketingType as SchedulerServiceMarketingType,
+            }
+          : {}),
         ...(typeof body.serviceProfileId === "string" && body.serviceProfileId
           ? { serviceProfileId: body.serviceProfileId }
           : {}),
@@ -4664,6 +4736,15 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
         if (attendanceStatus === "NO_SHOW" && purchaseKind !== "NONE") {
           fail(400, `${name} no puede tener una compra si no asistió.`);
         }
+        if (
+          attendanceStatus !== "ATTENDED" &&
+          (purchaseKind === "FULL" || purchaseKind === "LAYAWAY")
+        ) {
+          fail(
+            400,
+            `Marca a ${name} como Atendida antes de registrar una venta.`,
+          );
+        }
         if (purchased && (!Number.isFinite(saleAmount) || saleAmount! <= 0)) {
           fail(400, `Captura un monto de venta mayor a cero para ${name}.`);
         }
@@ -5004,11 +5085,73 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       };
     }
     if (id === "candidates") return state.candidates;
+    if (id === "services" && method === "POST") {
+      const name = String(body.name ?? "").trim();
+      const categoryId = String(body.categoryId ?? "");
+      if (!name) fail(400, "El nombre del servicio es obligatorio.");
+      const category = state.catalog.serviceCategories.find(
+        (item) => item.id === categoryId && item.active,
+      );
+      if (!category) {
+        fail(400, "Selecciona una categoría activa.");
+      }
+      const sku = nextSequentialSku(
+        state.candidates.services.map((item) => item.sku),
+        skuPrefix(category!.name, "SRV"),
+      );
+      const catalogItemId = designId("catalog-service");
+      const profileId = designId("service-profile");
+      const now = new Date().toISOString();
+      const profile = {
+        ...body,
+        id: profileId,
+        catalogItemId,
+        sku,
+        name,
+        catalogActive: true,
+        campaignName:
+          body.marketingType === "STANDARD"
+            ? null
+            : String(body.campaignName ?? "").trim() || null,
+        effectiveFrom: now,
+        effectiveTo: null,
+        version: 1,
+      } as unknown as (typeof state.catalog.services)[number];
+      state.catalog.services.push(profile);
+      state.candidates.services.push({
+        id: catalogItemId,
+        sku,
+        name,
+        active: true,
+        published: true,
+        profileId,
+        profileActive: profile.active,
+        durationMinutes: profile.durationMinutes,
+      });
+      return { id: profileId };
+    }
+    if (id === "services" && method === "PUT" && action) {
+      const updated = patchCollection(
+        rows(state.catalog.services),
+        body,
+        action,
+        "catalogItemId",
+      );
+      const candidate = state.candidates.services.find(
+        (item) => item.id === action,
+      );
+      if (candidate) {
+        candidate.profileActive = Boolean(updated.active);
+        candidate.durationMinutes = Number(updated.durationMinutes);
+      }
+      return updated;
+    }
     const collections: Record<string, DesignRow[]> = {
       commerces: rows(state.catalog.commerces),
       branches: rows(state.catalog.branches),
       professionals: rows(state.catalog.professionals),
       services: rows(state.catalog.services),
+      "service-categories": rows(state.catalog.serviceCategories),
       resources: rows(state.catalog.resources),
       specialties: rows(state.catalog.specialties),
       groups: rows(state.catalog.groups),
@@ -5664,6 +5807,83 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
       }));
       return entry.colors;
     }
+    if (id === "packages" && method === "POST") {
+      const name = String(body.name ?? "").trim();
+      const sessions = Number(body.sessions);
+      const kind = body.kind === "MEMBERSHIP" ? "MEMBERSHIP" : "PACKAGE";
+      if (!name || !Number.isInteger(sessions) || sessions < 1) {
+        fail(400, "Nombre y número de sesiones son obligatorios.");
+      }
+      const sku = nextSequentialSku(
+        state.administration.packages.map((item) => item.sku),
+        kind === "MEMBERSHIP" ? "MEM" : "PAQ",
+      );
+      const posPackageId = designId("pos-package");
+      const now = new Date().toISOString();
+      const entry = {
+        ...body,
+        id: designId("package-profile"),
+        posPackageId,
+        name,
+        sku,
+        kind,
+        price: String(body.price ?? "0"),
+        posStatus: body.active ? "PUBLISHED" : "INACTIVE",
+        effectiveFrom: now,
+        effectiveTo: null,
+        version: 1,
+        serviceLines: rows(body.serviceLines).map((line, index) => {
+          const service = state.catalog.services.find(
+            (item) => item.id === line.serviceProfileId,
+          );
+          if (!service)
+            fail(400, "Uno de los servicios ya no está disponible.");
+          return {
+            ...line,
+            serviceName: service!.name,
+            sortOrder: Number(line.sortOrder ?? index),
+          };
+        }),
+      } as unknown as (typeof state.administration.packages)[number];
+      state.administration.packages.push(entry);
+      state.posReferences.packages.push({
+        id: posPackageId,
+        name,
+        sku,
+        price: entry.price,
+        status: entry.posStatus,
+      });
+      return { id: entry.id, version: entry.version };
+    }
+    if (id === "packages" && method === "PUT" && action) {
+      const serviceLines = rows(body.serviceLines).map((line, index) => {
+        const service = state.catalog.services.find(
+          (item) => item.id === line.serviceProfileId,
+        );
+        if (!service) fail(400, "Uno de los servicios ya no está disponible.");
+        return {
+          ...line,
+          serviceName: service!.name,
+          sortOrder: Number(line.sortOrder ?? index),
+        };
+      });
+      const updated = patchCollection(
+        rows(state.administration.packages),
+        { ...body, serviceLines },
+        action,
+        "posPackageId",
+      );
+      const posPackage = state.posReferences.packages.find(
+        (item) => item.id === action,
+      );
+      if (posPackage) {
+        posPackage.name = String(updated.name);
+        posPackage.sku = String(updated.sku);
+        posPackage.price = String(updated.price);
+        posPackage.status = updated.active ? "PUBLISHED" : "INACTIVE";
+      }
+      return { id: updated.id, version: updated.version };
+    }
     const collections: Record<string, DesignRow[]> = {
       packages: rows(state.administration.packages),
       addons: rows(state.administration.addons),
@@ -6100,13 +6320,248 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
     else state.aestheticVisitRecords.push(next);
     return next;
   }
-  if (resource === "access")
-    return {
-      screens: designBootstrap(state).permissions.map((item) => item.screenKey),
-      capabilities: ["READ", "WRITE", "ADMIN", "EXPORT", "EXCEPTION"],
-      branches: designBootstrap(state).authorizedBranches,
-      positions: [],
-    };
+  if (resource === "access") {
+    const accessPayload = () => ({
+      screens: SCHEDULER_SCREEN_KEYS,
+      capabilities: SCHEDULER_CAPABILITIES,
+      branches: state.catalog.branches.map((branch) => ({
+        id: branch.branchId,
+        name: branch.branchName,
+        active: branch.active,
+      })),
+      positions: state.managedRoles,
+    });
+    if (!id) return accessPayload();
+    if (id === "password-reset" && action === "confirm") {
+      if (method !== "POST")
+        fail(405, "Usa POST para confirmar el cambio de contraseña.");
+      const token = String(body.token ?? "");
+      const password = String(body.password ?? "");
+      const confirmation = String(body.passwordConfirmation ?? "");
+      const reset = state.passwordResetTokens.get(token);
+      if (!reset || reset.usedAt || reset.expiresAt < Date.now())
+        fail(410, "El enlace de cambio de contraseña expiró o ya fue usado.");
+      const validReset = reset!;
+      if (password !== confirmation) fail(400, "Las contraseñas no coinciden.");
+      if (
+        password.length < 10 ||
+        !/[a-z]/.test(password) ||
+        !/[A-Z]/.test(password) ||
+        !/\d/.test(password) ||
+        !/[^A-Za-z0-9]/.test(password)
+      )
+        fail(
+          400,
+          "Usa al menos 10 caracteres, mayúscula, minúscula, número y símbolo.",
+        );
+      const changedAt = new Date().toISOString();
+      validReset.usedAt = changedAt;
+      state.passwordResetConfirmations.push({
+        userId: validReset.userId,
+        changedAt,
+      });
+      return { changed: true };
+    }
+    if (id === "users") {
+      if (!action) {
+        if (method === "GET") {
+          return {
+            ...accessPayload(),
+            roles: state.managedRoles,
+            users: state.managedUsers,
+          };
+        }
+        if (method !== "POST") fail(405, "Usa GET o POST para usuarios.");
+      } else if (method === "POST" && parts[5] !== "password-reset") {
+        fail(405, "Acción de usuario no reconocida.");
+      }
+
+      const current = action
+        ? state.managedUsers.find((candidate) => candidate.id === action)
+        : undefined;
+      if (action && !current) fail(404, "Usuario no encontrado.");
+      if (parts[5] === "password-reset") {
+        if (method !== "POST")
+          fail(405, "Usa POST para enviar el restablecimiento.");
+        if (!current?.active)
+          fail(409, "Activa al usuario antes de enviar el correo.");
+        const resetUser = current!;
+        const sentAt = new Date().toISOString();
+        const resetToken = designId("design-password-token");
+        const previewUrl = `http://localhost:3008/cambiar-contrasena?token=${encodeURIComponent(resetToken)}`;
+        state.passwordResetTokens.set(resetToken, {
+          userId: resetUser.id,
+          expiresAt: Date.now() + 30 * 60_000,
+          usedAt: null,
+        });
+        resetUser.passwordResetSentAt = sentAt;
+        resetUser.updatedAt = sentAt;
+        resetUser.version += 1;
+        state.messageOutbox.unshift({
+          id: designId("design-password-reset"),
+          recipient: resetUser.email,
+          channel: "EMAIL",
+          subject: "Restablece tu contraseña de Agenda Keysar",
+          body: `Recibimos una solicitud para cambiar tu contraseña. Abre ${previewUrl}. El formulario solicita Nueva contraseña y Confirmar contraseña. El enlace vence en 30 minutos.`,
+          actionUrl: previewUrl,
+          status: "QUEUED",
+          createdAt: sentAt,
+          updatedAt: sentAt,
+          kind: "PASSWORD_RESET",
+          userId: resetUser.id,
+        });
+        return {
+          userId: resetUser.id,
+          email: resetUser.email,
+          sentAt,
+          delivery: "QUEUED",
+          previewUrl,
+        };
+      }
+      if (method === "DELETE") {
+        const sessionEmail = designBootstrap(state).user.email;
+        if (current?.email === sessionEmail)
+          fail(409, "No puedes eliminar tu propia cuenta activa.");
+        state.managedUsers.splice(state.managedUsers.indexOf(current!), 1);
+        return { deleted: true };
+      }
+      if (!["POST", "PUT"].includes(method))
+        fail(405, "Usa POST, PUT o DELETE para administrar usuarios.");
+
+      const firstName = String(body.firstName ?? "").trim();
+      const lastName = String(body.lastName ?? "").trim();
+      const email = String(body.email ?? "")
+        .trim()
+        .toLowerCase();
+      const role = state.managedRoles.find(
+        (candidate) => candidate.id === body.roleId && candidate.active,
+      );
+      const branchIds = rows(body.branchIds).map(String);
+      if (firstName.length < 2 || lastName.length < 2)
+        fail(400, "Captura nombre y apellido del usuario.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        fail(400, "Captura un correo electrónico válido.");
+      if (
+        state.managedUsers.some(
+          (candidate) =>
+            candidate.email.toLowerCase() === email && candidate.id !== action,
+        )
+      )
+        fail(409, "Ya existe un usuario con este correo.");
+      if (!role) fail(400, "Selecciona un rol activo.");
+      if (
+        branchIds.some(
+          (branchId) =>
+            !state.catalog.branches.some(
+              (branch) => branch.branchId === branchId && branch.active,
+            ),
+        )
+      )
+        fail(400, "Una sucursal seleccionada no está disponible.");
+      if (!branchIds.length) fail(400, "Selecciona al menos una sucursal.");
+      if (
+        current &&
+        Number(body.expectedVersion ?? current.version) !== current.version
+      )
+        fail(409, "El usuario fue actualizado por otra persona.");
+      const now = new Date().toISOString();
+      const next = {
+        id: current?.id ?? designId("design-user"),
+        firstName,
+        lastName,
+        email,
+        phone: String(body.phone ?? "").trim() || null,
+        roleId: role!.id,
+        roleName: role!.name,
+        branchIds,
+        active: Boolean(body.active),
+        twoFactorEnabled: Boolean(body.twoFactorEnabled),
+        passwordResetSentAt: current?.passwordResetSentAt ?? null,
+        version: (current?.version ?? 0) + 1,
+        createdAt: current?.createdAt ?? now,
+        updatedAt: now,
+      };
+      if (current) Object.assign(current, next);
+      else state.managedUsers.unshift(next);
+      return next;
+    }
+    if (id === "roles") {
+      const current = action
+        ? state.managedRoles.find((candidate) => candidate.id === action)
+        : undefined;
+      if (action && !current) fail(404, "Rol no encontrado.");
+      if (!action && method === "GET") return state.managedRoles;
+      if (method === "DELETE") {
+        if (state.managedUsers.some((user) => user.roleId === current?.id))
+          fail(409, "Reasigna los usuarios antes de eliminar este rol.");
+        state.managedRoles.splice(state.managedRoles.indexOf(current!), 1);
+        return { deleted: true };
+      }
+      if (!["POST", "PUT"].includes(method))
+        fail(405, "Usa GET, POST, PUT o DELETE para administrar roles.");
+      const name = String(body.name ?? "").trim();
+      if (name.length < 3) fail(400, "El nombre del rol es obligatorio.");
+      if (
+        state.managedRoles.some(
+          (candidate) =>
+            candidate.name.toLowerCase() === name.toLowerCase() &&
+            candidate.id !== action,
+        )
+      )
+        fail(409, "Ya existe un rol con este nombre.");
+      if (
+        current &&
+        Number(body.expectedVersion ?? current.version ?? 1) !==
+          (current.version ?? 1)
+      )
+        fail(409, "El rol fue actualizado por otra persona.");
+      const branchIds = rows(body.branchIds).map(String);
+      const permissions = rows(body.permissions).map((permission) => ({
+        screenKey: String(
+          permission.screenKey,
+        ) as (typeof SCHEDULER_SCREEN_KEYS)[number],
+        capabilities: rows(permission.capabilities).map(
+          String,
+        ) as (typeof SCHEDULER_CAPABILITIES)[number][],
+      }));
+      if (
+        permissions.some(
+          (permission) =>
+            !SCHEDULER_SCREEN_KEYS.includes(
+              permission.screenKey as (typeof SCHEDULER_SCREEN_KEYS)[number],
+            ) ||
+            permission.capabilities.some(
+              (capability) =>
+                !SCHEDULER_CAPABILITIES.includes(
+                  capability as (typeof SCHEDULER_CAPABILITIES)[number],
+                ),
+            ),
+        )
+      )
+        fail(400, "El rol contiene permisos no reconocidos.");
+      if (!permissions.length) fail(400, "Selecciona al menos un acceso.");
+      const now = new Date().toISOString();
+      const next = {
+        id: current?.id ?? designId("design-role"),
+        name,
+        description: String(body.description ?? "").trim() || null,
+        active: Boolean(body.active),
+        canManageSchedulerAccess: Boolean(body.canManageSchedulerAccess),
+        selfProfessionalOnly: Boolean(body.selfProfessionalOnly),
+        branchIds,
+        permissions,
+        version: (current?.version ?? 0) + 1,
+        createdAt: current?.createdAt ?? now,
+        updatedAt: now,
+      };
+      if (current) Object.assign(current, next);
+      else state.managedRoles.unshift(next);
+      state.managedUsers.forEach((user) => {
+        if (user.roleId === next.id) user.roleName = next.name;
+      });
+      return next;
+    }
+  }
   fail(
     501,
     `Falta implementar el mock de ${method} ${path}.`,

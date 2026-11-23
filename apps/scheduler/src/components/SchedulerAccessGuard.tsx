@@ -55,7 +55,8 @@ function getRequiredScreen(
     ];
   }
   if (pathname.startsWith("/configuraciones")) {
-    if (section === "authorizations") return null;
+    if (["users", "roles", "authorizations"].includes(section ?? ""))
+      return null;
     return (
       settingsSections[section ?? "company"] ?? "scheduler/settings/company"
     );

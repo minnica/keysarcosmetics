@@ -41,6 +41,7 @@ import {
   TrendingUp,
   UsersRound,
   WalletCards,
+  ShieldCheck,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -65,6 +66,8 @@ type SettingsSectionId =
   | "notifications"
   | "clients"
   | "surveys"
+  | "users"
+  | "roles"
   | "authorizations";
 
 type NavigationSection = "clients" | "reports" | "administration" | "settings";
@@ -78,6 +81,7 @@ interface NavigationItem {
   adminSection?: AdministrationSectionId;
   settingsSection?: SettingsSectionId;
   pending?: boolean;
+  requiresAccessManagement?: boolean;
 }
 
 const primaryItems: NavigationItem[] = [
@@ -268,9 +272,22 @@ const settingsItems: NavigationItem[] = [
     screenKey: "scheduler/settings/surveys",
   },
   {
+    label: "Usuarios",
+    icon: UsersRound,
+    settingsSection: "users",
+    requiresAccessManagement: true,
+  },
+  {
+    label: "Roles y accesos",
+    icon: ShieldCheck,
+    settingsSection: "roles",
+    requiresAccessManagement: true,
+  },
+  {
     label: "Código personal",
     icon: FileCheck2,
     settingsSection: "authorizations",
+    requiresAccessManagement: true,
   },
 ];
 
@@ -304,6 +321,7 @@ function NavigationGroup({
   const visibleItems = items.filter(
     (item) =>
       (!item.screenId || canAccess(item.screenId)) &&
+      (!item.requiresAccessManagement || bootstrap?.canManageAccess) &&
       (!item.screenKey ||
         bootstrap?.permissions.some(
           (permission) =>

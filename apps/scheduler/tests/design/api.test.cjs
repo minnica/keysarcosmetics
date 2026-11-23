@@ -122,6 +122,138 @@ test("las cuentas demo conservan identidad, alcance y códigos personales", () =
   }
 });
 
+test("administra roles, usuarios, doble validación y restablecimiento de contraseña", () => {
+  const { state, request } = session();
+  const access = request("GET", "/api/scheduler/access/users");
+  assert.equal(access.status, 200);
+  assert.equal(access.body.data.users.length, 4);
+  assert.equal(access.body.data.roles.length, 4);
+
+  const createdRoleReply = request("POST", "/api/scheduler/access/roles", {
+    name: "Recepción avanzada",
+    description: "Agenda y clientes con edición.",
+    active: true,
+    canManageSchedulerAccess: false,
+    selfProfessionalOnly: false,
+    branchIds: [access.body.data.branches[0].id],
+    permissions: [
+      {
+        screenKey: "scheduler/agenda",
+        capabilities: ["READ", "WRITE"],
+      },
+      { screenKey: "scheduler/clients", capabilities: ["READ", "WRITE"] },
+    ],
+  });
+  assert.equal(createdRoleReply.status, 201);
+  const role = createdRoleReply.body.data;
+
+  const createdUserReply = request("POST", "/api/scheduler/access/users", {
+    firstName: "Emmanuel",
+    lastName: "Rangel",
+    email: "emmanuel@example.test",
+    phone: "+52 55 5555 0101",
+    roleId: role.id,
+    branchIds: [access.body.data.branches[0].id],
+    active: true,
+    twoFactorEnabled: true,
+  });
+  assert.equal(createdUserReply.status, 201);
+  const user = createdUserReply.body.data;
+  assert.equal(user.roleName, "Recepción avanzada");
+  assert.equal(user.twoFactorEnabled, true);
+
+  const duplicate = request("POST", "/api/scheduler/access/users", {
+    firstName: "Otra",
+    lastName: "Cuenta",
+    email: "EMMANUEL@example.test",
+    roleId: role.id,
+    branchIds: [access.body.data.branches[0].id],
+    active: true,
+    twoFactorEnabled: false,
+  });
+  assert.equal(duplicate.status, 409);
+
+  const reset = request(
+    "POST",
+    `/api/scheduler/access/users/${user.id}/password-reset`,
+  );
+  assert.equal(reset.status, 201);
+  assert.equal(reset.body.data.email, user.email);
+  assert.equal(reset.body.data.delivery, "QUEUED");
+  assert.match(reset.body.data.previewUrl, /cambiar-contrasena\?token=/);
+  assert.equal(state.messageOutbox[0].kind, "PASSWORD_RESET");
+  assert.match(state.messageOutbox[0].body, /Nueva contraseña/);
+  assert.match(state.messageOutbox[0].body, /Confirmar contraseña/);
+
+  const resetToken = new URL(reset.body.data.previewUrl).searchParams.get(
+    "token",
+  );
+  const changedPassword = request(
+    "POST",
+    "/api/scheduler/access/password-reset/confirm",
+    {
+      token: resetToken,
+      password: "NuevaClave#2026",
+      passwordConfirmation: "NuevaClave#2026",
+    },
+  );
+  assert.equal(changedPassword.status, 201);
+  assert.equal(changedPassword.body.data.changed, true);
+  assert.equal(
+    request("POST", "/api/scheduler/access/password-reset/confirm", {
+      token: resetToken,
+      password: "NuevaClave#2026",
+      passwordConfirmation: "NuevaClave#2026",
+    }).status,
+    410,
+  );
+
+  const updated = request("PUT", `/api/scheduler/access/users/${user.id}`, {
+    firstName: "Emmanuel",
+    lastName: "Rangel Rebollo",
+    email: user.email,
+    phone: user.phone,
+    roleId: role.id,
+    branchIds: user.branchIds,
+    active: true,
+    twoFactorEnabled: false,
+    expectedVersion: state.managedUsers.find((item) => item.id === user.id)
+      .version,
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.data.twoFactorEnabled, false);
+
+  const roleInUse = request("DELETE", `/api/scheduler/access/roles/${role.id}`);
+  assert.equal(roleInUse.status, 409);
+  assert.equal(
+    request("DELETE", `/api/scheduler/access/users/${user.id}`).status,
+    200,
+  );
+  assert.equal(
+    request("DELETE", `/api/scheduler/access/roles/${role.id}`).status,
+    200,
+  );
+});
+
+test("protege la cuenta activa y restringe la administración de accesos", () => {
+  const masterSession = session();
+  const ownUser = masterSession.state.managedUsers.find(
+    (user) => user.email === "master@example.test",
+  );
+  assert.ok(ownUser);
+  assert.equal(
+    masterSession.request("DELETE", `/api/scheduler/access/users/${ownUser.id}`)
+      .status,
+    409,
+  );
+
+  const limitedSession = session("normal", "specialist");
+  assert.equal(
+    limitedSession.request("GET", "/api/scheduler/access/users").status,
+    403,
+  );
+});
+
 test("el centro de notificaciones versiona reglas y conserva la cita en cada entrega", () => {
   const { state, request } = session();
   const rules = request("GET", "/api/scheduler/communications/rules");
@@ -924,6 +1056,112 @@ test("el catálogo de status agrega, versiona e inactiva sin reescribir citas", 
   assert.ok(!JSON.stringify(state.movements).includes("0000"));
 });
 
+test("servicios crea categorías, campañas y membresías con sesiones", () => {
+  const { state, request } = session();
+  const commerceId = state.catalog.commerces[0].id;
+  const branchProfileId = state.catalog.branches[0].id;
+
+  const category = request(
+    "POST",
+    "/api/scheduler/operations/service-categories",
+    {
+      commerceId,
+      name: "Corporales",
+      description: "Tratamientos corporales",
+      color: "#B68A5A",
+      active: true,
+    },
+  );
+  assert.equal(category.status, 201);
+  assert.ok(
+    state.catalog.serviceCategories.some(
+      (item) => item.id === category.body.data.id,
+    ),
+  );
+
+  const service = request("POST", "/api/scheduler/operations/services", {
+    commerceId,
+    name: "Drenaje promocional",
+    sku: "SKU-MANUAL-IGNORADO",
+    listPrice: "1450.00",
+    categoryId: category.body.data.id,
+    marketingType: "CAMPAIGN",
+    campaignName: "Campaña noviembre",
+    durationMinutes: 60,
+    preparationMinutes: 0,
+    cleanupMinutes: 0,
+    capacity: 1,
+    mode: "SOLO",
+    acceptsOnline: true,
+    active: true,
+    branchProfileIds: [branchProfileId],
+  });
+  assert.equal(service.status, 201);
+  const createdService = state.catalog.services.find(
+    (item) => item.id === service.body.data.id,
+  );
+  assert.equal(createdService.categoryId, category.body.data.id);
+  assert.equal(createdService.marketingType, "CAMPAIGN");
+  assert.equal(createdService.campaignName, "Campaña noviembre");
+  assert.equal(createdService.sku, "COR-0001");
+
+  const secondService = request("POST", "/api/scheduler/operations/services", {
+    commerceId,
+    name: "Masaje corporal",
+    listPrice: "1200.00",
+    categoryId: category.body.data.id,
+    marketingType: "STANDARD",
+    campaignName: null,
+    durationMinutes: 50,
+    preparationMinutes: 0,
+    cleanupMinutes: 0,
+    capacity: 1,
+    mode: "SOLO",
+    acceptsOnline: true,
+    active: true,
+    branchProfileIds: [branchProfileId],
+  });
+  assert.equal(secondService.status, 201);
+  assert.equal(
+    state.catalog.services.find(
+      (item) => item.id === secondService.body.data.id,
+    ).sku,
+    "COR-0002",
+  );
+
+  const membership = request("POST", "/api/scheduler/administration/packages", {
+    commerceId,
+    name: "Membresía corporal 6",
+    sku: "SKU-MANUAL-IGNORADO",
+    price: "7200.00",
+    kind: "MEMBERSHIP",
+    branchProfileIds: [branchProfileId],
+    sessions: 6,
+    simultaneous: false,
+    acceptsOnline: true,
+    active: true,
+    serviceLines: [
+      {
+        serviceProfileId: createdService.id,
+        quantity: 1,
+        priceOverride: null,
+        sortOrder: 0,
+      },
+    ],
+  });
+  assert.equal(membership.status, 201);
+  const createdMembership = state.administration.packages.find(
+    (item) => item.id === membership.body.data.id,
+  );
+  assert.equal(createdMembership.kind, "MEMBERSHIP");
+  assert.equal(createdMembership.sessions, 6);
+  assert.equal(createdMembership.sku, "MEM-0001");
+  assert.equal(
+    createdMembership.serviceLines[0].serviceName,
+    createdService.name,
+  );
+});
+
 test("los códigos de agente son únicos y cada movimiento consume una autorización", () => {
   const { state, request } = session();
   const agents = request(
@@ -1340,6 +1578,7 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
         customerId: state.customers[0].id,
         name: state.customers[0].displayName,
         specialistProfileId: specialists[0].id,
+        attendanceStatus: "ATTENDED",
         purchased: true,
         purchaseAmount: 1750,
       },
@@ -1348,6 +1587,7 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
         customerId: null,
         name: "Visitante ficticia",
         specialistProfileId: specialists[1].id,
+        attendanceStatus: "ATTENDED",
         purchased: false,
         purchaseAmount: null,
       },
@@ -1372,11 +1612,21 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
       targetId: appointmentId,
     },
   ).body.data;
+  const attendanceGrant = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointmentId,
+    "0000",
+    "STATUS:ATTENDED",
+  );
   const saved = request(
     "PUT",
     `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
     input,
-    { "x-design-operation-authorization": grant.token },
+    {
+      "x-design-attendance-authorization": attendanceGrant,
+      "x-design-operation-authorization": grant.token,
+    },
   );
   assert.equal(saved.status, 200);
   assert.equal(saved.body.data.cabinCapacity, 2);
@@ -1439,7 +1689,7 @@ test("la cabina exige un visitante y especialista por lugar y autoriza cada mont
   );
   assert.deepEqual(
     contexts.body.data[appointmentId].attendingSpecialistProfileIds,
-    [],
+    specialists.map((specialist) => specialist.id),
   );
   assert.ok("nextAppointmentAt" in contexts.body.data[appointmentId]);
 
@@ -1699,6 +1949,13 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
       targetId: appointmentId,
     },
   ).body.data;
+  const attendanceGrant = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointmentId,
+    "0000",
+    "STATUS:ATTENDED",
+  );
   const invalid = request(
     "PUT",
     `/api/scheduler/design-proposals/appointments/${appointmentId}/cabin-visit`,
@@ -1712,6 +1969,7 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
           customerId: state.appointments[0].customerId,
           name: state.appointments[0].customerName,
           specialistProfileId: specialist.id,
+          attendanceStatus: "ATTENDED",
           purchased: true,
           purchaseAmount: 1200,
           purchaseKind: "LAYAWAY",
@@ -1720,7 +1978,10 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
         },
       ],
     },
-    { "x-design-operation-authorization": grant.token },
+    {
+      "x-design-attendance-authorization": attendanceGrant,
+      "x-design-operation-authorization": grant.token,
+    },
   );
   assert.equal(invalid.status, 400);
 
@@ -1737,6 +1998,7 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
           customerId: state.appointments[0].customerId,
           name: state.appointments[0].customerName,
           specialistProfileId: specialist.id,
+          attendanceStatus: "ATTENDED",
           purchased: true,
           purchaseAmount: 1200,
           purchaseKind: "LAYAWAY",
@@ -1745,7 +2007,10 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
         },
       ],
     },
-    { "x-design-operation-authorization": grant.token },
+    {
+      "x-design-attendance-authorization": attendanceGrant,
+      "x-design-operation-authorization": grant.token,
+    },
   );
   assert.equal(saved.status, 200);
   assert.equal(saved.body.data.visitors[0].purchaseKind, "LAYAWAY");
@@ -1786,6 +2051,7 @@ test("el apartado valida venta, anticipo y conserva ambos importes", () => {
           customerId: state.appointments[0].customerId,
           name: state.appointments[0].customerName,
           specialistProfileId: settlementSpecialist.id,
+          attendanceStatus: "ATTENDED",
           purchased: true,
           purchaseAmount: 1200,
           purchaseKind: "FULL",
@@ -1851,6 +2117,20 @@ test("el reporte por cabina usa la misma población para métricas y detalle", (
   assert.equal(report.body.data.byBranch[0].saleAmount, 4250);
   assert.equal(report.body.data.byBranch[0].appointments, 1);
   assert.equal(report.body.data.byCabin[0].saleAmount, 4250);
+
+  const promotional = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/cabin-sales",
+    {
+      dateFrom: state.controls.date,
+      dateTo: state.controls.date,
+      branchIds: state.catalog.branches.map((branch) => branch.branchId),
+      marketingType: "PROMOTION",
+    },
+  ).body.data;
+  assert.equal(promotional.rows.length, 2);
+  assert.ok(promotional.rows.every((row) => row.hasPromotion));
+  assert.ok(promotional.rows.every((row) => row.promotionLabels.length === 1));
 
   const filtered = request(
     "POST",
@@ -2027,6 +2307,40 @@ test("exige asistencia individual y permite registrar la venta después", () => 
   );
   const representative = state.operationAgents.find((agent) => agent.active);
   appointment.endsAt = "2000-01-01T00:00:00.000Z";
+
+  const arrivedToken = operationToken(
+    request,
+    "APPOINTMENT_STATUS_CHANGE",
+    appointment.id,
+    "0000",
+    "STATUS:ARRIVED",
+  );
+  const saleBeforeAttendance = request(
+    "PUT",
+    `/api/scheduler/design-proposals/appointments/${appointment.id}/cabin-visit`,
+    {
+      cabinResourceId: cabin.id,
+      cabinCapacity: 1,
+      representativeId: representative.id,
+      visitors: [
+        {
+          id: "visitor-primary",
+          customerId: appointment.customerId,
+          name: appointment.customerName,
+          specialistProfileId: specialist.id,
+          attendanceStatus: "ARRIVED",
+          purchased: true,
+          purchaseAmount: 850,
+          purchaseKind: "FULL",
+          saleAmount: 850,
+          depositAmount: 850,
+        },
+      ],
+    },
+    { "x-design-attendance-authorization": arrivedToken },
+  );
+  assert.equal(saleBeforeAttendance.status, 400);
+  assert.match(saleBeforeAttendance.body.message, /Atendida/);
 
   const attendedToken = operationToken(
     request,

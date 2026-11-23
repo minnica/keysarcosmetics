@@ -91,6 +91,7 @@ import {
   runSchedulerMutation,
   useSchedulerQuery,
 } from "./ApiState";
+import { UserAccessWorkspace } from "./UserAccessWorkspace";
 
 const SETTINGS_SECTION_CHANGE_EVENT = "scheduler-settings-section-change";
 const companyLogoMimeTypes = new Set<string>(schedulerCompanyLogoMimeTypes);
@@ -1017,7 +1018,7 @@ function PersonalSecretSettings() {
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
       <SettingsHeader section="Código personal" />
-      <main className="mx-auto max-w-4xl p-4 sm:p-6 xl:p-8">
+      <main className="w-full max-w-none p-4 sm:p-6 xl:p-8">
         <section className="settings-card">
           <div className="settings-card-heading">
             <div>
@@ -1630,6 +1631,8 @@ export function ApiSettingsWorkspace() {
     };
   }, [dirty]);
 
+  if (requestedSection === "users") return <UserAccessWorkspace view="users" />;
+  if (requestedSection === "roles") return <UserAccessWorkspace view="roles" />;
   if (requestedSection === "authorizations") return <PersonalSecretSettings />;
 
   function updateContext(action: () => void) {
