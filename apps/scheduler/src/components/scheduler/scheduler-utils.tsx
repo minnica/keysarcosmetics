@@ -138,6 +138,7 @@ export function getSchedulerCardTop(
 
 export interface BookingDraft {
   bookingId?: string;
+  focusedVisitorId?: string;
   clientId: string | null;
   customerName: string;
   customerEmail: string;

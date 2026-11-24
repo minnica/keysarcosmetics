@@ -1546,6 +1546,7 @@ export function ApiAgendaWorkspace() {
   function openEditBooking(
     booking: Booking,
     requestedAttendanceStatus?: DesignVisitAttendanceStatus,
+    focusedVisitorId?: string,
   ) {
     if (!canWrite) return;
     const appointment = presentation?.appointments.find(
@@ -1578,6 +1579,7 @@ export function ApiAgendaWorkspace() {
     );
     setBookingDraft({
       bookingId: appointment.id,
+      ...(focusedVisitorId ? { focusedVisitorId } : {}),
       clientId: appointment.customerId,
       customerName: appointment.customerName,
       customerEmail: appointment.contact.email ?? "",
@@ -1668,7 +1670,10 @@ export function ApiAgendaWorkspace() {
                             resolveDesignVisitAttendanceStatus(
                               visitor.attendanceStatus,
                               appointment.status,
-                            ) === "PENDING" && requestedAttendanceStatus
+                            ) === "PENDING" &&
+                            requestedAttendanceStatus &&
+                            (!focusedVisitorId ||
+                              visitor.id === focusedVisitorId)
                               ? requestedAttendanceStatus
                               : resolveDesignVisitAttendanceStatus(
                                   visitor.attendanceStatus,
@@ -2944,7 +2949,11 @@ export function ApiAgendaWorkspace() {
     );
   }
 
-  function changeStatus(bookingId: string, status: BookingStatus) {
+  function changeStatus(
+    bookingId: string,
+    status: BookingStatus,
+    visitorId?: string,
+  ) {
     const booking = allBookings.find((item) => item.id === bookingId);
     const appointment =
       booking &&
@@ -2980,6 +2989,7 @@ export function ApiAgendaWorkspace() {
           : status === "no-show"
             ? "NO_SHOW"
             : "ATTENDED",
+        visitorId,
       );
       toast.info(
         "Marca la asistencia de cada cliente por separado. La venta puede registrarse ahora o después.",
@@ -3114,7 +3124,8 @@ export function ApiAgendaWorkspace() {
   ): Promise<string | null> {
     const purpose = sensitiveRequest?.purpose ?? "financial";
     const customerId = booking.clientId;
-    if (!customerId || !selectedBranch)
+    const bookingBranch = booking.branchId ?? selectedBranch;
+    if (!customerId || !bookingBranch)
       return "La cita no tiene un cliente canónico.";
     try {
       const purposeKey =
@@ -3164,7 +3175,7 @@ export function ApiAgendaWorkspace() {
       } else if (purpose === "history") {
         const history: DesignCustomerVisitHistoryDto =
           await schedulerApi.customerVisits(customerId, authorization.token, {
-            branchId: selectedBranch,
+            branchId: bookingBranch,
             page: 1,
             pageSize: 100,
           });
@@ -3202,7 +3213,7 @@ export function ApiAgendaWorkspace() {
         const data = await schedulerApi.customerFinancialHistory(
           customerId,
           authorization.token,
-          { branchId: selectedBranch, page: 1, pageSize: 100 },
+          { branchId: bookingBranch, page: 1, pageSize: 100 },
         );
         setFinancialRecords((current) => ({
           ...current,
@@ -3463,7 +3474,9 @@ export function ApiAgendaWorkspace() {
                   onDeleteBooking={requestCancel}
                   onDeletePaymentHistory={noop}
                   onEditBlock={editBlock}
-                  onEditBooking={openEditBooking}
+                  onEditBooking={(booking, visitorId) =>
+                    openEditBooking(booking, undefined, visitorId)
+                  }
                   onMoveBooking={moveBookingByDrag}
                   onOpenBookingDetail={(booking) =>
                     openSensitive(booking, "record")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Calendar,
@@ -236,6 +236,15 @@ export function SchedulerBookingDialog({
     (service) => service.id === draft.serviceId,
   );
   const isEditing = Boolean(draft.bookingId);
+  const focusedVisitorRef = useRef<HTMLDivElement>(null);
+  const hasFocusedVisitor = draft.visitors.some(
+    (visitor) => visitor.id === draft.focusedVisitorId,
+  );
+  useEffect(() => {
+    if (open && hasFocusedVisitor) {
+      focusedVisitorRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [open, hasFocusedVisitor, draft.focusedVisitorId]);
   const [isNewClientOpen, setIsNewClientOpen] = useState(false);
   const [isAdditionalInfoOpen, setIsAdditionalInfoOpen] = useState(false);
   const [newClientFirstName, setNewClientFirstName] = useState("");
@@ -1197,8 +1206,15 @@ export function SchedulerBookingDialog({
                           className={cn(
                             "grid gap-4 rounded-2xl border border-white bg-white/85 p-4 md:grid-cols-2",
                             appointmentDetailsLocked && "2xl:grid-cols-12",
+                            visitor.id === draft.focusedVisitorId &&
+                              "ring-2 ring-[#b99065]",
                           )}
                           key={visitor.id}
+                          ref={
+                            visitor.id === draft.focusedVisitorId
+                              ? focusedVisitorRef
+                              : undefined
+                          }
                         >
                           <div
                             className={cn(
@@ -1342,7 +1358,7 @@ export function SchedulerBookingDialog({
                                       Llegó
                                     </SelectItem>
                                     <SelectItem value="ATTENDED">
-                                      Asistió
+                                      Atendida
                                     </SelectItem>
                                     <SelectItem value="NO_SHOW">
                                       No asistió
@@ -1351,245 +1367,245 @@ export function SchedulerBookingDialog({
                                 </Select>
                                 {visitor.attendanceStatus !== "ATTENDED" ? (
                                   <p className="text-xs leading-5 text-amber-700">
-                                    Los campos de venta se habilitan después de
+                                    Los campos de venta aparecen después de
                                     marcar la asistencia como Atendida.
                                   </p>
                                 ) : null}
                               </div>
-                              <div className="space-y-2 2xl:col-span-2">
-                                <label className="scheduler-modal-label flex min-h-10 items-end">
-                                  Resultado de venta
-                                </label>
-                                <Select
-                                  disabled={
-                                    visitor.attendanceStatus !== "ATTENDED"
-                                  }
-                                  value={visitor.purchaseKind ?? "PENDING"}
-                                  onValueChange={(value) =>
-                                    patchVisitor(index, {
-                                      purchaseKind:
-                                        value === "PENDING"
-                                          ? null
-                                          : (value as
-                                              | "NONE"
-                                              | "FULL"
-                                              | "LAYAWAY"),
-                                      purchased:
-                                        value === "PENDING"
-                                          ? null
-                                          : value !== "NONE",
-                                      ...(value === "NONE" ||
-                                      value === "PENDING"
-                                        ? {
-                                            purchaseAmount: "",
-                                            saleAmount: "",
-                                            depositAmount: "",
-                                            saleCategory: null,
-                                            membershipName: "",
-                                            membershipSellerSpecialistProfileId:
-                                              "",
-                                          }
-                                        : value === "FULL"
-                                          ? {
-                                              depositAmount: "",
-                                              saleCategory:
-                                                visitor.saleCategory ??
-                                                "SERVICE",
-                                            }
-                                          : {}),
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger className="scheduler-modal-select-trigger">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="scheduler-modal-select-content">
-                                    <SelectItem disabled value="PENDING">
-                                      Pendiente
-                                    </SelectItem>
-                                    <SelectItem value="NONE">
-                                      No compró
-                                    </SelectItem>
-                                    <SelectItem value="FULL">
-                                      Compra liquidada
-                                    </SelectItem>
-                                    <SelectItem value="LAYAWAY">
-                                      Apartado
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2 2xl:col-span-2">
-                                <label className="scheduler-modal-label flex min-h-10 items-end">
-                                  Tipo de venta
-                                </label>
-                                <Select
-                                  disabled={
-                                    visitor.attendanceStatus !== "ATTENDED" ||
-                                    (visitor.purchaseKind !== "FULL" &&
-                                      visitor.purchaseKind !== "LAYAWAY")
-                                  }
-                                  value={visitor.saleCategory ?? "SERVICE"}
-                                  onValueChange={(value) =>
-                                    patchVisitor(index, {
-                                      saleCategory: value as
-                                        | "SERVICE"
-                                        | "MEMBERSHIP",
-                                      ...(value === "MEMBERSHIP"
-                                        ? {
-                                            membershipSellerSpecialistProfileId:
-                                              visitor.membershipSellerSpecialistProfileId ||
-                                              visitor.specialistProfileId,
-                                          }
-                                        : {
-                                            membershipName: "",
-                                            membershipSellerSpecialistProfileId:
-                                              "",
-                                          }),
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger className="scheduler-modal-select-trigger">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="scheduler-modal-select-content">
-                                    <SelectItem value="SERVICE">
-                                      Servicio o producto
-                                    </SelectItem>
-                                    <SelectItem value="MEMBERSHIP">
-                                      Membresía
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2 2xl:col-span-2">
-                                <label className="scheduler-modal-label flex min-h-10 items-end">
-                                  Monto de venta
-                                </label>
-                                <div className="relative">
-                                  <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
-                                  <Input
-                                    className="scheduler-modal-input pl-10"
-                                    disabled={
-                                      visitor.attendanceStatus !== "ATTENDED" ||
-                                      (visitor.purchaseKind !== "FULL" &&
-                                        visitor.purchaseKind !== "LAYAWAY")
-                                    }
-                                    inputMode="decimal"
-                                    min="0"
-                                    onChange={(event) =>
-                                      patchVisitor(index, {
-                                        saleAmount: event.target.value,
-                                        purchaseAmount: event.target.value,
-                                      })
-                                    }
-                                    placeholder="$0.00"
-                                    step="0.01"
-                                    type="number"
-                                    value={visitor.saleAmount}
-                                  />
-                                </div>
-                              </div>
-                              {visitor.attendanceStatus === "ATTENDED" &&
-                              visitor.saleCategory === "MEMBERSHIP" ? (
+                              {visitor.attendanceStatus === "ATTENDED" ? (
                                 <>
-                                  <div className="space-y-2 2xl:col-span-3">
+                                  <div className="space-y-2 2xl:col-span-2">
                                     <label className="scheduler-modal-label flex min-h-10 items-end">
-                                      Membresía vendida
-                                    </label>
-                                    <Input
-                                      className="scheduler-modal-input"
-                                      onChange={(event) =>
-                                        patchVisitor(index, {
-                                          membershipName: event.target.value,
-                                        })
-                                      }
-                                      placeholder="Nombre de la membresía"
-                                      readOnly={Boolean(visitor.posTicket)}
-                                      value={visitor.membershipName}
-                                    />
-                                  </div>
-                                  <div className="space-y-2 2xl:col-span-3">
-                                    <label className="scheduler-modal-label flex min-h-10 items-end">
-                                      Facialista que colocó la membresía
+                                      Resultado de venta
                                     </label>
                                     <Select
-                                      value={
-                                        visitor.membershipSellerSpecialistProfileId
-                                      }
+                                      value={visitor.purchaseKind ?? "PENDING"}
                                       onValueChange={(value) =>
                                         patchVisitor(index, {
-                                          membershipSellerSpecialistProfileId:
-                                            value,
+                                          purchaseKind:
+                                            value === "PENDING"
+                                              ? null
+                                              : (value as
+                                                  | "NONE"
+                                                  | "FULL"
+                                                  | "LAYAWAY"),
+                                          purchased:
+                                            value === "PENDING"
+                                              ? null
+                                              : value !== "NONE",
+                                          ...(value === "NONE" ||
+                                          value === "PENDING"
+                                            ? {
+                                                purchaseAmount: "",
+                                                saleAmount: "",
+                                                depositAmount: "",
+                                                saleCategory: null,
+                                                membershipName: "",
+                                                membershipSellerSpecialistProfileId:
+                                                  "",
+                                              }
+                                            : value === "FULL"
+                                              ? {
+                                                  depositAmount: "",
+                                                  saleCategory:
+                                                    visitor.saleCategory ??
+                                                    "SERVICE",
+                                                }
+                                              : {}),
                                         })
                                       }
                                     >
                                       <SelectTrigger className="scheduler-modal-select-trigger">
-                                        <SelectValue placeholder="Selecciona facialista" />
+                                        <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent className="scheduler-modal-select-content">
-                                        {specialistOptions.map((specialist) => (
-                                          <SelectItem
-                                            key={specialist.id}
-                                            className="scheduler-modal-select-item"
-                                            value={specialist.id}
-                                          >
-                                            {specialist.name}
-                                          </SelectItem>
-                                        ))}
+                                        <SelectItem disabled value="PENDING">
+                                          Pendiente
+                                        </SelectItem>
+                                        <SelectItem value="NONE">
+                                          No compró
+                                        </SelectItem>
+                                        <SelectItem value="FULL">
+                                          Compra liquidada
+                                        </SelectItem>
+                                        <SelectItem value="LAYAWAY">
+                                          Apartado
+                                        </SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </div>
+                                  <div className="space-y-2 2xl:col-span-2">
+                                    <label className="scheduler-modal-label flex min-h-10 items-end">
+                                      Tipo de venta
+                                    </label>
+                                    <Select
+                                      disabled={
+                                        visitor.purchaseKind !== "FULL" &&
+                                        visitor.purchaseKind !== "LAYAWAY"
+                                      }
+                                      value={visitor.saleCategory ?? "SERVICE"}
+                                      onValueChange={(value) =>
+                                        patchVisitor(index, {
+                                          saleCategory: value as
+                                            | "SERVICE"
+                                            | "MEMBERSHIP",
+                                          ...(value === "MEMBERSHIP"
+                                            ? {
+                                                membershipSellerSpecialistProfileId:
+                                                  visitor.membershipSellerSpecialistProfileId ||
+                                                  visitor.specialistProfileId,
+                                              }
+                                            : {
+                                                membershipName: "",
+                                                membershipSellerSpecialistProfileId:
+                                                  "",
+                                              }),
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="scheduler-modal-select-trigger">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent className="scheduler-modal-select-content">
+                                        <SelectItem value="SERVICE">
+                                          Servicio o producto
+                                        </SelectItem>
+                                        <SelectItem value="MEMBERSHIP">
+                                          Membresía
+                                        </SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-2 2xl:col-span-2">
+                                    <label className="scheduler-modal-label flex min-h-10 items-end">
+                                      Monto de venta
+                                    </label>
+                                    <div className="relative">
+                                      <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
+                                      <Input
+                                        className="scheduler-modal-input pl-10"
+                                        disabled={
+                                          visitor.purchaseKind !== "FULL" &&
+                                          visitor.purchaseKind !== "LAYAWAY"
+                                        }
+                                        inputMode="decimal"
+                                        min="0"
+                                        onChange={(event) =>
+                                          patchVisitor(index, {
+                                            saleAmount: event.target.value,
+                                            purchaseAmount: event.target.value,
+                                          })
+                                        }
+                                        placeholder="$0.00"
+                                        step="0.01"
+                                        type="number"
+                                        value={visitor.saleAmount}
+                                      />
+                                    </div>
+                                  </div>
+                                  {visitor.saleCategory === "MEMBERSHIP" ? (
+                                    <>
+                                      <div className="space-y-2 2xl:col-span-3">
+                                        <label className="scheduler-modal-label flex min-h-10 items-end">
+                                          Membresía vendida
+                                        </label>
+                                        <Input
+                                          className="scheduler-modal-input"
+                                          onChange={(event) =>
+                                            patchVisitor(index, {
+                                              membershipName:
+                                                event.target.value,
+                                            })
+                                          }
+                                          placeholder="Nombre de la membresía"
+                                          readOnly={Boolean(visitor.posTicket)}
+                                          value={visitor.membershipName}
+                                        />
+                                      </div>
+                                      <div className="space-y-2 2xl:col-span-3">
+                                        <label className="scheduler-modal-label flex min-h-10 items-end">
+                                          Facialista que colocó la membresía
+                                        </label>
+                                        <Select
+                                          value={
+                                            visitor.membershipSellerSpecialistProfileId
+                                          }
+                                          onValueChange={(value) =>
+                                            patchVisitor(index, {
+                                              membershipSellerSpecialistProfileId:
+                                                value,
+                                            })
+                                          }
+                                        >
+                                          <SelectTrigger className="scheduler-modal-select-trigger">
+                                            <SelectValue placeholder="Selecciona facialista" />
+                                          </SelectTrigger>
+                                          <SelectContent className="scheduler-modal-select-content">
+                                            {specialistOptions.map(
+                                              (specialist) => (
+                                                <SelectItem
+                                                  key={specialist.id}
+                                                  className="scheduler-modal-select-item"
+                                                  value={specialist.id}
+                                                >
+                                                  {specialist.name}
+                                                </SelectItem>
+                                              ),
+                                            )}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    </>
+                                  ) : null}
+                                  {visitor.posTicket ? (
+                                    <SchedulerPosTicketPreview
+                                      branchName={
+                                        branches.find(
+                                          (branch) =>
+                                            branch.id === selectedBranch,
+                                        )?.name ?? null
+                                      }
+                                      className="md:col-span-2 2xl:col-span-12"
+                                      clientName={visitor.name}
+                                      specialistName={
+                                        specialistOptions.find(
+                                          (specialist) =>
+                                            specialist.id ===
+                                            (visitor.membershipSellerSpecialistProfileId ||
+                                              visitor.specialistProfileId),
+                                        )?.name ?? null
+                                      }
+                                      ticket={visitor.posTicket}
+                                    />
+                                  ) : null}
+                                  <div className="space-y-2 2xl:col-span-2">
+                                    <label className="scheduler-modal-label flex min-h-10 items-end">
+                                      Monto apartado
+                                    </label>
+                                    <div className="relative">
+                                      <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
+                                      <Input
+                                        className="scheduler-modal-input pl-10"
+                                        disabled={
+                                          visitor.purchaseKind !== "LAYAWAY"
+                                        }
+                                        inputMode="decimal"
+                                        max={visitor.saleAmount || undefined}
+                                        min="0"
+                                        onChange={(event) =>
+                                          patchVisitor(index, {
+                                            depositAmount: event.target.value,
+                                          })
+                                        }
+                                        placeholder="$0.00"
+                                        step="0.01"
+                                        type="number"
+                                        value={visitor.depositAmount}
+                                      />
+                                    </div>
+                                  </div>
                                 </>
                               ) : null}
-                              {visitor.attendanceStatus === "ATTENDED" &&
-                              visitor.posTicket ? (
-                                <SchedulerPosTicketPreview
-                                  branchName={
-                                    branches.find(
-                                      (branch) => branch.id === selectedBranch,
-                                    )?.name ?? null
-                                  }
-                                  className="md:col-span-2 2xl:col-span-12"
-                                  clientName={visitor.name}
-                                  specialistName={
-                                    specialistOptions.find(
-                                      (specialist) =>
-                                        specialist.id ===
-                                        (visitor.membershipSellerSpecialistProfileId ||
-                                          visitor.specialistProfileId),
-                                    )?.name ?? null
-                                  }
-                                  ticket={visitor.posTicket}
-                                />
-                              ) : null}
-                              <div className="space-y-2 2xl:col-span-2">
-                                <label className="scheduler-modal-label flex min-h-10 items-end">
-                                  Monto apartado
-                                </label>
-                                <div className="relative">
-                                  <ShoppingBag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scheduler-accent)]" />
-                                  <Input
-                                    className="scheduler-modal-input pl-10"
-                                    disabled={
-                                      visitor.attendanceStatus !== "ATTENDED" ||
-                                      visitor.purchaseKind !== "LAYAWAY"
-                                    }
-                                    inputMode="decimal"
-                                    max={visitor.saleAmount || undefined}
-                                    min="0"
-                                    onChange={(event) =>
-                                      patchVisitor(index, {
-                                        depositAmount: event.target.value,
-                                      })
-                                    }
-                                    placeholder="$0.00"
-                                    step="0.01"
-                                    type="number"
-                                    value={visitor.depositAmount}
-                                  />
-                                </div>
-                              </div>
                             </>
                           ) : null}
                           {visitor.attendanceStatus === "ATTENDED" &&

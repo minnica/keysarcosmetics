@@ -7,8 +7,6 @@ import {
   useState,
   type CSSProperties,
   type DragEvent,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   Badge,
@@ -16,7 +14,7 @@ import {
   CardContent,
   Dialog,
   DialogContent,
-  DialogTrigger,
+  DialogTitle,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -73,7 +71,6 @@ import {
   shouldShowSchedulerAgendaStatusLabel,
 } from "@/lib/scheduler-status-presentation";
 import { canMoveSchedulerBooking } from "@/lib/scheduler-appointment-move";
-import { getSchedulerAppointmentAttendeeIndex } from "@/lib/scheduler-appointment-hover";
 import {
   getSchedulerBookingOverlapLayout,
   isSchedulerCabinColumn,
@@ -107,10 +104,14 @@ interface SchedulerAgendaGridProps {
   onOpenNewBooking: (professionalId?: string, startTime?: string) => void;
   onCreateBlock: (professionalId: string, startTime: string) => void;
   onEditBlock: (block: AvailabilityBlock) => void;
-  onEditBooking: (booking: Booking) => void;
+  onEditBooking: (booking: Booking, visitorId?: string) => void;
   onMoveBooking: (booking: Booking, target: SchedulerBookingMoveTarget) => void;
   onDeleteBooking: (bookingId: string) => void;
-  onUpdateBookingStatus: (bookingId: string, status: BookingStatus) => void;
+  onUpdateBookingStatus: (
+    bookingId: string,
+    status: BookingStatus,
+    visitorId?: string,
+  ) => void;
   onPurchaseDecision: (booking: Booking, purchased: boolean) => void;
   onOpenBookingDetail: (booking: Booking, view: "payment" | "record") => void;
   onOpenClientHistory: (booking: Booking) => void;
@@ -264,6 +265,7 @@ interface SchedulerAppointmentTooltipCardProps {
   fallbackSpecialistName: string;
   side: "right" | "top";
   canViewCustomerPhone: boolean;
+  onOpen: () => void;
 }
 
 function SchedulerAppointmentTooltipCard({
@@ -274,6 +276,7 @@ function SchedulerAppointmentTooltipCard({
   fallbackSpecialistName,
   side,
   canViewCustomerPhone,
+  onOpen,
 }: SchedulerAppointmentTooltipCardProps) {
   const attendee = context?.attendees?.[attendeeIndex];
   const attendeeName =
@@ -288,6 +291,7 @@ function SchedulerAppointmentTooltipCard({
   return (
     <TooltipContent
       align={align}
+      aria-label={`Información de la cita de ${attendeeName}`}
       className="w-72 rounded-2xl border border-white/10 bg-[#172230] p-4 text-white shadow-[0_18px_44px_rgba(8,14,24,0.28)]"
       side={side}
       sideOffset={10}
@@ -355,30 +359,101 @@ function SchedulerAppointmentTooltipCard({
           {booking.notes}
         </p>
       ) : null}
+      <button
+        className="mt-3 rounded-lg border border-white/30 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white"
+        onClick={onOpen}
+        onMouseDown={(event) => event.preventDefault()}
+        type="button"
+      >
+        Ver detalle de {attendeeName}
+      </button>
     </TooltipContent>
   );
 }
 
+function getSchedulerAttendeeDetails(
+  reservation: Booking,
+  context: DesignAppointmentContext | undefined,
+  { attendee, name }: SchedulerDisplayedAttendee,
+): { booking: Booking; context: DesignAppointmentContext | undefined } {
+  const {
+    clientId: _clientId,
+    customerEmail: _email,
+    purchaseAmount: _amount,
+    purchaseType: _purchaseType,
+    tentativePurchaseAmount: _tentativeAmount,
+    purchased: _purchased,
+    serviceRecords: _serviceRecords,
+    ...shared
+  } = reservation;
+  const purchase = attendee?.purchaseKind;
+  const hasPurchase = purchase === "FULL" || purchase === "LAYAWAY";
+  return {
+    booking: {
+      ...shared,
+      customerName: name,
+      phone: attendee?.phone ?? "",
+      status: attendeeBookingStatus(attendee, reservation.status),
+      totalPrice: null,
+      paymentLabel:
+        purchase === "LAYAWAY"
+          ? "Apartado"
+          : purchase === "FULL"
+            ? "Compra liquidada"
+            : "",
+      ...(attendee?.customerId ? { clientId: attendee.customerId } : {}),
+      ...(attendee?.email ? { customerEmail: attendee.email } : {}),
+      ...(hasPurchase
+        ? { purchased: true, purchaseAmount: attendee?.saleAmount ?? 0 }
+        : {}),
+      ...(purchase === "NONE" ? { purchased: false } : {}),
+    },
+    context: context
+      ? {
+          ...context,
+          attendeeNames: [name],
+          attendees: attendee ? [attendee] : [],
+          portfolioSellerName: attendee?.portfolioSellerName ?? null,
+          nextAppointmentId: attendee?.nextAppointmentId ?? null,
+          nextAppointmentAt: attendee?.nextAppointmentAt ?? null,
+          openLayaways: context.openLayaways.filter(
+            (layaway) => layaway.customerId === attendee?.customerId,
+          ),
+        }
+      : undefined,
+  };
+}
+
+function displayedAttendeeKey(entry: SchedulerDisplayedAttendee) {
+  return entry.attendee?.visitorId ?? String(entry.contextIndex);
+}
+
 interface SchedulerAppointmentSummaryProps {
   booking: Booking;
-  column: Professional | undefined;
+  attendees: SchedulerDisplayedAttendee[];
   context: DesignAppointmentContext | undefined;
   statusColors: BookingStatusColors;
   statusLabels: BookingStatusLabels;
+  canViewCustomerPhone: boolean;
+  fallbackSpecialistName: string;
+  weekly: boolean;
+  onOpen: (
+    entry: SchedulerDisplayedAttendee,
+    trigger?: HTMLButtonElement,
+  ) => void;
 }
 
 function SchedulerAppointmentSummary({
   booking,
-  column,
+  attendees: displayedAttendees,
   context,
   statusColors,
   statusLabels,
+  canViewCustomerPhone,
+  fallbackSpecialistName,
+  weekly,
+  onOpen,
 }: SchedulerAppointmentSummaryProps) {
-  const displayedAttendees = displayedAttendeesForColumn(
-    booking,
-    context,
-    column,
-  );
   const hasMultipleAttendees = displayedAttendees.length > 1;
   const singlePurchaseAmount =
     displayedAttendees.length === 1
@@ -391,18 +466,6 @@ function SchedulerAppointmentSummary({
 
   return (
     <div className="scheduler-appointment-summary flex h-full w-full min-w-0 flex-col items-center justify-center gap-px">
-      {!hasMultipleAttendees ? (
-        <SchedulerStatusBadge
-          className="scheduler-appointment-status-badge max-w-full"
-          color={statusColors[singleStatus]}
-          compact
-          hideLabel={!shouldShowSchedulerAgendaStatusLabel(singleStatus)}
-          hasPurchase={(singlePurchaseAmount ?? 0) > 0}
-          label={statusLabels[singleStatus]}
-          purchaseAmount={singlePurchaseAmount}
-          status={singleStatus}
-        />
-      ) : null}
       <div
         className={cn(
           "scheduler-appointment-attendees grid w-full min-w-0 flex-1 overflow-hidden rounded-md",
@@ -414,7 +477,7 @@ function SchedulerAppointmentSummary({
           gridTemplateColumns: `repeat(${displayedAttendees.length}, minmax(0, 1fr))`,
         }}
       >
-        {displayedAttendees.map((entry, index) => {
+        {displayedAttendees.map((entry) => {
           const amount = attendeePurchaseAmount(
             entry,
             booking,
@@ -428,46 +491,78 @@ function SchedulerAppointmentSummary({
             booking.status,
           );
           return (
-            <span
-              className={cn(
-                "scheduler-appointment-attendee min-w-0 items-center justify-center overflow-hidden px-1 text-center",
-                hasMultipleAttendees
-                  ? "flex flex-col border-l-[3px] border-l-[#263649]/45 text-[0.56rem] leading-none first:border-l-0 odd:bg-white/15 even:bg-white/55"
-                  : "block truncate text-[clamp(0.58rem,0.72vw,0.82rem)] leading-[1.05]",
-              )}
-              key={entry.attendee?.visitorId ?? `${entry.name}-${index}`}
-              title={`${entry.name} · ${statusLabels[attendeeStatus]}${entry.attendee?.specialistName ? ` · ${entry.attendee.specialistName}` : ""}${amount ? ` · ${appointmentCurrencyFormatter.format(amount)}` : ""}`}
-            >
-              {hasMultipleAttendees ? (
-                <span className="mb-0.5 flex max-w-full items-center justify-center gap-1 text-[0.48rem] font-semibold">
-                  <span
-                    aria-hidden="true"
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: statusColors[attendeeStatus] }}
-                  />
-                  {shouldShowSchedulerAgendaStatusLabel(attendeeStatus) ? (
-                    <span className="truncate">
-                      {statusLabels[attendeeStatus]}
+            <Tooltip key={displayedAttendeeKey(entry)}>
+              <TooltipTrigger asChild>
+                <button
+                  aria-haspopup="dialog"
+                  aria-label={`Ver cita de ${entry.name} a las ${booking.start}`}
+                  className={cn(
+                    "scheduler-appointment-attendee flex h-full min-w-0 cursor-pointer flex-col items-center justify-center overflow-hidden px-1 text-center focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current",
+                    hasMultipleAttendees
+                      ? "flex flex-col border-l-[3px] border-l-[#263649]/45 text-[0.56rem] leading-none first:border-l-0 odd:bg-white/15 even:bg-white/55"
+                      : "gap-px truncate text-[clamp(0.58rem,0.72vw,0.82rem)] leading-[1.05]",
+                  )}
+                  onClick={(event) => onOpen(entry, event.currentTarget)}
+                  type="button"
+                >
+                  {!hasMultipleAttendees ? (
+                    <SchedulerStatusBadge
+                      className="scheduler-appointment-status-badge max-w-full"
+                      color={statusColors[singleStatus]}
+                      compact
+                      hideLabel={
+                        !shouldShowSchedulerAgendaStatusLabel(singleStatus)
+                      }
+                      hasPurchase={(singlePurchaseAmount ?? 0) > 0}
+                      label={statusLabels[singleStatus]}
+                      purchaseAmount={singlePurchaseAmount}
+                      status={singleStatus}
+                    />
+                  ) : null}
+                  {hasMultipleAttendees ? (
+                    <span className="mb-0.5 flex max-w-full items-center justify-center gap-1 text-[0.48rem] font-semibold">
+                      <span
+                        aria-hidden="true"
+                        className="h-1.5 w-1.5 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor: statusColors[attendeeStatus],
+                        }}
+                      />
+                      {shouldShowSchedulerAgendaStatusLabel(attendeeStatus) ? (
+                        <span className="truncate">
+                          {statusLabels[attendeeStatus]}
+                        </span>
+                      ) : null}
                     </span>
                   ) : null}
-                </span>
-              ) : null}
-              <span className="block w-full min-w-0 truncate font-semibold">
-                {entry.name}
-              </span>
-              {hasMultipleAttendees ? (
-                <span className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1 text-[0.5rem] font-medium opacity-80">
-                  <span className="min-w-0 truncate">{specialistName}</span>
-                  {amount ? (
-                    <strong className="shrink-0 font-bold">
-                      {appointmentCurrencyFormatter.format(amount)}
-                    </strong>
-                  ) : (
-                    <span className="shrink-0">Sin venta</span>
-                  )}
-                </span>
-              ) : null}
-            </span>
+                  <span className="block w-full min-w-0 truncate font-semibold">
+                    {entry.name}
+                  </span>
+                  {hasMultipleAttendees ? (
+                    <span className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1 text-[0.5rem] font-medium opacity-80">
+                      <span className="min-w-0 truncate">{specialistName}</span>
+                      {amount ? (
+                        <strong className="shrink-0 font-bold">
+                          {appointmentCurrencyFormatter.format(amount)}
+                        </strong>
+                      ) : (
+                        <span className="shrink-0">Sin venta</span>
+                      )}
+                    </span>
+                  ) : null}
+                </button>
+              </TooltipTrigger>
+              <SchedulerAppointmentTooltipCard
+                align={weekly ? "center" : "start"}
+                attendeeIndex={entry.contextIndex}
+                booking={booking}
+                canViewCustomerPhone={canViewCustomerPhone}
+                context={context}
+                fallbackSpecialistName={fallbackSpecialistName}
+                onOpen={() => onOpen(entry)}
+                side={weekly ? "top" : "right"}
+              />
+            </Tooltip>
           );
         })}
       </div>
@@ -596,12 +691,10 @@ export function SchedulerAgendaGrid({
   const [gridViewportHeight, setGridViewportHeight] = useState(0);
   const [draggingBooking, setDraggingBooking] = useState<Booking | null>(null);
   const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
-  const [openBookingCardId, setOpenBookingCardId] = useState<string | null>(
-    null,
-  );
-  const [hoveredBookingAttendee, setHoveredBookingAttendee] = useState<{
+  const bookingTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [openBookingCard, setOpenBookingCard] = useState<{
     bookingId: string;
-    attendeeIndex: number;
+    attendeeKey: string;
   } | null>(null);
   const visibleColumnById = useMemo(
     () => new Map(visibleProfessionals.map((column) => [column.id, column])),
@@ -917,7 +1010,7 @@ export function SchedulerAgendaGrid({
     currentTimeMinutes <= dayClosingMinutes;
 
   function startBookingDrag(
-    event: DragEvent<HTMLButtonElement>,
+    event: DragEvent<HTMLDivElement>,
     booking: Booking,
   ) {
     if (
@@ -976,36 +1069,209 @@ export function SchedulerAgendaGrid({
     onMoveBooking(booking, target);
   }
 
-  function suppressClickAfterDrag(event: ReactMouseEvent<HTMLButtonElement>) {
-    if (!suppressBookingClickRef.current) return;
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  function trackBookingAttendee(
-    event: ReactPointerEvent<HTMLButtonElement>,
-    booking: Booking,
-    column: Professional | undefined,
+  function renderAppointment(
+    reservation: Booking,
+    style: CSSProperties,
+    date: Date,
+    weekly = false,
   ) {
-    const context = appointmentContexts[booking.id];
-    const displayedAttendees = displayedAttendeesForColumn(
-      booking,
-      context,
-      column,
+    const context = appointmentContexts[reservation.id];
+    const column = visibleColumnById.get(reservation.professionalId);
+    const attendees = displayedAttendeesForColumn(reservation, context, column);
+    const selected =
+      openBookingCard?.bookingId === reservation.id
+        ? attendees.find(
+            (entry) =>
+              displayedAttendeeKey(entry) === openBookingCard.attendeeKey,
+          )
+        : undefined;
+    const group =
+      Math.max(
+        context?.attendees?.length ?? 0,
+        context?.attendeeNames.length ?? 0,
+      ) > 1;
+    const selectedVisitor =
+      group && selected ? (selected.attendee ?? null) : undefined;
+    const { booking, context: detailContext } =
+      selected && group
+        ? getSchedulerAttendeeDetails(reservation, context, selected)
+        : { booking: reservation, context };
+    const statusTokens = getSchedulerStatusColorTokens(
+      statusColors[reservation.status],
     );
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const displayedIndex = getSchedulerAppointmentAttendeeIndex(
-      event.clientX,
-      bounds.left,
-      bounds.width,
-      displayedAttendees.length,
+    const detailTokens = getSchedulerStatusColorTokens(
+      statusColors[booking.status],
     );
-    const attendeeIndex = displayedAttendees[displayedIndex]?.contextIndex ?? 0;
-    setHoveredBookingAttendee((current) =>
-      current?.bookingId === booking.id &&
-      current.attendeeIndex === attendeeIndex
-        ? current
-        : { bookingId: booking.id, attendeeIndex },
+    const canMoveBooking =
+      canWrite &&
+      canMoveSchedulerBooking(
+        reservation.status,
+        reservation.purchased === true,
+      );
+
+    return (
+      <Dialog
+        key={reservation.id}
+        onOpenChange={(open) => {
+          if (!open) setOpenBookingCard(null);
+        }}
+        open={Boolean(selected)}
+      >
+        <div
+          className={cn(
+            "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
+            canMoveBooking && "scheduler-appointment-draggable",
+            draggingBooking?.id === reservation.id &&
+              "scheduler-appointment-dragging",
+          )}
+          draggable={canMoveBooking}
+          onDragEnd={finishBookingDrag}
+          onDragStart={(event) => startBookingDrag(event, reservation)}
+          style={{
+            ...style,
+            backgroundColor: statusTokens.surface,
+            borderColor: statusTokens.border,
+            borderLeftColor: statusTokens.accent,
+            borderLeftWidth: "5px",
+            color: statusTokens.foreground,
+          }}
+        >
+          <SchedulerAppointmentSummary
+            attendees={attendees}
+            booking={reservation}
+            canViewCustomerPhone={canViewCustomerPhone}
+            context={context}
+            fallbackSpecialistName={column?.name ?? "Sin asignar"}
+            onOpen={(entry, trigger) => {
+              if (suppressBookingClickRef.current) return;
+              bookingTriggerRef.current = trigger ?? null;
+              setOpenBookingCard({
+                bookingId: reservation.id,
+                attendeeKey: displayedAttendeeKey(entry),
+              });
+            }}
+            statusColors={statusColors}
+            statusLabels={statusLabels}
+            weekly={weekly}
+          />
+        </div>
+        {selected ? (
+          <DialogContent
+            aria-describedby={undefined}
+            className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
+            onCloseAutoFocus={(event) => {
+              const trigger = bookingTriggerRef.current;
+              if (
+                trigger?.isConnected &&
+                !document.querySelector('[role="dialog"][data-state="open"]')
+              ) {
+                event.preventDefault();
+                trigger.focus();
+              }
+            }}
+            style={{
+              backgroundColor: detailTokens.surface,
+              borderColor: detailTokens.border,
+            }}
+          >
+            <DialogTitle className="sr-only">
+              Cita de {booking.customerName}
+            </DialogTitle>
+            <SchedulerBookingCard
+              appointmentContext={detailContext}
+              individualAttendee={selectedVisitor}
+              reservationStatus={reservation.status}
+              booking={booking}
+              branchName={column?.branchName}
+              canViewCustomerPhone={canViewCustomerPhone}
+              commerceName={commerceName}
+              enableCabinVisitFlow={enableCabinVisitFlow}
+              clientAccount={
+                (booking.clientId
+                  ? clientAccountsByClient[booking.clientId]
+                  : undefined) ?? getClientPurchaseAccount(allBookings, booking)
+              }
+              paymentHistory={
+                (booking.clientId
+                  ? paymentHistoryByClient[booking.clientId]
+                  : undefined) ??
+                (financialAccessByClient[
+                  getSchedulerClientAccessKey(booking.clientId, booking.phone)
+                ]
+                  ? getClientPaymentHistory(allBookings, booking)
+                  : [])
+              }
+              {...(financialAccessByClient[
+                getSchedulerClientAccessKey(booking.clientId, booking.phone)
+              ]
+                ? {
+                    financialProfile:
+                      financialAccessByClient[
+                        getSchedulerClientAccessKey(
+                          booking.clientId,
+                          booking.phone,
+                        )
+                      ],
+                  }
+                : {})}
+              financialAuditEvents={financialAuditEvents.filter(
+                (event) =>
+                  event.clientKey ===
+                  getSchedulerClientAccessKey(booking.clientId, booking.phone),
+              )}
+              selectedDate={date}
+              statusColors={statusColors}
+              statusLabels={statusLabels}
+              onDelete={onDeleteBooking}
+              onEdit={() =>
+                onEditBooking(reservation, selectedVisitor?.visitorId)
+              }
+              onOpenDetail={onOpenBookingDetail}
+              onOpenClientHistory={onOpenClientHistory}
+              onOpenSellerComment={() => onOpenSellerComment(reservation)}
+              onOpenPostSaleComment={() => {
+                setOpenBookingCard(null);
+                onOpenPostSaleComment(reservation);
+              }}
+              onOpenLayawayPayment={(selectedBooking, layaway) => {
+                setOpenBookingCard(null);
+                onOpenLayawayPayment(selectedBooking, layaway);
+              }}
+              onOpenReschedule={() => onOpenReschedule(reservation)}
+              onStatusChange={(bookingId, status) =>
+                onUpdateBookingStatus(
+                  bookingId,
+                  status,
+                  selectedVisitor?.visitorId,
+                )
+              }
+              onPurchaseDecision={onPurchaseDecision}
+              onRequestFinancialAccess={onRequestFinancialAccess}
+              onRevokeFinancialAccess={onRevokeFinancialAccess}
+              onUpdatePaymentHistory={(
+                paymentBookingId,
+                amount,
+                tentativeAmount,
+              ) =>
+                onUpdatePaymentHistory(
+                  booking,
+                  paymentBookingId,
+                  amount,
+                  tentativeAmount,
+                )
+              }
+              onDeletePaymentHistory={(paymentBookingId) =>
+                onDeletePaymentHistory(booking, paymentBookingId)
+              }
+              showSellerComments={showSellerComments}
+              showPostSaleComments={showPostSaleComments}
+              canWrite={canWrite}
+              financialHistoryReadOnly={financialHistoryReadOnly}
+              visibleStatuses={visibleStatuses}
+            />
+          </DialogContent>
+        ) : null}
+      </Dialog>
     );
   }
 
@@ -1168,203 +1434,9 @@ export function SchedulerAgendaGrid({
                   </button>
                 ))}
 
-                {dayAppointments.map(({ booking, style }) => {
-                  const statusColor = statusColors[booking.status];
-                  const statusTokens =
-                    getSchedulerStatusColorTokens(statusColor);
-                  const canMoveBooking =
-                    canWrite &&
-                    canMoveSchedulerBooking(
-                      booking.status,
-                      booking.purchased === true,
-                    );
-                  const hoveredAttendeeIndex =
-                    hoveredBookingAttendee?.bookingId === booking.id
-                      ? hoveredBookingAttendee.attendeeIndex
-                      : 0;
-                  const fallbackSpecialistName =
-                    visibleProfessionals.find(
-                      (item) => item.id === booking.professionalId,
-                    )?.name ?? "Sin asignar";
-                  const bookingColumn = visibleColumnById.get(
-                    booking.professionalId,
-                  );
-                  const bookingAttendeeLabel = displayedAttendeesForColumn(
-                    booking,
-                    appointmentContexts[booking.id],
-                    bookingColumn,
-                  )
-                    .map((entry) => entry.name)
-                    .join(" y ");
-
-                  return (
-                    <Dialog
-                      key={booking.id}
-                      onOpenChange={(open) =>
-                        setOpenBookingCardId(open ? booking.id : null)
-                      }
-                      open={openBookingCardId === booking.id}
-                    >
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <DialogTrigger asChild>
-                            <button
-                              aria-label={`Ver cita de ${bookingAttendeeLabel} a las ${booking.start}.${canMoveBooking ? " Puedes arrastrarla a otra hora o columna." : ""}`}
-                              className={cn(
-                                "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
-                                canMoveBooking
-                                  ? "scheduler-appointment-draggable"
-                                  : "",
-                                draggingBooking?.id === booking.id
-                                  ? "scheduler-appointment-dragging"
-                                  : "",
-                              )}
-                              draggable={canMoveBooking}
-                              onClickCapture={suppressClickAfterDrag}
-                              onDragEnd={finishBookingDrag}
-                              onDragStart={(event) =>
-                                startBookingDrag(event, booking)
-                              }
-                              onPointerMove={(event) =>
-                                trackBookingAttendee(
-                                  event,
-                                  booking,
-                                  bookingColumn,
-                                )
-                              }
-                              style={{
-                                ...style,
-                                backgroundColor: statusTokens.surface,
-                                borderColor: statusTokens.border,
-                                borderLeftColor: statusTokens.accent,
-                                borderLeftWidth: "5px",
-                                color: statusTokens.foreground,
-                              }}
-                              type="button"
-                            >
-                              <SchedulerAppointmentSummary
-                                booking={booking}
-                                column={bookingColumn}
-                                context={appointmentContexts[booking.id]}
-                                statusColors={statusColors}
-                                statusLabels={statusLabels}
-                              />
-                            </button>
-                          </DialogTrigger>
-                        </TooltipTrigger>
-                        <SchedulerAppointmentTooltipCard
-                          align="start"
-                          attendeeIndex={hoveredAttendeeIndex}
-                          booking={booking}
-                          canViewCustomerPhone={canViewCustomerPhone}
-                          context={appointmentContexts[booking.id]}
-                          fallbackSpecialistName={fallbackSpecialistName}
-                          side="right"
-                        />
-                      </Tooltip>
-                      <DialogContent
-                        className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
-                        style={{
-                          backgroundColor: statusTokens.surface,
-                          borderColor: statusTokens.border,
-                        }}
-                      >
-                        <SchedulerBookingCard
-                          appointmentContext={appointmentContexts[booking.id]}
-                          booking={booking}
-                          branchName={bookingColumn?.branchName}
-                          canViewCustomerPhone={canViewCustomerPhone}
-                          commerceName={commerceName}
-                          enableCabinVisitFlow={enableCabinVisitFlow}
-                          clientAccount={
-                            (booking.clientId
-                              ? clientAccountsByClient[booking.clientId]
-                              : undefined) ??
-                            getClientPurchaseAccount(allBookings, booking)
-                          }
-                          paymentHistory={
-                            (booking.clientId
-                              ? paymentHistoryByClient[booking.clientId]
-                              : undefined) ??
-                            (financialAccessByClient[
-                              getSchedulerClientAccessKey(
-                                booking.clientId,
-                                booking.phone,
-                              )
-                            ]
-                              ? getClientPaymentHistory(allBookings, booking)
-                              : [])
-                          }
-                          {...(financialAccessByClient[
-                            getSchedulerClientAccessKey(
-                              booking.clientId,
-                              booking.phone,
-                            )
-                          ]
-                            ? {
-                                financialProfile:
-                                  financialAccessByClient[
-                                    getSchedulerClientAccessKey(
-                                      booking.clientId,
-                                      booking.phone,
-                                    )
-                                  ],
-                              }
-                            : {})}
-                          financialAuditEvents={financialAuditEvents.filter(
-                            (event) =>
-                              event.clientKey ===
-                              getSchedulerClientAccessKey(
-                                booking.clientId,
-                                booking.phone,
-                              ),
-                          )}
-                          selectedDate={selectedDate}
-                          statusColors={statusColors}
-                          statusLabels={statusLabels}
-                          onDelete={onDeleteBooking}
-                          onEdit={onEditBooking}
-                          onOpenDetail={onOpenBookingDetail}
-                          onOpenClientHistory={onOpenClientHistory}
-                          onOpenSellerComment={onOpenSellerComment}
-                          onOpenPostSaleComment={(selectedBooking) => {
-                            setOpenBookingCardId(null);
-                            onOpenPostSaleComment(selectedBooking);
-                          }}
-                          onOpenLayawayPayment={(selectedBooking, layaway) => {
-                            setOpenBookingCardId(null);
-                            onOpenLayawayPayment(selectedBooking, layaway);
-                          }}
-                          onOpenReschedule={onOpenReschedule}
-                          onStatusChange={onUpdateBookingStatus}
-                          onPurchaseDecision={onPurchaseDecision}
-                          onRequestFinancialAccess={onRequestFinancialAccess}
-                          onRevokeFinancialAccess={onRevokeFinancialAccess}
-                          onUpdatePaymentHistory={(
-                            paymentBookingId,
-                            amount,
-                            tentativeAmount,
-                          ) =>
-                            onUpdatePaymentHistory(
-                              booking,
-                              paymentBookingId,
-                              amount,
-                              tentativeAmount,
-                            )
-                          }
-                          onDeletePaymentHistory={(paymentBookingId) =>
-                            onDeletePaymentHistory(booking, paymentBookingId)
-                          }
-                          showSellerComments={showSellerComments}
-                          showPostSaleComments={showPostSaleComments}
-                          canWrite={canWrite}
-                          financialHistoryReadOnly={financialHistoryReadOnly}
-                          visibleStatuses={visibleStatuses}
-                        />
-                      </DialogContent>
-                    </Dialog>
-                  );
-                })}
+                {dayAppointments.map(({ booking, style }) =>
+                  renderAppointment(booking, style, selectedDate),
+                )}
 
                 {slotActionOverlay && canWrite ? (
                   <div
@@ -1557,205 +1629,13 @@ export function SchedulerAgendaGrid({
                     agendaLayout,
                     lane.laneCount > 1 ? 2 : agendaLayout.cardHorizontalInset,
                   );
-                  const statusColor = statusColors[booking.status];
-                  const statusTokens =
-                    getSchedulerStatusColorTokens(statusColor);
-                  const canMoveBooking =
-                    canWrite &&
-                    canMoveSchedulerBooking(
-                      booking.status,
-                      booking.purchased === true,
-                    );
-                  const hoveredAttendeeIndex =
-                    hoveredBookingAttendee?.bookingId === booking.id
-                      ? hoveredBookingAttendee.attendeeIndex
-                      : 0;
-                  const fallbackSpecialistName =
-                    visibleProfessionals.find(
-                      (item) => item.id === booking.professionalId,
-                    )?.name ?? "Sin asignar";
-                  const bookingColumn = visibleColumnById.get(
-                    booking.professionalId,
-                  );
-                  const bookingAttendeeLabel = displayedAttendeesForColumn(
+                  return renderAppointment(
                     booking,
-                    appointmentContexts[booking.id],
-                    bookingColumn,
-                  )
-                    .map((entry) => entry.name)
-                    .join(" y ");
-
-                  return (
-                    <Dialog
-                      key={booking.id}
-                      onOpenChange={(open) =>
-                        setOpenBookingCardId(open ? booking.id : null)
-                      }
-                      open={openBookingCardId === booking.id}
-                    >
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <DialogTrigger asChild>
-                            <button
-                              aria-label={`Ver cita de ${bookingAttendeeLabel} a las ${booking.start}.${canMoveBooking ? " Puedes arrastrarla a otro día u hora." : ""}`}
-                              className={cn(
-                                "scheduler-appointment scheduler-appointment-contained scheduler-appointment-booking text-left transition hover:-translate-y-0.5",
-                                canMoveBooking
-                                  ? "scheduler-appointment-draggable"
-                                  : "",
-                                draggingBooking?.id === booking.id
-                                  ? "scheduler-appointment-dragging"
-                                  : "",
-                              )}
-                              draggable={canMoveBooking}
-                              onClickCapture={suppressClickAfterDrag}
-                              onDragEnd={finishBookingDrag}
-                              onDragStart={(event) =>
-                                startBookingDrag(event, booking)
-                              }
-                              onPointerMove={(event) =>
-                                trackBookingAttendee(
-                                  event,
-                                  booking,
-                                  bookingColumn,
-                                )
-                              }
-                              style={{
-                                ...style,
-                                ...horizontalStyle,
-                                backgroundColor: statusTokens.surface,
-                                borderColor: statusTokens.border,
-                                borderLeftColor: statusTokens.accent,
-                                borderLeftWidth: "5px",
-                                color: statusTokens.foreground,
-                              }}
-                              type="button"
-                            >
-                              <SchedulerAppointmentSummary
-                                booking={booking}
-                                column={bookingColumn}
-                                context={appointmentContexts[booking.id]}
-                                statusColors={statusColors}
-                                statusLabels={statusLabels}
-                              />
-                            </button>
-                          </DialogTrigger>
-                        </TooltipTrigger>
-                        <SchedulerAppointmentTooltipCard
-                          align="center"
-                          attendeeIndex={hoveredAttendeeIndex}
-                          booking={booking}
-                          canViewCustomerPhone={canViewCustomerPhone}
-                          context={appointmentContexts[booking.id]}
-                          fallbackSpecialistName={fallbackSpecialistName}
-                          side="top"
-                        />
-                      </Tooltip>
-                      <DialogContent
-                        className="w-[min(560px,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto rounded-[20px] border p-3.5 shadow-[0_18px_42px_rgba(79,61,43,0.14)]"
-                        style={{
-                          backgroundColor: statusTokens.surface,
-                          borderColor: statusTokens.border,
-                        }}
-                      >
-                        <SchedulerBookingCard
-                          appointmentContext={appointmentContexts[booking.id]}
-                          booking={booking}
-                          branchName={bookingColumn?.branchName}
-                          canViewCustomerPhone={canViewCustomerPhone}
-                          commerceName={commerceName}
-                          enableCabinVisitFlow={enableCabinVisitFlow}
-                          clientAccount={
-                            (booking.clientId
-                              ? clientAccountsByClient[booking.clientId]
-                              : undefined) ??
-                            getClientPurchaseAccount(allBookings, booking)
-                          }
-                          paymentHistory={
-                            (booking.clientId
-                              ? paymentHistoryByClient[booking.clientId]
-                              : undefined) ??
-                            (financialAccessByClient[
-                              getSchedulerClientAccessKey(
-                                booking.clientId,
-                                booking.phone,
-                              )
-                            ]
-                              ? getClientPaymentHistory(allBookings, booking)
-                              : [])
-                          }
-                          {...(financialAccessByClient[
-                            getSchedulerClientAccessKey(
-                              booking.clientId,
-                              booking.phone,
-                            )
-                          ]
-                            ? {
-                                financialProfile:
-                                  financialAccessByClient[
-                                    getSchedulerClientAccessKey(
-                                      booking.clientId,
-                                      booking.phone,
-                                    )
-                                  ],
-                              }
-                            : {})}
-                          financialAuditEvents={financialAuditEvents.filter(
-                            (event) =>
-                              event.clientKey ===
-                              getSchedulerClientAccessKey(
-                                booking.clientId,
-                                booking.phone,
-                              ),
-                          )}
-                          selectedDate={
-                            new Date(
-                              `${booking.date ?? format(selectedDate, "yyyy-MM-dd")}T12:00:00`,
-                            )
-                          }
-                          statusColors={statusColors}
-                          statusLabels={statusLabels}
-                          onDelete={onDeleteBooking}
-                          onEdit={onEditBooking}
-                          onOpenDetail={onOpenBookingDetail}
-                          onOpenClientHistory={onOpenClientHistory}
-                          onOpenSellerComment={onOpenSellerComment}
-                          onOpenPostSaleComment={(selectedBooking) => {
-                            setOpenBookingCardId(null);
-                            onOpenPostSaleComment(selectedBooking);
-                          }}
-                          onOpenLayawayPayment={(selectedBooking, layaway) => {
-                            setOpenBookingCardId(null);
-                            onOpenLayawayPayment(selectedBooking, layaway);
-                          }}
-                          onOpenReschedule={onOpenReschedule}
-                          onStatusChange={onUpdateBookingStatus}
-                          onPurchaseDecision={onPurchaseDecision}
-                          onRequestFinancialAccess={onRequestFinancialAccess}
-                          onRevokeFinancialAccess={onRevokeFinancialAccess}
-                          onUpdatePaymentHistory={(
-                            paymentBookingId,
-                            amount,
-                            tentativeAmount,
-                          ) =>
-                            onUpdatePaymentHistory(
-                              booking,
-                              paymentBookingId,
-                              amount,
-                              tentativeAmount,
-                            )
-                          }
-                          onDeletePaymentHistory={(paymentBookingId) =>
-                            onDeletePaymentHistory(booking, paymentBookingId)
-                          }
-                          showSellerComments={showSellerComments}
-                          showPostSaleComments={showPostSaleComments}
-                          canWrite={canWrite}
-                          financialHistoryReadOnly={financialHistoryReadOnly}
-                          visibleStatuses={visibleStatuses}
-                        />
-                      </DialogContent>
-                    </Dialog>
+                    { ...style, ...horizontalStyle },
+                    new Date(
+                      `${booking.date ?? format(selectedDate, "yyyy-MM-dd")}T12:00:00`,
+                    ),
+                    true,
                   );
                 })}
 

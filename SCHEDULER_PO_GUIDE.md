@@ -799,8 +799,18 @@ apartado, representante, vendedor de cartera y próxima cita sin sumar los datos
 de las demás visitantes. `DesignAppointmentContext.attendees` propone el
 snapshot individual por `visitorId` y `customerId`; producción deberá agregar el
 mismo arreglo al endpoint de contextos de citas conservando `attendeeNames` como
-fallback compatible. La selección del segmento ocurre sólo en presentación y
-no modifica la cita, la atención ni el historial financiero.
+fallback compatible. Abrir un segmento con clic o teclado, o usar **Ver
+detalle** en su ventana emergente, muestra el registro de esa persona. Ficha,
+historial y tickets usan su propia identidad. La reserva de cabina conserva su
+identificador compartido. Al registrar asistencia, los campos de venta aparecen
+sólo en el visitante con estado **Atendida**. No se necesitan endpoints nuevos.
+
+Para probarlo en la demo, abre la cabina doble de Mítikah a las 12:00,
+selecciona cada lado y verifica el nombre y folio POS de la persona
+correspondiente. Repite desde **Ver detalle** en el emergente. En **Atención y
+compra**, cambia sólo un visitante a **Llegó** para comprobar que sus campos de
+venta desaparecen. Vuelve a **Atendida** para verlos de nuevo y cancela el
+formulario para conservar los datos de ejemplo.
 
 El 6 de octubre de 2026 el historial protegido de visitas agregó el resultado
 de compra correspondiente a la clienta en cada cita: compra liquidada con total,

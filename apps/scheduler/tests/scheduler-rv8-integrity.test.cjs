@@ -112,10 +112,7 @@ test("mounts the customer self-service portal outside the staff dashboard", () =
     "utf8",
   );
   const portal = readFileSync(
-    path.join(
-      sourceRoot,
-      "components/portal/SchedulerCustomerPortal.tsx",
-    ),
+    path.join(sourceRoot, "components/portal/SchedulerCustomerPortal.tsx"),
     "utf8",
   );
   const documentExport = readFileSync(
@@ -176,10 +173,18 @@ test("returns to the agenda after a successful post-sale save", () => {
     agendaWorkspace,
     /journalKind === "POST_SALE_COMMENT"[\s\S]{0,160}setJournalRequest\(null\)[\s\S]{0,80}setJournalEntries\(\[\]\)/,
   );
-  const postSaleOpeners = agendaGrid.match(
-    /onOpenPostSaleComment=\{\(selectedBooking\) => \{[\s\S]{0,120}setOpenBookingCardId\(null\);[\s\S]{0,120}onOpenPostSaleComment\(selectedBooking\);/g,
+  assert.match(
+    agendaGrid,
+    /onOpenPostSaleComment=\{\(\) => \{\s*setOpenBookingCard\(null\);\s*onOpenPostSaleComment\(reservation\);/,
   );
-  assert.equal(postSaleOpeners?.length, 2);
+  assert.match(
+    agendaGrid,
+    /dayAppointments\.map\([\s\S]{0,140}renderAppointment\(/,
+  );
+  assert.match(
+    agendaGrid,
+    /return renderAppointment\(\s*booking,\s*\{ \.\.\.style, \.\.\.horizontalStyle \}/,
+  );
 });
 
 test("keeps fixtures and retired workspaces out of the production graph", () => {

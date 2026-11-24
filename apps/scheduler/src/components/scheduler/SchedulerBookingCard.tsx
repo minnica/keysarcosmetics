@@ -47,6 +47,7 @@ import {
   type SchedulerFinancialProfile,
 } from "@/lib/scheduler-access";
 import type {
+  DesignAppointmentAttendeeContext,
   DesignAppointmentContext,
   DesignCustomerLayawaySummary,
 } from "../../../design/contracts";
@@ -99,6 +100,8 @@ interface SchedulerBookingCardProps {
   financialHistoryReadOnly?: boolean;
   destructiveActionLabel?: string;
   appointmentContext?: DesignAppointmentContext | undefined;
+  individualAttendee?: DesignAppointmentAttendeeContext | null | undefined;
+  reservationStatus?: BookingStatus;
   visibleStatuses?: ReadonlySet<BookingStatus> | undefined;
 }
 
@@ -157,26 +160,33 @@ export function SchedulerBookingCard({
   financialHistoryReadOnly = false,
   destructiveActionLabel = "Cancelar reserva",
   appointmentContext,
+  individualAttendee,
+  reservationStatus = booking.status,
   visibleStatuses,
 }: SchedulerBookingCardProps) {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editingAmount, setEditingAmount] = useState("");
   const [editingTentativeAmount, setEditingTentativeAmount] = useState("");
   const service = getServiceByName(booking.serviceName);
+  const individual = individualAttendee !== undefined;
+  const hasCustomerProfile = !individual || Boolean(booking.clientId);
   const hasPayment =
     typeof booking.purchaseAmount === "number" && booking.purchaseAmount > 0;
   const availableStatuses = statusCorrectionOrder.filter(
-    (status) => !visibleStatuses || visibleStatuses.has(status),
+    (status) =>
+      status === reservationStatus ||
+      !visibleStatuses ||
+      visibleStatuses.has(status),
   );
   const isCompleted =
     Boolean(booking.serviceRecords?.length) ||
-    statusTransitions[booking.status].length === 0;
+    statusTransitions[reservationStatus].length === 0;
   const canEditBooking = ["pending", "reserved", "confirmed"].includes(
-    booking.status,
+    reservationStatus,
   );
   const canCaptureCabinVisit =
     enableCabinVisitFlow &&
-    ["arrived", "waiting", "attended"].includes(booking.status);
+    ["arrived", "waiting", "attended"].includes(reservationStatus);
   const canCaptureLayawayPayment =
     canWrite &&
     ["arrived", "waiting", "attended"].includes(booking.status) &&
@@ -186,23 +196,29 @@ export function SchedulerBookingCard({
     canManageSchedulerPaymentHistory(financialProfile);
   const canShowReschedule =
     canWrite &&
-    booking.status !== "attended" &&
-    booking.status !== "canceled" &&
-    (!isCompleted || booking.status === "no-show");
+    reservationStatus !== "attended" &&
+    reservationStatus !== "canceled" &&
+    (!isCompleted || reservationStatus === "no-show");
 
   return (
     <div className="space-y-3 text-[12px] text-slate-700">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <button
-            aria-label={`Ver historial de citas y visitas de ${booking.customerName}`}
-            className="truncate text-left text-[1rem] font-semibold text-[var(--scheduler-ink-strong)] underline decoration-[rgba(54,65,82,0.32)] underline-offset-2"
-            onClick={() => onOpenClientHistory(booking)}
-            title="Ver historial de citas y visitas"
-            type="button"
-          >
-            {booking.customerName}
-          </button>
+          {hasCustomerProfile ? (
+            <button
+              aria-label={`Ver historial de citas y visitas de ${booking.customerName}`}
+              className="truncate text-left text-[1rem] font-semibold text-[var(--scheduler-ink-strong)] underline decoration-[rgba(54,65,82,0.32)] underline-offset-2"
+              onClick={() => onOpenClientHistory(booking)}
+              title="Ver historial de citas y visitas"
+              type="button"
+            >
+              {booking.customerName}
+            </button>
+          ) : (
+            <p className="truncate text-[1rem] font-semibold">
+              {booking.customerName}
+            </p>
+          )}
           <p className="mt-2 truncate text-[0.98rem] font-semibold uppercase tracking-[0.01em] text-slate-700">
             {booking.serviceName}
           </p>
@@ -217,6 +233,23 @@ export function SchedulerBookingCard({
           </p>
         </div>
       </div>
+
+      {individual ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.8rem]">
+          <span className="font-semibold">{statusLabels[booking.status]}</span>
+          <span>
+            {individualAttendee?.specialistName ?? "Sin especialista asignada"}
+          </span>
+          {booking.status === "attended" &&
+          booking.paymentLabel &&
+          hasPayment ? (
+            <span>
+              {booking.paymentLabel} ·{" "}
+              {formatMoney(booking.purchaseAmount ?? 0)}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="space-y-2.5 border-t border-[rgba(236,209,200,0.88)] pt-3">
         <div className="flex items-start gap-2.5">
@@ -321,10 +354,13 @@ export function SchedulerBookingCard({
           <p
             className={cn(
               "text-[0.9rem]",
-              booking.notes ? "text-slate-700" : "italic text-slate-400",
+              (individual ? booking.customerEmail : booking.notes)
+                ? "text-slate-700"
+                : "italic text-slate-400",
             )}
           >
-            {booking.notes || "Sin información"}
+            {(individual ? booking.customerEmail : booking.notes) ||
+              "Sin información"}
           </p>
         </div>
       </div>
@@ -384,7 +420,7 @@ export function SchedulerBookingCard({
         </section>
       ) : null}
 
-      {financialProfile ? (
+      {!hasCustomerProfile ? null : financialProfile ? (
         <Dialog>
           <DialogTrigger asChild>
             <button
@@ -712,10 +748,12 @@ export function SchedulerBookingCard({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-[0.78rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
-              Estados configurados
+              {individual ? "Estado de la reserva" : "Estados configurados"}
             </p>
             <p className="mt-0.5 text-[0.72rem] text-slate-400">
-              Se muestran nombre y color autorizados para la agenda.
+              {individual
+                ? "Llegada, asistencia e inasistencia se capturan por visitante."
+                : "Se muestran nombre y color autorizados para la agenda."}
             </p>
           </div>
           <div className="inline-flex items-center gap-1.5 text-[0.74rem] font-medium text-slate-500">
@@ -735,9 +773,9 @@ export function SchedulerBookingCard({
         <div className="flex flex-wrap gap-2">
           {availableStatuses.map((status) => {
             const tokens = getSchedulerStatusColorTokens(statusColors[status]);
-            const isCurrent = status === booking.status;
+            const isCurrent = status === reservationStatus;
             const isDirectTransition =
-              statusTransitions[booking.status].includes(status);
+              statusTransitions[reservationStatus].includes(status);
             const content = (
               <>
                 <span
@@ -800,7 +838,7 @@ export function SchedulerBookingCard({
       </section>
 
       {!financialHistoryReadOnly &&
-      booking.status === "arrived" &&
+      booking.status === "attended" &&
       !isCompleted ? (
         <div className="rounded-xl bg-[rgba(245,237,228,0.72)] p-3">
           <div className="flex items-center gap-2 text-[0.92rem] font-semibold text-[var(--scheduler-ink-strong)]">
@@ -850,7 +888,7 @@ export function SchedulerBookingCard({
       ) : null}
 
       <div className="flex flex-nowrap items-center justify-end gap-1.5 border-t border-[rgba(236,209,200,0.88)] pt-3">
-        {canWrite && booking.status === "attended" && showSellerComments ? (
+        {canWrite && reservationStatus === "attended" && showSellerComments ? (
           <button
             className="flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-2.5 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
             onClick={() => onOpenSellerComment(booking)}
@@ -860,7 +898,9 @@ export function SchedulerBookingCard({
             <span className="text-[0.8rem] font-medium">Comentario</span>
           </button>
         ) : null}
-        {canWrite && booking.status === "attended" && showPostSaleComments ? (
+        {canWrite &&
+        reservationStatus === "attended" &&
+        showPostSaleComments ? (
           <button
             className="flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-2.5 py-2 text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)]"
             onClick={() => onOpenPostSaleComment(booking)}
@@ -877,7 +917,11 @@ export function SchedulerBookingCard({
             type="button"
           >
             <ShoppingBag className="h-3.5 w-3.5" />
-            <span className="text-[0.8rem] font-medium">Atención y compra</span>
+            <span className="text-[0.8rem] font-medium">
+              {booking.status === "attended"
+                ? "Atención y compra"
+                : "Registrar asistencia"}
+            </span>
           </button>
         ) : null}
         {canShowReschedule ? (
@@ -893,7 +937,11 @@ export function SchedulerBookingCard({
         {!isCompleted && canWrite ? (
           <div className="mr-auto flex items-center gap-2">
             <button
-              aria-label={`${destructiveActionLabel} de ${booking.customerName}`}
+              aria-label={
+                individual
+                  ? "Cancelar reserva compartida"
+                  : `${destructiveActionLabel} de ${booking.customerName}`
+              }
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(236,209,200,0.95)] bg-white text-rose-500 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
               onClick={() => onDelete(booking.id)}
               type="button"
@@ -907,19 +955,23 @@ export function SchedulerBookingCard({
                 type="button"
               >
                 <SquarePen className="h-3.5 w-3.5" />
-                <span className="text-[0.9rem] font-medium">Editar</span>
+                <span className="text-[0.9rem] font-medium">
+                  {individual ? "Editar reserva" : "Editar"}
+                </span>
               </button>
             ) : null}
           </div>
         ) : null}
-        <button
-          className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-2.5 py-2 text-[0.8rem] text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
-          onClick={() => onOpenDetail(booking, "record")}
-          type="button"
-        >
-          <CalendarClock className="h-3.5 w-3.5" />
-          Ficha
-        </button>
+        {hasCustomerProfile ? (
+          <button
+            className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-[rgba(236,209,200,0.95)] bg-white px-2.5 py-2 text-[0.8rem] text-[var(--scheduler-accent-strong)] transition hover:bg-[rgba(245,237,228,0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(195,165,131,0.55)]"
+            onClick={() => onOpenDetail(booking, "record")}
+            type="button"
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            Ficha
+          </button>
+        ) : null}
       </div>
     </div>
   );
