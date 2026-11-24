@@ -177,6 +177,9 @@ export interface DesignCabinVisitPerson {
   name: string;
   specialistProfileId: string;
   attendanceStatus?: DesignVisitAttendanceStatus;
+  noShowReason?: string;
+  noShowAt?: string;
+  courtesyFacial?: boolean;
   purchased: boolean | null;
   purchaseAmount: number | null;
   purchaseKind: DesignPurchaseKind;
@@ -197,6 +200,7 @@ export type DesignCabinVisitPersonInput = Omit<
   | "settlementStatus"
   | "settledAt"
   | "posTicket"
+  | "noShowAt"
 >;
 
 export interface DesignAppointmentCabinVisit {
@@ -355,6 +359,29 @@ export interface DesignAppointmentJournalReport {
     reschedules: number;
   };
   rows: DesignAppointmentJournalEntry[];
+  followUps: DesignAppointmentFollowUp[];
+  openAlerts: DesignAppointmentFollowUp[];
+}
+
+export interface DesignAppointmentFollowUp {
+  id: string;
+  appointmentId: string;
+  customerId: string | null;
+  customerName: string;
+  branchId: string;
+  branchName: string;
+  appointmentStartsAt: string;
+  occurredAt: string;
+  status: "CANCELED" | "NO_SHOW";
+  reason: string | null;
+  automatic: boolean;
+  serviceProfileId: string | null;
+  hasNextAppointment: boolean;
+  nextAppointmentAt: string | null;
+  nextFollowUpAt: string | null;
+  lastContactAt: string | null;
+  needsFollowUp: boolean;
+  weekly: boolean;
 }
 
 export interface DesignCustomerSpecialistPreference {
@@ -1003,6 +1030,7 @@ export interface DesignProposalClient {
   appointmentJournalReport(
     input: DesignAppointmentJournalFilters,
   ): Promise<DesignAppointmentJournalReport>;
+  recordAppointmentFollowUp(id: string): Promise<{ contactedAt: string }>;
   customerSpecialistPreference(
     customerId: string,
   ): Promise<DesignCustomerSpecialistPreference | null>;

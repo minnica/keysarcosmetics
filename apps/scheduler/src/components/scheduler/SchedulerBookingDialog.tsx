@@ -341,7 +341,8 @@ export function SchedulerBookingDialog({
           (!appointmentDetailsLocked ||
             visitor.attendanceStatus !== "PENDING") &&
           (visitor.attendanceStatus !== "NO_SHOW" ||
-            visitor.purchaseKind === "NONE") &&
+            (visitor.purchaseKind === "NONE" &&
+              Boolean(visitor.noShowReason?.trim()))) &&
           (visitor.attendanceStatus === "ATTENDED" ||
             visitor.purchaseKind === null ||
             visitor.purchaseKind === "NONE") &&
@@ -1216,6 +1217,20 @@ export function SchedulerBookingDialog({
                               : undefined
                           }
                         >
+                          {!appointmentDetailsLocked ? (
+                            <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+                              <input
+                                checked={visitor.courtesyFacial ?? false}
+                                onChange={(event) =>
+                                  patchVisitor(index, {
+                                    courtesyFacial: event.target.checked,
+                                  })
+                                }
+                                type="checkbox"
+                              />
+                              Facial de cortesía o regalo
+                            </label>
+                          ) : null}
                           <div
                             className={cn(
                               "space-y-2",
@@ -1372,6 +1387,24 @@ export function SchedulerBookingDialog({
                                   </p>
                                 ) : null}
                               </div>
+                              {visitor.attendanceStatus === "NO_SHOW" ? (
+                                <label className="space-y-2 md:col-span-2 2xl:col-span-8">
+                                  <span className="scheduler-modal-label">
+                                    Motivo de inasistencia *
+                                  </span>
+                                  <Textarea
+                                    className="scheduler-modal-input"
+                                    maxLength={500}
+                                    onChange={(event) =>
+                                      patchVisitor(index, {
+                                        noShowReason: event.target.value,
+                                      })
+                                    }
+                                    placeholder="Indica el motivo o si no fue posible contactarle"
+                                    value={visitor.noShowReason ?? ""}
+                                  />
+                                </label>
+                              ) : null}
                               {visitor.attendanceStatus === "ATTENDED" ? (
                                 <>
                                   <div className="space-y-2 2xl:col-span-2">

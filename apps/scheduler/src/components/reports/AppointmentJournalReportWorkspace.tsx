@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Button,
   Input,
@@ -26,6 +27,7 @@ import type {
   DesignAppointmentJournalReport,
 } from "../../../design/contracts";
 import { ReportsHeader } from "./ReportsHeader";
+import { useSchedulerSession } from "@/lib/session";
 import { SchedulerPagination } from "@/components/shared/SchedulerPagination";
 import {
   paginateSchedulerReportRows,
@@ -34,6 +36,7 @@ import {
 import {
   exportAppointmentJournalPdf,
   exportAppointmentJournalXlsx,
+  displayFollowUpDate,
   printAppointmentJournalReport,
 } from "./appointment-journal-report-export";
 
@@ -70,6 +73,7 @@ export function AppointmentJournalReportWorkspace({
   canExport,
 }: AppointmentJournalReportWorkspaceProps) {
   const [dateFrom, setDateFrom] = useState(() => dateInput(-30));
+  const { canAccess } = useSchedulerSession();
   const [dateTo, setDateTo] = useState(() => dateInput());
   const [branchId, setBranchId] = useState("ALL");
   const [kind, setKind] = useState<KindFilter>("ALL");
@@ -90,6 +94,19 @@ export function AppointmentJournalReportWorkspace({
   const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<SchedulerReportPageSize>(20);
+  const [followUpPage, setFollowUpPage] = useState(1);
+  const [contactsPage, setContactsPage] = useState(1);
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const followUps = paginateSchedulerReportRows(
+    report?.followUps ?? [],
+    followUpPage,
+    pageSize,
+  );
+  const alerts = paginateSchedulerReportRows(
+    report?.openAlerts ?? [],
+    contactsPage,
+    pageSize,
+  );
   const pagination = useMemo(
     () => paginateSchedulerReportRows(report?.rows ?? [], page, pageSize),
     [page, pageSize, report?.rows],
@@ -127,6 +144,8 @@ export function AppointmentJournalReportWorkspace({
       return;
     }
     setPage(1);
+    setFollowUpPage(1);
+    setContactsPage(1);
     setApplied({
       dateFrom,
       dateTo,
@@ -135,6 +154,39 @@ export function AppointmentJournalReportWorkspace({
       kinds: kindsForFilter(kind),
       ...(query.trim() ? { query: query.trim() } : {}),
     });
+  }
+
+  function showDailyCut() {
+    setDateFrom(dateTo);
+    setKind("ALL");
+    setPage(1);
+    setFollowUpPage(1);
+    setContactsPage(1);
+    setApplied({
+      dateFrom: dateTo,
+      dateTo,
+      branchIds:
+        branchId === "ALL" ? branches.map((branch) => branch.id) : [branchId],
+      kinds: [],
+      ...(query.trim() ? { query: query.trim() } : {}),
+    });
+  }
+
+  async function recordContact(id: string) {
+    setRecordingId(id);
+    try {
+      await schedulerDesignProposals.recordAppointmentFollowUp(id);
+      toast.success("Seguimiento registrado.");
+      setApplied((current) => ({ ...current }));
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error
+          ? cause.message
+          : "No fue posible registrar el seguimiento.",
+      );
+    } finally {
+      setRecordingId(null);
+    }
   }
 
   async function download(format: "xlsx" | "pdf") {
@@ -226,6 +278,9 @@ export function AppointmentJournalReportWorkspace({
               </div>
             </div>
             <Button onClick={applyFilters}>Aplicar filtros</Button>
+            <Button onClick={showDailyCut} variant="outline">
+              Corte del día
+            </Button>
           </div>
         </section>
 
@@ -257,6 +312,160 @@ export function AppointmentJournalReportWorkspace({
               </p>
             </article>
           ))}
+        </section>
+
+        <section id="corte-reagenda" className="settings-card overflow-hidden">
+          <div className="p-5">
+            <h2 className="font-semibold text-slate-800">
+              Cancelaciones e inasistencias
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Incluye registros con y sin próxima cita dentro del periodo del
+              corte.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  {[
+                    "Cliente",
+                    "Sucursal",
+                    "Registro",
+                    "Motivo",
+                    "Próxima cita",
+                  ].map((label) => (
+                    <th key={label} scope="col" className="px-4 py-2">
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {followUps.rows.map((row) => (
+                  <tr className="border-t" key={row.id}>
+                    <td className="px-4 py-3 font-medium">
+                      {row.customerName}
+                    </td>
+                    <td className="px-4 py-3">{row.branchName}</td>
+                    <td className="px-4 py-3">
+                      {row.status === "CANCELED"
+                        ? row.automatic
+                          ? "Cancelada automáticamente"
+                          : "Cancelada"
+                        : "No asistió"}
+                      <span className="block text-xs text-slate-500">
+                        {displayFollowUpDate(row.occurredAt)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.reason ?? "Sin motivo registrado"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.nextAppointmentAt
+                        ? `Con cita · ${displayFollowUpDate(row.nextAppointmentAt)}`
+                        : row.hasNextAppointment
+                          ? "Con próxima cita"
+                          : "Sin próxima cita"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {followUps.total ? (
+            <SchedulerPagination
+              {...followUps}
+              label="registros"
+              pageSize={pageSize}
+              onPageChange={setFollowUpPage}
+              onPageSizeChange={setPageSize}
+            />
+          ) : (
+            <p className="p-5 text-sm text-slate-500">
+              {loading ? "Cargando corte…" : "Sin registros en el periodo."}
+            </p>
+          )}
+        </section>
+
+        <section className="settings-card overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <h2 className="font-semibold text-slate-800">
+                Alertas de reagenda ({alerts.total})
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Casos pendientes de cualquier fecha. Una próxima reserva en
+                Agenda cierra el seguimiento.
+              </p>
+            </div>
+            <Link className="text-sm underline" href="/">
+              Buscar horario en Agenda
+            </Link>
+          </div>
+          <ul className="divide-y">
+            {alerts.rows.map((row) => {
+              const due =
+                !row.nextFollowUpAt ||
+                Date.parse(row.nextFollowUpAt) <= Date.now();
+              return (
+                <li
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+                  key={row.id}
+                >
+                  <div>
+                    <p className="font-medium">
+                      {row.customerName} · {row.branchName}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      {row.reason ??
+                        (row.status === "CANCELED"
+                          ? "Cita cancelada"
+                          : "Inasistencia")}
+                    </p>
+                    {row.nextFollowUpAt ? (
+                      <p className="text-sm text-amber-800">
+                        {due
+                          ? "Seguimiento semanal pendiente"
+                          : `Próximo seguimiento · ${displayFollowUpDate(row.nextFollowUpAt)}`}
+                      </p>
+                    ) : null}
+                    {row.lastContactAt ? (
+                      <p className="text-xs text-slate-500">
+                        Último contacto ·{" "}
+                        {displayFollowUpDate(row.lastContactAt)}
+                      </p>
+                    ) : null}
+                  </div>
+                  {canAccess("agenda", "WRITE") ? (
+                    <Button
+                      disabled={!due || Boolean(recordingId)}
+                      onClick={() => void recordContact(row.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {recordingId === row.id
+                        ? "Guardando…"
+                        : "Registrar contacto"}
+                    </Button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {alerts.total ? (
+            <SchedulerPagination
+              {...alerts}
+              label="alertas"
+              pageSize={pageSize}
+              onPageChange={setContactsPage}
+              onPageSizeChange={setPageSize}
+            />
+          ) : (
+            <p className="p-5 text-sm text-slate-500">
+              Sin alertas pendientes.
+            </p>
+          )}
         </section>
 
         <section className="settings-card overflow-hidden">

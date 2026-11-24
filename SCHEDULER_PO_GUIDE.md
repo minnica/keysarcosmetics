@@ -519,6 +519,29 @@ datos de la cita, sucursal, servicios, status, comentario, categoría, fecha
 tentativa, actor, rol y fecha de captura. Los códigos personales nunca se
 almacenan ni se exportan.
 
+**Agenda → Alertas de reagenda** abre la reserva con el cliente y el servicio
+de la cita de origen y busca disponibilidad durante los próximos siete días.
+La alerta por cancelación se activa si el
+cliente queda sin reserva futura activa. En **Reportes → Seguimiento y
+comentarios → Corte del día** figuran todas las cancelaciones de la fecha del
+registro en la zona horaria de la sucursal, incluso cuando ya hay una próxima
+cita. El corte incluye el detalle por cliente y está disponible en las
+exportaciones del reporte.
+
+Al marcar **No asistió** se captura el motivo por persona. Las membresías y
+citas de varios servicios generan alerta de reagenda cuando falta una siguiente
+reserva. Para la primera visita de un cliente de redes sociales con facial de
+cortesía o regalo, **Registrar seguimiento** conserva la alerta y programa
+otro contacto en siete días. La cortesía se puede indicar por persona al
+reservar. Una nueva reserva activa resuelve la alerta.
+
+**En espera** se marca tras enviar una confirmación y quedar sin respuesta.
+La demo revisa las citas durante las consultas de Agenda y reportes. Cuando
+vence el horario sin asistencia, guarda una cancelación automática con la hora
+de fin de la cita y aplica la misma regla de reagenda. Los registros viven en
+el estado de la demo. Un despliegue persistente requiere una tarea programada
+en el servidor para procesar los vencimientos sin una sesión abierta.
+
 Contratos propuestos, exclusivos de `apps/scheduler/design`:
 
 | Método         | Ruta                                                                                     | Uso propuesto                                                                 |
@@ -528,6 +551,7 @@ Contratos propuestos, exclusivos de `apps/scheduler/design`:
 | `POST`         | `/api/scheduler/design-proposals/operation-authorizations`                               | Resolver el agente por código y emitir un token de un solo movimiento.        |
 | `POST`         | `/api/scheduler/design-proposals/operation-authorizations/commit`                        | Consumir el token y agregar la bitácora redactada.                            |
 | `GET`          | `/api/scheduler/design-proposals/movements`                                              | Consultar la bitácora por agente.                                             |
+| `POST`         | `/api/scheduler/design-proposals/appointment-follow-up`                                  | Registrar un contacto de seguimiento pendiente.                               |
 | `POST`         | `/api/scheduler/design-proposals/customers/advanced-search`                              | Combinar criterios de Agenda, cartera y campos personalizados con paginación. |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/answers`                               | Leer o guardar respuestas relacionadas con una cita.                          |
 | `GET/PUT`      | `/api/scheduler/design-proposals/appointments/:id/cabin-visit`                           | Guardar cabina bloqueada, representante, visitantes, especialistas y compra.  |

@@ -2462,6 +2462,7 @@ test("una cabina doble conserva asistencia y reporte independientes por cliente"
           name: secondCustomer.displayName,
           specialistProfileId: specialists[1].id,
           attendanceStatus: "NO_SHOW",
+          noShowReason: "Avisó que no pudo trasladarse.",
           purchased: false,
           purchaseAmount: null,
           purchaseKind: "NONE",
@@ -2515,6 +2516,188 @@ test("una cabina doble conserva asistencia y reporte independientes por cliente"
     "ATTENDED",
     "NO_SHOW",
   ]);
+  const followUp = request(
+    "POST",
+    "/api/scheduler/design-proposals/reports/appointment-journal",
+    {
+      dateFrom: "2020-01-01",
+      dateTo: "2099-12-31",
+      query: secondCustomer.displayName,
+    },
+  ).body.data.followUps.find((row) => row.appointmentId === appointment.id);
+  assert.equal(followUp.customerId, secondCustomer.id);
+  assert.equal(followUp.reason, "Avisó que no pudo trasladarse.");
+});
+
+test("el corte incluye todas las cancelaciones y sólo alerta las que requieren reagenda", () => {
+  const { state, request } = session();
+  const [original, other] = state.appointments;
+  const now = Date.now();
+  const at = (minutes) => new Date(now + minutes * 60_000).toISOString();
+  function appointment(base, id, status, start, end) {
+    return {
+      ...base,
+      id,
+      status,
+      startsAt: at(start),
+      endsAt: at(end),
+      updatedAt: at(0),
+      stateHistory: [],
+    };
+  }
+  const withBooking = appointment(
+    original,
+    "canceled-rescheduled",
+    "CANCELED",
+    -120,
+    -60,
+  );
+  const noBooking = appointment(other, "canceled-open", "CANCELED", -120, -60);
+  const expired = appointment(other, "unanswered-expired", "WAITING", -90, -1);
+  const upcoming = appointment(
+    original,
+    "unanswered-upcoming",
+    "WAITING",
+    1_440,
+    1_500,
+  );
+  const arrived = appointment(
+    original,
+    "waiting-legacy-arrived",
+    "WAITING",
+    -90,
+    -1,
+  );
+  arrived.stateHistory.push({ fromStatus: "ARRIVED", toStatus: "WAITING" });
+  state.appointments = [withBooking, noBooking, expired, upcoming, arrived];
+  const report = () =>
+    request(
+      "POST",
+      "/api/scheduler/design-proposals/reports/appointment-journal",
+      {
+        dateFrom: "2020-01-01",
+        dateTo: "2099-12-31",
+        kinds: ["CANCELLATION_REASON"],
+      },
+    ).body.data;
+  const first = report();
+  assert.equal(first.summary.cancellations, 3);
+  assert.equal(
+    first.followUps.find((row) => row.appointmentId === withBooking.id)
+      .nextAppointmentAt,
+    upcoming.startsAt,
+  );
+  assert.equal(
+    first.followUps.find((row) => row.appointmentId === expired.id).automatic,
+    true,
+  );
+  assert.deepEqual(
+    first.openAlerts.map((row) => row.appointmentId).sort(),
+    [noBooking.id, expired.id].sort(),
+  );
+  assert.equal(expired.stateHistory[0].createdAt, expired.endsAt);
+  assert.deepEqual([upcoming.status, arrived.status], ["WAITING", "WAITING"]);
+  assert.equal(report().summary.cancellations, 3);
+  assert.equal(
+    state.movements.filter((entry) => entry.targetId === expired.id).length,
+    1,
+  );
+});
+
+test("las ausencias de cortesía en redes admiten seguimiento semanal y se resuelven con una reserva", () => {
+  const { state, request } = session();
+  const [original] = state.appointments;
+  const social = state.customers.find(
+    (customer) => customer.source.id === "source-social",
+  );
+  const [member, , severalServices, ordinary] = state.customers;
+  state.customerMemberships[0].expiresAt = null;
+  const now = Date.now();
+  const at = (days) => new Date(now + days * 86_400_000).toISOString();
+  const missed = {
+    ...structuredClone(original),
+    id: "missed-courtesy",
+    customerId: social.id,
+    customerName: social.displayName,
+    status: "NO_SHOW",
+    startsAt: at(-2),
+    endsAt: at(-1),
+    updatedAt: at(-1),
+    stateHistory: [],
+  };
+  missed.services[0].serviceName = "Primer facial de cortesía";
+  const memberMissed = {
+    ...missed,
+    id: "missed-membership",
+    customerId: member.id,
+    customerName: member.displayName,
+    services: [original.services[0]],
+  };
+  const severalServicesMissed = {
+    ...missed,
+    id: "missed-several-services",
+    customerId: severalServices.id,
+    customerName: severalServices.displayName,
+    services: [original.services[0], { ...original.services[0], sequence: 2 }],
+  };
+  const ordinaryMissed = {
+    ...missed,
+    id: "missed-ordinary",
+    customerId: ordinary.id,
+    customerName: ordinary.displayName,
+    services: [original.services[0]],
+  };
+  state.appointments = [
+    missed,
+    memberMissed,
+    severalServicesMissed,
+    ordinaryMissed,
+  ];
+  const alerts = () =>
+    request(
+      "POST",
+      "/api/scheduler/design-proposals/reports/appointment-journal",
+      { dateFrom: "2020-01-01", dateTo: "2099-12-31" },
+    ).body.data.openAlerts;
+  const weekly = alerts().find((row) => row.appointmentId === missed.id);
+  assert.equal(weekly.weekly, true);
+  assert.equal(weekly.nextFollowUpAt, missed.updatedAt);
+  assert.equal(
+    alerts().find((row) => row.appointmentId === memberMissed.id).weekly,
+    false,
+  );
+  assert.equal(
+    alerts().some((row) => row.appointmentId === severalServicesMissed.id),
+    true,
+  );
+  assert.equal(
+    alerts().some((row) => row.appointmentId === ordinaryMissed.id),
+    false,
+  );
+  const contact = () =>
+    request("POST", "/api/scheduler/design-proposals/appointment-follow-up", {
+      id: weekly.id,
+    });
+  const saved = contact();
+  assert.equal(saved.status, 201);
+  const reminded = alerts().find((row) => row.id === weekly.id);
+  assert.equal(
+    Date.parse(reminded.nextFollowUpAt) -
+      Date.parse(saved.body.data.contactedAt),
+    7 * 86_400_000,
+  );
+  assert.equal(contact().status, 409);
+  state.appointments.push({
+    ...missed,
+    id: "courtesy-rescheduled",
+    status: "RESERVED",
+    startsAt: at(1),
+    endsAt: at(2),
+  });
+  assert.equal(
+    alerts().some((row) => row.id === weekly.id),
+    false,
+  );
 });
 
 test("permite corregir un status con código sin borrar el historial anterior", () => {

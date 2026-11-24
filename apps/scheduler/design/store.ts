@@ -8,6 +8,7 @@ import {
   type SchedulerBootstrapDto,
   type SchedulerCustomerDetailDto,
   type SchedulerCustomerPortalDocumentDto,
+  type SchedulerCustomerPortalMembershipDto,
   type SchedulerCustomerFieldDefinitionDto,
   type SchedulerAestheticRecordTemplateDto,
   type SchedulerAestheticVisitRecordDto,
@@ -923,6 +924,19 @@ export function createDesignState(
       string,
       { customerId: string; expiresAt: string }
     >(),
+    customerMemberships: [
+      {
+        customerId: customers[0]!.id,
+        id: "portal-membership-1",
+        name: "Membresía facial · 6 sesiones",
+        usedSessions: 2,
+        totalSessions: 6,
+        expiresAt: "2027-03-31T23:59:59.000Z",
+        status: "ACTIVE",
+      },
+    ] satisfies Array<
+      SchedulerCustomerPortalMembershipDto & { customerId: string }
+    >,
     customerPortalDocuments: [
       {
         id: "portal-document-consent-1",
@@ -996,6 +1010,7 @@ export function createDesignState(
     appointmentCabinVisits: {} as Record<string, DesignAppointmentCabinVisit>,
     layawayPayments: [] as DesignLayawayPayment[],
     appointmentJournal: [] as DesignAppointmentJournalEntry[],
+    appointmentFollowUpContacts: {} as Record<string, string>,
     customerSpecialistPreferences: {} as Record<
       string,
       DesignCustomerSpecialistPreference

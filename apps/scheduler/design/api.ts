@@ -14,6 +14,10 @@ import type {
   SchedulerAvailabilitySlotDto,
 } from "@cosmetics/types";
 import {
+  buildAppointmentFollowUps,
+  expireUnansweredAppointments,
+} from "./appointment-follow-up";
+import {
   SCHEDULER_APPOINTMENT_STATUSES,
   SCHEDULER_CAPABILITIES,
   SCHEDULER_SCREEN_KEYS,
@@ -542,7 +546,10 @@ function authorizeRequest(state: DesignState, request: DesignRequest) {
   const path = request.url.pathname;
   const isReadOnlyQuery =
     request.method === "POST" &&
-    path === "/api/scheduler/design-proposals/customers/advanced-search";
+    [
+      "/api/scheduler/design-proposals/customers/advanced-search",
+      "/api/scheduler/design-proposals/reports/appointment-journal",
+    ].includes(path);
   if (path === "/api/auth/login") return;
   if (path === "/api/scheduler/access/password-reset/confirm") return;
   if (path.startsWith("/api/scheduler/customer-portal/")) return;
@@ -1712,6 +1719,36 @@ function buildAppointmentJournalReport(
       );
     })
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const now = Date.now();
+  const exceptions = buildAppointmentFollowUps(
+    state,
+    input.branchIds.length ? requestedBranches : allowedBranches,
+    now,
+  ).filter(
+    (row) =>
+      !query ||
+      [row.customerName, row.branchName, row.reason].some((value) =>
+        textKey(value).includes(query),
+      ),
+  );
+  const followUps = exceptions.filter((row) => {
+    const timezone =
+      state.catalog.branches.find((branch) => branch.branchId === row.branchId)
+        ?.timezone ?? "America/Mexico_City";
+    const day = localDateKey(row.occurredAt, timezone);
+    return (
+      day >= input.dateFrom &&
+      day <= input.dateTo &&
+      (!kinds.size ||
+        (kinds.has("CANCELLATION_REASON") && row.status === "CANCELED"))
+    );
+  });
+  const openAlerts = exceptions.filter(
+    (row) =>
+      row.needsFollowUp &&
+      (!kinds.size ||
+        (kinds.has("CANCELLATION_REASON") && row.status === "CANCELED")),
+  );
   return {
     generatedAt: new Date().toISOString(),
     filters: input,
@@ -1723,13 +1760,17 @@ function buildAppointmentJournalReport(
       postSaleComments: rows.filter(
         (entry) => entry.kind === "POST_SALE_COMMENT",
       ).length,
-      cancellations: rows.filter(
-        (entry) => entry.kind === "CANCELLATION_REASON",
-      ).length,
+      cancellations: new Set(
+        followUps
+          .filter((row) => row.status === "CANCELED")
+          .map((row) => row.appointmentId),
+      ).size,
       reschedules: rows.filter((entry) => entry.kind === "RESCHEDULE_REASON")
         .length,
     },
     rows,
+    followUps,
+    openAlerts,
   };
 }
 
@@ -2684,19 +2725,9 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
             !upcomingStatuses.has(item.status) ||
             Date.parse(item.endsAt) <= Date.now(),
         ),
-        memberships:
-          session.customerId === state.customers[0]?.id
-            ? [
-                {
-                  id: "portal-membership-1",
-                  name: "Membresía facial · 6 sesiones",
-                  usedSessions: 2,
-                  totalSessions: 6,
-                  expiresAt: "2027-03-31T23:59:59.000Z",
-                  status: "ACTIVE" as const,
-                },
-              ]
-            : [],
+        memberships: state.customerMemberships
+          .filter((membership) => membership.customerId === session.customerId)
+          .map(({ customerId: _customerId, ...membership }) => membership),
         balances:
           session.customerId === state.customers[0]?.id
             ? [
@@ -3862,6 +3893,21 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           : {}),
       });
     }
+    if (id === "appointment-follow-up" && method === "POST") {
+      const now = Date.now();
+      const row = buildAppointmentFollowUps(
+        state,
+        new Set(designBootstrap(state).authorizedBranchIds),
+        now,
+      ).find((item) => item.id === body.id);
+      if (!row?.needsFollowUp)
+        return fail(409, "La alerta ya no está pendiente.");
+      if (row.nextFollowUpAt && Date.parse(row.nextFollowUpAt) > now)
+        return fail(409, "El siguiente seguimiento semanal aún no vence.");
+      const contactedAt = new Date(now).toISOString();
+      state.appointmentFollowUpContacts[row.id] = contactedAt;
+      return { id: row.id, contactedAt };
+    }
     if (id === "customers" && action === "advanced-search") {
       if (method !== "POST") fail(405, "Usa POST para la búsqueda avanzada.");
       const input = body as unknown as DesignCustomerAdvancedFilters;
@@ -4712,6 +4758,19 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
               )
             : appointmentItem.status,
         );
+        const noShowReason = String(
+          visitor.noShowReason ?? previousVisitor?.noShowReason ?? "",
+        ).trim();
+        if (
+          attendanceStatus === "NO_SHOW" &&
+          (noShowReason.length > 500 ||
+            (!noShowReason && previousVisitor?.attendanceStatus !== "NO_SHOW"))
+        ) {
+          fail(
+            400,
+            `Captura un motivo de inasistencia para el visitante ${index + 1} (máximo 500 caracteres).`,
+          );
+        }
         const purchaseKind: DesignPurchaseKind =
           visitor.purchaseKind === "FULL" ||
           visitor.purchaseKind === "LAYAWAY" ||
@@ -4817,6 +4876,17 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           name,
           specialistProfileId,
           attendanceStatus,
+          ...(attendanceStatus === "NO_SHOW" && noShowReason
+            ? {
+                noShowReason,
+                noShowAt: previousVisitor?.noShowAt ?? captureTime,
+              }
+            : {}),
+          ...(visitor.courtesyFacial === true ||
+          (visitor.courtesyFacial === undefined &&
+            previousVisitor?.courtesyFacial)
+            ? { courtesyFacial: true }
+            : {}),
           purchased,
           purchaseAmount: saleAmount,
           purchaseKind,
@@ -5260,6 +5330,15 @@ function dispatch(state: DesignState, request: DesignRequest): unknown {
           "APPOINTMENT_STATUS_CHANGE",
           existing!.id,
           `STATUS:${status}` as DesignAuthorizationScopeKey,
+        );
+      }
+      if (
+        status === "WAITING" &&
+        !["PENDING", "RESERVED", "CONFIRMED"].includes(existing!.status)
+      ) {
+        fail(
+          409,
+          "En espera corresponde a confirmaciones enviadas antes de la llegada.",
         );
       }
       if (
@@ -6611,6 +6690,14 @@ export function handleDesignRequest(
           "IDEMPOTENCY_CONFLICT",
         );
       return { status: 200, body: { success: true, data: previous.result } };
+    }
+    if (
+      request.url.pathname.startsWith("/api/scheduler/appointments") ||
+      request.url.pathname.startsWith("/api/scheduler/availability") ||
+      request.url.pathname.includes("/reports/") ||
+      request.url.pathname.endsWith("/appointment-follow-up")
+    ) {
+      expireUnansweredAppointments(state, Date.now());
     }
     const result = dispatch(state, request);
     if (idempotencyKey)

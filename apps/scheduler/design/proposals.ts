@@ -241,6 +241,11 @@ export const schedulerDesignProposals: DesignProposalClient = {
       "/api/scheduler/design-proposals/reports/appointment-journal",
       { method: "POST", body: JSON.stringify(input) },
     ),
+  recordAppointmentFollowUp: (id) =>
+    request<{ contactedAt: string }>(
+      "/api/scheduler/design-proposals/appointment-follow-up",
+      { method: "POST", body: JSON.stringify({ id }) },
+    ),
   customerSpecialistPreference: (customerId) =>
     request<DesignCustomerSpecialistPreference | null>(
       `/api/scheduler/design-proposals/customers/${customerId}/specialist-preference`,

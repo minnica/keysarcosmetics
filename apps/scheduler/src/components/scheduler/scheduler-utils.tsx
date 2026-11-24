@@ -166,6 +166,8 @@ export interface BookingVisitorDraft {
   name: string;
   specialistProfileId: string;
   attendanceStatus: DesignVisitAttendanceStatus;
+  noShowReason?: string;
+  courtesyFacial?: boolean;
   purchased: boolean | null;
   purchaseAmount: string;
   purchaseKind: "NONE" | "FULL" | "LAYAWAY" | null;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { addDays, eachDayOfInterval, startOfMonth } from "date-fns";
 import type {
   SchedulerAppointmentDto,
@@ -19,6 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Input,
+  Button,
   Sheet,
   SheetContent,
   SheetDescription,
@@ -27,7 +29,7 @@ import {
   Textarea,
   toast,
 } from "@cosmetics/ui";
-import { AlertTriangle, PanelLeftOpen } from "lucide-react";
+import { AlertTriangle, Bell, PanelLeftOpen } from "lucide-react";
 import {
   schedulerApi,
   schedulerApiErrorMessage,
@@ -78,6 +80,7 @@ import { schedulerDesignProposals } from "@scheduler/design-proposals";
 import type {
   DesignAppointmentAnswer,
   DesignAppointmentContext,
+  DesignAppointmentFollowUp,
   DesignAppointmentJournalEntry,
   DesignAppointmentJournalKind,
   DesignAuthorizationScopeKey,
@@ -349,6 +352,11 @@ export function ApiAgendaWorkspace() {
   const canReadStatusColors = canAccess("administration.status-colors", "READ");
   const canViewCustomerPhone = canAccess("clients", "EXCEPTION");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [rebookingId, setRebookingId] = useState<string | null>(null);
+  const [recordingFollowUpId, setRecordingFollowUpId] = useState<string | null>(
+    null,
+  );
   const [insightsDate, setInsightsDate] = useState(() => new Date());
   const [insightsPinned, setInsightsPinned] = useState(false);
   const [monthCursor, setMonthCursor] = useState(() =>
@@ -730,6 +738,22 @@ export function ApiAgendaWorkspace() {
     [branches, selectedBranchIds],
   );
   const branchScopeKey = viewBranchIds.join(",");
+  const followUpReport = useSchedulerQuery(
+    () => {
+      const date = schedulerLocalDateKey(selectedDate);
+      return schedulerDesignProposals.appointmentJournalReport({
+        dateFrom: date,
+        dateTo: date,
+        branchIds: viewBranchIds,
+        kinds: [],
+      });
+    },
+    [branchScopeKey, schedulerLocalDateKey(selectedDate)],
+    {
+      queryKey: "agenda:follow-up",
+      enabled: schedulerDesignProposals.available && viewBranchIds.length > 0,
+    },
+  );
   const weekDays = useMemo(
     () => eachDayOfInterval({ start: range.firstDate, end: range.lastDate }),
     [range.firstDate, range.lastDate],
@@ -887,6 +911,7 @@ export function ApiAgendaWorkspace() {
   const currentAgendaData = agenda.data;
   const agendaIsLoading = agenda.loading;
   const reloadAgenda = agenda.reload;
+  const reloadFollowUp = followUpReport.reload;
   const appointmentContextsAreLoading = appointmentContexts.loading;
   const reloadAppointmentContexts = appointmentContexts.reload;
   useEffect(() => {
@@ -903,6 +928,7 @@ export function ApiAgendaWorkspace() {
         return;
       }
       void reloadAgenda().then(reloadAppointmentContexts);
+      void reloadFollowUp();
     }
 
     const intervalId = window.setInterval(refreshVisibleAgenda, 30_000);
@@ -916,6 +942,7 @@ export function ApiAgendaWorkspace() {
     appointmentContextsAreLoading,
     bookingSaving,
     reloadAgenda,
+    reloadFollowUp,
     reloadAppointmentContexts,
   ]);
   const displayPresentation = useMemo(() => {
@@ -1444,6 +1471,11 @@ export function ApiAgendaWorkspace() {
     columnId?: string,
     startTime?: string,
     date = selectedDate,
+    followUp?: {
+      customerId: string;
+      customerName: string;
+      serviceProfileId: string | null;
+    },
   ) {
     if (!canWrite) return;
     preferredSpecialistLoadedForRef.current = null;
@@ -1512,6 +1544,17 @@ export function ApiAgendaWorkspace() {
     );
     setBookingDraft({
       ...nextDraft,
+      ...(followUp
+        ? {
+            clientId: followUp.customerId,
+            customerName: followUp.customerName,
+            serviceId: targetServices.some(
+              (service) => service.id === followUp.serviceProfileId,
+            )
+              ? followUp.serviceProfileId!
+              : nextDraft.serviceId,
+          }
+        : {}),
       cabinResourceId: defaultCabin?.id ?? "",
       cabinCapacity: defaultCabin?.capacity ?? 1,
       representativeId: representativeOptions[0]?.id ?? "",
@@ -1537,10 +1580,94 @@ export function ApiAgendaWorkspace() {
       ),
     });
     setBookingIntentKey(crypto.randomUUID());
-    setClientSearchInput("");
+    setClientSearchInput(followUp?.customerName ?? "");
     setConflict(null);
     setEmptySlotAction(null);
     setBookingDialogOpen(true);
+  }
+
+  async function openFollowUpBooking(row: DesignAppointmentFollowUp) {
+    if (!canWrite || !row.customerId || rebookingId) return;
+    setRebookingId(row.id);
+    try {
+      const result = await schedulerApi.searchCustomers({
+        query: row.customerName,
+        branchId: row.branchId,
+        page: 1,
+        pageSize: 100,
+      });
+      const client = result.items.find((item) => item.id === row.customerId);
+      const cabin =
+        visualColumns.find(
+          (column) =>
+            column.branchIds.includes(row.branchId) &&
+            isSchedulerCabinColumn(column) &&
+            column.capacity === 1,
+        ) ??
+        visualColumns.find(
+          (column) =>
+            column.branchIds.includes(row.branchId) &&
+            isSchedulerCabinColumn(column),
+        );
+      if (!client || !cabin) {
+        toast.error(
+          "Selecciona un cliente y una cabina disponible para la nueva reserva.",
+        );
+        return;
+      }
+      const tomorrow = addDays(new Date(), 1);
+      let bookingDate = tomorrow;
+      const { serviceProfileId } = row;
+      const resourceId = cabin.entityId;
+      if (serviceProfileId && resourceId) {
+        const days = Array.from({ length: 7 }, (_, index) =>
+          addDays(tomorrow, index),
+        );
+        const schedules = await Promise.allSettled(
+          days.map((day) =>
+            schedulerApi.availability({
+              branchId: row.branchId,
+              serviceProfileId,
+              resourceId,
+              date: schedulerLocalDateKey(day),
+            }),
+          ),
+        );
+        const availableDay = schedules.findIndex(
+          (schedule) =>
+            schedule.status === "fulfilled" && schedule.value.slots.length > 0,
+        );
+        bookingDate = days[availableDay] ?? tomorrow;
+      }
+      setFollowUpOpen(false);
+      openNewBooking(cabin.id, undefined, bookingDate, {
+        customerId: client.id,
+        customerName: client.displayName,
+        serviceProfileId: row.serviceProfileId,
+      });
+    } catch (error) {
+      toast.error(
+        schedulerApiErrorMessage(error, "No fue posible abrir la reagenda."),
+      );
+    } finally {
+      setRebookingId(null);
+    }
+  }
+
+  async function recordWeeklyContact(id: string) {
+    if (!canWrite || recordingFollowUpId) return;
+    setRecordingFollowUpId(id);
+    try {
+      await schedulerDesignProposals.recordAppointmentFollowUp(id);
+      await reloadFollowUp();
+      toast.success("Contacto registrado. Próximo seguimiento en siete días.");
+    } catch (error) {
+      toast.error(
+        schedulerApiErrorMessage(error, "No se pudo registrar el contacto."),
+      );
+    } finally {
+      setRecordingFollowUpId(null);
+    }
   }
 
   function openEditBooking(
@@ -1611,9 +1738,9 @@ export function ApiAgendaWorkspace() {
           attendanceStatus:
             requestedAttendanceStatus ??
             resolveDesignVisitAttendanceStatus(undefined, appointment.status),
-          purchased: null,
+          purchased: requestedAttendanceStatus === "NO_SHOW" ? false : null,
           purchaseAmount: "",
-          purchaseKind: null,
+          purchaseKind: requestedAttendanceStatus === "NO_SHOW" ? "NONE" : null,
           saleAmount: "",
           depositAmount: "",
           saleCategory: null,
@@ -1664,48 +1791,52 @@ export function ApiAgendaWorkspace() {
                         cabinResourceId: cabinVisit.cabinResourceId,
                         cabinCapacity: cabinVisit.cabinCapacity,
                         representativeId: cabinVisit.representativeId,
-                        visitors: cabinVisit.visitors.map((visitor) => ({
-                          ...visitor,
-                          attendanceStatus:
+                        visitors: cabinVisit.visitors.map((visitor) => {
+                          const previousAttendance =
                             resolveDesignVisitAttendanceStatus(
                               visitor.attendanceStatus,
                               appointment.status,
-                            ) === "PENDING" &&
+                            );
+                          const attendanceStatus =
+                            previousAttendance === "PENDING" &&
                             requestedAttendanceStatus &&
                             (!focusedVisitorId ||
                               visitor.id === focusedVisitorId)
                               ? requestedAttendanceStatus
-                              : resolveDesignVisitAttendanceStatus(
-                                  visitor.attendanceStatus,
-                                  appointment.status,
-                                ),
-                          purchaseAmount:
-                            visitor.purchaseAmount === null
-                              ? ""
-                              : String(visitor.purchaseAmount),
-                          purchaseKind:
-                            visitor.purchaseKind ??
-                            (visitor.purchased === true
-                              ? "FULL"
-                              : visitor.purchased === false
-                                ? "NONE"
-                                : null),
-                          saleAmount:
-                            visitor.saleAmount === null
-                              ? visitor.purchaseAmount === null
+                              : previousAttendance;
+                          return {
+                            ...visitor,
+                            attendanceStatus,
+                            purchaseAmount:
+                              visitor.purchaseAmount === null
                                 ? ""
-                                : String(visitor.purchaseAmount)
-                              : String(visitor.saleAmount),
-                          depositAmount:
-                            visitor.depositAmount === null
-                              ? ""
-                              : String(visitor.depositAmount),
-                          saleCategory: visitor.saleCategory,
-                          membershipName: visitor.membershipName ?? "",
-                          membershipSellerSpecialistProfileId:
-                            visitor.membershipSellerSpecialistProfileId ?? "",
-                          posTicket: visitor.posTicket,
-                        })),
+                                : String(visitor.purchaseAmount),
+                            purchaseKind:
+                              attendanceStatus === "NO_SHOW"
+                                ? "NONE"
+                                : (visitor.purchaseKind ??
+                                  (visitor.purchased === true
+                                    ? "FULL"
+                                    : visitor.purchased === false
+                                      ? "NONE"
+                                      : null)),
+                            saleAmount:
+                              visitor.saleAmount === null
+                                ? visitor.purchaseAmount === null
+                                  ? ""
+                                  : String(visitor.purchaseAmount)
+                                : String(visitor.saleAmount),
+                            depositAmount:
+                              visitor.depositAmount === null
+                                ? ""
+                                : String(visitor.depositAmount),
+                            saleCategory: visitor.saleCategory,
+                            membershipName: visitor.membershipName ?? "",
+                            membershipSellerSpecialistProfileId:
+                              visitor.membershipSellerSpecialistProfileId ?? "",
+                            posTicket: visitor.posTicket,
+                          };
+                        }),
                       }
                     : {}),
                 }
@@ -2127,7 +2258,8 @@ export function ApiAgendaWorkspace() {
             (completesAttendanceCapture &&
               visitor.attendanceStatus === "PENDING") ||
             (visitor.attendanceStatus === "NO_SHOW" &&
-              visitor.purchaseKind !== "NONE") ||
+              (visitor.purchaseKind !== "NONE" ||
+                !visitor.noShowReason?.trim())) ||
             (visitor.attendanceStatus !== "ATTENDED" &&
               (visitor.purchaseKind === "FULL" ||
                 visitor.purchaseKind === "LAYAWAY")) ||
@@ -2144,7 +2276,7 @@ export function ApiAgendaWorkspace() {
         )
       ) {
         toast.error(
-          "Marca la asistencia de cada visitante. La venta sólo se registra al marcar Atendida; las compras y apartados requieren montos válidos y toda membresía debe indicar qué facialista la colocó.",
+          "Marca la asistencia por visitante e indica el motivo de cada inasistencia. La venta sólo se registra al marcar Atendida, con los montos y la facialista requeridos.",
         );
         return;
       }
@@ -2477,6 +2609,10 @@ export function ApiAgendaWorkspace() {
                   : visitor.name.trim(),
               specialistProfileId: visitor.specialistProfileId,
               attendanceStatus: visitor.attendanceStatus,
+              ...(visitor.noShowReason?.trim()
+                ? { noShowReason: visitor.noShowReason.trim() }
+                : {}),
+              courtesyFacial: visitor.courtesyFacial ?? false,
               purchased: visitor.purchased,
               purchaseAmount:
                 visitor.purchaseKind === "FULL" ||
@@ -2626,7 +2762,7 @@ export function ApiAgendaWorkspace() {
       setDisplayMode("calendar");
       delete createdCustomerByIntentRef.current[bookingIntentKey];
       await agenda.reload();
-      await appointmentContexts.reload();
+      await Promise.all([appointmentContexts.reload(), reloadFollowUp()]);
     } catch (cause) {
       const message = schedulerApiErrorMessage(cause);
       if (schedulerApiErrorStatus(cause) === 409) setConflict(message);
@@ -2961,6 +3097,15 @@ export function ApiAgendaWorkspace() {
         (item) => item.id === bookingSourceId(booking),
       );
     if (!appointment || !canWrite) return;
+    if (
+      status === "waiting" &&
+      !["PENDING", "RESERVED", "CONFIRMED"].includes(appointment.status)
+    ) {
+      toast.error(
+        "En espera se usa para confirmaciones enviadas antes de que el cliente llegue.",
+      );
+      return;
+    }
     if (status === "canceled") {
       setCancelRequest(booking);
       setCancelReason("");
@@ -3000,7 +3145,9 @@ export function ApiAgendaWorkspace() {
       {
         title: "Autorizar cambio de estado",
         description:
-          "El código personal quedará asociado al cambio de estado, no a la cita.",
+          status === "waiting"
+            ? "Confirma que se envió la solicitud de confirmación y que el cliente no respondió. Si termina el horario sin asistencia, se cancelará automáticamente."
+            : "El código personal quedará asociado al cambio de estado, no a la cita.",
         purpose: "APPOINTMENT_STATUS_CHANGE",
         scopeKey:
           `STATUS:${schedulerBookingToCanonicalStatus[status]}` as DesignAuthorizationScopeKey,
@@ -3102,7 +3249,10 @@ export function ApiAgendaWorkspace() {
                   nextAppointment: cancelTentativeDate || "SIN_PROXIMA_CITA",
                 },
               });
-              await appointmentContexts.reload();
+              await Promise.all([
+                appointmentContexts.reload(),
+                reloadFollowUp(),
+              ]);
               toast.success("Cita cancelada.");
               setCancelRequest(null);
               setCancelReason("");
@@ -3327,6 +3477,7 @@ export function ApiAgendaWorkspace() {
           void catalog.reload();
           void agenda.reload();
           void appointmentContexts.reload();
+          void reloadFollowUp();
           if (canReadStatusColors) void administrationCatalog.reload();
         }}
         onViewChange={setCurrentView}
@@ -3342,6 +3493,89 @@ export function ApiAgendaWorkspace() {
         updatedLabel={`${agendaAppointmentCount} citas · Actualizado ${agendaUpdatedTime}`}
         weekDays={weekDays}
       />
+
+      {schedulerDesignProposals.available &&
+      followUpReport.data?.openAlerts.length ? (
+        <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-sm text-amber-950">
+          <Bell aria-hidden="true" className="h-4 w-4" />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setFollowUpOpen(true)}
+          >
+            Alertas de reagenda ({followUpReport.data.openAlerts.length})
+          </Button>
+        </div>
+      ) : null}
+
+      <Sheet open={followUpOpen} onOpenChange={setFollowUpOpen}>
+        <SheetContent
+          className="w-full max-w-none overflow-y-auto sm:max-w-lg"
+          side="right"
+        >
+          <SheetHeader>
+            <SheetTitle>Alertas de reagenda</SheetTitle>
+            <SheetDescription>
+              Clientes sin próxima cita que requieren seguimiento.
+            </SheetDescription>
+          </SheetHeader>
+          <ul className="mt-4 space-y-3">
+            {followUpReport.data?.openAlerts.map((row) => (
+              <li className="space-y-2 rounded-xl border p-3" key={row.id}>
+                <p className="font-semibold">{row.customerName}</p>
+                <p className="text-sm text-slate-600">
+                  {row.branchName} ·{" "}
+                  {row.status === "CANCELED" ? "Cancelada" : "No asistió"}
+                  {row.weekly ? " · Seguimiento semanal" : ""}
+                </p>
+                {row.reason ? <p className="text-sm">{row.reason}</p> : null}
+                {row.nextFollowUpAt ? (
+                  <p className="text-sm text-amber-800">
+                    {Date.parse(row.nextFollowUpAt) <= Date.now()
+                      ? "Contacto semanal pendiente"
+                      : `Próximo contacto · ${new Date(row.nextFollowUpAt).toLocaleDateString("es-MX")}`}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  {canWrite && row.customerId ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={Boolean(rebookingId)}
+                      onClick={() => void openFollowUpBooking(row)}
+                    >
+                      Buscar horario para reagendar
+                    </Button>
+                  ) : null}
+                  {canWrite && row.nextFollowUpAt ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        Boolean(recordingFollowUpId) ||
+                        Date.parse(row.nextFollowUpAt) > Date.now()
+                      }
+                      onClick={() => void recordWeeklyContact(row.id)}
+                    >
+                      {recordingFollowUpId === row.id
+                        ? "Guardando…"
+                        : "Registrar contacto"}
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {canAccess("reports.reservations", "READ") ? (
+            <Link
+              className="mt-4 inline-block text-sm underline"
+              href="/reportes/seguimiento-citas#corte-reagenda"
+            >
+              Ver corte del día
+            </Link>
+          ) : null}
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
         <SheetContent

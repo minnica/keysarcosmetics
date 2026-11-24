@@ -44,6 +44,7 @@ export const schedulerDesignProposals: DesignProposalClient = {
   appointmentJournal: unavailable,
   addAppointmentJournalEntry: unavailable,
   appointmentJournalReport: unavailable,
+  recordAppointmentFollowUp: unavailable,
   customerSpecialistPreference: unavailable,
   saveCustomerSpecialistPreference: unavailable,
   cabinSalesReport: unavailable,

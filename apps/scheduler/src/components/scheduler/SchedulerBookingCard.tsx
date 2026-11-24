@@ -106,11 +106,11 @@ interface SchedulerBookingCardProps {
 }
 
 const statusTransitions: Record<BookingStatus, BookingStatus[]> = {
-  pending: ["reserved", "confirmed"],
-  reserved: ["confirmed", "arrived", "no-show"],
-  confirmed: ["arrived", "no-show"],
-  arrived: ["waiting", "attended"],
-  waiting: ["attended", "no-show"],
+  pending: ["reserved", "confirmed", "waiting"],
+  reserved: ["confirmed", "waiting", "arrived", "no-show"],
+  confirmed: ["waiting", "arrived", "no-show"],
+  arrived: ["attended"],
+  waiting: ["confirmed", "arrived", "attended", "no-show"],
   attended: [],
   "no-show": [],
   canceled: [],
