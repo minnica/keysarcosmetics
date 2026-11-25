@@ -4,32 +4,32 @@
 
 La rama de integración es `pilot/payroll-v2`. Parte de `master` en `fe71dbd8` e incorpora la interfaz que el PO terminó en `prototype/payroll-ui`, revisión `3f18f4aa`. La API productiva consultada identificó su versión como `6239a23a`. El acceso de operación diaria sigue en [Nómina productiva](https://nomina.keysarcosmetics.com/).
 
-La [vista previa protegida de la rama](https://keysarcosmetics-payroll-git-pilot-payroll-v2-minnicas-projects.vercel.app/login) y la [API de pruebas](https://cosmetics-payroll-pilot.fly.dev/health) están desplegadas. El usuario del PO es `nomina`. Vercel solicita autenticación al visitante y la aplicación solicita su propia clave. La cuenta del piloto sin sesión recibe HTTP 401 en `/cut`. La [comprobación del corte](https://cosmetics-payroll-pilot.fly.dev/ready) devuelve HTTP 200.
+El PO abre el [piloto de nómina](https://keysar-nomina-piloto.vercel.app/login) e ingresa con su cuenta habitual de la nómina productiva. El proyecto Vercel `keysar-nomina-piloto` sirve esta dirección. El formulario de identidad pertenece a `cosmetics-payroll-pilot.fly.dev`. El navegador puede abrirlo directamente sin pertenecer a un equipo de Vercel. Las solicitudes de datos requieren una sesión exclusiva del piloto. [Estado del corte](https://cosmetics-payroll-pilot.fly.dev/ready).
 
 El proyecto Supabase `keysar-payroll-pilot` (referencia `yopfaxxvlcpcfzxvqmfw`, región `us-west-1`) se creó en la organización separada **Keysar Nómina Piloto** (ID `kcjljutclkiovawrtxpr`) con el plan Free predeterminado. El propietario eligió este destino para mantener el costo adicional de Supabase en US$0. La CLI oficial creó el proyecto con el tamaño predeterminado. El MCP existente sólo tiene alcance en la organización original `minnica`. Allí había cotizado US$10 mensuales para otro proyecto en Pro. [Proyecto de Supabase](https://supabase.com/dashboard/project/yopfaxxvlcpcfzxvqmfw) · [Facturación de la organización piloto](https://supabase.com/dashboard/org/kcjljutclkiovawrtxpr/billing) · [Condiciones de Supabase](https://supabase.com/kb/troubleshooting/keeping-free-projects-after-pro-upgrade-Kf9Xm2).
 
 **Corte de entrega**. El 24 de noviembre de 2026 a las 21:14:51 CDMX se cargó el corte `512a009f-46dc-453c-b690-12bc7e58404c`, con revisión inicial 0. Contiene 71 empleados, 396 ventas y 56 registros de préstamos o adelantos. La corrida aprobada del 16 al 31 de octubre tiene 64 líneas. El borrador del 16 al 30 de noviembre tiene 55 líneas.
 
-**Prueba de aceptación ejecutada**. En la vista previa desplegada, un navegador inició sesión, registró y aprobó un bono de prueba de MX$12.34 para un empleado del corte abierto. La conciliación cambió exactamente MX$12.34 y conservó el cambio tras recargar. Se compararon las líneas, estados de recibos, préstamos, cuotas y movimientos leídos de producción antes y después. Coincidieron. También coincidieron el original y las referencias del piloto. La prueba quedó en el corte anterior, en revisión 2. El corte de entrega comenzó limpio. Se revocó el acceso temporal de la prueba automatizada de Vercel.
+**Prueba de aceptación con datos reales**. Antes de sustituir el acceso temporal por la cuenta habitual del PO, en la vista previa desplegada un navegador inició sesión, registró y aprobó un bono de prueba de MX$12.34 para un empleado del corte abierto. La conciliación cambió exactamente MX$12.34 y conservó el cambio tras recargar. Se compararon las líneas, estados de recibos, préstamos, cuotas y movimientos leídos de producción antes y después. Coincidieron. También coincidieron el original y las referencias del piloto. La prueba quedó en el corte anterior, en revisión 2. El corte de entrega comenzó limpio. Se revocó el acceso temporal de la prueba automatizada de Vercel.
+
+**Verificación del acceso definitivo**. Chrome, con un perfil nuevo y sin cuenta de Vercel, llegó al formulario oficial del piloto. La cuenta ajena de control recibió HTTP 401, al igual que las lecturas anónimas y un callback inválido. El antiguo ingreso temporal devolvió HTTP 404. Las pruebas de integración comprobaron la emisión y el canje único del código con una identidad sintética. La confirmación personal del primer ingreso con la contraseña productiva corresponde al PO.
 
 ## Cómo lo usará el PO
 
-1. Abrir la vista previa de Vercel con la cuenta autorizada y luego ingresar con el usuario del piloto `nomina` y su clave exclusiva. Obtener esa clave por el canal privado habitual.
+1. Abrir [Piloto de nómina](https://keysar-nomina-piloto.vercel.app/login). En el formulario **Piloto de nómina** escribir el mismo correo y contraseña que en el portal habitual. Al ingresar se vuelve al piloto con una sesión propia.
 2. Revisar el aviso **PRUEBA · Nómina** y la fecha del corte en hora de Ciudad de México. Los cambios posteriores en producción se incorporan al generar otro corte.
 3. Abrir **Conciliar importes**, elegir la quincena cerrada e identificar las diferencias por empleado y por sucursal. La pantalla indica si los importes oficiales provienen de una corrida pagada, aprobada, en borrador o de un cálculo del motor vigente. Las diferencias se expresan en MXN como piloto menos referencia.
 4. Cambiar a la quincena abierta. Ensayar, por ejemplo, la aprobación de un bono. Esperar **Guardado**, recargar y revisar la diferencia. Un conflicto entre pestañas conserva la última revisión guardada. Revisar los cambios pendientes antes de recargar. El PIN `0000` sirve para ensayar autorizaciones sólo después del ingreso real.
 5. Probar también el abono de un préstamo, el recibo y la dispersión. Los archivos de salida llevan la marca **PRUEBA**. Para efectuar el pago o emitir el recibo oficial, usar [Nómina productiva](https://nomina.keysarcosmetics.com/).
 6. Si un importe difiere, anotar la fecha del corte, la quincena, el ID de empleado o sucursal, el concepto, la referencia, el importe del piloto y los pasos realizados. Mantener nombres y montos individuales dentro de los canales internos de nómina.
 
-### Entrega de la clave desde la PC del propietario
+### Cómo funciona el acceso
 
-Las credenciales del piloto se guardan cifradas por Windows para el usuario que ejecutó la configuración. En PowerShell, este comando copia al portapapeles la clave de `nomina` para entregarla al PO por el canal privado habitual.
+El propietario identificó una sola cuenta del portal. Se comprobó por lectura que existe, está activa y el control de acceso productivo le concede acceso a Nómina. La configuración de Fly fija tanto el correo como el ID inmutable de esa cuenta. El servidor de acceso del piloto envía las credenciales por HTTPS exclusivamente a `POST https://cosmetics-api.fly.dev/api/auth/login`, el mismo servicio usado por Nómina. También comprueba el ID, el correo, la actividad y los permisos de nómina devueltos. La contraseña se procesa en memoria y el token productivo se descarta. Ni las pantallas del prototipo ni el servidor de Next reciben la contraseña o el token productivo.
 
-```powershell
-(Import-Clixml "$env:LOCALAPPDATA\Keysar\PayrollPilot\yopfaxxvlcpcfzxvqmfw\operador.xml").GetNetworkCredential().Password | Set-Clipboard
-```
+El portal crea una verificación PKCE y un valor de estado en una cookie HttpOnly. El servidor de acceso muestra un formulario sin JavaScript, protegido contra peticiones entre sitios y limitado por intentos. Tras validar la identidad genera un código aleatorio de un solo uso con vigencia de 90 segundos. Guarda únicamente su hash en `payroll_pilot.login_codes`. Next verifica el estado y canjea el código con la prueba PKCE. Fly emite una sesión exclusiva para `pilot-workspace` con caducidad de dos horas. El correo y el ID autorizados están en secretos de Fly. Para retirar acceso, quitar la cuenta autorizada y rotar el secreto de sesión del piloto.
 
-Los archivos `runtime.xml`, `loader.xml` y `session.xml` del mismo directorio son exclusivos del responsable técnico. La credencial administrativa del nuevo proyecto está en el directorio hermano `kcjljutclkiovawrtxpr`. En otra PC se necesita recuperar las credenciales mediante el propietario o rotarlas. La vista previa admite que el propietario conceda acceso al correo del PO desde Vercel si aparece **Request Access**.
+Los archivos `runtime.xml`, `loader.xml` y `session.xml` en `%LOCALAPPDATA%\Keysar\PayrollPilot\yopfaxxvlcpcfzxvqmfw` están cifrados por Windows para el propietario local. La credencial administrativa del nuevo proyecto está en el directorio hermano `kcjljutclkiovawrtxpr`. En otra PC, recuperar o rotar las credenciales mediante el propietario. La antigua clave de operador dejó de ser válida cuando se retiró el acceso temporal.
 
 ## Entornos y flujo de datos
 
@@ -38,14 +38,17 @@ Los archivos `runtime.xml`, `loader.xml` y `session.xml` del mismo directorio so
 | Producción | `master`, dominio de nómina, proyecto Supabase `kgzuamipstbsiqrlaphh` | El importador hace una transacción de lectura consistente. |
 | Copia | Proyecto PostgreSQL independiente, esquema `payroll_pilot` | El cargador crea el corte. La cuenta de ejecución sólo lee el original y guarda los cambios del ensayo. |
 | API del piloto | Aplicación Fly `cosmetics-payroll-pilot` | Sesión independiente, lectura del último corte y guardado con revisión. |
-| Interfaz del PO | Proyecto Vercel `keysarcosmetics-payroll`, entorno `preview` con `gitBranch=pilot/payroll-v2` | El servidor de Next dirige las solicitudes a la API del piloto. El navegador usa una cookie HttpOnly. |
+| Interfaz del PO | Proyecto Vercel `keysar-nomina-piloto`, dominio `keysar-nomina-piloto.vercel.app` | El servidor de Next habla con la API del piloto y el navegador conserva una cookie HttpOnly. |
 
 ```mermaid
 flowchart LR
   PROD[(Nómina productiva)] -->|Lectura al tomar el corte| IMPORT[Importador puntual]
   IMPORT -->|Corte original| PILOT[(Base del piloto)]
-  PO[PO en vista previa protegida] --> NEXT[Next.js]
+  PO[PO en el piloto] --> NEXT[Next.js]
   NEXT --> API[API exclusiva en Fly]
+  PO --> LOGIN[Formulario de acceso separado]
+  LOGIN -->|Sólo autenticar cuenta| AUTH[Servicio de identidad de Nómina]
+  LOGIN -->|Código de un solo uso| NEXT
   API -->|Lee el corte y guarda cambios del ensayo| PILOT
 ```
 
@@ -81,9 +84,9 @@ El comando verifica la ausencia de tablas operativas, crea la marca de identidad
 node backend/api/dist/pilot/import.js import
 ```
 
-4. Montar en Fly únicamente `PILOT_PROJECT_REF`, `PILOT_DATABASE_URL` con el rol **keysar_pilot_runtime** del destino, `PILOT_OPERATOR_USER`, `PILOT_OPERATOR_HASH` (bcrypt) y `PILOT_SESSION_SECRET` (aleatorio de al menos 32 caracteres). El acceso de origen pertenece sólo a la sesión del importador. Entregar la clave del operador directamente al PO por el canal privado. La sesión dura dos horas.
-5. Configurar `PILOT_API_ORIGIN=https://cosmetics-payroll-pilot.fly.dev` en la rama de Vercel `pilot/payroll-v2` para `preview`. Desplegar la API independiente desde la raíz con `fly deploy --app cosmetics-payroll-pilot --config backend/api/fly.payroll-pilot.toml --ha=false`. La vista previa se construye a partir de la rama. El build de esta rama rechaza `VERCEL_ENV=production`.
-6. Verificar `GET /health`, `GET /ready` y el ingreso del PO desde la vista previa. `/ready` debe devolver 200, la API debe rechazar la lectura sin sesión y una sesión del PO debe obtener el corte correcto. Antes de dar acceso, confirmar que la protección de la vista previa pide autorización. Conservar sólo las credenciales de servicio del piloto en Fly.
+4. Montar en Fly `PILOT_PROJECT_REF`, `PILOT_DATABASE_URL` del rol **keysar_pilot_runtime**, `PILOT_ACCOUNT_EMAIL`, `PILOT_ACCOUNT_ID` y `PILOT_SESSION_SECRET` (aleatorio de al menos 32 caracteres). Mantener la credencial de lectura del origen en la sesión del importador. Los secretos iniciales `PILOT_OPERATOR_USER` y `PILOT_OPERATOR_HASH` quedaron retirados. Ejecutar desde la raíz `fly deploy . --app cosmetics-payroll-pilot --config backend/api/fly.payroll-pilot.toml --ha=false --remote-only`, con `RELEASE_SHA` correspondiente al commit.
+5. El proyecto Vercel independiente tiene el ID `prj_63u3umjnK9xfXtrawKDuW7USsKWE`, raíz `apps/payroll` y variables de entorno `PILOT_STANDALONE_PROJECT` con ese ID y `PILOT_API_ORIGIN=https://cosmetics-payroll-pilot.fly.dev`. La etiqueta `production` de Vercel en ese proyecto publica **el piloto**. El build exige esas variables y la rama `pilot/payroll-v2`. El comando de compilación configurado en este proyecto vuelve a comprobar la rama antes de ejecutar `pnpm run build`. En el proyecto original `keysarcosmetics-payroll` la misma rama conserva una vista previa técnica, cuya configuración está limitada a `preview` y a esa rama.
+6. Para desplegar el portal del PO con el MCP Vercel, obtener el SHA de `origin/pilot/payroll-v2`. Usar `create_deployment` con `project=prj_63u3umjnK9xfXtrawKDuW7USsKWE`, `name=keysar-nomina-piloto`, `target=production` y `gitSource` con tipo `github`, `repoId=1246351171`, `ref=pilot/payroll-v2` y el SHA elegido. Esperar `READY` y verificar el alias del piloto. Abrir la URL en una ventana privada, comprobar el formulario y confirmar que `/api/piloto/cut` devuelve 401 sin sesión. La nómina oficial permanece en el proyecto original.
 
 ### Refrescar en esta PC
 
@@ -107,8 +110,8 @@ Verificar el identificador del corte y la revisión inicial. Se puede comprobar 
 
 ## Verificación, continuidad y regreso
 
-- **Prueba de aislamiento**. `backend/api/src/pilot/pilot.integration.test.ts` exige dos bases locales con nombres `source_test` y `pilot_test` en loopback. Migrar sólo `source_test` con el esquema canónico. Definir `PILOT_LOCAL_TEST=1`, `PAYROLL_SOURCE_READ_URL`, `PILOT_DATABASE_URL` y `PILOT_PROJECT_REF=pilot_test`. Ejecutar `pnpm --filter @cosmetics/api exec vitest run src/pilot/pilot.integration.test.ts`. Verifica redacción, el bloqueo de tablas operativas, permisos de columna, el guardado, conflictos y la invariancia de líneas, movimientos, cuotas y recibo del origen.
+- **Prueba de aislamiento**. `backend/api/src/pilot/pilot.integration.test.ts` exige dos bases locales con nombres `source_test` y `pilot_test` en loopback. Migrar sólo `source_test` con el esquema canónico. Definir `PILOT_LOCAL_TEST=1`, `PAYROLL_SOURCE_READ_URL`, `PILOT_DATABASE_URL` y `PILOT_PROJECT_REF=pilot_test`. Ejecutar `pnpm --filter @cosmetics/api exec vitest run src/pilot/pilot.integration.test.ts`. Verifica redacción, el bloqueo de tablas operativas, permisos de columna, el canje PKCE, el rechazo de un código reutilizado, el guardado, conflictos y la invariancia de líneas, movimientos, cuotas y recibo del origen.
 - **Prueba de navegador**. La prueba de integración deja un corte sintético nuevo. Arrancar la API local compilada en el puerto 4078 con esos datos, un hash bcrypt de la clave de la fixture de Playwright y un secreto de prueba. Compilar `@cosmetics/payroll` y ejecutar `pnpm --filter @cosmetics/e2e exec playwright test --config=playwright.payroll-pilot.config.ts`. La prueba abre Chrome, autentica, aprueba un bono, recarga y concilia ambas quincenas. Repetir primero la prueba de integración para restituir los datos de ensayo.
 - **Aceptación con el corte real**. Antes y después de una prueba sobre el piloto, consultar en producción la misma línea de corrida, el recibo y el saldo o cuota del préstamo elegido. Deben conservar sus importes y estados. Verificar en la vista previa que el cambio persiste y el importe de referencia sigue fijo. Registrar el resultado y la revisión del despliegue sin copiar datos personales al repositorio.
-- **Regreso inmediato**. Cerrar el piloto y abrir [Nómina productiva](https://nomina.keysarcosmetics.com/). Las capturas oficiales se realizan allí. Una corrección ensayada en el piloto no se transfiere a producción. Si se desea retirar acceso al piloto, rotar su secreto de sesión y la clave del operador o retirar el acceso a la vista previa.
-- **Retomar en otra sesión**. Hacer checkout de `pilot/payroll-v2`, leer este documento, consultar `fly status --app cosmetics-payroll-pilot` y `/ready`, y revisar la última vista previa de la rama en Vercel. Verificar las referencias del proyecto existente y el último corte antes de iniciar otra carga. El pooler de sesión del piloto es `aws-0-us-west-1.pooler.supabase.com:5432` y el usuario tiene la forma `rol.yopfaxxvlcpcfzxvqmfw`. Un HTTP 503 en `/ready` señala un corte ausente, una identidad inválida o una conexión pendiente.
+- **Regreso inmediato**. Cerrar el piloto y abrir [Nómina productiva](https://nomina.keysarcosmetics.com/). Las capturas oficiales se realizan allí. Una corrección ensayada en el piloto no se transfiere a producción. Si se desea retirar acceso al piloto, retirar la cuenta autorizada y rotar el secreto de sesión en Fly.
+- **Retomar en otra sesión**. Hacer checkout de `pilot/payroll-v2`, leer este documento, consultar `fly status --app cosmetics-payroll-pilot` y `/ready`, y revisar el despliegue de `keysar-nomina-piloto` en Vercel. Verificar las referencias del proyecto existente y el último corte antes de iniciar otra carga. El pooler de sesión del piloto es `aws-0-us-west-1.pooler.supabase.com:5432` y el usuario tiene la forma `rol.yopfaxxvlcpcfzxvqmfw`. Un HTTP 503 en `/ready` señala un corte ausente, una identidad inválida o una conexión pendiente.
