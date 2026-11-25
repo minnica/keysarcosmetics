@@ -1,0 +1,1744 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  CircleDollarSign,
+  Landmark,
+  Layers3,
+  Scale,
+  TrendingUp,
+  WalletCards,
+} from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHeader,
+  TableRow,
+} from "@cosmetics/ui";
+import {
+  employeeMixedCostAllocationShares,
+} from "./payroll-cost-branch-selector";
+import {
+  christmasBonusPaidAmountForRange,
+  effectiveTaxInclusionForRange,
+  payrollModuleForCategory,
+  personalizedBonusAwardsForPeriod,
+  terminationSettlementTotal,
+  usePayrollDemo,
+} from "./payroll-demo-context";
+import { ReportExportButtons } from "./report-export-buttons";
+import { kioskPayrollForMonth } from "./kiosk-payroll-calculator";
+import {
+  nextTableSort,
+  sortTableRows,
+  SortableTableHead,
+  type TableSortKind,
+  type TableSortState,
+} from "./sortable-table-head";
+
+type ReportScope = "MONTHLY" | "QUARTERLY" | "ANNUAL";
+
+interface ReportPeriod {
+  key: string;
+  label: string;
+  start: string;
+  end: string;
+  months: string[];
+}
+
+interface BranchSummaryRow {
+  id: string;
+  branch: string;
+  sales: number;
+  fixedPayroll: number;
+  specialistPayroll: number;
+  doublePayPayroll: number;
+  negativeBalanceApplied: number;
+  commissionPayroll: number;
+  kioskPayroll: number;
+  contractorPayroll: number;
+  settlementPayroll: number;
+  christmasBonusPayroll: number;
+  movements: number;
+  payrollCost: number;
+  workerTax: number;
+  socialCost: number;
+  isrCost: number;
+  totalCost: number;
+  employees: number;
+}
+
+type BranchSummarySortKey =
+  | "branch"
+  | "fixedPayroll"
+  | "specialistPayroll"
+  | "doublePayPayroll"
+  | "negativeBalanceApplied"
+  | "commissionPayroll"
+  | "kioskPayroll"
+  | "contractorPayroll"
+  | "settlementPayroll"
+  | "christmasBonusPayroll"
+  | "movements"
+  | "payrollCost"
+  | "workerTax"
+  | "socialCost"
+  | "isrCost"
+  | "totalCost";
+
+interface MonthlyTrend {
+  month: string;
+  label: string;
+  sales: number;
+  payroll: number;
+  workerTax: number;
+  social: number;
+  isr: number;
+  totalCost: number;
+}
+
+interface AllocationIssue {
+  id: string;
+  source: string;
+  record: string;
+  detail: string;
+}
+
+const money = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+});
+const compactMoney = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+const monthName = new Intl.DateTimeFormat("es-MX", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const shortMonthName = new Intl.DateTimeFormat("es-MX", {
+  month: "short",
+  year: "2-digit",
+  timeZone: "UTC",
+});
+
+function monthBounds(month: string) {
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return {
+    start: `${month}-01`,
+    end: `${month}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function monthLabel(month: string) {
+  return monthName
+    .format(new Date(`${month}-01T12:00:00Z`))
+    .toLocaleUpperCase("es-MX");
+}
+
+function buildScopeOptions(
+  scope: ReportScope,
+  months: string[],
+): ReportPeriod[] {
+  if (scope === "MONTHLY") {
+    return months.map((month) => ({
+      key: month,
+      label: monthLabel(month),
+      ...monthBounds(month),
+      months: [month],
+    }));
+  }
+
+  const grouped = new Map<string, string[]>();
+  months.forEach((month) => {
+    const year = Number(month.slice(0, 4));
+    const monthNumber = Number(month.slice(5, 7));
+    const key =
+      scope === "QUARTERLY"
+        ? `${year}-Q${Math.ceil(monthNumber / 3)}`
+        : String(year);
+    grouped.set(key, [...(grouped.get(key) ?? []), month]);
+  });
+
+  return Array.from(grouped.entries()).map(([key, groupedMonths]) => {
+    const orderedMonths = [...groupedMonths].sort();
+    const first = orderedMonths[0] ?? months[0] ?? "2026-01";
+    const last = orderedMonths.at(-1) ?? first;
+    const year = first.slice(0, 4);
+    const label =
+      scope === "QUARTERLY"
+        ? `TRIMESTRE ${key.slice(-1)} · ${year} · ${orderedMonths.length} MESES`
+        : `${year} · ${orderedMonths.length} MESES DISPONIBLES`;
+    return {
+      key,
+      label,
+      start: monthBounds(first).start,
+      end: monthBounds(last).end,
+      months: orderedMonths,
+    };
+  });
+}
+
+function Metric({
+  icon: Icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="label-caps">{label}</p>
+            <p className="number-display mt-2 text-xl">{value}</p>
+            <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
+              {detail}
+            </p>
+          </div>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#c3a583]/40 bg-[#c3a583]/10 text-[#8a6744]">
+            <Icon className="h-4 w-4" />
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function PayrollBranchReportDemo() {
+  const { state, currentPeriod, periodOptions, payrollLines } =
+    usePayrollDemo();
+  const availableMonths = useMemo(
+    () =>
+      Array.from(
+        new Set(periodOptions.map((period) => period.start.slice(0, 7))),
+      ),
+    [periodOptions],
+  );
+  const [scope, setScope] = useState<ReportScope>("MONTHLY");
+  const [periodKey, setPeriodKey] = useState(currentPeriod.start.slice(0, 7));
+  const [tableSort, setTableSort] =
+    useState<TableSortState<BranchSummarySortKey>>(null);
+  const scopeOptions = useMemo(
+    () => buildScopeOptions(scope, availableMonths),
+    [availableMonths, scope],
+  );
+  const selectedPeriod = scopeOptions.find(
+    (option) => option.key === periodKey,
+  ) ??
+    scopeOptions[0] ?? {
+      key: currentPeriod.start.slice(0, 7),
+      label: monthLabel(currentPeriod.start.slice(0, 7)),
+      start: currentPeriod.start,
+      end: currentPeriod.end,
+      months: [currentPeriod.start.slice(0, 7)],
+    };
+
+  function selectScope(nextScope: ReportScope) {
+    const nextOptions = buildScopeOptions(nextScope, availableMonths);
+    setScope(nextScope);
+    setPeriodKey(nextOptions[0]?.key ?? currentPeriod.start.slice(0, 7));
+  }
+
+  const analysis = useMemo(() => {
+    const validBranchIds = new Set(state.branches.map((branch) => branch.id));
+    const validCostBranches = (
+      branchIds: string[] | undefined,
+      fallbackBranchId?: string,
+    ) => {
+      const requested = branchIds?.length
+        ? branchIds
+        : fallbackBranchId
+          ? [fallbackBranchId]
+          : [];
+      return Array.from(new Set(requested)).filter((branchId) =>
+        validBranchIds.has(branchId),
+      );
+    };
+    const snapshots = selectedPeriod.months.map(
+      (
+        month,
+      ): { month: string; rows: BranchSummaryRow[]; trend: MonthlyTrend } => {
+        const bounds = monthBounds(month);
+        const lines = payrollLines(
+          bounds.start,
+          state.calculationMode,
+          bounds.end,
+        );
+        const settlementTaxes = effectiveTaxInclusionForRange(
+          state.periodTaxInclusions,
+          bounds.start,
+          bounds.end,
+          "SETTLEMENT",
+        );
+        const christmasTaxes = effectiveTaxInclusionForRange(
+          state.periodTaxInclusions,
+          bounds.start,
+          bounds.end,
+          "CHRISTMAS_BONUS",
+        );
+        const kioskCalculation = kioskPayrollForMonth(state, month);
+        const kioskBranchById = new Map(
+          kioskCalculation.branchRows.map((row) => [row.target.branchId, row]),
+        );
+        const lineByEmployee = new Map(
+          lines.map((line) => [line.employee.id, line]),
+        );
+        const rows = state.branches.map((branch) => {
+          let branchSales = 0;
+          let fixedPayroll = 0;
+          let specialistPayroll = 0;
+          let doublePayPayroll = 0;
+          let negativeBalanceApplied = 0;
+          let commissionPayroll = 0;
+          let kioskPayroll = 0;
+          let contractorPayroll = 0;
+          let settlementPayroll = 0;
+          let christmasBonusPayroll = 0;
+          let movements = 0;
+          let workerTax = 0;
+          let socialCost = 0;
+          let isrCost = 0;
+          const employeeIds = new Set<string>();
+
+          lines.forEach((line) => {
+            const employeeSales = state.sales.filter(
+              (sale) =>
+                sale.employeeId === line.employee.id &&
+                sale.date >= bounds.start &&
+                sale.date <= bounds.end,
+            );
+            const employeeSalesTotal = employeeSales.reduce(
+              (sum, sale) => sum + sale.amount,
+              0,
+            );
+            const employeeBranchSales = employeeSales
+              .filter((sale) => sale.branchId === branch.id)
+              .reduce((sum, sale) => sum + sale.amount, 0);
+            const salesShare =
+              employeeSalesTotal > 0
+                ? employeeBranchSales / employeeSalesTotal
+                : 0;
+            const fixedAmount = line.fixedSalary + line.doublePayAmount;
+            const costShare =
+              employeeMixedCostAllocationShares({
+                employee: line.employee,
+                branches: state.branches,
+                sales: state.sales,
+                periodStart: bounds.start,
+                periodEnd: bounds.end,
+                fixedAmount,
+                variableAmount: Math.max(line.total - fixedAmount, 0),
+              }).find((allocation) => allocation.branchId === branch.id)
+                ?.share ?? 0;
+            if (costShare <= 0) return;
+            employeeIds.add(line.employee.id);
+            branchSales += line.sales * salesShare;
+            const movementNet =
+              line.bonuses -
+              line.fines -
+              line.loanDeduction +
+              line.externalAdditions -
+              line.externalDeductions;
+            const specialPayroll =
+              line.settlementPayment + line.christmasBonusPayment;
+            const modulePayroll = line.total - movementNet - specialPayroll;
+            const payrollKind = payrollModuleForCategory(
+              line.employee.category,
+            );
+            if (payrollKind === "FIXED")
+              fixedPayroll += modulePayroll * costShare;
+            if (payrollKind === "SPECIALIST")
+              specialistPayroll += modulePayroll * costShare;
+            doublePayPayroll += line.doublePayAmount * costShare;
+            negativeBalanceApplied += line.carriedNegativeBalance * costShare;
+            if (payrollKind === "COMMISSION")
+              commissionPayroll += modulePayroll * costShare;
+            if (payrollKind === "CONTRACTOR")
+              contractorPayroll += modulePayroll * costShare;
+            movements -= line.loanDeduction * costShare;
+            const settlementRecord = state.terminationSettlements.find(
+              (item) =>
+                item.employeeId === line.employee.id &&
+                item.applies &&
+                !item.archivedAt &&
+                item.status !== "DRAFT" &&
+                item.paymentDate >= bounds.start &&
+                item.paymentDate <= bounds.end,
+            );
+            const christmasRecord = state.christmasBonuses.find(
+              (item) =>
+                item.employeeId === line.employee.id &&
+                christmasBonusPaidAmountForRange(
+                  item,
+                  state.christmasBonusPaymentPeriods,
+                  bounds.start,
+                  bounds.end,
+                ) > 0,
+            );
+            const specialSocial =
+              (settlementTaxes.includeSocialCost &&
+              settlementRecord?.includeSocialCost
+                ? line.settlementPayment * settlementRecord.socialCostRate
+                : 0) +
+              ((christmasTaxes.includeSocialCost ||
+                christmasRecord?.includeSocialCost === true) &&
+              christmasRecord
+                ? line.christmasBonusPayment * christmasRecord.socialCostRate
+                : 0);
+            const specialIsr =
+              (settlementTaxes.includeIsr && settlementRecord?.includeIsr
+                ? line.settlementPayment * settlementRecord.isrRate
+                : 0) +
+              ((christmasTaxes.includeIsr ||
+                christmasRecord?.includeIsr === true) &&
+              christmasRecord
+                ? line.christmasBonusPayment * christmasRecord.isrRate
+                : 0);
+            socialCost +=
+              Math.max(0, line.socialCost - specialSocial) * costShare;
+            isrCost += Math.max(0, line.isrCost - specialIsr) * costShare;
+            workerTax += line.workerTax * costShare;
+          });
+
+          state.movements
+            .filter(
+              (movement) =>
+                movement.status === "APPROVED" &&
+                movement.periodStart >= bounds.start &&
+                movement.periodStart <= bounds.end,
+            )
+            .forEach((movement) => {
+              const movementBranches = validCostBranches(
+                movement.costBranchIds,
+                state.employees.find(
+                  (employee) => employee.id === movement.employeeId,
+                )?.branchId,
+              );
+              if (!movementBranches.includes(branch.id)) return;
+              const line = lineByEmployee.get(movement.employeeId);
+              if (
+                !line ||
+                (movement.mode === "SCALE" &&
+                  line.sales < (movement.threshold ?? 0))
+              )
+                return;
+              movements +=
+                (movement.type === "BONUS"
+                  ? movement.amount
+                  : -movement.amount) / Math.max(movementBranches.length, 1);
+              employeeIds.add(movement.employeeId);
+            });
+
+          personalizedBonusAwardsForPeriod(
+            state,
+            bounds.start,
+            bounds.end,
+          ).forEach((award) => {
+            const awardBranches = validCostBranches(
+              award.costBranchIds,
+              award.employee.branchId,
+            );
+            if (!awardBranches.includes(branch.id)) return;
+            movements += award.amount / Math.max(awardBranches.length, 1);
+            employeeIds.add(award.employee.id);
+          });
+
+          state.adjustments
+            .filter(
+              (adjustment) =>
+                adjustment.status === "APPROVED" &&
+                adjustment.type !== "BASE_SALARY" &&
+                adjustment.payrollDate >= bounds.start &&
+                adjustment.payrollDate <= bounds.end,
+            )
+            .forEach((adjustment) => {
+              const adjustmentBranches = validCostBranches(
+                adjustment.costBranchIds,
+                adjustment.branchId,
+              );
+              if (!adjustmentBranches.includes(branch.id)) return;
+              const positive =
+                adjustment.type === "PLUS" ||
+                adjustment.type === "BONUS" ||
+                adjustment.type === "LOAN";
+              movements +=
+                (positive ? adjustment.amount : -adjustment.amount) /
+                Math.max(adjustmentBranches.length, 1);
+              adjustment.participantIds.forEach((employeeId) =>
+                employeeIds.add(employeeId),
+              );
+            });
+
+          state.viaticsEntries
+            .filter(
+              (entry) =>
+                entry.status === "APPROVED" &&
+                entry.branchId === branch.id &&
+                entry.requestedAt >= bounds.start &&
+                entry.requestedAt <= bounds.end,
+            )
+            .forEach((entry) => {
+              const effect = state.viaticsConcepts.find(
+                (concept) => concept.id === entry.conceptId,
+              )?.effect;
+              movements += effect === "DEDUCT" ? -entry.amount : entry.amount;
+              employeeIds.add(entry.employeeId);
+            });
+
+          state.terminationSettlements
+            .filter(
+              (item) =>
+                item.applies &&
+                !item.archivedAt &&
+                item.status !== "DRAFT" &&
+                item.paymentDate >= bounds.start &&
+                item.paymentDate <= bounds.end,
+            )
+            .forEach((settlement) => {
+              const costBranches = validCostBranches(settlement.costBranchIds);
+              if (!costBranches.includes(branch.id)) return;
+              const share = 1 / Math.max(costBranches.length, 1);
+              const gross = terminationSettlementTotal(settlement);
+              settlementPayroll += gross * share;
+              socialCost +=
+                (settlementTaxes.includeSocialCost &&
+                settlement.includeSocialCost
+                  ? gross * settlement.socialCostRate
+                  : 0) * share;
+              isrCost +=
+                (settlementTaxes.includeIsr && settlement.includeIsr
+                  ? gross * settlement.isrRate
+                  : 0) * share;
+              employeeIds.add(settlement.employeeId);
+            });
+
+          state.christmasBonuses
+            .filter(
+              (item) =>
+                christmasBonusPaidAmountForRange(
+                  item,
+                  state.christmasBonusPaymentPeriods,
+                  bounds.start,
+                  bounds.end,
+                ) > 0,
+            )
+            .forEach((bonus) => {
+              const costBranches = validCostBranches(bonus.costBranchIds);
+              if (!costBranches.includes(branch.id)) return;
+              const share = 1 / Math.max(costBranches.length, 1);
+              const gross = christmasBonusPaidAmountForRange(
+                bonus,
+                state.christmasBonusPaymentPeriods,
+                bounds.start,
+                bounds.end,
+              );
+              christmasBonusPayroll += gross * share;
+              socialCost +=
+                (christmasTaxes.includeSocialCost || bonus.includeSocialCost
+                  ? gross * bonus.socialCostRate
+                  : 0) * share;
+              isrCost +=
+                (christmasTaxes.includeIsr || bonus.includeIsr
+                  ? gross * bonus.isrRate
+                  : 0) * share;
+              employeeIds.add(bonus.employeeId);
+            });
+
+          const kioskBranch = kioskBranchById.get(branch.id);
+          kioskPayroll = kioskBranch?.commission ?? 0;
+          workerTax += kioskBranch?.workerTax ?? 0;
+          socialCost += kioskBranch?.socialCost ?? 0;
+          isrCost += kioskBranch?.isr ?? 0;
+          if (kioskBranch?.manager) employeeIds.add(kioskBranch.manager.id);
+
+          const payrollCost =
+            fixedPayroll +
+            specialistPayroll +
+            commissionPayroll +
+            kioskPayroll +
+            contractorPayroll +
+            settlementPayroll +
+            christmasBonusPayroll +
+            movements;
+          return {
+            id: branch.id,
+            branch: branch.name,
+            sales: branchSales,
+            fixedPayroll,
+            specialistPayroll,
+            doublePayPayroll,
+            negativeBalanceApplied,
+            commissionPayroll,
+            kioskPayroll,
+            contractorPayroll,
+            settlementPayroll,
+            christmasBonusPayroll,
+            movements,
+            payrollCost,
+            workerTax,
+            socialCost,
+            isrCost,
+            totalCost: payrollCost + workerTax + socialCost + isrCost,
+            employees: employeeIds.size,
+          };
+        });
+        const payroll = rows.reduce((sum, row) => sum + row.payrollCost, 0);
+        const workerTax = rows.reduce((sum, row) => sum + row.workerTax, 0);
+        const social = rows.reduce((sum, row) => sum + row.socialCost, 0);
+        const isr = rows.reduce((sum, row) => sum + row.isrCost, 0);
+        return {
+          month,
+          rows,
+          trend: {
+            month,
+            label: shortMonthName
+              .format(new Date(`${month}-01T12:00:00Z`))
+              .replace(".", "")
+              .toLocaleUpperCase("es-MX"),
+            sales: rows.reduce((sum, row) => sum + row.sales, 0),
+            payroll,
+            workerTax,
+            social,
+            isr,
+            totalCost: payroll + workerTax + social + isr,
+          },
+        };
+      },
+    );
+
+    const rows = state.branches.map((branch) => {
+      const entries = snapshots
+        .map((snapshot) => snapshot.rows.find((row) => row.id === branch.id))
+        .filter((row): row is BranchSummaryRow => Boolean(row));
+      return {
+        id: branch.id,
+        branch: branch.name,
+        sales: entries.reduce((sum, row) => sum + row.sales, 0),
+        fixedPayroll: entries.reduce((sum, row) => sum + row.fixedPayroll, 0),
+        specialistPayroll: entries.reduce(
+          (sum, row) => sum + row.specialistPayroll,
+          0,
+        ),
+        doublePayPayroll: entries.reduce(
+          (sum, row) => sum + row.doublePayPayroll,
+          0,
+        ),
+        negativeBalanceApplied: entries.reduce(
+          (sum, row) => sum + row.negativeBalanceApplied,
+          0,
+        ),
+        commissionPayroll: entries.reduce(
+          (sum, row) => sum + row.commissionPayroll,
+          0,
+        ),
+        kioskPayroll: entries.reduce((sum, row) => sum + row.kioskPayroll, 0),
+        contractorPayroll: entries.reduce(
+          (sum, row) => sum + row.contractorPayroll,
+          0,
+        ),
+        settlementPayroll: entries.reduce(
+          (sum, row) => sum + row.settlementPayroll,
+          0,
+        ),
+        christmasBonusPayroll: entries.reduce(
+          (sum, row) => sum + row.christmasBonusPayroll,
+          0,
+        ),
+        movements: entries.reduce((sum, row) => sum + row.movements, 0),
+        payrollCost: entries.reduce((sum, row) => sum + row.payrollCost, 0),
+        workerTax: entries.reduce((sum, row) => sum + row.workerTax, 0),
+        socialCost: entries.reduce((sum, row) => sum + row.socialCost, 0),
+        isrCost: entries.reduce((sum, row) => sum + row.isrCost, 0),
+        totalCost: entries.reduce((sum, row) => sum + row.totalCost, 0),
+        employees: Math.max(0, ...entries.map((row) => row.employees)),
+      };
+    });
+
+    const issues: AllocationIssue[] = [];
+    state.employees
+      .filter(
+        (employee) =>
+          employee.hireDate <= selectedPeriod.end &&
+          (!employee.terminationDate ||
+            employee.terminationDate >= selectedPeriod.start),
+      )
+      .forEach((employee) => {
+        const selected = validCostBranches(employee.costBranchIds);
+        if (
+          selected.length === 0 ||
+          selected.length !== employee.costBranchIds.length
+        )
+          issues.push({
+            id: `employee-${employee.id}`,
+            source: "NÓMINA",
+            record: employee.name,
+            detail: "Sin sucursales de costo válidas",
+          });
+      });
+    state.movements
+      .filter(
+        (movement) =>
+          movement.status !== "CANCELLED" &&
+          movement.periodStart >= selectedPeriod.start &&
+          movement.periodStart <= selectedPeriod.end,
+      )
+      .forEach((movement) => {
+        if (validCostBranches(movement.costBranchIds).length === 0)
+          issues.push({
+            id: `movement-${movement.id}`,
+            source: "BONO / MULTA",
+            record: movement.concept,
+            detail: "Selecciona una, varias o todas las sucursales",
+          });
+      });
+    state.adjustments
+      .filter(
+        (adjustment) =>
+          adjustment.status !== "CANCELLED" &&
+          adjustment.payrollDate >= selectedPeriod.start &&
+          adjustment.payrollDate <= selectedPeriod.end,
+      )
+      .forEach((adjustment) => {
+        if (
+          validCostBranches(adjustment.costBranchIds, adjustment.branchId)
+            .length === 0
+        )
+          issues.push({
+            id: `adjustment-${adjustment.id}`,
+            source: "MOVIMIENTO",
+            record: adjustment.concept,
+            detail: "Centro de costo inválido",
+          });
+      });
+    state.viaticsEntries
+      .filter(
+        (entry) =>
+          entry.status !== "REJECTED" &&
+          entry.requestedAt >= selectedPeriod.start &&
+          entry.requestedAt <= selectedPeriod.end,
+      )
+      .forEach((entry) => {
+        if (!validBranchIds.has(entry.branchId))
+          issues.push({
+            id: `viatic-${entry.id}`,
+            source: "VIÁTICO",
+            record: entry.receiptName,
+            detail: "Sucursal inválida",
+          });
+      });
+    state.terminationSettlements
+      .filter(
+        (item) =>
+          item.applies &&
+          !item.archivedAt &&
+          item.status !== "DRAFT" &&
+          item.paymentDate >= selectedPeriod.start &&
+          item.paymentDate <= selectedPeriod.end,
+      )
+      .forEach((settlement) => {
+        if (validCostBranches(settlement.costBranchIds).length === 0)
+          issues.push({
+            id: `settlement-${settlement.id}`,
+            source: "LIQUIDACIÓN",
+            record:
+              state.employees.find(
+                (employee) => employee.id === settlement.employeeId,
+              )?.name ?? settlement.id,
+            detail: "Selecciona una, varias o todas las sucursales",
+          });
+      });
+    state.christmasBonuses
+      .filter(
+        (item) =>
+          christmasBonusPaidAmountForRange(
+            item,
+            state.christmasBonusPaymentPeriods,
+            selectedPeriod.start,
+            selectedPeriod.end,
+          ) > 0,
+      )
+      .forEach((bonus) => {
+        if (validCostBranches(bonus.costBranchIds).length === 0)
+          issues.push({
+            id: `christmas-${bonus.id}`,
+            source: "AGUINALDO",
+            record:
+              state.employees.find(
+                (employee) => employee.id === bonus.employeeId,
+              )?.name ?? bonus.id,
+            detail: "Selecciona una, varias o todas las sucursales",
+          });
+      });
+    state.kioskMonthlySales
+      .filter((sale) => selectedPeriod.months.includes(sale.month))
+      .forEach((sale) => {
+        if (!validBranchIds.has(sale.branchId))
+          issues.push({
+            id: `kiosk-${sale.id}`,
+            source: "KIOSCO",
+            record: sale.month,
+            detail: "Punto de venta inválido",
+          });
+      });
+    return { rows, trend: snapshots.map((snapshot) => snapshot.trend), issues };
+  }, [
+    payrollLines,
+    selectedPeriod.end,
+    selectedPeriod.months,
+    selectedPeriod.start,
+    state,
+  ]);
+
+  const rows = useMemo(
+    () =>
+      sortTableRows(analysis.rows, tableSort, {
+        branch: (row) => row.branch,
+        fixedPayroll: (row) => row.fixedPayroll,
+        specialistPayroll: (row) => row.specialistPayroll,
+        doublePayPayroll: (row) => row.doublePayPayroll,
+        negativeBalanceApplied: (row) => row.negativeBalanceApplied,
+        commissionPayroll: (row) => row.commissionPayroll,
+        kioskPayroll: (row) => row.kioskPayroll,
+        contractorPayroll: (row) => row.contractorPayroll,
+        settlementPayroll: (row) => row.settlementPayroll,
+        christmasBonusPayroll: (row) => row.christmasBonusPayroll,
+        movements: (row) => row.movements,
+        payrollCost: (row) => row.payrollCost,
+        workerTax: (row) => row.workerTax,
+        socialCost: (row) => row.socialCost,
+        isrCost: (row) => row.isrCost,
+        totalCost: (row) => row.totalCost,
+      }),
+    [analysis.rows, tableSort],
+  );
+  function changeTableSort(key: BranchSummarySortKey, kind: TableSortKind) {
+    setTableSort((current) => nextTableSort(current, key, kind));
+  }
+  const totalSales = rows.reduce((sum, row) => sum + row.sales, 0);
+  const totalPayroll = rows.reduce((sum, row) => sum + row.payrollCost, 0);
+  const totalWorkerTax = rows.reduce((sum, row) => sum + row.workerTax, 0);
+  const totalSocial = rows.reduce((sum, row) => sum + row.socialCost, 0);
+  const totalIsr = rows.reduce((sum, row) => sum + row.isrCost, 0);
+  const totalCost = rows.reduce((sum, row) => sum + row.totalCost, 0);
+  const payrollByModule = {
+    fixed: rows.reduce((sum, row) => sum + row.fixedPayroll, 0),
+    specialist: rows.reduce((sum, row) => sum + row.specialistPayroll, 0),
+    doublePay: rows.reduce((sum, row) => sum + row.doublePayPayroll, 0),
+    negativeBalances: rows.reduce(
+      (sum, row) => sum + row.negativeBalanceApplied,
+      0,
+    ),
+    commission: rows.reduce((sum, row) => sum + row.commissionPayroll, 0),
+    kiosk: rows.reduce((sum, row) => sum + row.kioskPayroll, 0),
+    contractor: rows.reduce((sum, row) => sum + row.contractorPayroll, 0),
+    settlements: rows.reduce((sum, row) => sum + row.settlementPayroll, 0),
+    christmasBonus: rows.reduce(
+      (sum, row) => sum + row.christmasBonusPayroll,
+      0,
+    ),
+    movements: rows.reduce((sum, row) => sum + row.movements, 0),
+  };
+  const totalEmployees = new Set(
+    state.employees
+      .filter((employee) => employee.active)
+      .map((employee) => employee.id),
+  ).size;
+  const maxCost = Math.max(...rows.map((row) => row.totalCost), 1);
+  const maxTrend = Math.max(
+    ...analysis.trend.flatMap((item) => [item.sales, item.totalCost]),
+    1,
+  );
+  const efficiencyRows = [...rows].sort(
+    (a, b) =>
+      b.sales / Math.max(b.totalCost, 1) - a.sales / Math.max(a.totalCost, 1),
+  );
+  const exportConfig = {
+    title: "Desglose analítico de nómina por sucursal",
+    subtitle: `${selectedPeriod.label} · ${selectedPeriod.start} — ${selectedPeriod.end} · Corte del piloto`,
+    metadata: [
+      {
+        label: "Periodo",
+        value: `${selectedPeriod.start} — ${selectedPeriod.end}`,
+      },
+      {
+        label: "Frecuencia",
+        value:
+          scope === "MONTHLY"
+            ? "MENSUAL"
+            : scope === "QUARTERLY"
+              ? "TRIMESTRAL"
+              : "ANUAL",
+      },
+      { label: "Alcance", value: "REPORTE GENERAL · EMPRESA COMPLETA" },
+      { label: "Sucursales", value: String(rows.length) },
+    ],
+    metrics: [
+      {
+        label: "Ventas",
+        value: money.format(totalSales),
+        detail: "Venta acumulada",
+      },
+      {
+        label: "Costo integral",
+        value: money.format(totalCost),
+        detail: "Neto + retención + social + ISR",
+      },
+      {
+        label: "Costo / venta",
+        value: `${totalSales > 0 ? ((totalCost / totalSales) * 100).toFixed(1) : "0.0"}%`,
+        detail: "Participación integral",
+      },
+      {
+        label: "Personal",
+        value: String(totalEmployees),
+        detail: "Empleados vigentes",
+      },
+    ],
+    analysis: [
+      analysis.issues.length === 0
+        ? "La asignación de costos está completa; no existen movimientos sin sucursal."
+        : `${analysis.issues.length} registros requieren corrección de su centro de costo.`,
+      efficiencyRows[0]
+        ? `${efficiencyRows[0].branch} presenta la mejor relación entre ventas y costo laboral del periodo.`
+        : "No existe información suficiente para comparar eficiencia por sucursal.",
+      `${rows.length} sucursales integran salario fijo, especialistas, comisiones, kiosco, honorarios y movimientos.`,
+      `Los días festivos o feriados pagados al doble representan ${money.format(payrollByModule.doublePay)} del costo de nómina y permanecen incluidos dentro de Salario fijo o Especialistas.`,
+    ],
+    filename: `nomina-por-sucursal-${scope.toLocaleLowerCase("es-MX")}-${selectedPeriod.key}`,
+    sheetName: "Por sucursal",
+    rows,
+    columns: [
+      {
+        header: "SUCURSAL",
+        accessor: (row: BranchSummaryRow) => row.branch,
+        width: 24,
+      },
+      {
+        header: "EMPLEADOS",
+        accessor: (row: BranchSummaryRow) => row.employees,
+        format: "number" as const,
+        width: 12,
+      },
+      {
+        header: "VENTAS",
+        accessor: (row: BranchSummaryRow) => row.sales,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "SALARIO FIJO",
+        accessor: (row: BranchSummaryRow) => row.fixedPayroll,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "ESPECIALISTAS",
+        accessor: (row: BranchSummaryRow) => row.specialistPayroll,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "PAGO DOBLE · INFORMATIVO",
+        accessor: (row: BranchSummaryRow) => row.doublePayPayroll,
+        format: "currency" as const,
+        width: 20,
+      },
+      {
+        header: "SALDO ARRASTRADO · INFORMATIVO",
+        accessor: (row: BranchSummaryRow) => row.negativeBalanceApplied,
+        format: "currency" as const,
+        width: 22,
+      },
+      {
+        header: "COMISIONES",
+        accessor: (row: BranchSummaryRow) => row.commissionPayroll,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "KIOSCO",
+        accessor: (row: BranchSummaryRow) => row.kioskPayroll,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "HONORARIOS",
+        accessor: (row: BranchSummaryRow) => row.contractorPayroll,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "LIQUIDACIONES",
+        accessor: (row: BranchSummaryRow) => row.settlementPayroll,
+        format: "currency" as const,
+        width: 17,
+      },
+      {
+        header: "AGUINALDOS",
+        accessor: (row: BranchSummaryRow) => row.christmasBonusPayroll,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "MOVIMIENTOS",
+        accessor: (row: BranchSummaryRow) => row.movements,
+        format: "currency" as const,
+        width: 16,
+      },
+      {
+        header: "NÓMINA NETA",
+        accessor: (row: BranchSummaryRow) => row.payrollCost,
+        format: "currency" as const,
+        width: 18,
+      },
+      {
+        header: "IMPUESTO TRABAJADOR",
+        accessor: (row: BranchSummaryRow) => row.workerTax,
+        format: "currency" as const,
+        width: 19,
+      },
+      {
+        header: "COSTO SOCIAL",
+        accessor: (row: BranchSummaryRow) => row.socialCost,
+        format: "currency" as const,
+        width: 17,
+      },
+      {
+        header: "ISR",
+        accessor: (row: BranchSummaryRow) => row.isrCost,
+        format: "currency" as const,
+        width: 14,
+      },
+      {
+        header: "COSTO TOTAL",
+        accessor: (row: BranchSummaryRow) => row.totalCost,
+        format: "currency" as const,
+        width: 18,
+      },
+      {
+        header: "COSTO / VENTA",
+        accessor: (row: BranchSummaryRow) =>
+          row.sales > 0 ? row.totalCost / row.sales : 0,
+        format: "percent" as const,
+        width: 15,
+      },
+    ],
+  };
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Badge variant="outline">REPORTE ANALÍTICO</Badge>
+            <span className="text-xs text-[color:var(--text-muted)]">
+              Distribución por punto de venta
+            </span>
+          </div>
+          <h1 className="page-title">Dashboard por sucursal</h1>
+          <p className="mt-1 max-w-3xl text-sm text-[color:var(--text-muted)]">
+            Compara ventas, nómina y cargas por mes, trimestre o año con la
+            distribución configurada para cada empleado.
+          </p>
+        </div>
+        <ReportExportButtons config={exportConfig} />
+      </header>
+
+      <Card className="border-[color:var(--border-color)]">
+        <CardContent className="flex flex-col gap-4 p-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="space-y-2">
+              <Label>Alcance del reporte</Label>
+              <div className="inline-flex rounded-lg border border-[color:var(--border-color)] p-1">
+                {(["MONTHLY", "QUARTERLY", "ANNUAL"] as ReportScope[]).map(
+                  (item) => (
+                    <Button
+                      key={item}
+                      type="button"
+                      size="sm"
+                      variant={scope === item ? "default" : "ghost"}
+                      className="h-8 px-3 text-[10px]"
+                      onClick={() => selectScope(item)}
+                    >
+                      {item === "MONTHLY"
+                        ? "Mensual"
+                        : item === "QUARTERLY"
+                          ? "Trimestral"
+                          : "Anual"}
+                    </Button>
+                  ),
+                )}
+              </div>
+            </div>
+            <div className="min-w-0 space-y-2 sm:w-[330px]">
+              <Label htmlFor="branch-report-period">Periodo analizado</Label>
+              <Select value={selectedPeriod.key} onValueChange={setPeriodKey}>
+                <SelectTrigger id="branch-report-period" className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopeOptions.map((option) => (
+                    <SelectItem key={option.key} value={option.key}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 rounded-xl border border-[#c3a583]/35 bg-[#c3a583]/10 px-3 py-2">
+            <CalendarDays className="h-4 w-4 text-[#987049]" />
+            <div>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[color:var(--text-muted)]">
+                Periodo consolidado
+              </p>
+              <p className="text-xs font-semibold">
+                {selectedPeriod.start} — {selectedPeriod.end}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <section
+        className={`rounded-2xl border p-4 ${analysis.issues.length === 0 ? "border-emerald-300 bg-emerald-50/75 text-emerald-950 dark:bg-emerald-950/25 dark:text-emerald-100" : "border-rose-400 bg-rose-50/80 text-rose-950 dark:bg-rose-950/25 dark:text-rose-100"}`}
+        role="status"
+        aria-live="polite"
+      >
+        <div className="flex items-start gap-3">
+          {analysis.issues.length === 0 ? (
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-300" />
+          ) : (
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-700 dark:text-rose-300" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">
+              {analysis.issues.length === 0
+                ? "Asignación de costos completa"
+                : `${analysis.issues.length} registros requieren una sucursal de costo`}
+            </p>
+            <p className="mt-1 text-xs opacity-75">
+              {analysis.issues.length === 0
+                ? "Todas las nóminas, comisiones de kiosco y movimientos del periodo están dirigidos a una, varias o todas las sucursales."
+                : "Los registros señalados no se incluyen silenciosamente; corrige su centro de costo para conciliar el dashboard."}
+            </p>
+            {analysis.issues.length > 0 && (
+              <div className="mt-3 divide-y divide-rose-300/60 border-t border-rose-300/60">
+                {analysis.issues.slice(0, 10).map((issue) => (
+                  <div
+                    key={issue.id}
+                    className="grid gap-1 py-2 text-[10px] sm:grid-cols-[120px_1fr_1.2fr]"
+                  >
+                    <strong>{issue.source}</strong>
+                    <span>{issue.record}</span>
+                    <span>{issue.detail}</span>
+                  </div>
+                ))}
+                {analysis.issues.length > 10 && (
+                  <p className="py-2 text-[10px] font-semibold">
+                    +{analysis.issues.length - 10} registros adicionales
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <Metric
+          icon={TrendingUp}
+          label="VENTAS"
+          value={money.format(totalSales)}
+          detail={`${selectedPeriod.months.length} ${selectedPeriod.months.length === 1 ? "mes" : "meses"} acumulados`}
+        />
+        <Metric
+          icon={WalletCards}
+          label="COSTO INTEGRAL"
+          value={money.format(totalCost)}
+          detail="Neto + retención + social + ISR"
+        />
+        <Metric
+          icon={Landmark}
+          label="IMPUESTO TRABAJADOR"
+          value={money.format(totalWorkerTax)}
+          detail="Obligación patronal por enterar"
+        />
+        <Metric
+          icon={CircleDollarSign}
+          label="COSTO / VENTA"
+          value={`${totalSales > 0 ? ((totalCost / totalSales) * 100).toFixed(1) : "0.0"}%`}
+          detail="Participación integral"
+        />
+        <Metric
+          icon={Scale}
+          label="PROMEDIO / EMPLEADO"
+          value={money.format(
+            totalEmployees > 0 ? totalCost / totalEmployees : 0,
+          )}
+          detail={`${totalEmployees} empleados vigentes`}
+        />
+        <Metric
+          icon={Building2}
+          label="SUCURSALES"
+          value={String(rows.length)}
+          detail="Centros de costo"
+        />
+      </div>
+
+      <Card className="overflow-hidden border-[color:var(--border-color)]">
+        <CardHeader className="border-b border-[color:var(--border-color)]">
+          <div className="flex items-center gap-2">
+            <Layers3 className="h-4 w-4 text-[color:var(--text-secondary)]" />
+            <CardTitle className="section-heading uppercase">
+              Todas las nóminas integradas
+            </CardTitle>
+          </div>
+          <CardDescription>
+            Cada importe conserva la sucursal o distribución de costo
+            configurada en su registro.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-px bg-[color:var(--border-color)] p-0 sm:grid-cols-2 xl:grid-cols-8">
+          {[
+            {
+              label: "SALARIO FIJO",
+              value: payrollByModule.fixed,
+              detail: "Gerencia y call center",
+            },
+            {
+              label: "ESPECIALISTAS",
+              value: payrollByModule.specialist,
+              detail: "Facialistas y especialistas",
+            },
+            {
+              label: "COMISIONES",
+              value: payrollByModule.commission,
+              detail: "Vendedores",
+            },
+            {
+              label: "KIOSCO",
+              value: payrollByModule.kiosk,
+              detail: "Comisión gerencial mensual",
+            },
+            {
+              label: "HONORARIOS",
+              value: payrollByModule.contractor,
+              detail: "Servicios facturados",
+            },
+            {
+              label: "LIQUIDACIONES",
+              value: payrollByModule.settlements,
+              detail: "Bajas autorizadas",
+            },
+            {
+              label: "AGUINALDOS",
+              value: payrollByModule.christmasBonus,
+              detail: "Prestación anual",
+            },
+            {
+              label: "MOVIMIENTOS",
+              value: payrollByModule.movements,
+              detail: "Bonos, multas, préstamos y viáticos",
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="bg-[color:var(--bg-card)] px-4 py-3"
+            >
+              <p className="text-[9px] font-semibold tracking-[0.1em] text-[color:var(--text-muted)]">
+                {item.label}
+              </p>
+              <p
+                className={`number-display mt-1 text-base ${item.value < 0 ? "text-rose-700 dark:text-rose-300" : ""}`}
+              >
+                {money.format(item.value)}
+              </p>
+              <p className="mt-0.5 text-[9px] text-[color:var(--text-muted)]">
+                {item.detail}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="section-heading uppercase">
+              Costo comparado
+            </CardTitle>
+            <CardDescription>
+              Participación integral por sucursal.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {rows.map((row) => (
+              <div key={row.id}>
+                <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                  <span className="font-semibold">{row.branch}</span>
+                  <span className="number-display">
+                    {money.format(row.totalCost)}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-[color:var(--accent-hover)]">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#c3a583] to-[#648672]"
+                    style={{
+                      width: `${Math.max((row.totalCost / maxCost) * 100, row.totalCost > 0 ? 4 : 0)}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
+                  {row.employees} empleados ·{" "}
+                  {totalCost > 0
+                    ? ((row.totalCost / totalCost) * 100).toFixed(1)
+                    : "0.0"}
+                  % del costo total
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="section-heading uppercase">
+              Composición del costo
+            </CardTitle>
+            <CardDescription>
+              Qué conceptos forman el gasto integral seleccionado.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[
+              {
+                label: "NÓMINA NETA",
+                value: totalPayroll,
+                color: "bg-[#9a744c]",
+              },
+              {
+                label: "IMP. TRABAJADOR",
+                value: totalWorkerTax,
+                color: "bg-[#c99752]",
+              },
+              {
+                label: "COSTO SOCIAL",
+                value: totalSocial,
+                color: "bg-[#648672]",
+              },
+              { label: "ISR", value: totalIsr, color: "bg-[#7a6f89]" },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="grid grid-cols-[110px_minmax(0,1fr)_100px] items-center gap-3"
+              >
+                <span className="text-[9px] font-semibold tracking-[0.08em] text-[color:var(--text-muted)]">
+                  {item.label}
+                </span>
+                <div className="h-2 overflow-hidden rounded-full bg-[color:var(--accent-hover)]">
+                  <div
+                    className={`h-full rounded-full ${item.color}`}
+                    style={{
+                      width: `${totalCost > 0 ? (item.value / totalCost) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+                <span className="number-display text-right text-xs">
+                  {money.format(item.value)}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-[color:var(--text-secondary)]" />
+              <CardTitle className="section-heading uppercase">
+                Tendencia mensual
+              </CardTitle>
+            </div>
+            <CardDescription>
+              Ventas frente al costo integral dentro del periodo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid min-h-[210px] grid-cols-[repeat(auto-fit,minmax(64px,1fr))] items-end gap-2 border-b border-[color:var(--border-color)] pb-3">
+              {analysis.trend.map((item) => (
+                <div
+                  key={item.month}
+                  className="flex h-full min-w-0 flex-col justify-end"
+                >
+                  <div className="mb-2 flex h-36 items-end justify-center gap-1">
+                    <span
+                      className="w-3 rounded-t bg-[#c3a583]"
+                      style={{
+                        height: `${Math.max((item.sales / maxTrend) * 100, item.sales > 0 ? 4 : 0)}%`,
+                      }}
+                      title={`Ventas ${money.format(item.sales)}`}
+                    />
+                    <span
+                      className="w-3 rounded-t bg-[#648672]"
+                      style={{
+                        height: `${Math.max((item.totalCost / maxTrend) * 100, item.totalCost > 0 ? 4 : 0)}%`,
+                      }}
+                      title={`Costo ${money.format(item.totalCost)}`}
+                    />
+                  </div>
+                  <p className="truncate text-center text-[8px] font-semibold text-[color:var(--text-muted)]">
+                    {item.label}
+                  </p>
+                  <p className="truncate text-center text-[8px]">
+                    {compactMoney.format(item.totalCost)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-5 text-[9px] font-semibold text-[color:var(--text-muted)]">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-sm bg-[#c3a583]" />
+                VENTAS
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-sm bg-[#648672]" />
+                COSTO INTEGRAL
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-[color:var(--text-secondary)]" />
+              <CardTitle className="section-heading uppercase">
+                Rendimiento
+              </CardTitle>
+            </div>
+            <CardDescription>
+              Ventas generadas por cada peso de costo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {efficiencyRows.map((row, index) => {
+              const returnRate = row.sales / Math.max(row.totalCost, 1);
+              return (
+                <div
+                  key={row.id}
+                  className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-[color:var(--border-color)] px-3 py-2.5"
+                >
+                  <span
+                    className={`flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold ${index === 0 ? "bg-[#342b23] text-[#f0d9b8]" : "bg-[color:var(--accent-hover)] text-[color:var(--text-muted)]"}`}
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-semibold">
+                      {row.branch}
+                    </p>
+                    <p className="text-[9px] text-[color:var(--text-muted)]">
+                      Costo / venta{" "}
+                      {row.sales > 0
+                        ? ((row.totalCost / row.sales) * 100).toFixed(1)
+                        : "0.0"}
+                      %
+                    </p>
+                  </div>
+                  <span className="number-display text-sm">
+                    {returnRate.toFixed(2)}x
+                  </span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="section-heading uppercase">
+            Integración completa por sucursal
+          </CardTitle>
+          <CardDescription>
+            Desglose de cada nómina, movimientos y cargas del periodo elegido.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <SortableTableHead
+                    column="branch"
+                    label="SUCURSAL"
+                    kind="text"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                  />
+                  <SortableTableHead
+                    column="fixedPayroll"
+                    label="FIJO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="specialistPayroll"
+                    label="ESPECIALISTAS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="doublePayPayroll"
+                    label="PAGO DOBLE"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="negativeBalanceApplied"
+                    label="SALDO ARRASTRADO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="commissionPayroll"
+                    label="COMISIONES"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="kioskPayroll"
+                    label="KIOSCO"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="contractorPayroll"
+                    label="HONORARIOS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="settlementPayroll"
+                    label="LIQUIDACIONES"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="christmasBonusPayroll"
+                    label="AGUINALDOS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="movements"
+                    label="MOVIMIENTOS"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="payrollCost"
+                    label="NÓMINA"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="workerTax"
+                    label="IMP. TRABAJADOR"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="socialCost"
+                    label="SOCIAL"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="isrCost"
+                    label="ISR"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                  <SortableTableHead
+                    column="totalCost"
+                    label="TOTAL"
+                    kind="number"
+                    sort={tableSort}
+                    onSort={changeTableSort}
+                    align="right"
+                  />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <p className="font-semibold">{row.branch}</p>
+                      <p className="text-xs text-[color:var(--text-muted)]">
+                        {row.employees} empleados
+                      </p>
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.fixedPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.specialistPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display bg-amber-50/60 text-right font-semibold text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+                      {money.format(row.doublePayPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display bg-rose-50/60 text-right font-semibold text-rose-800 dark:bg-rose-950/20 dark:text-rose-200">
+                      {money.format(row.negativeBalanceApplied)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.commissionPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                      {money.format(row.kioskPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.contractorPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.settlementPayroll)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.christmasBonusPayroll)}
+                    </TableCell>
+                    <TableCell
+                      className={`number-display text-right ${row.movements < 0 ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}`}
+                    >
+                      {money.format(row.movements)}
+                    </TableCell>
+                    <TableCell className="number-display text-right font-semibold">
+                      {money.format(row.payrollCost)}
+                    </TableCell>
+                    <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                      {money.format(row.workerTax)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.socialCost)}
+                    </TableCell>
+                    <TableCell className="number-display text-right">
+                      {money.format(row.isrCost)}
+                    </TableCell>
+                    <TableCell className="number-display text-right font-semibold">
+                      {money.format(row.totalCost)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell>TOTAL</TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(payrollByModule.fixed)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(payrollByModule.specialist)}
+                  </TableCell>
+                  <TableCell className="number-display bg-amber-50/60 text-right text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+                    {money.format(payrollByModule.doublePay)}
+                  </TableCell>
+                  <TableCell className="number-display bg-rose-50/60 text-right text-rose-800 dark:bg-rose-950/20 dark:text-rose-200">
+                    {money.format(payrollByModule.negativeBalances)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(payrollByModule.commission)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(payrollByModule.kiosk)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(payrollByModule.contractor)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(payrollByModule.settlements)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(payrollByModule.christmasBonus)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(payrollByModule.movements)}
+                  </TableCell>
+                  <TableCell className="number-display text-right">
+                    {money.format(totalPayroll)}
+                  </TableCell>
+                  <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                    {money.format(totalWorkerTax)}
+                  </TableCell>
+                  <TableCell colSpan={2} />
+                  <TableCell className="number-display text-right">
+                    {money.format(totalCost)}
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

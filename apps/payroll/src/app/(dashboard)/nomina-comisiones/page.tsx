@@ -1,11 +1,2 @@
-import { PayrollOverviewPage } from "@/components/payroll/payroll-overview-page";
-
-export default function NominaComisionesPage() {
-  return (
-    <PayrollOverviewPage
-      payrollType="COMMISSION"
-      title="Nómina comisiones"
-      description="Consulta comisiones, movimientos y deducciones sin incluir sueldo base."
-    />
-  );
-}
+import { PayrollDemoPage } from "@/components/payroll/payroll-demo-page";
+export default function Page() { return <PayrollDemoPage view="COMMISSION" />; }

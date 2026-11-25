@@ -1,0 +1,899 @@
+"use client";
+
+import { useState } from "react";
+import {
+  Banknote,
+  Download,
+  Eye,
+  FileText,
+  ReceiptText,
+  Send,
+  Trophy,
+} from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Separator,
+  toast,
+} from "@cosmetics/ui";
+import {
+  type EmployeePayrollLine,
+  type PayrollModule,
+  type PayrollModuleConcept,
+  payrollModuleLabel,
+  personalizedBonusAwardsForPeriod,
+  personalizedBonusProgressForPeriod,
+  temporaryBonusAwardsForPeriod,
+  temporaryBonusStandings,
+  usePayrollDemo,
+} from "./payroll-demo-context";
+import { resolveBranchCommission } from "./branch-commission-calculator";
+
+const money = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+});
+
+export function commissionReceiptNet(
+  line: EmployeePayrollLine,
+  includeBaseSalary = false,
+) {
+  return Math.max(
+    (includeBaseSalary ? line.fixedSalary : 0) +
+      line.commission +
+      line.bonuses +
+      line.externalAdditions -
+      line.fines -
+      line.loanDeduction -
+      line.externalDeductions -
+      line.carriedNegativeBalance -
+      line.workerTax,
+    0,
+  );
+}
+
+export function commissionReceiptPendingBalance(line: EmployeePayrollLine) {
+  return Math.max(line.newNegativeBalance, 0);
+}
+
+export function hasCommissionReceiptActivity(
+  line: EmployeePayrollLine,
+  includeBaseSalary = false,
+) {
+  return (
+    (includeBaseSalary && line.fixedSalary !== 0) ||
+    line.sales > 0 ||
+    line.commission !== 0 ||
+    line.bonuses !== 0 ||
+    line.fines !== 0 ||
+    line.loanDeduction !== 0 ||
+    line.externalAdditions !== 0 ||
+    line.externalDeductions !== 0 ||
+    line.carriedNegativeBalance !== 0 ||
+    line.workerTax !== 0
+  );
+}
+
+export function Receipt({
+  line,
+  periodStart,
+  periodEnd,
+  module = "CONSOLIDATED",
+}: {
+  line: EmployeePayrollLine;
+  periodStart: string;
+  periodEnd: string;
+  module?: PayrollModule;
+}) {
+  const { state } = usePayrollDemo();
+  const receiptConfiguration = state.receiptConfiguration;
+  const moduleDefinition = state.payrollModules.find(
+    (item) => item.id === module,
+  );
+  const includesConcept = (concept: PayrollModuleConcept) =>
+    concept === "FINE" ||
+    module === "CONSOLIDATED" ||
+    Boolean(moduleDefinition?.concepts.includes(concept));
+  const movements = state.movements.filter(
+    (movement) =>
+      movement.employeeId === line.employee.id &&
+      movement.periodStart === periodStart &&
+      movement.status === "APPROVED" &&
+      (module === "CONSOLIDATED" || movement.payrollModule === module) &&
+      includesConcept(movement.type === "BONUS" ? "BONUS" : "FINE"),
+  );
+  const automaticTemporaryAwards = temporaryBonusAwardsForPeriod(
+    state,
+    periodStart,
+    periodEnd,
+  ).filter(
+    (award) =>
+      award.employee.id === line.employee.id &&
+      (module === "CONSOLIDATED" || award.concept.payrollModule === module),
+  );
+  const automaticPersonalizedAwards = personalizedBonusAwardsForPeriod(
+    state,
+    periodStart,
+    periodEnd,
+  ).filter(
+    (award) =>
+      award.employee.id === line.employee.id &&
+      (module === "CONSOLIDATED" || award.concept.payrollModule === module),
+  );
+  const personalizedBonusConditions = state.bonusFineConcepts
+    .filter(
+      (concept) =>
+        concept.personalized &&
+        concept.type === "BONUS" &&
+        concept.validFrom <= periodEnd &&
+        (!concept.validUntil || concept.validUntil >= periodStart) &&
+        (module === "CONSOLIDATED" || concept.payrollModule === module),
+    )
+    .flatMap((concept) =>
+      personalizedBonusProgressForPeriod(
+        state,
+        concept,
+        periodStart,
+        periodEnd,
+      ).filter((progress) => progress.employee.id === line.employee.id),
+    );
+  const temporaryChallenges = state.bonusFineConcepts
+    .filter(
+      (concept) =>
+        concept.type === "BONUS" &&
+        concept.temporary &&
+        Boolean(concept.validUntil) &&
+        concept.validFrom <= periodEnd &&
+        concept.validUntil! >= periodStart &&
+        (module === "CONSOLIDATED" || concept.payrollModule === module),
+    )
+    .flatMap((concept) => {
+      const standing = temporaryBonusStandings(state, concept).find(
+        (item) => item.employee.id === line.employee.id,
+      );
+      return standing ? [standing] : [];
+    });
+  const adjustments = state.adjustments.filter(
+    (adjustment) =>
+      adjustment.participantIds.includes(line.employee.id) &&
+      adjustment.periodStart === periodStart &&
+      adjustment.status === "APPROVED" &&
+      (module === "CONSOLIDATED" || adjustment.payrollModule === module),
+  );
+  const viatics = state.viaticsEntries.filter(
+    (entry) =>
+      entry.employeeId === line.employee.id &&
+      entry.periodStart === periodStart &&
+      entry.status === "APPROVED" &&
+      includesConcept("VIATICS") &&
+      (module === "CONSOLIDATED" || entry.payrollModule === module),
+  );
+  const branch = state.branches.find(
+    (item) => item.id === line.employee.branchId,
+  );
+  const managerTarget = state.kioskTargets.find(
+    (target) => target.branchId === line.employee.branchId,
+  );
+  const managerResolution = resolveBranchCommission({
+    branchId: line.employee.branchId,
+    month: periodEnd.slice(0, 7),
+    schemes: state.branchCommissionSchemes,
+    sales: state.kioskMonthlySales,
+    fallbackTarget: managerTarget,
+  });
+  const showCommission = includesConcept("COMMISSION");
+  const showLoans = includesConcept("LOAN") || includesConcept("ADVANCE");
+  const includeBaseSalary =
+    receiptConfiguration.includeBaseSalaryInReceipt && line.fixedSalary > 0;
+  const receiptNet = commissionReceiptNet(line, includeBaseSalary);
+  const pendingBalance = commissionReceiptPendingBalance(line);
+  const carriedBalanceSources = [
+    {
+      label: "Multas pendientes",
+      amount: line.carriedNegativeBalanceBreakdown.fines,
+    },
+    {
+      label: "Préstamos pendientes",
+      amount: line.carriedNegativeBalanceBreakdown.loans,
+    },
+    {
+      label: "Adelantos pendientes",
+      amount: line.carriedNegativeBalanceBreakdown.advances,
+    },
+    {
+      label: "Otros descuentos pendientes",
+      amount: line.carriedNegativeBalanceBreakdown.otherDeductions,
+    },
+  ].filter((source) => source.amount > 0.005);
+  const nextBalanceSources = [
+    {
+      label: "Multas por recuperar",
+      amount: line.newNegativeBalanceBreakdown.fines,
+    },
+    {
+      label: "Préstamos por recuperar",
+      amount: line.newNegativeBalanceBreakdown.loans,
+    },
+    {
+      label: "Adelantos por recuperar",
+      amount: line.newNegativeBalanceBreakdown.advances,
+    },
+    {
+      label: "Otros descuentos por recuperar",
+      amount: line.newNegativeBalanceBreakdown.otherDeductions,
+    },
+  ].filter((source) => source.amount > 0.005);
+  const receiptNetLabel = includeBaseSalary
+    ? "Neto del recibo"
+    : "Neto de comisiones";
+  const dualCommission =
+    showCommission &&
+    managerResolution.managerId === line.employee.id &&
+    line.rate > 0;
+  return (
+    <div className="mx-auto max-w-xl overflow-hidden rounded-2xl border border-[color:var(--border-color)] bg-[color:var(--bg-card)] shadow-xl">
+      <div className="bg-[#4f4a44] px-6 py-5 text-white">
+        <p className="font-brand text-xl tracking-widest">KEYSAR COSMETICS</p>
+        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-white/65">
+          {receiptConfiguration.title}
+        </p>
+        <p className="mt-1 text-[10px] text-white/55">
+          {receiptConfiguration.subtitle}
+        </p>
+      </div>
+      <div className="space-y-5 p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+              Empleado
+            </p>
+            <p className="mt-1 font-semibold">{line.employee.name}</p>
+            <p className="text-sm text-[color:var(--text-muted)]">
+              {line.employee.position} · {branch?.name}
+            </p>
+          </div>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <Badge variant="outline">
+              {periodStart} — {periodEnd}
+            </Badge>
+            {line.workedDays < line.periodDays && (
+              <Badge className="border-amber-300 bg-amber-50 text-amber-900">
+                {line.workedDays} DE {line.periodDays} DÍAS
+              </Badge>
+            )}
+            {dualCommission && (
+              <Badge className="border-amber-300 bg-amber-50 text-amber-900">
+                DOBLE COMISIÓN
+              </Badge>
+            )}
+          </div>
+        </div>
+        <Separator />
+        {showCommission &&
+          (receiptConfiguration.showSales ||
+            receiptConfiguration.showScheme) && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {receiptConfiguration.showSales && (
+                <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
+                  <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+                    Ventas compactadas ·{" "}
+                    {line.calculationMode === "WITH_VAT"
+                      ? "con IVA"
+                      : "sin IVA"}
+                  </p>
+                  <p className="number-display mt-1 text-xl">
+                    {money.format(line.sales)}
+                  </p>
+                </div>
+              )}
+              {receiptConfiguration.showScheme && (
+                <div className="rounded-xl bg-[color:var(--accent-hover)]/40 p-4">
+                  <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+                    Tasa / esquema al corte
+                  </p>
+                  <p className="mt-1 font-semibold">
+                    {line.rate > 0
+                      ? `${(line.rate * 100).toFixed(1)}%`
+                      : "NO APLICA"}
+                  </p>
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    {line.schemeName} ·{" "}
+                    {line.calculationMode === "WITH_VAT"
+                      ? "CON IVA"
+                      : "SIN IVA"}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        {dualCommission && (
+          <div className="rounded-xl border border-amber-300/70 bg-amber-50/60 p-4 dark:bg-amber-950/20">
+            <p className="text-xs font-semibold uppercase tracking-wider text-amber-900 dark:text-amber-100">
+              Comisión gerencial separada
+            </p>
+            <div className="mt-2 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  Avance de sucursales · {managerResolution.scheme?.name}
+                </p>
+                <p className="number-display mt-1 text-lg">
+                  {money.format(managerResolution.salesBase)} ·{" "}
+                  {(managerResolution.rate * 100).toFixed(1)}%
+                </p>
+              </div>
+              <p className="text-right text-xs text-[color:var(--text-muted)]">
+                Genera recibo extra
+                <br />
+                al cierre mensual
+              </p>
+            </div>
+          </div>
+        )}
+        <div
+          className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.08em]"
+          aria-label="Leyenda de colores de deducciones"
+        >
+          <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-amber-800 dark:border-amber-800 dark:bg-amber-950/25 dark:text-amber-200">
+            Ámbar · préstamo o adelanto
+          </span>
+          <span className="rounded-full border border-rose-300 bg-rose-50 px-2.5 py-1 text-rose-800 dark:border-rose-800 dark:bg-rose-950/25 dark:text-rose-200">
+            Rojo · multa o descuento
+          </span>
+        </div>
+        <div className="space-y-2 text-sm">
+          {includeBaseSalary && (
+            <div className="flex justify-between gap-4 rounded-lg border border-amber-300/70 bg-amber-50/60 px-3 py-2 dark:border-amber-800 dark:bg-amber-950/20">
+              <span>Sueldo base del periodo</span>
+              <strong className="text-emerald-700 dark:text-emerald-300">
+                +{money.format(line.fixedSalary)}
+              </strong>
+            </div>
+          )}
+          {showCommission && (
+            <div className="flex justify-between">
+              <span>Comisión personal por ventas</span>
+              <strong>{money.format(line.commission)}</strong>
+            </div>
+          )}
+          {movements.map((movement) => (
+            <div key={movement.id} className="flex justify-between gap-4">
+              <span>
+                <span className="block">{movement.concept}</span>
+                <span className="mt-0.5 block text-[10px] leading-4 text-[color:var(--text-muted)]">
+                  Motivo: {movement.comments}
+                </span>
+              </span>
+              <strong
+                className={
+                  movement.type === "FINE"
+                    ? "text-rose-700 dark:text-rose-300"
+                    : "text-emerald-700 dark:text-emerald-300"
+                }
+              >
+                {movement.type === "FINE" ? "−" : "+"}
+                {money.format(movement.amount)}
+              </strong>
+            </div>
+          ))}
+          {automaticTemporaryAwards.map((award) => (
+            <div key={award.id} className="flex justify-between gap-4">
+              <span>{award.concept.name} · premio al cierre</span>
+              <strong className="text-emerald-700 dark:text-emerald-300">
+                +{money.format(award.amount)}
+              </strong>
+            </div>
+          ))}
+          {automaticPersonalizedAwards.map((award) => (
+            <div key={award.id} className="flex justify-between gap-4">
+              <span>
+                <span className="block">{award.concept.name}</span>
+                <span className="mt-0.5 block text-[10px] leading-4 text-[color:var(--text-muted)]">
+                  {award.progress.aggregation === "GROUP"
+                    ? `Meta grupal lograda con ${award.progress.participantCount} participantes · venta acumulada ${money.format(award.progress.sales)}`
+                    : `Meta personal lograda · venta acumulada ${money.format(award.progress.sales)}`}
+                  {award.progress.tier
+                    ? ` · NIVEL ${money.format(award.progress.tier.from)}${award.progress.tier.to === null ? " EN ADELANTE" : ` A ${money.format(award.progress.tier.to)}`}`
+                    : ""}
+                </span>
+              </span>
+              <strong className="text-emerald-700 dark:text-emerald-300">
+                +{money.format(award.amount)}
+              </strong>
+            </div>
+          ))}
+          {adjustments
+            .filter(
+              (adjustment) =>
+                adjustment.type !== "BASE_SALARY" &&
+                ((adjustment.type === "PLUS" &&
+                  includesConcept("ADJUSTMENT_PLUS")) ||
+                  (adjustment.type === "MINUS" &&
+                    includesConcept("ADJUSTMENT_MINUS")) ||
+                  (adjustment.type === "BONUS" && includesConcept("BONUS")) ||
+                  (adjustment.type === "FINE" && includesConcept("FINE")) ||
+                  ((adjustment.type === "LOAN" ||
+                    adjustment.type === "LOAN_PAYMENT") &&
+                    includesConcept("LOAN"))),
+            )
+            .map((adjustment) => {
+              const loanRelated =
+                adjustment.type === "LOAN" ||
+                adjustment.type === "LOAN_PAYMENT";
+              const positive =
+                adjustment.type === "PLUS" ||
+                adjustment.type === "BONUS" ||
+                adjustment.type === "LOAN";
+              const share =
+                adjustment.amount /
+                Math.max(adjustment.participantIds.length, 1);
+              return (
+                <div key={adjustment.id} className="flex justify-between gap-4">
+                  <span>
+                    <span className="block">{adjustment.concept}</span>
+                    <span className="mt-0.5 block text-[10px] leading-4 text-[color:var(--text-muted)]">
+                      Motivo: {adjustment.comments}
+                    </span>
+                  </span>
+                  <strong
+                    className={
+                      loanRelated
+                        ? "text-amber-700 dark:text-amber-300"
+                        : positive
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : "text-rose-700 dark:text-rose-300"
+                    }
+                  >
+                    {positive ? "+" : "−"}
+                    {money.format(share)}
+                  </strong>
+                </div>
+              );
+            })}
+          {viatics.map((entry) => {
+            const concept = state.viaticsConcepts.find(
+              (item) => item.id === entry.conceptId,
+            );
+            const positive = concept?.effect !== "DEDUCT";
+            return (
+              <div key={entry.id} className="flex justify-between gap-4">
+                <span>
+                  <span className="block">VIÁTICO · {concept?.name}</span>
+                  <span className="mt-0.5 block text-[10px] leading-4 text-[color:var(--text-muted)]">
+                    Motivo: {entry.comments}
+                  </span>
+                </span>
+                <strong
+                  className={
+                    positive
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : "text-rose-700 dark:text-rose-300"
+                  }
+                >
+                  {positive ? "+" : "−"}
+                  {money.format(entry.amount)}
+                </strong>
+              </div>
+            );
+          })}
+          {showLoans && line.loanDeductionBreakdown.loans > 0 && (
+            <div className="flex justify-between">
+              <span>Cuota de préstamo</span>
+              <strong className="text-amber-700 dark:text-amber-300">
+                −{money.format(line.loanDeductionBreakdown.loans)}
+              </strong>
+            </div>
+          )}
+          {showLoans && line.loanDeductionBreakdown.advances > 0 && (
+            <div className="flex justify-between">
+              <span>Descuento de adelanto</span>
+              <strong className="text-amber-700 dark:text-amber-300">
+                −{money.format(line.loanDeductionBreakdown.advances)}
+              </strong>
+            </div>
+          )}
+          {line.workerTax > 0 && (
+            <div className="flex justify-between gap-4">
+              <span>Impuesto sobre el trabajador</span>
+              <strong className="text-amber-700 dark:text-amber-300">
+                −{money.format(line.workerTax)}
+              </strong>
+            </div>
+          )}
+          {line.carriedNegativeBalance > 0 && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50/50 px-3 py-2 dark:border-rose-900 dark:bg-rose-950/15">
+              <div className="flex justify-between gap-4">
+                <span className="font-semibold">
+                  Saldo arrastrado de otras nóminas
+                </span>
+                <strong className="text-rose-700 dark:text-rose-300">
+                  −{money.format(line.carriedNegativeBalance)}
+                </strong>
+              </div>
+              {carriedBalanceSources.map((source) => (
+                <div
+                  key={source.label}
+                  className="mt-1 flex justify-between gap-4 text-[10px] text-[color:var(--text-muted)]"
+                >
+                  <span>{source.label}</span>
+                  <span>{money.format(source.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {pendingBalance > 0 && (
+            <div className="flex flex-wrap justify-between gap-2 rounded-lg border border-rose-300 bg-rose-50/70 px-3 py-2 dark:border-rose-900 dark:bg-rose-950/20">
+              <span className="font-semibold">
+                Saldo pendiente para el siguiente periodo
+              </span>
+              <strong className="number-display text-rose-700 dark:text-rose-300">
+                {money.format(pendingBalance)}
+              </strong>
+              <div className="basis-full border-t border-rose-200 pt-1 dark:border-rose-900">
+                {nextBalanceSources.map((source) => (
+                  <div
+                    key={source.label}
+                    className="flex justify-between gap-4 text-[10px] font-normal text-rose-800/80 dark:text-rose-200/80"
+                  >
+                    <span>{source.label}</span>
+                    <span>{money.format(source.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        {receiptConfiguration.showTemporaryBonusProgress &&
+          temporaryChallenges.length > 0 && (
+            <div className="space-y-3 rounded-xl border border-amber-300/60 bg-amber-50/50 p-4 dark:bg-amber-950/20">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-amber-600" />
+                <p className="text-xs font-semibold uppercase tracking-wider">
+                  Avance de bonos temporales
+                </p>
+              </div>
+              {temporaryChallenges.map((standing) => {
+                const percent = Math.min(
+                  (standing.value / standing.target) * 100,
+                  100,
+                );
+                return (
+                  <div key={standing.concept.id}>
+                    <div className="flex flex-wrap items-end justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">
+                          {standing.concept.name}
+                        </p>
+                        <p className="text-[10px] text-[color:var(--text-muted)]">
+                          {standing.achieved
+                            ? `LOGRADO · POSICIÓN ${standing.rank}`
+                            : standing.concept.condition === "BONUS_COUNT"
+                              ? `TE FALTAN ${standing.remaining} BONOS`
+                              : `TE FALTAN ${money.format(standing.remaining)}`}
+                        </p>
+                      </div>
+                      <span className="number-display text-sm">
+                        {percent.toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100 dark:bg-amber-950/50">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-500 to-emerald-600"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        {personalizedBonusConditions.length > 0 && (
+          <div className="space-y-3 rounded-xl border border-emerald-300/70 bg-emerald-50/50 p-4 dark:bg-emerald-950/20">
+            <div className="flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-emerald-700" />
+              <p className="text-xs font-semibold uppercase tracking-wider">
+                Condiciones de bonos personalizados
+              </p>
+            </div>
+            {personalizedBonusConditions.map((progress) => {
+              const percent =
+                progress.target > 0
+                  ? Math.min((progress.sales / progress.target) * 100, 100)
+                  : 0;
+              return (
+                <div key={progress.concept.id}>
+                  <div className="flex flex-wrap items-end justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold">
+                        {progress.concept.name}
+                      </p>
+                      <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
+                        {progress.aggregation === "GROUP"
+                          ? `VENTA COMBINADA DE ${progress.participantCount} PERSONAS`
+                          : "VENTA PERSONAL"}
+                        {" · "}META {money.format(progress.target)}
+                        {" · "}AVANCE {money.format(progress.sales)}
+                      </p>
+                      {progress.tier && (
+                        <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
+                          NIVEL APLICADO {money.format(progress.tier.from)} —{" "}
+                          {progress.tier.to === null
+                            ? "SIN TOPE"
+                            : money.format(progress.tier.to)}
+                        </p>
+                      )}
+                      <p className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-200">
+                        {progress.achieved
+                          ? `CUMPLIDO · PREMIO ${money.format(progress.awardAmount)}`
+                          : `FALTAN ${money.format(progress.remaining)}`}
+                      </p>
+                    </div>
+                    <span className="number-display text-sm">
+                      {percent.toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950/50">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#b87d49] to-emerald-600"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <Separator />
+        <div className="flex items-end justify-between gap-4">
+          {receiptConfiguration.showBankAccount ? (
+            <div>
+              <p className="text-xs text-[color:var(--text-muted)]">
+                Pago a {line.employee.bank}
+              </p>
+              <p className="text-sm font-medium">{line.employee.account}</p>
+            </div>
+          ) : (
+            <div />
+          )}
+          <div className="text-right">
+            <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+              {receiptNetLabel}
+            </p>
+            <p className="number-display text-2xl">
+              {money.format(receiptNet)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function PayrollReceiptsDemo() {
+  const { state, currentPeriod, periodOptions, payrollLines } =
+    usePayrollDemo();
+  const [periodStart, setPeriodStart] = useState(currentPeriod.start);
+  const [module, setModule] = useState<PayrollModule>("CONSOLIDATED");
+  const [preview, setPreview] = useState<EmployeePayrollLine | null>(null);
+  const includeBaseSalary =
+    state.receiptConfiguration.includeBaseSalaryInReceipt;
+  const period =
+    periodOptions.find((item) => item.start === periodStart) ?? currentPeriod;
+  const run = state.runs.find(
+    (item) =>
+      item.periodStart === periodStart &&
+      (module === "CONSOLIDATED" || item.module === module),
+  );
+  const lines = payrollLines(
+    periodStart,
+    state.calculationMode,
+    period.end,
+    module,
+  ).filter((line) => hasCommissionReceiptActivity(line, includeBaseSalary));
+
+  return (
+    <div className="space-y-7">
+      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Badge variant="outline">RECIBO COMPACTO</Badge>
+            <span className="text-xs text-[color:var(--text-muted)]">
+              Ventas, bonos, multas y movimientos
+            </span>
+          </div>
+          <h1 className="page-title">Recibos de nómina</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+            Previsualiza el contenido consolidado que recibirá cada empleado.
+          </p>
+        </div>
+        <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Tipo de nómina</Label>
+            <Select
+              value={module}
+              onValueChange={(value) => {
+                setModule(value as PayrollModule);
+                setPreview(null);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {state.payrollModules
+                  .filter((item) => item.active)
+                  .map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Periodo</Label>
+            <Select value={periodStart} onValueChange={setPeriodStart}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {periodOptions.map((item) => (
+                  <SelectItem key={item.start} value={item.start}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </header>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardContent className="p-5">
+            <ReceiptText className="h-5 w-5 text-[color:var(--text-secondary)]" />
+            <p className="label-caps mt-4">RECIBOS</p>
+            <p className="number-display mt-2 text-2xl">{lines.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <Banknote className="h-5 w-5 text-emerald-600" />
+            <p className="label-caps mt-4">TOTAL NETO</p>
+            <p className="number-display mt-2 text-2xl">
+              {money.format(
+                lines.reduce(
+                  (sum, line) =>
+                    sum + commissionReceiptNet(line, includeBaseSalary),
+                  0,
+                ),
+              )}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <FileText className="h-5 w-5 text-sky-600" />
+            <p className="label-caps mt-4">ESTATUS DE CORRIDA</p>
+            <p className="mt-2 text-lg font-semibold">
+              {run?.status ?? "SIN CORRIDA"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+      <Card className="border-[color:var(--border-color)]">
+        <CardHeader>
+          <CardTitle className="section-heading uppercase">
+            Empleados · {payrollModuleLabel(state, module)}
+          </CardTitle>
+          <CardDescription>
+            Las acciones de descarga y envío son simuladas; no generan archivos
+            ni mensajes reales.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 lg:grid-cols-2">
+          {lines.map((line) => {
+            const decision = state.decisions.find(
+              (item) =>
+                item.employeeId === line.employee.id &&
+                item.periodStart === periodStart,
+            );
+            return (
+              <div
+                key={line.employee.id}
+                className="flex flex-col gap-4 rounded-xl border border-[color:var(--border-color)] p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold">{line.employee.name}</p>
+                    {decision?.status === "AUTHORIZED" && (
+                      <Badge className="bg-emerald-600 text-white">
+                        VALIDADO
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    {line.employee.position} · {line.employee.bank}
+                  </p>
+                  <p className="number-display mt-2 text-lg">
+                    {money.format(
+                      commissionReceiptNet(line, includeBaseSalary),
+                    )}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label="Previsualizar"
+                    onClick={() => setPreview(line)}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label="Descargar"
+                    onClick={() =>
+                      toast.success(
+                        "Descarga simulada: el backend no fue utilizado.",
+                      )
+                    }
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    aria-label="Enviar"
+                    onClick={() =>
+                      toast.info("Envío simulado; no se contactó al empleado.")
+                    }
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+      <Dialog
+        open={Boolean(preview)}
+        onOpenChange={(open) => {
+          if (!open) setPreview(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Vista previa del recibo</DialogTitle>
+            <DialogDescription>
+              Documento informativo generado desde el estado mock actual.
+            </DialogDescription>
+          </DialogHeader>
+          {preview && (
+            <Receipt
+              line={preview}
+              periodStart={period.start}
+              periodEnd={period.end}
+              module={module}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

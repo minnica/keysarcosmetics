@@ -1,5 +1,5 @@
 import { PayrollShell } from "@/components/payroll/payroll-shell";
-import { SessionGate } from "@/lib/session";
+import { AutomaticTableSorting } from "@/components/payroll/automatic-table-sorting";
 
 export default function DashboardLayout({
   children,
@@ -7,8 +7,9 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SessionGate>
-      <PayrollShell>{children}</PayrollShell>
-    </SessionGate>
+    <PayrollShell>
+      <AutomaticTableSorting />
+      {children}
+    </PayrollShell>
   );
 }

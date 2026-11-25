@@ -1,0 +1,29 @@
+app = "cosmetics-payroll-pilot"
+primary_region = "dfw"
+
+[build]
+  dockerfile = "backend/api/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "4000"
+
+[processes]
+  app = "node dist/pilot/server.js"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

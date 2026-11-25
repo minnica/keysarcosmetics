@@ -1,0 +1,1296 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  AlertCircle,
+  CalendarDays,
+  CheckCircle2,
+  Edit3,
+  History,
+  Landmark,
+  Plus,
+  Search,
+  Settings2,
+  Trash2,
+  WalletCards,
+} from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Textarea,
+  toast,
+} from "@cosmetics/ui";
+import type { ReportExportConfig } from "@/lib/report-export";
+import {
+  type DemoLoan,
+  type PayrollModule,
+  payrollModuleLabel,
+  payrollModuleForCategory,
+  usePayrollDemo,
+} from "./payroll-demo-context";
+import { evaluateFinancialRequest } from "./payroll-financial-request-policy";
+import { ReportExportButtons } from "./report-export-buttons";
+
+const money = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+});
+
+function LoanDialog({
+  loan,
+  open,
+  onOpenChange,
+}: {
+  loan: DemoLoan | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { state, currentPeriod, addLoan, updateLoan, payrollLines } =
+    usePayrollDemo();
+  const [employeeId, setEmployeeId] = useState(
+    loan?.employeeId ?? state.employees[0]?.id ?? "",
+  );
+  const initialEmployee = state.employees.find(
+    (employee) => employee.id === (loan?.employeeId ?? state.employees[0]?.id),
+  );
+  const initialModule =
+    loan?.payrollModule ??
+    (initialEmployee
+      ? payrollModuleForCategory(initialEmployee.category)
+      : "FIXED");
+  const initialRun =
+    state.runs.find((run) => run.id === loan?.payrollRunId) ??
+    state.runs.find((run) => run.module === initialModule);
+  const [payrollModule, setPayrollModule] = useState<
+    Exclude<PayrollModule, "CONSOLIDATED">
+  >(initialModule as Exclude<PayrollModule, "CONSOLIDATED">);
+  const [payrollRunId, setPayrollRunId] = useState(
+    loan?.payrollRunId ?? initialRun?.id ?? "",
+  );
+  const [requestedAt, setRequestedAt] = useState(
+    loan?.requestedAt ?? new Date().toISOString().slice(0, 10),
+  );
+  const [amount, setAmount] = useState(String(loan?.amount ?? ""));
+  const [requestType, setRequestType] = useState<"LOAN" | "ADVANCE">(
+    loan?.requestType ?? "LOAN",
+  );
+  const [installments, setInstallments] = useState(
+    String(
+      loan?.requestType === "ADVANCE"
+        ? 1
+        : (loan?.installments ??
+            Math.min(4, state.financialRequestPolicy.maxLoanInstallments)),
+    ),
+  );
+  const [notes, setNotes] = useState(loan?.notes ?? "");
+  const availableRuns = state.runs.filter(
+    (run) => run.module === payrollModule,
+  );
+  const selectedRun =
+    state.runs.find((run) => run.id === payrollRunId) ?? availableRuns[0];
+  const selectedEmployee = state.employees.find(
+    (employee) => employee.id === employeeId,
+  );
+  const selectedBranch = state.branches.find(
+    (branch) => branch.id === selectedEmployee?.branchId,
+  );
+  const commissionedAmount = selectedRun
+    ? (payrollLines(
+        selectedRun.periodStart,
+        selectedRun.mode,
+        selectedRun.periodEnd,
+        "CONSOLIDATED",
+      ).find((line) => line.employee.id === employeeId)?.commission ?? 0)
+    : 0;
+  const parsedAmount = Number(amount || 0);
+  const parsedInstallments =
+    requestType === "ADVANCE" ? 1 : Number(installments || 0);
+  const policyEvaluation = evaluateFinancialRequest({
+    loans: state.loans,
+    policy: state.financialRequestPolicy,
+    employeeId,
+    requestType,
+    requestedAt,
+    amount: parsedAmount,
+    installments: parsedInstallments,
+    commissionedAmount,
+    ignoreLoanId: loan?.id,
+  });
+
+  function selectEmployee(id: string) {
+    const employee = state.employees.find((item) => item.id === id);
+    const nextModule = employee
+      ? payrollModuleForCategory(employee.category)
+      : "FIXED";
+    const normalizedModule =
+      nextModule === "CONSOLIDATED" ? "FIXED" : nextModule;
+    const nextRun = state.runs.find((run) => run.module === normalizedModule);
+    setEmployeeId(id);
+    setPayrollModule(
+      normalizedModule as Exclude<PayrollModule, "CONSOLIDATED">,
+    );
+    setPayrollRunId(nextRun?.id ?? "");
+  }
+
+  function submit() {
+    if (
+      !employeeId ||
+      !selectedRun ||
+      !Number.isFinite(parsedAmount) ||
+      parsedAmount <= 0 ||
+      !Number.isInteger(parsedInstallments) ||
+      parsedInstallments < 1 ||
+      !policyEvaluation.allowed
+    ) {
+      toast.error(
+        policyEvaluation.message ?? "Captura un monto y un plazo válido.",
+      );
+      return;
+    }
+    if (loan) {
+      updateLoan(loan.id, {
+        requestedAt,
+        amount: parsedAmount,
+        installments: parsedInstallments,
+        firstPeriod: selectedRun.periodStart,
+        payrollModule,
+        payrollRunId: selectedRun.id,
+        notes,
+      });
+      toast.success(
+        "Préstamo editado; el saldo y las cuotas fueron recalculados.",
+      );
+    } else {
+      addLoan({
+        employeeId,
+        requestType,
+        requestedAt,
+        amount: parsedAmount,
+        installments: parsedInstallments,
+        firstPeriod: selectedRun.periodStart,
+        payrollModule,
+        payrollRunId: selectedRun.id,
+        status: "PENDING",
+        notes,
+      });
+      toast.success("Solicitud creada y enviada a autorización.");
+    }
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {loan ? "Ajustar solicitud antes de autorizar" : "Nueva solicitud"}
+          </DialogTitle>
+          <DialogDescription>
+            {loan
+              ? "El usuario máster puede autorizar un monto distinto. El empleado verá el importe final y el estatus en su portal."
+              : "Las cuotas se arrastran automáticamente entre quincenas hasta liquidar el saldo."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Empleado</Label>
+            <Select
+              value={employeeId}
+              onValueChange={selectEmployee}
+              disabled={Boolean(loan)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {state.employees.map((employee) => (
+                  <SelectItem key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Tipo de solicitud</Label>
+            <Select
+              value={requestType}
+              disabled={Boolean(loan)}
+              onValueChange={(value) => {
+                const next = value as "LOAN" | "ADVANCE";
+                setRequestType(next);
+                setInstallments(
+                  next === "ADVANCE"
+                    ? "1"
+                    : String(
+                        Math.min(
+                          4,
+                          state.financialRequestPolicy.maxLoanInstallments,
+                        ),
+                      ),
+                );
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ADVANCE">ADELANTO DE COMISIÓN</SelectItem>
+                <SelectItem value="LOAN">PRÉSTAMO</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <section className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/20 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <WalletCards className="h-4 w-4 text-[color:var(--text-secondary)]" />
+              <div>
+                <p className="text-sm font-semibold">Nómina afectada</p>
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  Define dónde se pagará y en qué nómina comenzará el descuento.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Tipo de nómina</Label>
+                <Select
+                  value={payrollModule}
+                  onValueChange={(value) => {
+                    const next = value as Exclude<
+                      PayrollModule,
+                      "CONSOLIDATED"
+                    >;
+                    const nextRun = state.runs.find(
+                      (run) => run.module === next,
+                    );
+                    setPayrollModule(next);
+                    setPayrollRunId(nextRun?.id ?? "");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="SELECCIONA LA NÓMINA" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {state.payrollModules
+                      .filter(
+                        (module) =>
+                          module.active && module.id !== "CONSOLIDATED",
+                      )
+                      .map((module) => (
+                        <SelectItem key={module.id} value={module.id}>
+                          {module.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Corrida / periodo de aplicación</Label>
+                <Select
+                  value={selectedRun?.id ?? ""}
+                  onValueChange={setPayrollRunId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="SELECCIONA EL PERIODO" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRuns.map((run) => (
+                      <SelectItem key={run.id} value={run.id}>
+                        {run.periodStart} — {run.periodEnd} · {run.status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {selectedRun && (
+              <div className="mt-3 flex flex-col gap-1 rounded-lg border border-[color:var(--border-color)] bg-[color:var(--bg-card)] px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  <strong>
+                    {payrollModuleLabel(state, selectedRun.module)}
+                  </strong>{" "}
+                  · {selectedRun.periodStart} — {selectedRun.periodEnd}
+                </span>
+                <span className="text-[color:var(--text-muted)]">
+                  Costo en {selectedBranch?.name ?? "sucursal del empleado"}
+                </span>
+              </div>
+            )}
+          </section>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="loan-date">Fecha de solicitud</Label>
+              <Input
+                id="loan-date"
+                type="date"
+                value={requestedAt}
+                onChange={(event) => setRequestedAt(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loan-amount">
+                {loan ? "Monto que se autorizará" : "Monto solicitado"}
+              </Label>
+              <Input
+                id="loan-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+              />
+              {loan && (
+                <p className="text-[10px] text-[color:var(--text-muted)]">
+                  Solicitado originalmente:{" "}
+                  {money.format(loan.requestedAmount ?? loan.amount)}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loan-installments">Parcialidades</Label>
+              <Input
+                id="loan-installments"
+                type="number"
+                min="1"
+                max={state.financialRequestPolicy.maxLoanInstallments}
+                value={installments}
+                onChange={(event) => setInstallments(event.target.value)}
+                disabled={requestType === "ADVANCE"}
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 rounded-xl border border-[#c3a583]/45 bg-[#c3a583]/10 p-3 text-xs sm:grid-cols-2">
+            {requestType === "ADVANCE" ? (
+              <>
+                <div>
+                  <p className="label-caps">COMISIÓN ACUMULADA</p>
+                  <p className="number-display mt-1 text-base">
+                    {money.format(commissionedAmount)}
+                  </p>
+                </div>
+                <div>
+                  <p className="label-caps">
+                    TOPE DEL ADELANTO ·{" "}
+                    {(
+                      state.financialRequestPolicy.advanceCommissionLimitRate *
+                      100
+                    ).toFixed(0)}
+                    %
+                  </p>
+                  <p className="number-display mt-1 text-base">
+                    {money.format(policyEvaluation.advanceMaximum)}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <p>
+                  <strong>Máximo:</strong>{" "}
+                  {state.financialRequestPolicy.maxLoanInstallments} cuotas.
+                </p>
+                <p>
+                  <strong>Uso trimestral:</strong>{" "}
+                  {policyEvaluation.periodRequestCount} de{" "}
+                  {state.financialRequestPolicy.maxQuarterlyLoans}.
+                </p>
+              </>
+            )}
+          </div>
+          {policyEvaluation.message && (
+            <div
+              role="alert"
+              className="flex gap-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-100"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>{policyEvaluation.message}</p>
+            </div>
+          )}
+          <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/40 p-4">
+            <p className="text-xs uppercase tracking-wider text-[color:var(--text-muted)]">
+              Cuota estimada
+            </p>
+            <p className="number-display mt-1 text-xl">
+              {money.format(
+                Number(amount || 0) / Math.max(Number(installments || 1), 1),
+              )}
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+              Primera aplicación:{" "}
+              {selectedRun
+                ? `${selectedRun.periodStart} — ${selectedRun.periodEnd}`
+                : currentPeriod.label}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="loan-notes">Motivo / notas</Label>
+            <Textarea
+              id="loan-notes"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="DETALLE DE LA SOLICITUD"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={
+              !selectedRun || parsedAmount <= 0 || !policyEvaluation.allowed
+            }
+          >
+            {loan ? "Guardar monto autorizado" : "Crear solicitud"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function HistoryDialog({
+  loan,
+  open,
+  onOpenChange,
+}: {
+  loan: DemoLoan | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { state } = usePayrollDemo();
+  if (!loan) return null;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Historial del préstamo</DialogTitle>
+          <DialogDescription>
+            Bitácora mock vinculada al empleado y visible en todos los módulos.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="rounded-xl border border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/30 px-4 py-3">
+          <p className="label-caps">NÓMINA DE APLICACIÓN</p>
+          <p className="mt-1 text-sm font-semibold">
+            {payrollModuleLabel(state, loan.payrollModule)} · desde{" "}
+            {loan.firstPeriod}
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+            Las parcialidades posteriores conservan este tipo de nómina.
+          </p>
+        </div>
+        <div className="space-y-3 py-2">
+          {loan.history
+            .slice()
+            .reverse()
+            .map((item) => (
+              <div
+                key={item.id}
+                className="flex gap-3 rounded-xl border border-[color:var(--border-color)] p-4"
+              >
+                <span className="rounded-full bg-[color:var(--accent-hover)] p-2">
+                  <History className="h-4 w-4 text-[color:var(--text-secondary)]" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">{item.action}</p>
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    {item.date} · {item.by}
+                  </p>
+                </div>
+              </div>
+            ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function PayrollLoansDemo() {
+  const { state, deleteLoan, setLoanStatus, payrollLines } = usePayrollDemo();
+  const commissionsByRun = useMemo(
+    () =>
+      new Map(
+        state.runs.map((run) => [
+          run.id,
+          new Map(
+            payrollLines(
+              run.periodStart,
+              run.mode,
+              run.periodEnd,
+              "CONSOLIDATED",
+            ).map((line) => [line.employee.id, line.commission]),
+          ),
+        ]),
+      ),
+    [payrollLines, state.runs],
+  );
+  const [editing, setEditing] = useState<DemoLoan | null | "new">(null);
+  const [history, setHistory] = useState<DemoLoan | null>(null);
+  const [deleting, setDeleting] = useState<DemoLoan | null>(null);
+  const allEvents = useMemo(
+    () =>
+      [
+        ...state.loans.flatMap((loan) =>
+          loan.history.map((item) => ({
+            id: `${loan.id}-${item.id}`,
+            date: item.date,
+            action: item.action,
+            by: item.by,
+            employeeId: loan.employeeId,
+            employee: state.employees.find(
+              (employee) => employee.id === loan.employeeId,
+            ),
+            amount: loan.amount,
+            comments: loan.notes,
+            payrollModule: loan.payrollModule,
+            periodStart: loan.firstPeriod,
+          })),
+        ),
+        ...state.adjustments
+          .filter(
+            (item) =>
+              item.status === "APPROVED" &&
+              (item.type === "LOAN" || item.type === "LOAN_PAYMENT"),
+          )
+          .map((item) => ({
+            id: item.id,
+            date: item.payrollDate,
+            action:
+              item.type === "LOAN"
+                ? "PRÉSTAMO ENTREGADO EN NÓMINA"
+                : "PAGO DE PRÉSTAMO APLICADO",
+            by: "MÓDULO DE MOVIMIENTOS",
+            employeeId: item.employeeId,
+            employee: state.employees.find(
+              (employee) => employee.id === item.employeeId,
+            ),
+            amount: item.amount,
+            comments: item.comments,
+            payrollModule: item.payrollModule,
+            periodStart: item.periodStart,
+          })),
+      ].sort((a, b) => b.date.localeCompare(a.date)),
+    [state.adjustments, state.employees, state.loans],
+  );
+  const [employeeFilter, setEmployeeFilter] = useState("ALL");
+  const [historyDate, setHistoryDate] = useState(
+    allEvents[0]?.date ?? new Date().toISOString().slice(0, 10),
+  );
+  const [historyMonth, setHistoryMonth] = useState(
+    (allEvents[0]?.date ?? new Date().toISOString().slice(0, 10)).slice(0, 7),
+  );
+  const [historyPageSize, setHistoryPageSize] = useState("20");
+  const [historyPage, setHistoryPage] = useState(1);
+  const filteredLoans = state.loans.filter(
+    (loan) => employeeFilter === "ALL" || loan.employeeId === employeeFilter,
+  );
+  const filteredEvents = allEvents.filter(
+    (event) => employeeFilter === "ALL" || event.employeeId === employeeFilter,
+  );
+  const dailyEvents = filteredEvents.filter(
+    (event) => event.date === historyDate,
+  );
+  const monthlyEvents = filteredEvents.filter((event) =>
+    event.date.startsWith(historyMonth),
+  );
+  const effectiveHistoryPageSize =
+    historyPageSize === "ALL"
+      ? Math.max(monthlyEvents.length, 1)
+      : Number(historyPageSize);
+  const historyPageCount = Math.max(
+    1,
+    Math.ceil(monthlyEvents.length / effectiveHistoryPageSize),
+  );
+  const currentHistoryPage = Math.min(historyPage, historyPageCount);
+  const paginatedMonthlyEvents = monthlyEvents.slice(
+    (currentHistoryPage - 1) * effectiveHistoryPageSize,
+    currentHistoryPage * effectiveHistoryPageSize,
+  );
+  const historyVisibleStart =
+    monthlyEvents.length === 0
+      ? 0
+      : (currentHistoryPage - 1) * effectiveHistoryPageSize + 1;
+  const historyVisibleEnd = Math.min(
+    currentHistoryPage * effectiveHistoryPageSize,
+    monthlyEvents.length,
+  );
+  const selectedEmployeeName =
+    employeeFilter === "ALL"
+      ? "TODOS LOS EMPLEADOS"
+      : (state.employees.find((employee) => employee.id === employeeFilter)
+          ?.name ?? "EMPLEADO SELECCIONADO");
+  const monthlyHistoryReport: ReportExportConfig<
+    (typeof allEvents)[number]
+  > = {
+    title: "Historial mensual de préstamos y adelantos",
+    subtitle: `PERIODO ${historyMonth} · ${selectedEmployeeName} · PRUEBA DE NÓMINA`,
+    filename: `historial-prestamos-adelantos-${historyMonth}-${selectedEmployeeName}`,
+    sheetName: "Historial mensual",
+    orientation: "landscape",
+    metadata: [
+      { label: "Periodo seleccionado", value: historyMonth },
+      { label: "Empleado", value: selectedEmployeeName },
+      {
+        label: "Alcance",
+        value: "ÚNICAMENTE MOVIMIENTOS DEL PERIODO SELECCIONADO",
+      },
+    ],
+    metrics: [
+      {
+        label: "Registros",
+        value: String(monthlyEvents.length),
+        detail: "Movimientos incluidos",
+      },
+      {
+        label: "Importe relacionado",
+        value: money.format(
+          monthlyEvents.reduce((sum, event) => sum + event.amount, 0),
+        ),
+        detail: "Suma informativa de los movimientos",
+      },
+      {
+        label: "Empleados",
+        value: String(
+          new Set(monthlyEvents.map((event) => event.employeeId)).size,
+        ),
+        detail: "Personal con actividad",
+      },
+    ],
+    analysis: [
+      `La salida contiene ${monthlyEvents.length} movimientos registrados exclusivamente en ${historyMonth}.`,
+      employeeFilter === "ALL"
+        ? "El reporte incluye a todos los empleados con actividad dentro del periodo."
+        : `El reporte está filtrado únicamente para ${selectedEmployeeName}.`,
+    ],
+    columns: [
+      {
+        header: "FECHA",
+        accessor: (event) => event.date,
+        width: 13,
+      },
+      {
+        header: "EMPLEADO",
+        accessor: (event) => event.employee?.name ?? "SIN EMPLEADO",
+        width: 24,
+      },
+      {
+        header: "MOVIMIENTO",
+        accessor: (event) => event.action,
+        width: 31,
+      },
+      {
+        header: "IMPORTE",
+        accessor: (event) => event.amount,
+        format: "currency",
+        width: 17,
+      },
+      {
+        header: "REGISTRADO POR",
+        accessor: (event) => event.by,
+        width: 23,
+      },
+      {
+        header: "NÓMINA",
+        accessor: (event) => payrollModuleLabel(state, event.payrollModule),
+        width: 19,
+      },
+      {
+        header: "PERIODO DE APLICACIÓN",
+        accessor: (event) => event.periodStart,
+        width: 21,
+      },
+      {
+        header: "COMENTARIOS",
+        accessor: (event) => event.comments,
+        width: 34,
+      },
+    ],
+    rows: monthlyEvents,
+  };
+  const adjustmentLoanBalance = state.adjustments
+    .filter(
+      (item) =>
+        item.status === "APPROVED" &&
+        (item.type === "LOAN" || item.type === "LOAN_PAYMENT"),
+    )
+    .reduce(
+      (sum, item) => sum + (item.type === "LOAN" ? item.amount : -item.amount),
+      0,
+    );
+  const totalBalance = Math.max(
+    0,
+    state.loans
+      .filter((loan) => loan.status === "APPROVED")
+      .reduce(
+        (sum, loan) =>
+          sum +
+          loan.amount -
+          (loan.amount / loan.installments) * loan.paidInstallments,
+        0,
+      ) + adjustmentLoanBalance,
+  );
+  const pending = state.loans.filter(
+    (loan) => loan.status === "PENDING",
+  ).length;
+
+  return (
+    <div className="space-y-7">
+      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Badge variant="outline">PILOTO DE NÓMINA</Badge>
+            <span className="text-xs text-[color:var(--text-muted)]">
+              Arrastre quincenal
+            </span>
+          </div>
+          <h1 className="page-title">Préstamos y adelantos</h1>
+          <p className="mt-1 max-w-2xl text-sm text-[color:var(--text-muted)]">
+            Solicitudes, autorización, saldo, cuotas e historial por empleado.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          className="h-9 self-start rounded-xl px-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] shadow-[0_8px_20px_rgba(82,53,33,0.16)] xl:self-auto"
+          onClick={() => setEditing("new")}
+        >
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Nueva solicitud
+        </Button>
+      </header>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardContent className="p-5">
+            <Landmark className="h-5 w-5 text-[color:var(--text-secondary)]" />
+            <p className="label-caps mt-4">SALDO VIGENTE</p>
+            <p className="number-display mt-2 text-2xl">
+              {money.format(totalBalance)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <WalletCards className="h-5 w-5 text-[color:var(--text-secondary)]" />
+            <p className="label-caps mt-4">SOLICITUDES</p>
+            <p className="number-display mt-2 text-2xl">{state.loans.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <CheckCircle2 className="h-5 w-5 text-amber-600" />
+            <p className="label-caps mt-4">POR AUTORIZAR</p>
+            <p className="number-display mt-2 text-2xl">{pending}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <Settings2 className="h-5 w-5 text-[color:var(--text-secondary)]" />
+            <p className="label-caps mt-4">POLÍTICA VIGENTE</p>
+            <p className="mt-2 text-xs font-semibold">
+              {state.financialRequestPolicy.maxMonthlyAdvances} adelantos / mes
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+              {state.financialRequestPolicy.maxQuarterlyLoans} préstamos /
+              trimestre · {state.financialRequestPolicy.maxLoanInstallments}{" "}
+              cuotas
+            </p>
+            <Button asChild size="sm" variant="outline" className="mt-3 h-8">
+              <Link href="/configuracion">Configurar límites</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+      <Card className="border-[color:var(--border-color)]">
+        <CardContent className="grid gap-4 p-5 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label>Buscar por vendedor / empleado</Label>
+            <Select
+              value={employeeFilter}
+              onValueChange={(value) => {
+                setEmployeeFilter(value);
+                setHistoryPage(1);
+              }}
+            >
+              <SelectTrigger>
+                <Search className="mr-2 h-4 w-4" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">TODOS LOS EMPLEADOS</SelectItem>
+                {state.employees.map((employee) => (
+                  <SelectItem key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="loan-history-date">Movimientos del día</Label>
+            <Input
+              id="loan-history-date"
+              type="date"
+              value={historyDate}
+              onChange={(event) => setHistoryDate(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="loan-history-month">
+              Historial completo del mes
+            </Label>
+            <Input
+              id="loan-history-month"
+              type="month"
+              value={historyMonth}
+              onChange={(event) => {
+                setHistoryMonth(event.target.value);
+                setHistoryPage(1);
+              }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="overflow-hidden border-[color:var(--border-color)]">
+        <CardHeader>
+          <CardTitle className="section-heading uppercase">
+            Control de préstamos y adelantos
+          </CardTitle>
+          <CardDescription>
+            Las solicitudes del portal personal llegan aquí pendientes de
+            autorización.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>EMPLEADO</TableHead>
+                  <TableHead>FECHA DE SOLICITUD</TableHead>
+                  <TableHead>NÓMINA / APLICACIÓN</TableHead>
+                  <TableHead className="text-right">MONTO</TableHead>
+                  <TableHead>PARCIALIDADES</TableHead>
+                  <TableHead className="text-right">ADEUDO</TableHead>
+                  <TableHead>ESTATUS</TableHead>
+                  <TableHead className="text-right">ACCIONES</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredLoans.map((loan) => {
+                  const employee = state.employees.find(
+                    (item) => item.id === loan.employeeId,
+                  );
+                  const balance =
+                    loan.amount -
+                    (loan.amount / loan.installments) * loan.paidInstallments;
+                  const requestLabel =
+                    loan.requestType === "ADVANCE" ? "ADELANTO" : "PRÉSTAMO";
+                  const commissionedAmount =
+                    commissionsByRun
+                      .get(loan.payrollRunId)
+                      ?.get(loan.employeeId) ?? 0;
+                  const policyEvaluation = evaluateFinancialRequest({
+                    loans: state.loans,
+                    policy: state.financialRequestPolicy,
+                    employeeId: loan.employeeId,
+                    requestType: loan.requestType ?? "LOAN",
+                    requestedAt: loan.requestedAt,
+                    amount: loan.amount,
+                    installments: loan.installments,
+                    commissionedAmount,
+                    ignoreLoanId: loan.id,
+                  });
+                  return (
+                    <TableRow key={loan.id}>
+                      <TableCell>
+                        <p className="font-semibold">{employee?.name}</p>
+                        <Badge variant="outline" className="mt-1">
+                          {requestLabel}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {loan.requestedAt}
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          {loan.notes || "SIN NOTAS"}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-semibold">
+                          {payrollModuleLabel(state, loan.payrollModule)}
+                        </p>
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          DESDE {loan.firstPeriod}
+                        </p>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <p className="number-display text-amber-700 dark:text-amber-300">
+                          {money.format(loan.amount)}
+                        </p>
+                        {(loan.requestedAmount ?? loan.amount) !==
+                          loan.amount && (
+                          <p className="text-[10px] text-[color:var(--text-muted)]">
+                            SOLICITADO{" "}
+                            {money.format(loan.requestedAmount ?? loan.amount)}
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {loan.paidInstallments} PAGADAS / {loan.installments}
+                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          {money.format(loan.amount / loan.installments)} /
+                          QUINCENA
+                        </p>
+                      </TableCell>
+                      <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
+                        {money.format(balance)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{loan.status}</Badge>
+                        {!policyEvaluation.allowed && (
+                          <p className="mt-1 max-w-44 text-[10px] font-semibold leading-4 text-rose-700 dark:text-rose-300">
+                            FUERA DE POLÍTICA · {policyEvaluation.message}
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            aria-label="Ver historial"
+                            onClick={() => setHistory(loan)}
+                          >
+                            <History className="h-4 w-4" />
+                          </Button>
+                          {loan.status === "PENDING" && (
+                            <>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                aria-label={`Ajustar monto de ${requestLabel.toLocaleLowerCase("es-MX")}`}
+                                title="Ajustar monto antes de autorizar"
+                                onClick={() => setEditing(loan)}
+                              >
+                                <Edit3 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  if (!policyEvaluation.allowed) {
+                                    toast.error(
+                                      policyEvaluation.message ??
+                                        "La solicitud no cumple la política vigente.",
+                                    );
+                                    return;
+                                  }
+                                  setLoanStatus(loan.id, "APPROVED");
+                                  toast.success(
+                                    `${requestLabel} autorizado por ${money.format(loan.amount)}. El empleado ya puede verlo en su portal.`,
+                                  );
+                                }}
+                              >
+                                Autorizar
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            aria-label="Borrar préstamo"
+                            onClick={() => setDeleting(loan)}
+                          >
+                            <Trash2 className="h-4 w-4 text-rose-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card className="border-[color:var(--border-color)]">
+          <CardHeader>
+            <CardTitle className="section-heading uppercase">
+              Movimientos del día
+            </CardTitle>
+            <CardDescription>
+              {historyDate} · actividad ligada al filtro de empleado.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {dailyEvents.length ? (
+              dailyEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex gap-3 rounded-xl border border-[color:var(--border-color)] p-4"
+                >
+                  <CalendarDays className="mt-0.5 h-5 w-5 text-[color:var(--text-secondary)]" />
+                  <div>
+                    <p className="font-semibold">{event.action}</p>
+                    <p className="text-sm">{event.employee?.name}</p>
+                    <p className="text-xs text-[color:var(--text-muted)]">
+                      {money.format(event.amount)} · {event.by}
+                    </p>
+                    <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-secondary)]">
+                      {payrollModuleLabel(state, event.payrollModule)} ·
+                      aplicación {event.periodStart}
+                    </p>
+                    <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                      {event.comments}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-xl border border-dashed border-[color:var(--border-color)] p-8 text-center text-sm text-[color:var(--text-muted)]">
+                No hay movimientos registrados en esta fecha.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="overflow-hidden border-[color:var(--border-color)]">
+          <CardHeader className="gap-3 border-b border-[color:var(--border-color)] p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle className="section-heading uppercase">
+                Historial completo del mes
+              </CardTitle>
+              <CardDescription className="mt-1">
+                {historyMonth} · solicitudes, autorizaciones, ediciones y cuotas.
+              </CardDescription>
+            </div>
+            <ReportExportButtons
+              config={monthlyHistoryReport}
+              disabled={!monthlyEvents.length}
+            />
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="flex flex-col gap-2 border-b border-[color:var(--border-color)] bg-[color:var(--accent-hover)]/20 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-semibold text-[color:var(--text-muted)]">
+                {monthlyEvents.length} REGISTROS DEL PERIODO SELECCIONADO
+              </p>
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="loan-history-page-size"
+                  className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-muted)]"
+                >
+                  Visualizar
+                </Label>
+                <Select
+                  value={historyPageSize}
+                  onValueChange={(value) => {
+                    setHistoryPageSize(value);
+                    setHistoryPage(1);
+                  }}
+                >
+                  <SelectTrigger
+                    id="loan-history-page-size"
+                    className="h-8 w-24 text-xs"
+                    aria-label="Registros del historial mensual por página"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["20", "40", "60", "80", "100"].map((size) => (
+                      <SelectItem key={size} value={size}>
+                        {size}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="ALL">TODOS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {monthlyEvents.length ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="h-9">
+                      <TableHead className="h-9 px-3 py-1.5">FECHA</TableHead>
+                      <TableHead className="h-9 px-3 py-1.5">
+                        EMPLEADO
+                      </TableHead>
+                      <TableHead className="h-9 px-3 py-1.5">
+                        MOVIMIENTO
+                      </TableHead>
+                      <TableHead className="h-9 px-3 py-1.5 text-right">
+                        IMPORTE
+                      </TableHead>
+                      <TableHead className="h-9 px-3 py-1.5">
+                        NÓMINA / APLICACIÓN
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedMonthlyEvents.map((event) => (
+                      <TableRow key={event.id} className="h-12">
+                        <TableCell className="whitespace-nowrap px-3 py-2">
+                          <Badge
+                            variant="outline"
+                            className="px-1.5 py-0 text-[10px]"
+                          >
+                            {event.date}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="min-w-40 px-3 py-2">
+                          <p className="text-xs font-semibold">
+                            {event.employee?.name ?? "SIN EMPLEADO"}
+                          </p>
+                          <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
+                            {event.by}
+                          </p>
+                        </TableCell>
+                        <TableCell className="min-w-56 px-3 py-2">
+                          <p className="text-xs font-semibold">
+                            {event.action}
+                          </p>
+                          <p
+                            className="max-w-64 truncate text-[10px] leading-4 text-[color:var(--text-muted)]"
+                            title={event.comments}
+                          >
+                            {event.comments || "SIN COMENTARIOS"}
+                          </p>
+                        </TableCell>
+                        <TableCell className="number-display whitespace-nowrap px-3 py-2 text-right text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          {money.format(event.amount)}
+                        </TableCell>
+                        <TableCell className="min-w-44 px-3 py-2">
+                          <p className="text-xs font-semibold">
+                            {payrollModuleLabel(state, event.payrollModule)}
+                          </p>
+                          <p className="text-[10px] leading-4 text-[color:var(--text-muted)]">
+                            DESDE {event.periodStart}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="m-4 rounded-xl border border-dashed border-[color:var(--border-color)] p-8 text-center text-sm text-[color:var(--text-muted)]">
+                No hay actividad en el mes seleccionado.
+              </p>
+            )}
+            <div className="flex flex-col gap-2 border-t border-[color:var(--border-color)] px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[11px] text-[color:var(--text-muted)]">
+                Mostrando {historyVisibleStart}–{historyVisibleEnd} de{" "}
+                {monthlyEvents.length} registros
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={currentHistoryPage <= 1}
+                  onClick={() =>
+                    setHistoryPage(Math.max(1, currentHistoryPage - 1))
+                  }
+                >
+                  Anterior
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={currentHistoryPage >= historyPageCount}
+                  onClick={() =>
+                    setHistoryPage(
+                      Math.min(historyPageCount, currentHistoryPage + 1),
+                    )
+                  }
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      <LoanDialog
+        key={editing === "new" ? "new" : (editing?.id ?? "closed")}
+        loan={editing === "new" ? null : editing}
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      />
+      <HistoryDialog
+        loan={history}
+        open={Boolean(history)}
+        onOpenChange={(open) => {
+          if (!open) setHistory(null);
+        }}
+      />
+      <AlertDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Borrar esta solicitud?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La acción elimina el préstamo del mock y deja de afectar
+              consolidado, saldos y recibos. Solo se permite aquí para demostrar
+              el botón solicitado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleting) {
+                  deleteLoan(deleting.id);
+                  toast.success("Solicitud eliminada de todos los módulos.");
+                  setDeleting(null);
+                }
+              }}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              Borrar solicitud
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

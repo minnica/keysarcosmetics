@@ -1,12 +1,7 @@
 export type PayrollRunStatus = "DRAFT" | "APPROVED" | "PAID" | "CANCELED";
 export type PayrollCalculationMode = "WITH_VAT" | "WITHOUT_VAT";
-export type PayrollOverviewType =
-  | "FIXED_SALARY"
-  | "SPECIALIST"
-  | "COMMISSION"
-  | "MANAGEMENT_COMMISSION";
+export type PayrollOverviewType = "FIXED_SALARY" | "SPECIALIST" | "COMMISSION";
 export type PayrollOverviewView = "FORTNIGHT" | "MONTHLY";
-export type PayrollMovementPayrollType = PayrollOverviewType;
 
 export interface PayrollOverviewLine {
   employeeId: string;
@@ -127,7 +122,6 @@ export interface PayrollMovement {
   id: string;
   date: string;
   kind: MovementKind;
-  payrollType: PayrollMovementPayrollType | null;
   catalogItemId: string | null;
   concept: string;
   totalAmount: number;

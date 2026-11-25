@@ -4,6 +4,10 @@
 
 ---
 
+## Piloto de nómina
+
+En la rama `pilot/payroll-v2`, consulta la [guía de operación y continuidad](docs/PAYROLL_PILOT.md) antes de desplegar, cargar un corte o probar la propuesta de Nómina. Indica los entornos, el estado del acceso y cómo verificar la separación con producción.
+
 ## Descripción del proyecto
 
 Ecosistema de apps web internas + landing page para empresa de cosméticos.

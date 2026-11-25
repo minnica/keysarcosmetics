@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build:workspace-deps": "pnpm --filter @cosmetics/api^... --if-present run build",
+    "build:workspace-deps": "pnpm --filter \"@cosmetics/api^...\" --if-present run build",
     "predev": "pnpm run build:workspace-deps",
     "dev": "tsx watch src/index.ts",
     "prebuild": "pnpm run build:workspace-deps",
