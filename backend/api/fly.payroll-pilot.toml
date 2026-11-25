@@ -2,7 +2,7 @@ app = "cosmetics-payroll-pilot"
 primary_region = "dfw"
 
 [build]
-  dockerfile = "backend/api/Dockerfile"
+  dockerfile = "Dockerfile"
 
 [env]
   NODE_ENV = "production"
