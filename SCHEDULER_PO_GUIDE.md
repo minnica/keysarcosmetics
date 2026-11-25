@@ -139,7 +139,7 @@ disponibilidad, pero no proyecta todavía la cita en la vista **Especialistas**;
 la columna operativa se completa sólo con quienes queden registrados al marcar
 **Llegó** o **Atendida**. Todos los servicios se desplazan por el mismo intervalo
 y conservan membresía. El formulario **Editar** sigue siendo la alternativa
-accesible y el flujo requerido para cambiar de sucursal.
+accesible para ajustar la fecha y la asignación.
 
 Soltar una cita solicita un código con permiso `APPOINTMENT_MOVE`. El servidor
 vuelve a validar versión, horario de sucursal, descansos, bloqueos, cabina,
@@ -161,8 +161,17 @@ fecha** o una combinación manual. Cada sucursal conserva su consulta, zona
 horaria y perfil canónico; las columnas se identifican con el nombre de la
 sucursal y sus IDs visuales se encapsulan por `branchId` para que una misma
 especialista pueda aparecer en más de un local sin colisiones. La sucursal
-operativa de una reserva o bloqueo se toma de la columna elegida. El botón de
-ajuste permite forzar ancho cómodo o todas las columnas dentro de la ventana.
+operativa inicial de una reserva o bloqueo se toma de la columna elegida. En
+**Nueva reserva**, cambiar **Sucursal** mantiene el formulario abierto y
+conserva cliente, fecha y captura. Los servicios, las cabinas, las especialistas
+y la disponibilidad se consultan para la sucursal elegida. Si el servicio
+original está fuera de su catálogo, se pide seleccionar uno. Para verificar,
+abre una reserva en Polanco, selecciona un cliente, cambia a Mítikah y guarda
+un horario disponible. Se conservan los endpoints de catálogo, disponibilidad
+y alta de citas.
+
+El botón de ajuste permite forzar ancho cómodo o todas las columnas dentro de
+la ventana.
 Sin intervención, Agenda mide el monitor, descuenta el panel lateral y ajusta
 automáticamente las columnas cuando conservan un ancho legible; si no caben,
 mantiene el desplazamiento horizontal dentro de la cuadrícula. El panel ofrece

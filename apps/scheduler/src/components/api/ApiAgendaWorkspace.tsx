@@ -137,6 +137,7 @@ import {
 import {
   createBlockDraft,
   createBlockDraftFromBlock,
+  createBookingVisitorDraft,
   createDraft,
   formatMoney,
   type BlockDraft,
@@ -447,6 +448,7 @@ export function ApiAgendaWorkspace() {
   >(null);
   const sidebarBookingTimerRef = useRef<number | null>(null);
   const createdCustomerByIntentRef = useRef<Record<string, string>>({});
+  const createdAppointmentIntentRef = useRef<string | null>(null);
   const preferredSpecialistLoadedForRef = useRef<string | null>(null);
   const sensitiveTimersRef = useRef<Record<string, number>>({});
 
@@ -689,19 +691,21 @@ export function ApiAgendaWorkspace() {
   );
   useEffect(() => {
     const customerId = bookingDraft?.clientId;
+    const preferenceKey = `${selectedBranch}:${customerId}`;
     if (
       !customerId ||
       bookingDraft.bookingId ||
-      preferredSpecialistLoadedForRef.current === customerId ||
+      preferredSpecialistLoadedForRef.current === preferenceKey ||
       !schedulerDesignProposals.available
     ) {
       return;
     }
-    preferredSpecialistLoadedForRef.current = customerId;
+    preferredSpecialistLoadedForRef.current = preferenceKey;
     void schedulerDesignProposals
       .customerSpecialistPreference(customerId)
       .then((preference) => {
         if (
+          preferredSpecialistLoadedForRef.current !== preferenceKey ||
           !preference ||
           !specialistOptions.some(
             (specialist) => specialist.id === preference.specialistProfileId,
@@ -727,9 +731,15 @@ export function ApiAgendaWorkspace() {
         );
       })
       .catch(() => {
-        preferredSpecialistLoadedForRef.current = null;
+        if (preferredSpecialistLoadedForRef.current === preferenceKey)
+          preferredSpecialistLoadedForRef.current = null;
       });
-  }, [bookingDraft?.bookingId, bookingDraft?.clientId, specialistOptions]);
+  }, [
+    bookingDraft?.bookingId,
+    bookingDraft?.clientId,
+    selectedBranch,
+    specialistOptions,
+  ]);
   const viewBranchIds = useMemo(
     () =>
       branches
@@ -1038,6 +1048,29 @@ export function ApiAgendaWorkspace() {
       ),
     [branchPresentations],
   );
+  const bookingCatalogColumns = useMemo(() => {
+    const catalogData = catalog.data;
+    if (!catalogData || !bookingDialogOpen) return [];
+    return branches.flatMap((branch) => {
+      const scoped = scopeSchedulerAgendaPresentationColumns(
+        buildSchedulerAgendaPresentation({
+          catalog: catalogData,
+          branchId: branch.id,
+          appointments: [],
+          blocks: [],
+        }),
+        branch.id,
+      );
+      return buildSchedulerVisualColumns(
+        scoped,
+        branch.commerceId,
+        branch.id,
+      ).filter(isSchedulerCabinColumn);
+    });
+  }, [bookingDialogOpen, branches, catalog.data]);
+  const bookingColumns = bookingDraft?.bookingId
+    ? visualColumns
+    : bookingCatalogColumns;
   const services = useMemo(
     () =>
       catalog.data && branchProfile
@@ -1384,7 +1417,7 @@ export function ApiAgendaWorkspace() {
   const draftDateKey = bookingDraft
     ? schedulerLocalDateKey(bookingDraft.date)
     : "";
-  const draftColumn = visualColumns.find(
+  const draftColumn = bookingColumns.find(
     (column) => column.id === bookingDraft?.professionalId,
   );
   const availability = useSchedulerQuery(
@@ -1411,10 +1444,16 @@ export function ApiAgendaWorkspace() {
       ),
     },
   );
+  const bookingAvailability =
+    availability.data?.branchId === selectedBranch &&
+    availability.data.date === draftDateKey &&
+    availability.data.serviceProfileId === bookingDraft?.serviceId
+      ? availability.data
+      : null;
   const availableStartTimes = useMemo(() => {
-    const timezone = availability.data?.timezone ?? branchProfile?.timezone;
+    const timezone = bookingAvailability?.timezone ?? branchProfile?.timezone;
     const times = timezone
-      ? (availability.data?.slots.map((slot) =>
+      ? (bookingAvailability?.slots.map((slot) =>
           slotLocalTime(slot, timezone),
         ) ?? [])
       : [];
@@ -1427,7 +1466,7 @@ export function ApiAgendaWorkspace() {
     }
     return [...new Set(times)].sort();
   }, [
-    availability.data,
+    bookingAvailability,
     bookingDraft?.bookingId,
     branchProfile?.timezone,
     draftDateKey,
@@ -1456,6 +1495,101 @@ export function ApiAgendaWorkspace() {
     if (!ordered.length) return;
     setSelectedBranchIds(ordered);
     if (!ordered.includes(selectedBranch)) setSelectedBranch(ordered[0]!);
+  }
+
+  function changeBookingBranch(branchId: string) {
+    if (
+      !bookingDraft ||
+      bookingDraft.bookingId ||
+      bookingSaving ||
+      branchId === selectedBranch
+    )
+      return;
+    if (createdAppointmentIntentRef.current === bookingIntentKey) {
+      toast.error(
+        "La cita ya se creó. Revisa la reserva en Agenda antes de cambiar de sucursal.",
+      );
+      return;
+    }
+    const catalogData = catalog.data;
+    const destination = catalogBranches.find(
+      (branch) => branch.branchId === branchId,
+    );
+    if (!catalogData || !destination) return;
+
+    const targetServices = buildSchedulerVisualServices(
+      catalogData,
+      destination.id,
+    );
+    const targetCabins = bookingCatalogColumns.filter((column) =>
+      column.branchIds.includes(branchId),
+    );
+    const cabin =
+      targetCabins.find(
+        (column) => column.capacity === bookingDraft.cabinCapacity,
+      ) ??
+      targetCabins.find(
+        (column) => (column.capacity ?? 1) >= bookingDraft.visitors.length,
+      );
+    const specialistIds = catalogData.professionals
+      .filter(
+        (professional) =>
+          professional.active &&
+          professional.branchProfileIds.includes(destination.id),
+      )
+      .map((professional) => professional.id);
+    const visitors = Array.from(
+      { length: cabin?.capacity ?? bookingDraft.visitors.length },
+      (_, index) => {
+        const current = bookingDraft.visitors[index];
+        if (!current)
+          return createBookingVisitorDraft(
+            `visitor-${index + 1}`,
+            specialistIds[index],
+          );
+        return {
+          ...current,
+          specialistProfileId: specialistIds.includes(
+            current.specialistProfileId,
+          )
+            ? current.specialistProfileId
+            : (specialistIds[index] ?? ""),
+        };
+      },
+    );
+    const destinationSource =
+      branchCommercialModels.data?.find((model) => model.branchId === branchId)
+        ?.mode === "SCHEDULER_STANDALONE"
+        ? "SCHEDULER"
+        : "POS_CRM";
+
+    setSelectedBranchIds((current) =>
+      current.includes(branchId) ? current : [...current, branchId],
+    );
+    preferredSpecialistLoadedForRef.current = null;
+    setSelectedBranch(branchId);
+    setBookingDraft({
+      ...bookingDraft,
+      serviceId: targetServices.some(
+        (service) => service.id === bookingDraft.serviceId,
+      )
+        ? bookingDraft.serviceId
+        : "",
+      professionalId: cabin?.id ?? "",
+      cabinResourceId: cabin?.entityId ?? "",
+      cabinCapacity: cabin?.capacity ?? bookingDraft.cabinCapacity,
+      representativeId:
+        destinationSource === selectedRepresentativeSource
+          ? bookingDraft.representativeId
+          : "",
+      rememberSpecialist:
+        bookingDraft.rememberSpecialist &&
+        visitors[0]?.specialistProfileId ===
+          bookingDraft.visitors[0]?.specialistProfileId,
+      visitors,
+    });
+    setConflict(null);
+    setCustomerRegistrationReview(null);
   }
 
   function handleDateStep(direction: "prev" | "next") {
@@ -1561,22 +1695,11 @@ export function ApiAgendaWorkspace() {
       rememberSpecialist: false,
       visitors: Array.from(
         { length: defaultCabin?.capacity ?? 1 },
-        (_value, index) => ({
-          id: `visitor-${index + 1}`,
-          customerId: null,
-          name: "",
-          specialistProfileId: targetSpecialists[index]?.id ?? "",
-          attendanceStatus: "PENDING",
-          purchased: null,
-          purchaseAmount: "",
-          purchaseKind: null,
-          saleAmount: "",
-          depositAmount: "",
-          saleCategory: null,
-          membershipName: "",
-          membershipSellerSpecialistProfileId: "",
-          posTicket: null,
-        }),
+        (_, index) =>
+          createBookingVisitorDraft(
+            `visitor-${index + 1}`,
+            targetSpecialists[index]?.id,
+          ),
       ),
     });
     setBookingIntentKey(crypto.randomUUID());
@@ -1852,12 +1975,13 @@ export function ApiAgendaWorkspace() {
   }
 
   function selectedSlot(): SchedulerAvailabilitySlotDto | null {
-    if (!bookingDraft || !availability.data) return null;
+    if (!bookingDraft || !bookingAvailability) return null;
+    const { slots, timezone } = bookingAvailability;
     const time = `${bookingDraft.hour}:${bookingDraft.minute}`;
     return (
-      availability.data.slots.find(
+      slots.find(
         (slot) =>
-          slotLocalTime(slot, availability.data!.timezone) === time &&
+          slotLocalTime(slot, timezone) === time &&
           (draftColumn?.kind !== "RESOURCE" ||
             slot.resourceIds.includes(draftColumn.entityId ?? "")),
       ) ?? null
@@ -2586,6 +2710,7 @@ export function ApiAgendaWorkspace() {
           },
           bookingIntentKey,
         );
+        createdAppointmentIntentRef.current = bookingIntentKey;
       }
       if (schedulerDesignProposals.available) {
         if (!appointmentDetailsLocked) {
@@ -3828,7 +3953,7 @@ export function ApiAgendaWorkspace() {
               (appointment) => appointment.id === bookingDraft.bookingId,
             )?.services.length ?? 0) > 1
               ? []
-              : visualColumns.filter(
+              : bookingColumns.filter(
                   (column) =>
                     column.branchIds.includes(selectedBranch) &&
                     (Boolean(bookingDraft.bookingId) ||
@@ -3839,19 +3964,7 @@ export function ApiAgendaWorkspace() {
           enableCabinVisitFlow={schedulerDesignProposals.available}
           canCreateClient={canCreateClient}
           canViewCustomerPhone={canViewCustomerPhone}
-          onBranchChange={(branchId) => {
-            setSelectedBranch(branchId);
-            setSelectedBranchIds((current) =>
-              current.includes(branchId) ? current : [...current, branchId],
-            );
-            setBookingDialogOpen(false);
-            setBookingDraft(null);
-            setAttendanceStatusAppointmentId(null);
-            setCustomerRegistrationReview(null);
-            toast.info(
-              "Sucursal actualizada. Abre de nuevo la reserva para consultar su disponibilidad.",
-            );
-          }}
+          onBranchChange={changeBookingBranch}
           onClientSearchQueryChange={setClientSearchInput}
           onDraftChange={setBookingDraft}
           onOpenChange={(open) => {

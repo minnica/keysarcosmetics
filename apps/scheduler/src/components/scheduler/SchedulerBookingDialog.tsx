@@ -54,6 +54,7 @@ import {
   type SchedulerClient,
 } from "@/lib/scheduler-client-presentation";
 import {
+  createBookingVisitorDraft,
   formatMoney,
   getAvailableBookingStartTimes,
   type BookingDraft,
@@ -425,24 +426,12 @@ export function SchedulerBookingDialog({
     const visitors = Array.from(
       { length: cabin.capacity },
       (_value, index) =>
-        draft.visitors[index] ?? {
-          id: `visitor-${index + 1}`,
-          customerId: null,
-          name: "",
-          specialistProfileId: "",
-          attendanceStatus: "PENDING" as const,
-          purchased: null,
-          purchaseAmount: "",
-          purchaseKind: null,
-          saleAmount: "",
-          depositAmount: "",
-          saleCategory: null,
-          membershipName: "",
-          membershipSellerSpecialistProfileId: "",
-          posTicket: null,
-        },
+        draft.visitors[index] ??
+        createBookingVisitorDraft(`visitor-${index + 1}`),
     );
+    const cabinColumn = columns.find((column) => column.entityId === cabin.id);
     patchDraft({
+      ...(cabinColumn && !isEditing ? { professionalId: cabinColumn.id } : {}),
       cabinResourceId: cabin.id,
       cabinCapacity: cabin.capacity,
       visitors,
@@ -1026,11 +1015,16 @@ export function SchedulerBookingDialog({
                     <div className="space-y-2">
                       <label className="scheduler-modal-label">Sucursal</label>
                       <Select
-                        disabled={appointmentDetailsLocked}
+                        disabled={
+                          saving || isEditing || appointmentDetailsLocked
+                        }
                         value={selectedBranch}
                         onValueChange={onBranchChange}
                       >
-                        <SelectTrigger className="scheduler-modal-select-trigger">
+                        <SelectTrigger
+                          aria-label="Sucursal"
+                          className="scheduler-modal-select-trigger"
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="scheduler-modal-select-content max-h-[320px]">
@@ -1679,9 +1673,14 @@ export function SchedulerBookingDialog({
                       <Select
                         disabled={appointmentDetailsLocked}
                         value={draft.professionalId}
-                        onValueChange={(value) =>
-                          patchDraft({ professionalId: value })
-                        }
+                        onValueChange={(value) => {
+                          const cabinId = columns.find(
+                            (column) => column.id === value,
+                          )?.entityId;
+                          if (!isEditing && enableCabinVisitFlow && cabinId)
+                            selectCabin(cabinId);
+                          else patchDraft({ professionalId: value });
+                        }}
                       >
                         <SelectTrigger className="scheduler-modal-select-trigger">
                           <SelectValue placeholder="Selecciona" />

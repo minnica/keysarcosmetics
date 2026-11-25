@@ -426,24 +426,29 @@ export function createDraft(
     cabinCapacity: 1,
     representativeId: "",
     rememberSpecialist: false,
-    visitors: [
-      {
-        id: "visitor-primary",
-        customerId: null,
-        name: "",
-        specialistProfileId: "",
-        attendanceStatus: "PENDING",
-        purchased: null,
-        purchaseAmount: "",
-        purchaseKind: null,
-        saleAmount: "",
-        depositAmount: "",
-        saleCategory: null,
-        membershipName: "",
-        membershipSellerSpecialistProfileId: "",
-        posTicket: null,
-      },
-    ],
+    visitors: [createBookingVisitorDraft("visitor-primary")],
+  };
+}
+
+export function createBookingVisitorDraft(
+  id: string,
+  specialistProfileId = "",
+): BookingVisitorDraft {
+  return {
+    id,
+    customerId: null,
+    name: "",
+    specialistProfileId,
+    attendanceStatus: "PENDING",
+    purchased: null,
+    purchaseAmount: "",
+    purchaseKind: null,
+    saleAmount: "",
+    depositAmount: "",
+    saleCategory: null,
+    membershipName: "",
+    membershipSellerSpecialistProfileId: "",
+    posTicket: null,
   };
 }
 
