@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { pilotRoleStatements } from "./access";
 import type { PilotSnapshot } from "@cosmetics/types";
 import {
   assertEmptyOfProduction,
@@ -14,6 +15,7 @@ export async function initialize(
   db: PrismaClient,
   ref: string,
   password = process.env.PILOT_RUNTIME_PASSWORD,
+  loaderPassword = process.env.PILOT_LOADER_PASSWORD,
 ) {
   const ddl = await readFile(
     resolve(__dirname, "../../pilot/schema.sql"),
@@ -28,44 +30,8 @@ export async function initialize(
       await tx.$executeRawUnsafe(statement);
     await tx.$executeRaw`INSERT INTO payroll_pilot.identity(singleton,project_ref) VALUES(true,${ref}) ON CONFLICT DO NOTHING`;
     await assertIdentity(tx, ref);
-    if (password) {
-      if (!/^[A-Za-z0-9_-]{32,100}$/.test(password))
-        throw Error("Clave de servicio inválida.");
-      const [role] = await tx.$queryRaw<
-        { exists: boolean }[]
-      >`SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='keysar_pilot_runtime') AS exists`;
-      if (!role?.exists)
-        await tx.$executeRawUnsafe(
-          "CREATE ROLE keysar_pilot_runtime LOGIN NOBYPASSRLS NOINHERIT PASSWORD '" +
-            password +
-            "'",
-        );
-      await tx.$executeRawUnsafe(
-        "GRANT USAGE ON SCHEMA payroll_pilot TO keysar_pilot_runtime",
-      );
-      await tx.$executeRawUnsafe(
-        "GRANT SELECT ON payroll_pilot.identity, payroll_pilot.cuts TO keysar_pilot_runtime",
-      );
-      await tx.$executeRawUnsafe(
-        "GRANT UPDATE (changes,revision,updated_at,updated_by) ON payroll_pilot.cuts TO keysar_pilot_runtime",
-      );
-      for (const table of ["identity", "cuts"]) {
-        await tx.$executeRawUnsafe(
-          "DROP POLICY IF EXISTS pilot_read ON payroll_pilot." + table,
-        );
-        await tx.$executeRawUnsafe(
-          "CREATE POLICY pilot_read ON payroll_pilot." +
-            table +
-            " FOR SELECT TO keysar_pilot_runtime USING (true)",
-        );
-      }
-      await tx.$executeRawUnsafe(
-        "DROP POLICY IF EXISTS pilot_edit ON payroll_pilot.cuts",
-      );
-      await tx.$executeRawUnsafe(
-        "CREATE POLICY pilot_edit ON payroll_pilot.cuts FOR UPDATE TO keysar_pilot_runtime USING (true) WITH CHECK (true)",
-      );
-    }
+    for (const command of pilotRoleStatements(password, loaderPassword))
+      await tx.$executeRawUnsafe(command);
   });
 }
 export async function readCut(db: PrismaClient, asOf?: string) {

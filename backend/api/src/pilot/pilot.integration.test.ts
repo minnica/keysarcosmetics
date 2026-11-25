@@ -11,7 +11,10 @@ const enabled = process.env.PILOT_LOCAL_TEST === "1";
 describe.skipIf(!enabled)(
   "aislamiento del piloto con dos PostgreSQL desechables",
   () => {
-    let source: PrismaClient, destination: PrismaClient, runtime: PrismaClient;
+    let source: PrismaClient,
+      destination: PrismaClient,
+      runtime: PrismaClient,
+      loader: PrismaClient;
     let server: ReturnType<ReturnType<typeof createPilotApi>["listen"]>;
     afterAll(async () => {
       await new Promise<void>((resolve) =>
@@ -21,6 +24,7 @@ describe.skipIf(!enabled)(
         source?.$disconnect(),
         destination?.$disconnect(),
         runtime?.$disconnect(),
+        loader?.$disconnect(),
       ]);
     });
     it("guarda el ensayo, rechaza revisiones obsoletas y conserva recibo, cuota y saldo en origen", async () => {
@@ -179,8 +183,20 @@ describe.skipIf(!enabled)(
         ),
       ).toThrow();
       const localRolePassword = "only-local-synthetic-pilot-runtime-password";
-      await initialize(destination, "pilot_test", localRolePassword);
-      const id = await insertCut(destination, snapshot);
+      const loaderPassword = "synthetic-only-local-bootstrap-loader-password";
+      await initialize(
+        destination,
+        "pilot_test",
+        localRolePassword,
+        loaderPassword,
+      );
+      dstUrl.username = "keysar_pilot_loader";
+      dstUrl.password = loaderPassword;
+      loader = new PrismaClient({ datasourceUrl: dstUrl.href });
+      const id = await insertCut(loader, snapshot);
+      await expect(
+        loader.$executeRaw`UPDATE payroll_pilot.cuts SET changes=changes WHERE false`,
+      ).rejects.toThrow(/denied|42501/);
       dstUrl.username = "keysar_pilot_runtime";
       dstUrl.password = localRolePassword;
       runtime = new PrismaClient({ datasourceUrl: dstUrl.href });

@@ -4,7 +4,9 @@
 
 La rama de integración es `pilot/payroll-v2`. Parte de `master` en `fe71dbd8` e incorpora la interfaz que el PO terminó en `prototype/payroll-ui`, revisión `3f18f4aa`. La API productiva consultada identificó su versión como `6239a23a`. El acceso de operación diaria sigue en [Nómina productiva](https://nomina.keysarcosmetics.com/).
 
-Supabase rechazó la creación de `keysar-payroll-pilot` después de confirmar la cotización de US$0 al mes. La cuenta ya tiene los dos proyectos activos que permite el plan gratuito. El propietario eligió mantener Supabase y habilitará un cupo. La consulta de origen permitió identificar la corrida aprobada del 16 al 31 de octubre y el borrador del 16 al 30 de noviembre, con 71 empleados y 396 ventas en el conjunto del corte. La extracción de sólo lectura se ejecutó en memoria y confirmó 64 líneas en la corrida aprobada y 55 en el borrador. La copia remota, la cuenta del PO y la prueba con importes reales siguen pendientes de habilitar un destino independiente. Las pruebas automáticas usan dos bases desechables con datos sintéticos.
+La [vista previa protegida de la rama](https://keysarcosmetics-payroll-git-pilot-payroll-v2-minnicas-projects.vercel.app/login) y la [API de pruebas](https://cosmetics-payroll-pilot.fly.dev/health) están desplegadas. Se verificó que Vercel redirige al visitante anónimo a su autenticación y que la API de Next devuelve 401 al intentar leer el corte sin sesión. La extracción productiva se ejecutó en memoria y con transacción de sólo lectura. Identificó 71 empleados y 396 ventas. La corrida aprobada del 16 al 31 de octubre contiene 64 líneas. El borrador del 16 al 30 de noviembre contiene 55 líneas.
+
+El propietario eligió alojar el piloto en otra organización Supabase **Free** bajo su propia cuenta. La organización original pasó a Pro y mantiene los proyectos actuales. El MCP cotizó en US$10 al mes crear un tercer proyecto dentro de esa organización Pro. El destino elegido debe cotizar US$0 adicionales. Al verificar este despliegue quedan pendientes la creación en la organización Free, la carga remota y la activación del usuario del PO. La API responde 503 en `/ready` hasta que exista un corte válido. [Condiciones de Supabase para utilizar proyectos Free después de contratar Pro](https://supabase.com/kb/troubleshooting/keeping-free-projects-after-pro-upgrade-Kf9Xm2).
 
 ## Cómo lo usará el PO
 
@@ -48,8 +50,8 @@ El importador usa `REPEATABLE READ` y `READ ONLY`. La referencia cruda y los cam
 
 ## Habilitar una base y cargar el corte
 
-1. Verificar en la organización Supabase del proyecto `keysarcosmetics` que hay capacidad para otro proyecto. Confirmar el precio mostrado contra el autorizado. La región solicitada fue `us-west-1`. Guardar la nueva referencia y comprobar que difiere de `kgzuamipstbsiqrlaphh`. El importador comprueba el hostname o la identidad del pooler y exige TLS.
-2. En una sesión privada del cargador, inyectar `PILOT_PROJECT_REF` y `PILOT_DATABASE_URL` (conexión administrativa **del destino**) y `PILOT_RUNTIME_PASSWORD` (valor aleatorio base64url de 32 a 100 caracteres). Obtener los secretos del gestor de credenciales interno. Ejecutar desde la raíz del monorepo.
+1. En el MCP listar las organizaciones y los proyectos. Identificar la organización **Free del piloto** y confirmar la cotización de US$0 con `get_cost`. La productiva es `minnica`, con ID `vcdbwpyyntkgxurjkosn`. El destino autorizado pertenece a la otra organización. La región solicitada fue `us-west-1`. Guardar la nueva referencia y comprobar que difiere de `kgzuamipstbsiqrlaphh`. El importador comprueba el hostname o la identidad del pooler y exige TLS.
+2. En una sesión privada del cargador, inyectar `PILOT_PROJECT_REF` y `PILOT_DATABASE_URL` (conexión administrativa **del destino**) y las claves distintas `PILOT_RUNTIME_PASSWORD` y `PILOT_LOADER_PASSWORD` (aleatorias en base64url de 32 a 100 caracteres). Obtener los secretos del gestor de credenciales interno. Ejecutar desde la raíz del monorepo.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -57,9 +59,9 @@ pnpm --filter @cosmetics/api build
 node backend/api/dist/pilot/import.js init
 ```
 
-El comando verifica la ausencia de tablas operativas, crea la marca de identidad, activa RLS y crea el rol `keysar_pilot_runtime` con permisos de lectura y actualización por columna. Al repetir `init` se conserva la contraseña de un rol ya existente.
+El comando verifica la ausencia de tablas operativas, crea la marca de identidad, activa RLS y crea los dos roles. `keysar_pilot_runtime` lee y guarda cambios por columna. `keysar_pilot_loader` sólo lee y agrega cortes. Las contraseñas se convierten en verificadores SCRAM antes de emitir el SQL. Al repetir `init` se conserva la contraseña de un rol ya existente.
 
-3. Añadir `PAYROLL_SOURCE_REF=kgzuamipstbsiqrlaphh` y `PAYROLL_SOURCE_READ_URL` únicamente a esa sesión. Preferir una credencial de sólo lectura con permiso de consulta sobre las tablas de la extracción. `PILOT_AS_OF` admite una fecha ISO si se requiere reconstruir una selección histórica de periodos. La información observada sigue siendo la de la fecha de extracción. Ejecutar el importador.
+3. Cambiar `PILOT_DATABASE_URL` a la conexión del rol `keysar_pilot_loader` en el destino. Añadir `PAYROLL_SOURCE_REF=kgzuamipstbsiqrlaphh` y `PAYROLL_SOURCE_READ_URL` únicamente a esa sesión. Preferir una credencial de sólo lectura con permiso de consulta sobre las tablas de la extracción. `PILOT_AS_OF` admite una fecha ISO si se requiere reconstruir una selección histórica de periodos. La información observada sigue siendo la de la fecha de extracción. Ejecutar el importador.
 
 ```sh
 node backend/api/dist/pilot/import.js import
