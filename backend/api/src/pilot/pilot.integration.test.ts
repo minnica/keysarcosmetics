@@ -290,6 +290,7 @@ async function verifyOneTimeLogin(db: PrismaClient) {
       base + "/authorize?state=" + state + "&challenge=" + challenge,
     );
     expect(form.status).toBe(200);
+    expect(form.headers.get("referrer-policy")).toBe("same-origin");
     const cookie = form.headers.get("set-cookie")!.split(";")[0]!;
     const csrf = /name="csrf" value="([A-Za-z0-9_-]+)"/.exec(
       await form.text(),

@@ -90,7 +90,7 @@ export function registerPortalLogin(
     };
   app.use(["/authorize", "/redeem"], (_req, res, next) => {
     res.set({
-      "Referrer-Policy": "no-referrer",
+      "Referrer-Policy": "same-origin",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Content-Security-Policy":
