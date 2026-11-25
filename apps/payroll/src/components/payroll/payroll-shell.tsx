@@ -50,8 +50,6 @@ import {
 } from "lucide-react";
 import {
   Button,
-  Input,
-  Label,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -796,13 +794,9 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
   const [privacyReason, setPrivacyReason] = useState<"MANUAL" | "INACTIVITY">(
     "MANUAL",
   );
-  const [privateCode, setPrivateCode] = useState("");
-  const [unlockError, setUnlockError] = useState("");
-  const [securityCycle, setSecurityCycle] = useState(0);
   const lastActivityRef = useRef(Date.now());
   const expiredRef = useRef(false);
   const privacyLockedRef = useRef(false);
-  const [unlockPending, setUnlockPending] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -832,12 +826,12 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
       if (privacyLockedRef.current || expiredRef.current) return;
       privacyLockedRef.current = true;
       setPrivacyReason("INACTIVITY");
-      setPrivateCode("");
-      setUnlockError("");
+
+
       setPrivacyLocked(true);
       if (privacyTimeoutId !== null) window.clearTimeout(privacyTimeoutId);
       toast.warning(
-        "Información protegida por 3 minutos sin actividad. Ingresa la clave del piloto para continuar.",
+        "Información protegida por 3 minutos sin actividad. Vuelve a ingresar con tu cuenta de nómina.",
       );
     }
 
@@ -901,8 +895,8 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
     privacyLockedRef.current = false;
     lastActivityRef.current = Date.now();
     setPrivacyLocked(false);
-    setPrivateCode("");
-    setUnlockError("");
+
+
     scheduleSecurityTimers();
     window.addEventListener("pointerdown", registerActivity, { passive: true });
     window.addEventListener("mousemove", registerPointerMovement, {
@@ -925,30 +919,14 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
       window.removeEventListener("touchstart", registerActivity);
       document.removeEventListener("visibilitychange", checkElapsedTime);
     };
-  }, [endSession, isAuthenticated, router, securityCycle]);
+  }, [endSession, isAuthenticated, router]);
 
   function lockManually() {
     privacyLockedRef.current = true;
     setPrivacyReason("MANUAL");
-    setPrivateCode("");
-    setUnlockError("");
-    setPrivacyLocked(true);
-  }
 
-  async function unlockInformation() {
-    if (unlockPending) return;
-    setUnlockPending(true);
-    try {
-      const result = await fetch("/api/piloto/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:"nomina",password:privateCode})});
-      if (!result.ok) {setUnlockError("Clave de piloto incorrecta o sesión no disponible.");return;}
-    } catch {setUnlockError("No se pudo validar la clave.");return;}
-    finally {setUnlockPending(false);}
-    privacyLockedRef.current = false;
-    setPrivacyLocked(false);
-    setPrivateCode("");
-    setUnlockError("");
-    setSecurityCycle((current) => current + 1);
-    toast.success("Información desbloqueada por autorización master.");
+
+    setPrivacyLocked(true);
   }
 
   return (
@@ -994,28 +972,8 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <Label htmlFor="master-privacy-code">Clave de acceso al piloto</Label>
-              <Input id="master-privacy-code" type="password" autoComplete="current-password" value={privateCode}
-                onChange={event=>{setPrivateCode(event.target.value);setUnlockError("");}} onKeyDown={event=>{if(event.key==="Enter")void unlockInformation();}}/>
-              {unlockError && (
-                <p
-                  className="mt-3 text-xs font-medium text-rose-300"
-                  role="alert"
-                >
-                  {unlockError}
-                </p>
-              )}
-            </div>
+            <Button className="mt-5 w-full" onClick={endSession}>Volver a ingresar con mi cuenta de nómina</Button>
 
-            <Button
-              type="button"
-              className="mt-4 h-11 w-full bg-[#8a603d] text-white hover:bg-[#704a2e]"
-              disabled={!privateCode || unlockPending}
-              onClick={unlockInformation}
-            >
-              <KeyRound className="mr-2 h-4 w-4" /> Desbloquear información
-            </Button>
             <p className="mt-3 text-center text-[10px] leading-4 text-white/45">
               Si la inactividad llega a 5 minutos, la sesión se cerrará por
               completo.

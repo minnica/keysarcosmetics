@@ -47,6 +47,9 @@ export function pilotRoleStatements(
     if (role === "keysar_pilot_runtime") {
       statements.push(
         `GRANT UPDATE (changes,revision,updated_at,updated_by) ON payroll_pilot.cuts TO ${role}`,
+        `GRANT SELECT, INSERT, DELETE ON payroll_pilot.login_codes TO ${role}`,
+        "DROP POLICY IF EXISTS pilot_login_codes ON payroll_pilot.login_codes",
+        `CREATE POLICY pilot_login_codes ON payroll_pilot.login_codes FOR ALL TO ${role} USING (true) WITH CHECK (true)`,
         "DROP POLICY IF EXISTS pilot_edit ON payroll_pilot.cuts",
         `CREATE POLICY pilot_edit ON payroll_pilot.cuts FOR UPDATE TO ${role} USING (true) WITH CHECK (true)`,
       );

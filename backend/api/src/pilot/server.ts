@@ -5,6 +5,11 @@ import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
 import type { PilotSnapshot } from "@cosmetics/types";
 import { assertIdentity, pilotDatabase } from "./store";
+import {
+  registerPortalLogin,
+  pilotSession,
+  type verifyPortalAccount,
+} from "./portal-login";
 import { referenceForCut } from "./reference";
 
 const arrayKeys = new Set(
@@ -48,6 +53,8 @@ interface Settings {
   ref: string;
   user: string;
   hash: string;
+  portalEmail?: string;
+  verifyPortal?: typeof verifyPortalAccount;
   secret: string;
 }
 export function createPilotApi(
@@ -86,10 +93,22 @@ export function createPilotApi(
       res.status(row?.loaded ? 200 : 503).json({ ready: Boolean(row?.loaded) });
     }),
   );
+  if (settings.portalEmail)
+    registerPortalLogin(app, db, {
+      ref: settings.ref,
+      user: settings.user,
+      email: settings.portalEmail,
+      secret: settings.secret,
+      ...(settings.verifyPortal ? { verify: settings.verifyPortal } : {}),
+    });
   const attempts = new Map<string, { start: number; count: number }>();
   app.post(
     "/session",
     wrap(async (req, res) => {
+      if (settings.portalEmail || process.env.FLY_APP_NAME) {
+        res.sendStatus(404);
+        return;
+      }
       if (!db || !settings.hash || settings.secret.length < 32) {
         res
           .status(503)
@@ -123,19 +142,18 @@ export function createPilotApi(
       }
       await assertIdentity(db, settings.ref);
       res.json({
-        token: jwt.sign({}, settings.secret, {
-          algorithm: "HS256",
-          subject: settings.user,
-          issuer: "keysar-payroll-pilot",
-          audience: "pilot-workspace",
-          expiresIn: "2h",
-        }),
+        token: pilotSession(settings.user, settings.secret),
       });
     }),
   );
   app.use("/cut", (req, res, next) => {
     try {
-      if (!db || !settings.hash || settings.secret.length < 32) {
+      if (
+        !db ||
+        (!settings.portalEmail && !settings.hash) ||
+        !settings.user ||
+        settings.secret.length < 32
+      ) {
         res
           .status(503)
           .json({ message: "Pendiente de conectar la base piloto." });
@@ -200,12 +218,10 @@ export function createPilotApi(
         WHERE id=${id}::uuid AND revision=${revision} AND seq=(SELECT max(seq) FROM payroll_pilot.cuts) RETURNING revision`;
       });
       if (!rows[0]) {
-        res
-          .status(409)
-          .json({
-            message:
-              "Hay un corte o cambios más recientes. Recarga para revisarlos.",
-          });
+        res.status(409).json({
+          message:
+            "Hay un corte o cambios más recientes. Recarga para revisarlos.",
+        });
         return;
       }
       res.json(rows[0]);
@@ -218,14 +234,12 @@ export function createPilotApi(
         : err?.type === "entity.parse.failed"
           ? 400
           : 503;
-    res
-      .status(status)
-      .json({
-        message:
-          status === 503
-            ? "La base del piloto no está disponible."
-            : "Solicitud inválida.",
-      });
+    res.status(status).json({
+      message:
+        status === 503
+          ? "La base del piloto no está disponible."
+          : "Solicitud inválida.",
+    });
   };
   app.use(onError);
   return app;
@@ -233,10 +247,17 @@ export function createPilotApi(
 if (require.main === module) {
   let db: PrismaClient | undefined;
   if (process.env.PILOT_DATABASE_URL) db = pilotDatabase();
+  const live =
+    Boolean(process.env.FLY_APP_NAME) || process.env.NODE_ENV === "production";
   const app = createPilotApi(db, {
     ref: process.env.PILOT_PROJECT_REF ?? "",
-    user: process.env.PILOT_OPERATOR_USER ?? "nomina",
-    hash: process.env.PILOT_OPERATOR_HASH ?? "",
+    user: live
+      ? (process.env.PILOT_ACCOUNT_ID ?? "")
+      : (process.env.PILOT_OPERATOR_USER ?? "nomina"),
+    hash: live ? "" : (process.env.PILOT_OPERATOR_HASH ?? ""),
+    ...(live && process.env.PILOT_ACCOUNT_EMAIL
+      ? { portalEmail: process.env.PILOT_ACCOUNT_EMAIL }
+      : {}),
     secret: process.env.PILOT_SESSION_SECRET ?? "",
   });
   const server = app.listen(Number(process.env.PORT ?? 4000), "0.0.0.0");

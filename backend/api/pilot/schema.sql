@@ -10,3 +10,7 @@ CREATE TABLE IF NOT EXISTS payroll_pilot.cuts (
 REVOKE ALL ON ALL TABLES IN SCHEMA payroll_pilot FROM PUBLIC;
 ALTER TABLE payroll_pilot.cuts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payroll_pilot.identity ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS payroll_pilot.login_codes (code_hash text PRIMARY KEY, challenge text NOT NULL, subject text NOT NULL, expires_at timestamptz NOT NULL);
+ALTER TABLE payroll_pilot.login_codes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON payroll_pilot.login_codes FROM PUBLIC;

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-const cookie = "keysar-pilot-session";
+import {
+  portalAuthorization,
+  sessionCookie as cookie,
+} from "@/lib/pilot-authorization";
 function apiOrigin() {
   const value = process.env.PILOT_API_ORIGIN;
   if (value === "https://cosmetics-payroll-pilot.fly.dev") return value;
@@ -25,6 +28,13 @@ async function handle(
   { params }: { params: { action: string } },
 ) {
   const action = params.action;
+  if (action === "authorize" || action === "callback")
+    return portalAuthorization(req, action);
+  if (
+    action === "session" &&
+    (process.env.VERCEL || process.env.PILOT_LOCAL_TEST !== "1")
+  )
+    return json({}, 404);
   if (!["session", "logout", "cut"].includes(action)) return json({}, 404);
   const methods = action === "cut" ? ["GET", "PUT"] : ["POST"];
   if (!methods.includes(req.method)) return json({}, 405);

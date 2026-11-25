@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import type { PilotCut } from "@cosmetics/types";
 import { afterAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
@@ -264,6 +265,89 @@ describe.skipIf(!enabled)(
       expect(reread.movements).toEqual(snapshot.movements);
       await insertCut(destination, reread);
       expect((await save({ ...command, revision: 1 })).status).toBe(409);
+      await verifyOneTimeLogin(runtime);
     }, 60000);
   },
 );
+
+async function verifyOneTimeLogin(db: PrismaClient) {
+  const server = createPilotApi(db, {
+    ref: "pilot_test",
+    user: "qa-po",
+    portalEmail: "po@example.invalid",
+    hash: "",
+    secret: "b".repeat(44),
+    verifyPortal: async (email, password) =>
+      email === "po@example.invalid" && password === "contraseña-sintética",
+  }).listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  try {
+    const base = "http://127.0.0.1:" + (server.address() as AddressInfo).port;
+    const verifier = randomBytes(32).toString("base64url"),
+      state = randomBytes(32).toString("base64url");
+    const challenge = createHash("sha256").update(verifier).digest("base64url");
+    const form = await fetch(
+      base + "/authorize?state=" + state + "&challenge=" + challenge,
+    );
+    expect(form.status).toBe(200);
+    const cookie = form.headers.get("set-cookie")!.split(";")[0]!;
+    const csrf = /name="csrf" value="([A-Za-z0-9_-]+)"/.exec(
+      await form.text(),
+    )![1]!;
+    const post = (
+      email: string,
+      password: string,
+      origin = "https://cosmetics-payroll-pilot.fly.dev",
+    ) =>
+      fetch(base + "/authorize", {
+        method: "POST",
+        redirect: "manual",
+        headers: { Cookie: cookie, Origin: origin },
+        body: new URLSearchParams({ email, password, csrf }),
+      });
+    expect(
+      (await post("otro@example.invalid", "contraseña-sintética")).status,
+    ).toBe(401);
+    expect((await post("po@example.invalid", "incorrecta")).status).toBe(401);
+    expect(
+      (
+        await post(
+          "po@example.invalid",
+          "contraseña-sintética",
+          "https://otro.invalid",
+        )
+      ).status,
+    ).toBe(403);
+    const auth = await post("po@example.invalid", "contraseña-sintética");
+    expect(auth.status).toBe(303);
+    const uri = new URL(auth.headers.get("location")!);
+    expect(uri.origin).toBe("https://keysar-nomina-piloto.vercel.app");
+    expect(uri.searchParams.get("state")).toBe(state);
+    const code = uri.searchParams.get("code");
+    const redeem = (proof: string) =>
+      fetch(base + "/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, verifier: proof }),
+      });
+    expect((await redeem(randomBytes(32).toString("base64url"))).status).toBe(
+      401,
+    );
+    const ok = await redeem(verifier);
+    expect(ok.status).toBe(200);
+    const { token } = (await ok.json()) as { token: string };
+    expect(
+      (
+        await fetch(base + "/cut", {
+          headers: { Authorization: "Bearer " + token },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await redeem(verifier)).status).toBe(401);
+    expect((await fetch(base + "/session", { method: "POST" })).status).toBe(
+      404,
+    );
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
