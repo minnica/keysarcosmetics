@@ -12,6 +12,7 @@ primary_region = "dfw"
   app = "node dist/pilot/server.js"
 
 [http_service]
+  processes = ["app"]
   internal_port = 4000
   force_https = true
   auto_stop_machines = "stop"
