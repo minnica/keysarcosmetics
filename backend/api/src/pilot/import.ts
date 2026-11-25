@@ -21,18 +21,21 @@ export async function initialize(
     resolve(__dirname, "../../pilot/schema.sql"),
     "utf8",
   );
-  await db.$transaction(async (tx) => {
-    await assertEmptyOfProduction(tx);
-    for (const statement of ddl
-      .split(";")
-      .map((s) => s.trim())
-      .filter(Boolean))
-      await tx.$executeRawUnsafe(statement);
-    await tx.$executeRaw`INSERT INTO payroll_pilot.identity(singleton,project_ref) VALUES(true,${ref}) ON CONFLICT DO NOTHING`;
-    await assertIdentity(tx, ref);
-    for (const command of pilotRoleStatements(password, loaderPassword))
-      await tx.$executeRawUnsafe(command);
-  });
+  await db.$transaction(
+    async (tx) => {
+      await assertEmptyOfProduction(tx);
+      for (const statement of ddl
+        .split(";")
+        .map((s) => s.trim())
+        .filter(Boolean))
+        await tx.$executeRawUnsafe(statement);
+      await tx.$executeRaw`INSERT INTO payroll_pilot.identity(singleton,project_ref) VALUES(true,${ref}) ON CONFLICT DO NOTHING`;
+      await assertIdentity(tx, ref);
+      for (const command of pilotRoleStatements(password, loaderPassword))
+        await tx.$executeRawUnsafe(command);
+    },
+    { maxWait: 10000, timeout: 90000 },
+  );
 }
 export async function readCut(db: PrismaClient, asOf?: string) {
   const sql = await readFile(
