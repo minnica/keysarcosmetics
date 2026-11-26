@@ -1,5 +1,23 @@
 import { defaultWhatsAppUrl } from "@/lib/contact";
-import Image from "next/image";
+import Image, { getImageProps } from "next/image";
+
+const { props: desktopHeroImage } = getImageProps({
+  src: "/images/hero-keysar-desktop-v2.png",
+  alt: "Mujer en un ritual de bienestar con la K de Keysar de fondo",
+  width: 1672,
+  height: 941,
+  sizes: "100vw",
+  quality: 85,
+});
+
+const { props: mobileHeroImage } = getImageProps({
+  src: "/images/hero-keysar-mobile-v2.png",
+  alt: "",
+  width: 1122,
+  height: 1402,
+  sizes: "100vw",
+  quality: 85,
+});
 
 const locations = [
   {
@@ -81,10 +99,10 @@ export function Navbar() {
         </a>
         <div className="hidden items-center gap-1 rounded-full border border-white/35 bg-white/30 p-1 text-sm font-semibold text-keysar-dark shadow-[0_12px_35px_rgba(36,31,26,0.08)] backdrop-blur-md md:flex">
           <a
-            href="#conocenos"
+            href="#sucursales"
             className="rounded-full px-4 py-2 transition hover:bg-white/45 hover:text-keysar-gold"
           >
-            Conócenos
+            Sucursales
           </a>
           <a
             href="#servicios"
@@ -136,10 +154,10 @@ export function Navbar() {
           </summary>
           <div className="absolute right-0 top-12 w-56 rounded-2xl border border-white/45 bg-white/90 p-3 text-sm font-medium text-keysar-text shadow-lg backdrop-blur-md">
             <a
-              href="#conocenos"
+              href="#sucursales"
               className="block rounded-xl px-4 py-3 transition hover:bg-keysar-cream"
             >
-              Conócenos
+              Sucursales
             </a>
             <a
               href="#servicios"
@@ -166,38 +184,34 @@ export function Hero() {
       id="inicio"
       className="relative isolate overflow-hidden bg-keysar-cream"
     >
-      <Image
-        src="/images/hero-keysar-brand.png"
-        alt="Keysar Cosmetics, cuidado en cada detalle"
-        fill
-        sizes="100vw"
-        className="absolute inset-0 z-0 object-cover object-[66%_42%]"
-        priority
-      />
-      <div className="absolute inset-0 z-0 bg-[linear-gradient(90deg,rgba(247,241,232,0.82)_0%,rgba(247,241,232,0.62)_28%,rgba(247,241,232,0.08)_54%,rgba(247,241,232,0)_100%)]" />
-      <div className="relative z-10 mx-auto flex min-h-[620px] max-w-7xl items-center px-5 pt-20 md:min-h-[640px] md:px-10 md:pt-16 lg:min-h-[590px]">
-        <div className="max-w-[470px] pb-8 md:pb-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-keysar-gold">
-            Spa &amp; facial care
-          </p>
-          <h1 className="mt-4 font-title text-[42px] leading-[1.02] text-white drop-shadow-[0_2px_12px_rgba(74,64,56,0.22)] sm:text-6xl lg:text-7xl">
+      <picture className="absolute inset-0 block h-full w-full">
+        <source
+          media="(max-width: 1023px)"
+          srcSet={mobileHeroImage.srcSet}
+          sizes="100vw"
+        />
+        <img
+          {...desktopHeroImage}
+          alt="Mujer en un ritual de bienestar con la K de Keysar de fondo"
+          loading="eager"
+          fetchPriority="high"
+          className="h-full w-full object-contain object-top sm:object-cover sm:object-[center_20%] lg:object-[center_42%]"
+        />
+      </picture>
+      <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(247,241,232,1)_0%,rgba(247,241,232,0.97)_29%,rgba(247,241,232,0)_70%)] md:bg-[linear-gradient(90deg,rgba(247,241,232,0.94)_0%,rgba(247,241,232,0.72)_38%,rgba(247,241,232,0)_78%)] lg:bg-[linear-gradient(90deg,rgba(247,241,232,0.9)_0%,rgba(247,241,232,0.78)_28%,rgba(247,241,232,0.1)_57%,rgba(247,241,232,0)_100%)]" />
+      <div className="relative z-10 mx-auto flex min-h-[660px] max-w-7xl items-end px-5 pb-10 pt-20 sm:min-h-[650px] sm:px-10 sm:pb-12 lg:min-h-[590px] lg:items-center lg:pb-0 lg:pt-16 xl:min-h-[650px]">
+        <div className="max-w-[470px]">
+          <h1 className="font-title text-[42px] leading-[1.02] text-keysar-dark sm:text-6xl lg:text-7xl">
             Keysar
             <br />
             Cosmetics
           </h1>
-          <div className="mt-6 max-w-md space-y-4 text-sm leading-7 text-keysar-text sm:text-base md:mt-8 md:text-sm">
-            <p>
-              Un ritual de bienestar donde la piel respira, se ilumina y
-              recupera su esencia natural.
-            </p>
-            <p>
-              Masajes y tratamientos faciales premium diseñados para realzar tu
-              belleza desde el equilibrio y la calma.
-            </p>
-          </div>
+          <p className="mt-5 max-w-md text-base leading-7 text-keysar-text">
+            Belleza sofisticada, minimalista y consciente.
+          </p>
           <a
             href="#servicios"
-            className="mt-7 inline-flex rounded-full border border-keysar-text/30 bg-white/10 px-5 py-3 text-sm font-medium text-keysar-text transition hover:border-keysar-gold hover:bg-white/30 hover:text-keysar-dark md:px-6"
+            className="mt-6 inline-flex rounded-full border border-keysar-text/30 bg-white/10 px-5 py-3 text-sm font-medium text-keysar-text transition hover:border-keysar-gold hover:bg-white/30 hover:text-keysar-dark md:hidden"
           >
             Explorar tratamientos
           </a>
@@ -207,39 +221,9 @@ export function Hero() {
   );
 }
 
-export function EssenceSection() {
-  return (
-    <section
-      id="conocenos"
-      className="ks-section-a px-5 py-16 sm:px-6 md:px-10 md:py-20 lg:py-24"
-    >
-      <div className="mx-auto max-w-2xl">
-        <h2 className="font-title text-4xl leading-tight tracking-[-0.03em] text-keysar-text md:text-5xl">
-          Nuestra esencia
-        </h2>
-        <div className="mt-10 space-y-6 text-base leading-8 text-keysar-text md:text-[17px]">
-          <p>
-            En Keysar Cosmetics redefinimos el cuidado estético desde una visión
-            sofisticada y consciente.
-          </p>
-          <p>
-            Cada tratamiento está diseñado para armonizar piel, cuerpo y
-            bienestar, combinando técnica profesional con una experiencia
-            sensorial única.
-          </p>
-          <p>
-            Creamos un espacio donde el detalle, la calma y la elegancia se
-            convierten en parte de tu ritual personal.
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function LocationsSection() {
   return (
-    <section className="ks-section-b px-5 py-16 sm:px-6 md:px-10 md:py-20 lg:py-24">
+    <section id="sucursales" className="ks-section-b px-5 py-16 sm:px-6 md:px-10 md:py-20 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="font-title text-3xl leading-tight tracking-[-0.03em] text-keysar-text sm:text-4xl md:text-5xl">

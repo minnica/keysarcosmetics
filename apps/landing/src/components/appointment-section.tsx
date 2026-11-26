@@ -3,7 +3,7 @@
 import { whatsappPhoneNumber } from "@/lib/contact";
 import { treatmentGroups } from "@/data/treatments";
 import Image from "next/image";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -83,7 +83,7 @@ function localDate() {
 }
 
 const inputClassName =
-  "w-full border border-keysar-text/30 bg-transparent px-4 py-3 text-sm text-keysar-text outline-none placeholder:text-keysar-gray focus:border-keysar-gold";
+  "w-full min-w-0 border border-keysar-text/30 bg-transparent px-3 py-2.5 text-base text-keysar-text outline-none placeholder:text-keysar-gray focus:border-keysar-gold";
 
 const selectClassName = `${inputClassName} min-w-0 appearance-none`;
 
@@ -96,9 +96,8 @@ export function AppointmentSection({
 }) {
   const [coupon, setCoupon] = useState(false);
   const [couponOpen, setCouponOpen] = useState(false);
+  const [optionalOpen, setOptionalOpen] = useState(false);
   const [today, setToday] = useState("");
-  const sectionRef = useRef<HTMLElement>(null);
-  const couponShownRef = useRef(false);
   const {
     register,
     handleSubmit,
@@ -138,22 +137,6 @@ export function AppointmentSection({
   }, [clearErrors, watch]);
 
   useEffect(() => {
-    const section = sectionRef.current;
-    if (!section || !("IntersectionObserver" in window)) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting || couponShownRef.current) return;
-        couponShownRef.current = true;
-        setCouponOpen(true);
-        observer.disconnect();
-      },
-      { threshold: 0.35 },
-    );
-    observer.observe(section);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
     if (!couponOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -170,9 +153,18 @@ export function AppointmentSection({
   const submit = (values: BookingValues) => {
     const result = bookingSchema.safeParse(values);
     if (!result.success) {
+      const firstInvalidField = result.error.issues[0]?.path[0] as
+        | keyof BookingValues
+        | undefined;
       for (const issue of result.error.issues) {
         const field = issue.path[0] as keyof BookingValues;
         setError(field, { type: "manual", message: issue.message });
+      }
+      if (firstInvalidField === "email" || firstInvalidField === "message") {
+        setOptionalOpen(true);
+      }
+      if (firstInvalidField) {
+        window.requestAnimationFrame(() => setFocus(firstInvalidField));
       }
       return;
     }
@@ -208,12 +200,10 @@ export function AppointmentSection({
   return (
     <>
       <section
-        ref={sectionRef}
-        id="agenda"
-        className="ks-section-d px-5 py-20 sm:px-6 md:px-10 lg:py-28"
+        className="ks-section-d px-5 py-12 sm:px-6 sm:py-16 md:px-10 lg:py-28"
       >
         <div className="mx-auto max-w-7xl">
-          <div className="grid items-center gap-14 lg:grid-cols-2 xl:gap-24">
+          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-14 xl:gap-24">
             <div className="lg:max-w-lg">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-keysar-gold">
                 Reserva tu momento
@@ -254,7 +244,10 @@ export function AppointmentSection({
               </ul>
             </div>
 
-            <div className="border border-keysar-gold/30 bg-keysar-linen px-7 py-8 shadow-sm sm:px-9 sm:py-10">
+            <div
+              id="agenda"
+              className="scroll-mt-5 border border-keysar-gold/30 bg-keysar-linen px-5 py-6 shadow-sm sm:px-9 sm:py-10 lg:scroll-mt-24"
+            >
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-keysar-gold">
                 Tu cita
               </p>
@@ -265,8 +258,17 @@ export function AppointmentSection({
                 Comparte tus preferencias y te confirmaremos los detalles por el
                 canal que elijas.
               </p>
+              {!coupon && (
+                <button
+                  type="button"
+                  onClick={() => setCouponOpen(true)}
+                  className="mt-3 text-left text-sm font-semibold text-keysar-gold underline underline-offset-4 transition hover:text-keysar-dark focus:outline-none focus:ring-2 focus:ring-keysar-gold/40"
+                >
+                  Ver beneficio para un segundo tratamiento
+                </button>
+              )}
               <form
-                className="mt-6 space-y-5"
+                className="mt-5 space-y-4"
                 onSubmit={handleSubmit(submit)}
                 noValidate
               >
@@ -297,7 +299,7 @@ export function AppointmentSection({
                     </div>
                   </div>
                 )}
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
                   <BookingField label="Nombre completo" error={errors.name?.message}>
                     <input
                       {...register("name")}
@@ -307,33 +309,41 @@ export function AppointmentSection({
                       className={inputClassName}
                     />
                   </BookingField>
-                  <BookingField
-                    label={channel === "email" ? "Teléfono (opcional)" : "Teléfono"}
-                    error={errors.phone?.message}
-                  >
-                    <input
-                      {...register("phone")}
-                      type="tel"
-                      inputMode="tel"
-                      autoComplete="tel"
-                      placeholder="+52 55..."
-                      aria-invalid={Boolean(errors.phone)}
-                      className={inputClassName}
-                    />
+                  <BookingField label="Canal de contacto" error={errors.channel?.message}>
+                    <select
+                      {...register("channel")}
+                      aria-invalid={Boolean(errors.channel)}
+                      className={selectClassName}
+                    >
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="telefono">Llamada</option>
+                      <option value="email">Email</option>
+                    </select>
                   </BookingField>
-                  <BookingField
-                    label={channel === "email" ? "Correo electrónico" : "Correo electrónico (opcional)"}
-                    error={errors.email?.message}
-                  >
-                    <input
-                      {...register("email")}
-                      type="email"
-                      autoComplete="email"
-                      placeholder="tu@email.com"
-                      aria-invalid={Boolean(errors.email)}
-                      className={inputClassName}
-                    />
-                  </BookingField>
+                  {channel === "email" ? (
+                    <BookingField label="Correo electrónico" error={errors.email?.message}>
+                      <input
+                        {...register("email")}
+                        type="email"
+                        autoComplete="email"
+                        placeholder="tu@email.com"
+                        aria-invalid={Boolean(errors.email)}
+                        className={inputClassName}
+                      />
+                    </BookingField>
+                  ) : (
+                    <BookingField label="Teléfono" error={errors.phone?.message}>
+                      <input
+                        {...register("phone")}
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        placeholder="+52 55..."
+                        aria-invalid={Boolean(errors.phone)}
+                        className={inputClassName}
+                      />
+                    </BookingField>
+                  )}
                   <BookingField label="Servicio de interés" error={errors.service?.message}>
                     <Controller
                       name="service"
@@ -362,7 +372,11 @@ export function AppointmentSection({
                       )}
                     />
                   </BookingField>
-                  <BookingField label="Sucursal" error={errors.branch?.message}>
+                  <BookingField
+                    label="Sucursal"
+                    error={errors.branch?.message}
+                    className="sm:col-span-2"
+                  >
                     <select
                       {...register("branch")}
                       aria-invalid={Boolean(errors.branch)}
@@ -376,51 +390,78 @@ export function AppointmentSection({
                       ))}
                     </select>
                   </BookingField>
-                  <BookingField label="Fecha preferida" error={errors.preferredDate?.message}>
-                    <input
-                      {...register("preferredDate")}
-                      type="date"
-                      min={today || undefined}
-                      aria-invalid={Boolean(errors.preferredDate)}
-                      className={inputClassName}
-                    />
-                  </BookingField>
-                  <BookingField
-                    label="Hora preferida"
-                    error={errors.preferredTime?.message}
+                  <div className="grid min-w-0 gap-3 min-[360px]:grid-cols-2 sm:col-span-2 sm:gap-4">
+                    <BookingField label="Fecha preferida" error={errors.preferredDate?.message}>
+                      <input
+                        {...register("preferredDate")}
+                        type="date"
+                        min={today || undefined}
+                        aria-invalid={Boolean(errors.preferredDate)}
+                        className={inputClassName}
+                      />
+                    </BookingField>
+                    <BookingField label="Hora preferida" error={errors.preferredTime?.message}>
+                      <input
+                        {...register("preferredTime")}
+                        type="time"
+                        aria-invalid={Boolean(errors.preferredTime)}
+                        className={inputClassName}
+                      />
+                    </BookingField>
+                  </div>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    aria-expanded={optionalOpen}
+                    aria-controls="booking-optional-fields"
+                    onClick={() => setOptionalOpen((open) => !open)}
+                    className="flex min-h-11 w-full items-center justify-between border-y border-keysar-gold/30 py-2 text-left text-sm font-semibold text-keysar-text transition hover:text-keysar-dark focus:outline-none focus:ring-2 focus:ring-keysar-gold/40"
                   >
-                    <input
-                      {...register("preferredTime")}
-                      type="time"
-                      aria-invalid={Boolean(errors.preferredTime)}
-                      className={inputClassName}
-                    />
-                  </BookingField>
-                  <BookingField label="Canal de contacto" error={errors.channel?.message}>
-                    <select
-                      {...register("channel")}
-                      aria-invalid={Boolean(errors.channel)}
-                      className={selectClassName}
-                    >
-                      <option value="whatsapp">WhatsApp</option>
-                      <option value="telefono">Llamada</option>
-                      <option value="email">Email</option>
-                    </select>
-                  </BookingField>
-                  <BookingField
-                    label="Detalle extra (opcional)"
-                    error={errors.message?.message}
-                    className="sm:col-span-2"
+                    {channel === "email" ? "Agregar teléfono o detalles" : "Agregar correo o detalles"}
+                    <span aria-hidden="true" className="text-lg leading-none text-keysar-gold">
+                      {optionalOpen ? "−" : "+"}
+                    </span>
+                  </button>
+                  <div
+                    id="booking-optional-fields"
+                    className={optionalOpen ? "grid gap-3 pt-4 sm:grid-cols-2 sm:gap-4" : "hidden"}
                   >
-                    <textarea
-                      {...register("message")}
-                      rows={4}
-                      maxLength={600}
-                      placeholder="Cuéntanos si hay algún detalle importante para tu visita..."
-                      aria-invalid={Boolean(errors.message)}
-                      className={`${inputClassName} resize-y`}
-                    />
-                  </BookingField>
+                    {channel === "email" ? (
+                      <BookingField label="Teléfono (opcional)" error={errors.phone?.message}>
+                        <input
+                          {...register("phone")}
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          placeholder="+52 55..."
+                          aria-invalid={Boolean(errors.phone)}
+                          className={inputClassName}
+                        />
+                      </BookingField>
+                    ) : (
+                      <BookingField label="Correo electrónico (opcional)" error={errors.email?.message}>
+                        <input
+                          {...register("email")}
+                          type="email"
+                          autoComplete="email"
+                          placeholder="tu@email.com"
+                          aria-invalid={Boolean(errors.email)}
+                          className={inputClassName}
+                        />
+                      </BookingField>
+                    )}
+                    <BookingField label="Detalle extra (opcional)" error={errors.message?.message}>
+                      <textarea
+                        {...register("message")}
+                        rows={2}
+                        maxLength={600}
+                        placeholder="Cuéntanos si hay algún detalle importante para tu visita..."
+                        aria-invalid={Boolean(errors.message)}
+                        className={`${inputClassName} resize-y`}
+                      />
+                    </BookingField>
+                  </div>
                 </div>
                 <p className="text-xs leading-5 text-keysar-gray">
                   La fecha y hora son preferencias; una asesora confirmará la

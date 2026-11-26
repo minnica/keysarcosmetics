@@ -2,7 +2,6 @@ import { ExperienceSections } from "@/components/experience-sections";
 import { HelpPrompt } from "@/components/help-prompt";
 import {
   CallToAction,
-  EssenceSection,
   Hero,
   LandingFooter,
   LocationsSection,
@@ -17,7 +16,6 @@ export default function LandingPage() {
       <main>
         <Navbar />
         <Hero />
-        <EssenceSection />
         <ExperienceSections />
         <LocationsSection />
         <TestimonialsSection />
