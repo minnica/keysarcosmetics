@@ -40,6 +40,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   Input,
   Label,
   Select,
@@ -77,6 +78,7 @@ import {
   sortByListMode,
   usePayrollDemo,
 } from "./payroll-demo-context";
+import { PayrollDeductionDetail } from "./payroll-deduction-detail";
 import { PayrollModuleAnalytics } from "./payroll-module-analytics";
 import {
   PayrollConsolidatedSalesAnalytics,
@@ -933,27 +935,18 @@ function DoublePayDaysPanel({
   }
 
   return (
-    <Card className="overflow-hidden border-amber-300/70 bg-amber-50/45 dark:border-amber-800/60 dark:bg-amber-950/10">
-      <CardHeader className="border-b border-amber-200/70 pb-4 dark:border-amber-900/60">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarDays className="h-4 w-4 text-amber-700 dark:text-amber-300" />
-              Días festivos o feriados con pago doble
-            </CardTitle>
-            <CardDescription className="mt-1 max-w-3xl">
-              El sueldo ordinario ya cubre el día laborado. Este registro suma
-              un salario diario adicional para completar el pago al doble y lo
-              distribuye a las sucursales del empleado.
-            </CardDescription>
-          </div>
-          <Badge className="w-fit border border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
-            {periodEntries.length} REGISTRO
-            {periodEntries.length === 1 ? "" : "S"} EN EL PERIODO
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4 p-4">
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" className="w-fit">
+          <CalendarDays className="mr-2 h-4 w-4" /> Días feriados ({periodEntries.length})
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Días festivos o feriados con pago doble</DialogTitle>
+          <DialogDescription>Registra el día laborado para agregar un salario diario al sueldo ordinario.</DialogDescription>
+        </DialogHeader>
+      <div className="space-y-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_0.8fr_1.2fr_auto] xl:items-end">
           <div className="space-y-2">
             <Label>Empleado</Label>
@@ -1076,8 +1069,9 @@ function DoublePayDaysPanel({
             Tu rol no tiene autorización para crear movimientos de nómina.
           </p>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1096,7 +1090,7 @@ function PayrollTable({
   includeSocialCost: boolean;
   includeIsr: boolean;
 }) {
-  const { state } = usePayrollDemo();
+  const { state, privilegedPayroll } = usePayrollDemo();
   const workerTaxInclusion = periodTaxInclusionForRange(
     state.periodTaxInclusions,
     periodStart,
@@ -1127,7 +1121,7 @@ function PayrollTable({
       state.branches.filter(
         (branch) =>
           branchAppliesToPeriod(branch, periodStart, periodEnd) ||
-          lines.some((line) => line.employee.branchId === branch.id),
+          lines.some((line) => (line.employee.primaryBranchIds ?? [line.employee.branchId]).includes(branch.id)),
       ),
     [lines, periodEnd, periodStart, state.branches],
   );
@@ -1149,7 +1143,7 @@ function PayrollTable({
               (positionFilter === "ALL" ||
                 line.employee.position === positionFilter) &&
               (branchFilter === "ALL" ||
-                line.employee.branchId === branchFilter)
+                (line.employee.primaryBranchIds ?? [line.employee.branchId]).includes(branchFilter))
             );
           })
         : lines,
@@ -1172,39 +1166,32 @@ function PayrollTable({
         grossSales: (line) => line.grossSales,
         salesWithoutVat: (line) => line.salesWithoutVat,
         commission: (line) =>
-          employeeShowsCommissionInPayroll(line.employee) ? line.commission : 0,
+          employeeShowsCommissionInPayroll(line.employee, privilegedPayroll) ? line.commission : 0,
         invoiceSubtotal: (line) =>
-          employeeShowsCommissionInPayroll(line.employee)
+          employeeShowsCommissionInPayroll(line.employee, privilegedPayroll)
             ? line.invoiceSubtotal
             : 0,
         ivaAmount: (line) =>
-          employeeShowsCommissionInPayroll(line.employee) ? line.ivaAmount : 0,
+          employeeShowsCommissionInPayroll(line.employee, privilegedPayroll) ? line.ivaAmount : 0,
         isrRetention: (line) =>
-          employeeShowsCommissionInPayroll(line.employee)
+          employeeShowsCommissionInPayroll(line.employee, privilegedPayroll)
             ? line.isrRetention
             : 0,
         ivaRetention: (line) =>
-          employeeShowsCommissionInPayroll(line.employee)
+          employeeShowsCommissionInPayroll(line.employee, privilegedPayroll)
             ? line.ivaRetention
             : 0,
         fixedSalary: (line) =>
-          employeeShowsSalaryInPayroll(line.employee) ? line.fixedSalary : 0,
+          employeeShowsSalaryInPayroll(line.employee, privilegedPayroll) ? line.fixedSalary : 0,
         doublePay: (line) => line.doublePayAmount,
         commissionBonuses: (line) =>
-          (employeeShowsCommissionInPayroll(line.employee)
+          (employeeShowsCommissionInPayroll(line.employee, privilegedPayroll)
             ? line.commission
             : 0) + line.bonuses,
-        deductions: (line) =>
-          line.fines +
-          line.loanDeduction +
-          line.externalDeductions +
-          line.viaticsDeductions +
-          line.carriedNegativeBalance,
+        deductions: (line) => line.totalDeductions - line.workerTax,
         adjustments: (line) =>
           line.externalAdditions -
-          line.externalDeductions +
-          line.viaticsAdditions -
-          line.viaticsDeductions,
+          line.externalDeductions,
         carriedBalance: (line) => line.carriedNegativeBalance,
         christmasBonus: (line) => line.christmasBonusPayment,
         settlement: (line) => line.settlementPayment,
@@ -1226,7 +1213,7 @@ function PayrollTable({
             : "PENDIENTE",
         totalCost: (line) => line.totalCost,
       }),
-    [filteredLines, periodEnd, periodStart, state.decisions, tableSort],
+    [filteredLines, periodEnd, periodStart, privilegedPayroll, state.decisions, tableSort],
   );
   function changeTableSort(key: PayrollColumnSortKey, kind: TableSortKind) {
     setTableSort((current) => nextTableSort(current, key, kind));
@@ -1350,18 +1337,18 @@ function PayrollTable({
     approvedEmployeeIds.has(line.employee.id),
   ).length;
   const reportRows = sortedLines.map((line) => ({
+    confidential: !employeeShowsSalaryInPayroll(line.employee, privilegedPayroll),
     employee: line.employee.name,
     position: line.employee.position,
     branch:
-      state.branches.find((branch) => branch.id === line.employee.branchId)
-        ?.name ?? "SIN SUCURSAL",
+      state.branches.filter(b => (line.employee.primaryBranchIds ?? [line.employee.branchId]).includes(b.id)).map(b => b.name).join(", ") || "SIN SUCURSAL",
     bank: line.employee.bank,
     account: line.employee.account,
     scheme: line.schemeName,
     workedDays: `${line.workedDays} DE ${line.periodDays}`,
     grossSales: line.grossSales,
     salesWithoutVat: line.salesWithoutVat,
-    salary: employeeShowsSalaryInPayroll(line.employee)
+    salary: employeeShowsSalaryInPayroll(line.employee, privilegedPayroll)
       ? line.fixedSalary
       : "CONFIDENCIAL",
     doublePay: line.doublePayAmount,
@@ -1370,11 +1357,11 @@ function PayrollTable({
       .join(" | "),
     carriedBalance: line.carriedNegativeBalance,
     pendingBalance: line.newNegativeBalance,
-    commission: employeeShowsCommissionInPayroll(line.employee)
+    commission: employeeShowsCommissionInPayroll(line.employee, privilegedPayroll)
       ? line.commission
       : "CONFIDENCIAL",
     bonuses: line.bonuses,
-    deductions: line.fines + line.loanDeduction,
+    deductions: line.totalDeductions - line.workerTax,
     adjustments: line.externalAdditions - line.externalDeductions,
     settlement: line.settlementPayment > 0 ? line.settlementPayment : null,
     christmasBonus:
@@ -1389,6 +1376,7 @@ function PayrollTable({
     total: line.totalCost,
   }));
   const reportConfig = {
+    tableOnly: view === "CONSOLIDATED",
     title:
       view === "CONSOLIDATED"
         ? "Consolidado general de nómina"
@@ -1468,7 +1456,7 @@ function PayrollTable({
         detail: "Nómina + cargas",
       },
     ],
-    analysis: [
+    analysis: view === "FIXED" ? [] : [
       ...(showApproval
         ? [
             `${approvedVisibleCount} de ${filteredLines.length} recibos de la selección aparecen aprobados por el personal.`,
@@ -1545,7 +1533,7 @@ function PayrollTable({
       },
       {
         header: "SUELDO",
-        accessor: (row: (typeof reportRows)[number]) => row.salary,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.salary,
         format: "currency" as const,
         width: 15,
       },
@@ -1553,39 +1541,39 @@ function PayrollTable({
         ? [
             {
               header: "PAGO DOBLE ADICIONAL",
-              accessor: (row: (typeof reportRows)[number]) => row.doublePay,
+              accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.doublePay,
               format: "currency" as const,
               width: 19,
             },
             {
               header: "DETALLE PAGO DOBLE",
               accessor: (row: (typeof reportRows)[number]) =>
-                row.doublePayDetail,
+                row.confidential ? "CONFIDENCIAL" : row.doublePayDetail,
               width: 30,
             },
           ]
         : []),
       {
         header: "COMISIÓN",
-        accessor: (row: (typeof reportRows)[number]) => row.commission,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.commission,
         format: "currency" as const,
         width: 15,
       },
       {
         header: "BONOS",
-        accessor: (row: (typeof reportRows)[number]) => row.bonuses,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.bonuses,
         format: "currency" as const,
         width: 14,
       },
       {
-        header: "DEDUCCIONES",
-        accessor: (row: (typeof reportRows)[number]) => row.deductions,
+        header: "DEDUCCIONES ANTES DEL IMPUESTO",
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.deductions,
         format: "currency" as const,
         width: 16,
       },
       {
         header: "AJUSTES",
-        accessor: (row: (typeof reportRows)[number]) => row.adjustments,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.adjustments,
         format: "currency" as const,
         width: 14,
       },
@@ -1594,14 +1582,14 @@ function PayrollTable({
             {
               header: "SALDO ANTERIOR",
               accessor: (row: (typeof reportRows)[number]) =>
-                row.carriedBalance,
+                row.confidential ? "CONFIDENCIAL" : row.carriedBalance,
               format: "currency" as const,
               width: 17,
             },
             {
               header: "SALDO PENDIENTE",
               accessor: (row: (typeof reportRows)[number]) =>
-                row.pendingBalance,
+                row.confidential ? "CONFIDENCIAL" : row.pendingBalance,
               format: "currency" as const,
               width: 18,
             },
@@ -1612,7 +1600,7 @@ function PayrollTable({
             {
               header: "AGUINALDO",
               accessor: (row: (typeof reportRows)[number]) =>
-                row.christmasBonus,
+                row.confidential ? "CONFIDENCIAL" : row.christmasBonus,
               format: "currency" as const,
               width: 16,
             },
@@ -1622,7 +1610,7 @@ function PayrollTable({
         ? [
             {
               header: "LIQUIDACIÓN / FINIQUITO",
-              accessor: (row: (typeof reportRows)[number]) => row.settlement,
+              accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.settlement,
               format: "currency" as const,
               width: 20,
             },
@@ -1631,37 +1619,37 @@ function PayrollTable({
       {
         header: "NÓMINA ANTES DE DESCUENTOS",
         accessor: (row: (typeof reportRows)[number]) =>
-          row.payrollBeforeDeductions,
+          row.confidential ? "CONFIDENCIAL" : row.payrollBeforeDeductions,
         format: "currency" as const,
         width: 22,
       },
       {
         header: "DESCUENTOS TOTALES",
-        accessor: (row: (typeof reportRows)[number]) => row.totalDeductions,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.totalDeductions,
         format: "currency" as const,
         width: 19,
       },
       {
         header: "IMPUESTO TRABAJADOR",
-        accessor: (row: (typeof reportRows)[number]) => row.workerTax,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.workerTax,
         format: "currency" as const,
         width: 19,
       },
       {
         header: "NETO A PAGAR",
-        accessor: (row: (typeof reportRows)[number]) => row.payroll,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.payroll,
         format: "currency" as const,
         width: 16,
       },
       {
         header: "COSTO SOCIAL",
-        accessor: (row: (typeof reportRows)[number]) => row.socialCost,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.socialCost,
         format: "currency" as const,
         width: 17,
       },
       {
         header: "ISR",
-        accessor: (row: (typeof reportRows)[number]) => row.isr,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.isr,
         format: "currency" as const,
         width: 14,
       },
@@ -1676,7 +1664,7 @@ function PayrollTable({
         : []),
       {
         header: "COSTO TOTAL",
-        accessor: (row: (typeof reportRows)[number]) => row.total,
+        accessor: (row: (typeof reportRows)[number]) => row.confidential ? "CONFIDENCIAL" : row.total,
         format: "currency" as const,
         width: 18,
       },
@@ -1873,7 +1861,7 @@ function PayrollTable({
                     {showDeductions && (
                       <SortableTableHead
                         column="deductions"
-                        label="DEDUCCIONES"
+                        label="DEDUCCIONES ANTES DEL IMPUESTO"
                         kind="number"
                         sort={tableSort}
                         onSort={changeTableSort}
@@ -1991,7 +1979,9 @@ function PayrollTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pagedLines.map((line) => (
+              {pagedLines.map((line) => !employeeShowsSalaryInPayroll(line.employee, privilegedPayroll) ? (
+                <TableRow key={line.employee.id}><TableCell>{line.employee.name}</TableCell><TableCell colSpan={reportConfig.columns.length - 1}><ConfidentialPayrollValue /></TableCell></TableRow>
+              ) : (
                 <TableRow
                   key={line.employee.id}
                   className={
@@ -2009,9 +1999,7 @@ function PayrollTable({
                       {line.employee.name}
                     </p>
                     <p className="whitespace-nowrap text-[10px] leading-4 text-[color:var(--text-muted)]">
-                      {state.branches.find(
-                        (branch) => branch.id === line.employee.branchId,
-                      )?.name ?? "SIN SUCURSAL"}{" "}
+                      {state.branches.filter(b => (line.employee.primaryBranchIds ?? [line.employee.branchId]).includes(b.id)).map(b => b.name).join(", ") || "SIN SUCURSAL"}{" "}
                       · ID {line.employee.id.toLocaleUpperCase("es-MX")}
                     </p>
                     {line.settlementPayment > 0 ? (
@@ -2078,35 +2066,35 @@ function PayrollTable({
                   {contractor ? (
                     <>
                       <TableCell className="number-display text-right">
-                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                        {employeeShowsCommissionInPayroll(line.employee, privilegedPayroll) ? (
                           money.format(line.commission)
                         ) : (
                           <ConfidentialPayrollValue />
                         )}
                       </TableCell>
                       <TableCell className="number-display text-right">
-                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                        {employeeShowsCommissionInPayroll(line.employee, privilegedPayroll) ? (
                           money.format(line.invoiceSubtotal)
                         ) : (
                           <ConfidentialPayrollValue />
                         )}
                       </TableCell>
                       <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
-                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                        {employeeShowsCommissionInPayroll(line.employee, privilegedPayroll) ? (
                           money.format(line.ivaAmount)
                         ) : (
                           <ConfidentialPayrollValue />
                         )}
                       </TableCell>
                       <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
-                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                        {employeeShowsCommissionInPayroll(line.employee, privilegedPayroll) ? (
                           money.format(line.isrRetention)
                         ) : (
                           <ConfidentialPayrollValue />
                         )}
                       </TableCell>
                       <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
-                        {employeeShowsCommissionInPayroll(line.employee) ? (
+                        {employeeShowsCommissionInPayroll(line.employee, privilegedPayroll) ? (
                           money.format(line.ivaRetention)
                         ) : (
                           <ConfidentialPayrollValue />
@@ -2117,14 +2105,14 @@ function PayrollTable({
                     <>
                       {showSalary && (
                         <TableCell className="text-right">
-                          {employeeShowsSalaryInPayroll(line.employee) ? (
+                          {employeeShowsSalaryInPayroll(line.employee, privilegedPayroll) ? (
                             <p className="number-display">
                               {money.format(line.fixedSalary)}
                             </p>
                           ) : (
                             <ConfidentialPayrollValue />
                           )}
-                          {employeeShowsSalaryInPayroll(line.employee) &&
+                          {employeeShowsSalaryInPayroll(line.employee, privilegedPayroll) &&
                             line.workedDays < line.periodDays && (
                               <p className="mt-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">
                                 PRORRATEO · {line.workedDays}/{line.periodDays}{" "}
@@ -2151,7 +2139,7 @@ function PayrollTable({
                       )}
                       {showCommission && (
                         <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
-                          {employeeShowsCommissionInPayroll(line.employee) ? (
+                          {employeeShowsCommissionInPayroll(line.employee, privilegedPayroll) ? (
                             money.format(line.commission + line.bonuses)
                           ) : (
                             <div className="space-y-0.5">
@@ -2169,11 +2157,7 @@ function PayrollTable({
                   )}
                   {showDeductions && (
                     <TableCell className="number-display text-right text-rose-700 dark:text-rose-300">
-                      {money.format(
-                        line.fines +
-                          line.loanDeduction +
-                          line.externalDeductions,
-                      )}
+                      {money.format(line.totalDeductions - line.workerTax)}
                     </TableCell>
                   )}
                   {showAdjustments && (
@@ -2183,8 +2167,6 @@ function PayrollTable({
                       {money.format(
                         line.externalAdditions -
                           line.externalDeductions +
-                          line.viaticsAdditions -
-                          line.viaticsDeductions +
                           (!showCommission ? line.bonuses : 0),
                       )}
                     </TableCell>
@@ -2223,6 +2205,7 @@ function PayrollTable({
                   </TableCell>
                   <TableCell className="number-display bg-rose-50/50 text-right text-rose-700 dark:bg-rose-950/15 dark:text-rose-300">
                     −{money.format(line.totalDeductions)}
+                    <div><PayrollDeductionDetail line={line} start={periodStart} end={periodEnd} /></div>
                   </TableCell>
                   <TableCell className="number-display bg-amber-50/50 text-right text-amber-700 dark:bg-amber-950/15 dark:text-amber-300">
                     −{money.format(line.workerTax)}
@@ -2409,7 +2392,7 @@ function ConsolidatedDashboard({
   includeSocialCost: boolean;
   includeIsr: boolean;
 }) {
-  const { state, listSortMode, setRunStatus, payrollLines } = usePayrollDemo();
+  const { state, listSortMode, setRunStatus, payrollLinesForTotals: payrollLines, privilegedPayroll } = usePayrollDemo();
   const run = state.runs.find(
     (item) =>
       item.module === "CONSOLIDATED" &&
@@ -2784,7 +2767,7 @@ function ConsolidatedDashboard({
       .map((line) => ({
         id: `employee-${line.employee.id}`,
         source: "NÓMINA",
-        concept: line.employee.name,
+        concept: employeeShowsSalaryInPayroll(line.employee, privilegedPayroll) ? line.employee.name : "Sueldo confidencial",
         detail: `Empleado sin centro de costo válido · ${line.employee.position}`,
       })),
     ...periodAdjustments
@@ -2845,6 +2828,7 @@ function ConsolidatedDashboard({
     total: row.total,
   }));
   const reconciliationReportConfig = {
+    tableOnly: true,
     title: "Conciliación de nómina por punto de venta y puesto",
     subtitle: `${config.periodStart} — ${config.periodEnd} · ${reconciliationSuccessful ? "Comparación exitosa" : "Requiere revisión"}`,
     metadata: [
@@ -3521,7 +3505,8 @@ function ConsolidatedDashboard({
 export function PayrollDemoPage({ view }: { view: PayrollView }) {
   const {
     state,
-    payrollLines,
+    payrollLinesForTotals: payrollLines,
+    privilegedPayroll,
     periodOptions,
     setCalculationMode,
     closeRunAndOpenNextPeriod,
@@ -4024,7 +4009,7 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
           </div>
           {(view === "FIXED" || view === "SPECIALIST") && (
             <DoublePayDaysPanel
-              lines={lines}
+              lines={lines.filter(l => employeeShowsSalaryInPayroll(l.employee, privilegedPayroll))}
               view={view}
               periodStart={selectedPeriod.start}
               periodEnd={selectedPeriod.end}
@@ -4161,6 +4146,7 @@ export function PayrollDemoPage({ view }: { view: PayrollView }) {
             periodStart={selectedPeriod.start}
             periodEnd={selectedPeriod.end}
             title={titles[0] ?? "Nómina"}
+            showDistributionTotal={view === "FIXED"}
           />
         </>
       )}

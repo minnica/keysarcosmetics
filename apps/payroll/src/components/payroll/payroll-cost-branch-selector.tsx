@@ -120,11 +120,15 @@ export function CostBranchSelector({
   selectedIds,
   onChange,
   compact = false,
+  primary = false,
+  id,
 }: {
   branches: DemoBranch[];
   selectedIds: string[];
   onChange: (branchIds: string[]) => void;
   compact?: boolean;
+  primary?: boolean;
+  id?: string;
 }) {
   const [search, setSearch] = useState("");
   const validSelectedIds = selectedIds.filter((branchId) => branches.some((branch) => branch.id === branchId));
@@ -151,7 +155,7 @@ export function CostBranchSelector({
   return (
     <Popover onOpenChange={(open) => { if (!open) setSearch(""); }}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className={`w-full justify-between rounded-lg px-2.5 font-normal ${compact ? "h-8 text-[10px]" : "h-10 text-xs"}`}>
+        <Button id={id} type="button" variant="outline" className={`w-full justify-between rounded-lg px-2.5 font-normal ${compact ? "h-8 text-[10px]" : "h-10 text-xs"}`}>
           <span className="flex min-w-0 items-center gap-2">
             <Building2 className="h-3.5 w-3.5 shrink-0 text-[#987049]" />
             <span className="truncate font-semibold">{label}</span>
@@ -163,28 +167,28 @@ export function CostBranchSelector({
         <div className="border-b border-[color:var(--border-color)] p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold">Distribuir costo</p>
-              <p className="mt-0.5 text-[10px] leading-4 text-[color:var(--text-muted)]">Sueldo, costo social e ISR se dividen en partes iguales.</p>
+              <p className="text-xs font-semibold">{primary ? "Sucursales principales" : "Distribuir costo"}</p>
+              <p className="mt-0.5 text-[10px] leading-4 text-[color:var(--text-muted)]">{primary ? "Elige las sucursales donde trabaja el empleado." : "El costo se reparte entre las sucursales seleccionadas."}</p>
             </div>
             <Badge variant="outline" className="shrink-0 text-[8px]">{validSelectedIds.length} / {branches.length}</Badge>
           </div>
           <div className="relative mt-2.5">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-muted)]" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 pl-8 text-[10px]" placeholder="BUSCAR SUCURSAL O CIUDAD" aria-label="Buscar sucursal de costo" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 pl-8 text-[10px]" placeholder="BUSCAR SUCURSAL O CIUDAD" aria-label={primary ? "Buscar sucursal principal" : "Buscar sucursal de costo"} />
           </div>
-          <button type="button" onClick={() => onChange(branches.map((branch) => branch.id))} className={`mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold transition-colors ${allSelected ? "bg-[#c3a583]/15 text-[#7d5b39]" : "hover:bg-[color:var(--accent-hover)]/35"}`}>
+          <button type="button" role="checkbox" aria-checked={allSelected} onClick={() => onChange(allSelected ? validSelectedIds.slice(0, 1) : branches.map((branch) => branch.id))} className={`mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold transition-colors ${allSelected ? "bg-[#c3a583]/15 text-[#7d5b39]" : "hover:bg-[color:var(--accent-hover)]/35"}`}>
             <span className={`flex h-4 w-4 items-center justify-center rounded border ${allSelected ? "border-[#9a744c] bg-[#9a744c] text-white" : "border-[color:var(--border-color)]"}`}>{allSelected && <Check className="h-3 w-3" />}</span>
-            TODAS LAS SUCURSALES · REPARTO EQUITATIVO
+            {primary ? "TODAS LAS SUCURSALES" : "TODAS LAS SUCURSALES · REPARTO EQUITATIVO"}
           </button>
         </div>
         <div className="max-h-56 overflow-y-auto p-1.5">
           {visibleBranches.map((branch) => {
             const selected = validSelectedIds.includes(branch.id);
             return (
-              <button key={branch.id} type="button" onClick={() => toggleBranch(branch.id)} className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${selected ? "bg-[color:var(--accent-hover)]/55" : "hover:bg-[color:var(--accent-hover)]/25"}`}>
+              <button key={branch.id} type="button" role="checkbox" aria-checked={selected} onClick={() => toggleBranch(branch.id)} className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${selected ? "bg-[color:var(--accent-hover)]/55" : "hover:bg-[color:var(--accent-hover)]/25"}`}>
                 <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selected ? "border-[#9a744c] bg-[#9a744c] text-white" : "border-[color:var(--border-color)] bg-[color:var(--bg-card)]"}`}>{selected && <Check className="h-3 w-3" />}</span>
                 <span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-semibold">{branch.name}</span><span className="block truncate text-[9px] uppercase tracking-[0.06em] text-[color:var(--text-muted)]">{branch.city}</span></span>
-                <span className="text-[8px] font-semibold text-[color:var(--text-muted)]">{selected ? `${(100 / validSelectedIds.length).toFixed(0)}%` : "—"}</span>
+                {!primary && <span className="text-[8px] font-semibold text-[color:var(--text-muted)]">{selected ? `${(100 / validSelectedIds.length).toFixed(0)}%` : "—"}</span>}
               </button>
             );
           })}

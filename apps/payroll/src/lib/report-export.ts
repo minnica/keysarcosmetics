@@ -29,6 +29,7 @@ export type ReportExportConfig<T> = {
   filename: string;
   sheetName: string;
   orientation?: "portrait" | "landscape";
+  tableOnly?: boolean;
   columns: ExportColumn<T>[];
   rows: T[];
   footerRow?: T;
@@ -47,7 +48,9 @@ export type ReportExportConfig<T> = {
   };
 };
 
-function reportMetadata<T>(config: ReportExportConfig<T>): ReportMetadataItem[] {
+function reportMetadata<T>(
+  config: ReportExportConfig<T>,
+): ReportMetadataItem[] {
   if (config.metadata?.length) return config.metadata;
   return [{ label: "Alcance", value: config.subtitle || "Reporte general" }];
 }
@@ -64,7 +67,7 @@ function reportMetrics<T>(config: ReportExportConfig<T>): ReportMetric[] {
 }
 
 function reportAnalysis<T>(config: ReportExportConfig<T>): string[] {
-  if (config.analysis?.length) return config.analysis;
+  if (config.analysis) return config.analysis;
   return [
     `El reporte incluye ${new Intl.NumberFormat("es-MX").format(config.rows.length)} registros correspondientes exclusivamente a la selección indicada.`,
   ];
@@ -143,22 +146,27 @@ export async function exportReportToExcel<T>(
   const analysis = reportAnalysis(config);
   const titleRows = [
     ["PRUEBA · NÓMINA KEYSAR · SIN VALIDEZ DE PAGO"],
-    [uppercase(config.title)],
-    ...(config.subtitle ? [[config.subtitle]] : []),
-    [],
-    ["DATOS DEL REPORTE"],
-    ...metadata.map((item) => [uppercase(item.label), item.value]),
-    [],
-    ["RESUMEN EJECUTIVO"],
-    ["INDICADOR", "VALOR", "DETALLE"],
-    ...metrics.map((item) => [
-      uppercase(item.label),
-      item.value,
-      item.detail ?? "",
-    ]),
-    [],
-    ["ANÁLISIS"],
-    ...analysis.map((item) => [item]),
+    ...(config.tableOnly
+      ? []
+      : [
+          [uppercase(config.title)],
+          ...(config.subtitle ? [[config.subtitle]] : []),
+          [],
+          ["DATOS DEL REPORTE"],
+          ...metadata.map((item) => [uppercase(item.label), item.value]),
+          [],
+          ["RESUMEN EJECUTIVO"],
+          ["INDICADOR", "VALOR", "DETALLE"],
+          ...metrics.map((item) => [
+            uppercase(item.label),
+            item.value,
+            item.detail ?? "",
+          ]),
+          [],
+          ...(analysis.length
+            ? [["ANÁLISIS"], ...analysis.map((item) => [item])]
+            : []),
+        ]),
   ];
   const bodyRows = config.rows.map((row) =>
     config.columns.map((column) => toExcelCell(column, column.accessor(row))),
@@ -170,50 +178,41 @@ export async function exportReportToExcel<T>(
         ),
       ]
     : [];
-  const signatureRows = config.signatureLines?.length
-    ? [
-        [],
-        ["FIRMAS"],
-        ...config.signatureLines.map((label) => [uppercase(label), "____________________________"]),
-      ]
-    : [];
+  const signatureRows =
+    !config.tableOnly && config.signatureLines?.length
+      ? [
+          [],
+          ["FIRMAS"],
+          ...config.signatureLines.map((label) => [
+            uppercase(label),
+            "____________________________",
+          ]),
+        ]
+      : [];
   const sheet = XLSX.utils.aoa_to_sheet([
     ...titleRows,
-    [],
+    ...(!config.tableOnly ? [[]] : []),
     config.columns.map((column) => uppercase(column.header)),
     ...bodyRows,
     ...footerRows,
     ...signatureRows,
   ]);
 
-  const headerRowIndex = titleRows.length + 1;
+  const headerRowIndex = titleRows.length + (config.tableOnly ? 0 : 1);
   sheet["!cols"] = config.columns.map((column, index) => ({
     wch: Math.min(
       Math.max(column.header.length, column.width ?? (index === 0 ? 18 : 12)),
       38,
     ),
   }));
-  sheet["!merges"] = [
-    {
-      s: { r: 0, c: 0 },
-      e: { r: 0, c: Math.max(config.columns.length - 1, 0) },
-    },
-    {
-      s: { r: 1, c: 0 },
-      e: { r: 1, c: Math.max(config.columns.length - 1, 0) },
-    },
-  ];
-  if (config.subtitle) {
-    sheet["!merges"].push({
-      s: { r: 2, c: 0 },
-      e: { r: 2, c: Math.max(config.columns.length - 1, 0) },
-    });
-  }
-  sheet["!rows"] = [
-    { hpt: 18 },
-    { hpt: 26 },
-    ...(config.subtitle ? [{ hpt: 18 }] : []),
-  ];
+  const headingHeights = config.tableOnly
+    ? [18]
+    : [18, 26, ...(config.subtitle ? [18] : [])];
+  sheet["!merges"] = headingHeights.map((_, r) => ({
+    s: { r, c: 0 },
+    e: { r, c: Math.max(config.columns.length - 1, 0) },
+  }));
+  sheet["!rows"] = headingHeights.map((hpt) => ({ hpt }));
   sheet["!autofilter"] = {
     ref: XLSX.utils.encode_range({
       s: { r: headerRowIndex, c: 0 },
@@ -229,7 +228,7 @@ export async function exportReportToExcel<T>(
     sheet,
     sanitizeSheetName(config.sheetName),
   );
-  if (config.summarySection) {
+  if (!config.tableOnly && config.summarySection) {
     const summary = config.summarySection;
     const summarySheet = XLSX.utils.aoa_to_sheet([
       ["PRUEBA · NÓMINA KEYSAR · SIN VALIDEZ DE PAGO"],
@@ -251,9 +250,7 @@ export async function exportReportToExcel<T>(
     summarySheet["!merges"] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
-      ...(config.subtitle
-        ? [{ s: { r: 2, c: 0 }, e: { r: 2, c: 1 } }]
-        : []),
+      ...(config.subtitle ? [{ s: { r: 2, c: 0 }, e: { r: 2, c: 1 } }] : []),
     ];
     XLSX.utils.book_append_sheet(
       workbook,
@@ -261,7 +258,10 @@ export async function exportReportToExcel<T>(
       sanitizeSheetName(summary.sheetName ?? "Por puesto"),
     );
   }
-  XLSX.writeFile(workbook, `${sanitizeFilename("PRUEBA-" + config.filename)}.xlsx`);
+  XLSX.writeFile(
+    workbook,
+    `${sanitizeFilename("PRUEBA-" + config.filename)}.xlsx`,
+  );
 }
 
 function escapeHtml(value: string): string {
@@ -367,6 +367,40 @@ export function printReport<T>(config: ReportExportConfig<T>): void {
         )
         .join("")}</section>`
     : "";
+  const heading = config.tableOnly
+    ? ""
+    : `<h1>${escapeHtml(
+        uppercase(config.title),
+      )}</h1>${config.subtitle ? `<p class="subtitle">${escapeHtml(config.subtitle)}</p>` : ""}`;
+  const overview = config.tableOnly
+    ? ""
+    : `<section class="metadata">${metadata
+        .map(
+          (item) =>
+            `<div class="meta"><span class="label">${escapeHtml(item.label)}</span><span class="value">${escapeHtml(item.value)}</span></div>`,
+        )
+        .join("")}</section>
+  <section class="dashboard">${metrics
+    .map(
+      (item) =>
+        `<div class="metric"><span class="label">${escapeHtml(item.label)}</span><span class="value">${escapeHtml(item.value)}</span>${item.detail ? `<span class="detail">${escapeHtml(item.detail)}</span>` : ""}</div>`,
+    )
+    .join("")}</section>
+  ${
+    analysis.length
+      ? `<section class="analysis"><h2>ANÁLISIS DEL REPORTE</h2><ul>${analysis
+          .map((item) => `<li>${escapeHtml(item)}</li>`)
+          .join("")}</ul></section>`
+      : ""
+  }`;
+  const closing = config.tableOnly
+    ? ""
+    : `${summary}${signatures}<footer class="footer">Reporte generado para la selección indicada · ${escapeHtml(
+        new Intl.DateTimeFormat("es-MX", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date()),
+      )}</footer>`;
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(
     config.title,
   )}</title><style>
@@ -408,29 +442,8 @@ export function printReport<T>(config: ReportExportConfig<T>): void {
     .signature span { display: block; height: 26px; border-bottom: 1px solid #5f5852; margin-bottom: 5px; }
     .footer { margin-top: 8px; padding-top: 5px; border-top: 1px solid #d8c9ba; color: #756a60; font-size: 6.5pt; text-align: right; }
     @media screen { body { padding: 18px; } }
-  </style></head><body><header><div class="brand">PRUEBA · NÓMINA KEYSAR · SIN VALIDEZ DE PAGO</div><h1>${escapeHtml(
-    uppercase(config.title),
-  )}</h1>${config.subtitle ? `<p class="subtitle">${escapeHtml(config.subtitle)}</p>` : ""}</header>
-  <section class="metadata">${metadata
-    .map(
-      (item) =>
-        `<div class="meta"><span class="label">${escapeHtml(item.label)}</span><span class="value">${escapeHtml(item.value)}</span></div>`,
-    )
-    .join("")}</section>
-  <section class="dashboard">${metrics
-    .map(
-      (item) =>
-        `<div class="metric"><span class="label">${escapeHtml(item.label)}</span><span class="value">${escapeHtml(item.value)}</span>${item.detail ? `<span class="detail">${escapeHtml(item.detail)}</span>` : ""}</div>`,
-    )
-    .join("")}</section>
-  <section class="analysis"><h2>ANÁLISIS DEL REPORTE</h2><ul>${analysis
-    .map((item) => `<li>${escapeHtml(item)}</li>`)
-    .join("")}</ul></section>${printTableHtml(config)}${summary}${signatures}<footer class="footer">Reporte generado para la selección indicada · ${escapeHtml(
-    new Intl.DateTimeFormat("es-MX", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date()),
-  )}</footer></body></html>`;
+  </style></head><body><header><div class="brand">PRUEBA · NÓMINA KEYSAR · SIN VALIDEZ DE PAGO</div>${heading}</header>
+  ${overview}${printTableHtml(config)}${closing}</body></html>`;
 
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
@@ -513,12 +526,22 @@ export async function exportReportToPdf<T>(
     doc.setTextColor(138, 103, 68);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
-    doc.text("PRUEBA · NÓMINA KEYSAR · SIN VALIDEZ DE PAGO", horizontalMargin, pageNumber === 1 ? 18 : 14);
+    doc.text(
+      "PRUEBA · NÓMINA KEYSAR · SIN VALIDEZ DE PAGO",
+      horizontalMargin,
+      pageNumber === 1 ? 18 : 14,
+    );
+    if (config.tableOnly) return;
     doc.setTextColor(30, 30, 30);
     doc.setFontSize(pageNumber === 1 ? 14 : 8);
-    doc.text(uppercase(config.title), horizontalMargin, pageNumber === 1 ? 34 : 26, {
-      maxWidth: usableWidth,
-    });
+    doc.text(
+      uppercase(config.title),
+      horizontalMargin,
+      pageNumber === 1 ? 34 : 26,
+      {
+        maxWidth: usableWidth,
+      },
+    );
     if (config.subtitle) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(pageNumber === 1 ? 8 : 6.5);
@@ -531,78 +554,98 @@ export async function exportReportToPdf<T>(
 
   drawPageHeader(1);
 
-  autoTable(doc, {
-    startY: config.subtitle ? 58 : 45,
-    body: metadata.map((item) => [uppercase(item.label), item.value]),
-    theme: "grid",
-    styles: {
-      font: "helvetica",
-      fontSize: 7,
-      cellPadding: 3,
-      valign: "middle",
-      overflow: "linebreak",
-    },
-    columnStyles: {
-      0: { cellWidth: Math.min(110, usableWidth * 0.23), fontStyle: "bold" },
-      1: { cellWidth: "auto" },
-    },
-    margin: { top: 42, left: horizontalMargin, right: horizontalMargin, bottom: 30 },
-    tableWidth: usableWidth,
-  });
-  let reportStartY =
-    ((doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable
-      ?.finalY ?? 58) + 8;
+  let reportStartY = 26;
+  if (!config.tableOnly) {
+    autoTable(doc, {
+      startY: config.subtitle ? 58 : 45,
+      body: metadata.map((item) => [uppercase(item.label), item.value]),
+      theme: "grid",
+      styles: {
+        font: "helvetica",
+        fontSize: 7,
+        cellPadding: 3,
+        valign: "middle",
+        overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { cellWidth: Math.min(110, usableWidth * 0.23), fontStyle: "bold" },
+        1: { cellWidth: "auto" },
+      },
+      margin: {
+        top: 42,
+        left: horizontalMargin,
+        right: horizontalMargin,
+        bottom: 30,
+      },
+      tableWidth: usableWidth,
+    });
+    reportStartY =
+      ((doc as typeof doc & { lastAutoTable?: { finalY: number } })
+        .lastAutoTable?.finalY ?? 58) + 8;
 
-  autoTable(doc, {
-    startY: reportStartY,
-    head: [metrics.map((item) => uppercase(item.label))],
-    body: [metrics.map((item) => item.value)],
-    foot: [metrics.map((item) => item.detail ?? "")],
-    theme: "grid",
-    styles: {
-      font: "helvetica",
-      fontSize: 7,
-      cellPadding: 3,
-      halign: "center",
-      valign: "middle",
-      overflow: "linebreak",
-    },
-    headStyles: { fillColor: [100, 134, 114], textColor: 255 },
-    bodyStyles: {
-      fillColor: [247, 242, 236],
-      fontStyle: "bold",
-      fontSize: 9,
-    },
-    footStyles: {
-      fillColor: [247, 242, 236],
-      textColor: [95, 88, 82],
-      fontSize: 6,
-    },
-    margin: { top: 42, left: horizontalMargin, right: horizontalMargin, bottom: 30 },
-    tableWidth: usableWidth,
-  });
-  reportStartY =
-    ((doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable
-      ?.finalY ?? reportStartY) + 8;
+    autoTable(doc, {
+      startY: reportStartY,
+      head: [metrics.map((item) => uppercase(item.label))],
+      body: [metrics.map((item) => item.value)],
+      foot: [metrics.map((item) => item.detail ?? "")],
+      theme: "grid",
+      styles: {
+        font: "helvetica",
+        fontSize: 7,
+        cellPadding: 3,
+        halign: "center",
+        valign: "middle",
+        overflow: "linebreak",
+      },
+      headStyles: { fillColor: [100, 134, 114], textColor: 255 },
+      bodyStyles: {
+        fillColor: [247, 242, 236],
+        fontStyle: "bold",
+        fontSize: 9,
+      },
+      footStyles: {
+        fillColor: [247, 242, 236],
+        textColor: [95, 88, 82],
+        fontSize: 6,
+      },
+      margin: {
+        top: 42,
+        left: horizontalMargin,
+        right: horizontalMargin,
+        bottom: 30,
+      },
+      tableWidth: usableWidth,
+    });
+    reportStartY =
+      ((doc as typeof doc & { lastAutoTable?: { finalY: number } })
+        .lastAutoTable?.finalY ?? reportStartY) + 8;
 
-  autoTable(doc, {
-    startY: reportStartY,
-    head: [["ANÁLISIS DEL REPORTE"]],
-    body: analysis.map((item) => [`• ${item}`]),
-    theme: "grid",
-    styles: {
-      font: "helvetica",
-      fontSize: 7,
-      cellPadding: 3,
-      overflow: "linebreak",
-    },
-    headStyles: { fillColor: [58, 48, 40], textColor: 255 },
-    margin: { top: 42, left: horizontalMargin, right: horizontalMargin, bottom: 30 },
-    tableWidth: usableWidth,
-  });
-  reportStartY =
-    ((doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable
-      ?.finalY ?? reportStartY) + 10;
+    if (analysis.length) {
+      autoTable(doc, {
+        startY: reportStartY,
+        head: [["ANÁLISIS DEL REPORTE"]],
+        body: analysis.map((item) => [`• ${item}`]),
+        theme: "grid",
+        styles: {
+          font: "helvetica",
+          fontSize: 7,
+          cellPadding: 3,
+          overflow: "linebreak",
+        },
+        headStyles: { fillColor: [58, 48, 40], textColor: 255 },
+        margin: {
+          top: 42,
+          left: horizontalMargin,
+          right: horizontalMargin,
+          bottom: 30,
+        },
+        tableWidth: usableWidth,
+      });
+      reportStartY =
+        ((doc as typeof doc & { lastAutoTable?: { finalY: number } })
+          .lastAutoTable?.finalY ?? reportStartY) + 10;
+    }
+  }
 
   const options: UserOptions = {
     startY: reportStartY,
@@ -657,7 +700,7 @@ export async function exportReportToPdf<T>(
   }
 
   autoTable(doc, options);
-  if (config.summarySection) {
+  if (!config.tableOnly && config.summarySection) {
     const summary = config.summarySection;
     const finalY =
       (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable
@@ -714,7 +757,7 @@ export async function exportReportToPdf<T>(
       },
     });
   }
-  if (config.signatureLines?.length) {
+  if (!config.tableOnly && config.signatureLines?.length) {
     const finalY =
       (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable
         ?.finalY ?? reportStartY;
@@ -728,8 +771,7 @@ export async function exportReportToPdf<T>(
     const widthPerSignature = usableWidth / config.signatureLines.length;
     config.signatureLines.forEach((label, index) => {
       const left = horizontalMargin + index * widthPerSignature + 12;
-      const right =
-        horizontalMargin + (index + 1) * widthPerSignature - 12;
+      const right = horizontalMargin + (index + 1) * widthPerSignature - 12;
       doc.setDrawColor(95, 88, 82);
       doc.line(left, signatureY, right, signatureY);
       doc.setFont("helvetica", "bold");

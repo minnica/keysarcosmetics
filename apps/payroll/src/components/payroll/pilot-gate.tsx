@@ -1,4 +1,5 @@
 "use client";
+import { restoreImportedLoan } from "./payroll-deductions";
 import {
   createContext,
   useCallback,
@@ -92,6 +93,12 @@ export function PilotGate({ children }: { children: React.ReactNode }) {
 }
 
 function persistable(key: string, value: unknown) {
+  if (key === "loans") return (value as DemoState["loans"]).map(loan => {
+    const saved = { ...loan };
+    delete saved.sourceBalance;
+    delete saved.sourceSchedule;
+    return saved;
+  });
   if (key !== "employees") return value;
   return (value as DemoState["employees"])
     .filter((e) => e.id !== "pilot-operator")
@@ -112,6 +119,16 @@ function Workspace({
   const original = useMemo(() => buildPilotState(cut.original), [cut]);
   const [state, setState] = useState<DemoState>(() => {
     const saved = { ...original, ...cut.changes } as DemoState;
+    if (cut.changes.roles && !saved.roles.some(r => r.id === "role-general-admin")) {
+      saved.roles = [...saved.roles, ...original.roles.filter(r => r.id === "role-general-admin")];
+    }
+    if (cut.changes.loans) {
+      const imported = new Map(original.loans.map(l => [l.id, l]));
+      saved.loans = saved.loans.map(loan => {
+        const source = imported.get(loan.id);
+        return source ? restoreImportedLoan(loan, source) : loan;
+      });
+    }
     if (cut.changes.employees)
       saved.employees = [
         ...saved.employees.filter((e) => e.id !== "pilot-operator"),

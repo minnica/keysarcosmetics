@@ -247,9 +247,10 @@ function EmployeeDialog({
   const [category, setCategory] = useState<EmployeeCategory>(
     initialPosition?.category ?? "SELLER",
   );
-  const [branchId, setBranchId] = useState(state.branches[0]?.id ?? "");
+  const [primaryBranchIds, setPrimaryBranchIds] = useState<string[]>(() => state.branches.filter(b => b.active).slice(0, 1).map(b => b.id));
+  const branchId = primaryBranchIds[0] ?? "";
   const [costBranchIds, setCostBranchIds] = useState<string[]>(
-    [state.branches[0]?.id ?? ""].filter(Boolean),
+    primaryBranchIds,
   );
   const [roleId, setRoleId] = useState(
     initialPosition?.defaultRoleId ?? "role-employee",
@@ -287,8 +288,9 @@ function EmployeeDialog({
       state.positions.find((item) => item.active) ?? state.positions[0];
     setPosition(nextInitialPosition?.name ?? "");
     setCategory(nextInitialPosition?.category ?? "SELLER");
-    setBranchId(state.branches[0]?.id ?? "");
-    setCostBranchIds([state.branches[0]?.id ?? ""].filter(Boolean));
+    const initialBranches = state.branches.filter(b => b.active).slice(0, 1).map(b => b.id);
+    setPrimaryBranchIds(initialBranches);
+    setCostBranchIds(initialBranches);
     setRoleId(nextInitialPosition?.defaultRoleId ?? "role-employee");
     setMonthlySalary("0");
     setShowSalaryInPayroll(nextInitialPosition?.category !== "MANAGEMENT");
@@ -385,6 +387,7 @@ function EmployeeDialog({
       position: position.trim(),
       category,
       branchId,
+      primaryBranchIds,
       costBranchIds,
       monthlySalary: salary,
       showSalaryInPayroll,
@@ -571,28 +574,17 @@ function EmployeeDialog({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="employee-branch">Sucursal</Label>
-                <Select
-                  value={branchId}
-                  onValueChange={(nextBranchId) => {
-                    setBranchId(nextBranchId);
-                    if (costBranchIds.length <= 1)
-                      setCostBranchIds([nextBranchId]);
+                <Label htmlFor="employee-branch">Sucursal principal</Label>
+                <CostBranchSelector
+                  id="employee-branch"
+                  primary
+                  branches={state.branches.filter(b => b.active || primaryBranchIds.includes(b.id))}
+                  selectedIds={primaryBranchIds}
+                  onChange={(ids) => {
+                    setPrimaryBranchIds(ids);
+                    if (ids[0] && costBranchIds.length <= 1 && (!costBranchIds[0] || costBranchIds[0] === branchId)) setCostBranchIds([ids[0]]);
                   }}
-                >
-                  <SelectTrigger id="employee-branch">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {state.branches
-                      .filter((branch) => branch.active)
-                      .map((branch) => (
-                        <SelectItem key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="employee-role">Rol del puesto</Label>
@@ -675,7 +667,7 @@ function EmployeeDialog({
                 <div className={`rounded-xl border p-3 ${commissionEnabled ? "border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20" : "border-[color:var(--border-color)]"}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div><p className="text-xs font-semibold">¿El empleado genera comisión?</p><p className="mt-0.5 text-[10px] leading-4 text-[color:var(--text-muted)]">Si está activo aparecerá en la nómina de comisiones, aunque su puesto principal sea call center, gerencia o especialista.</p></div>
-                    <button type="button" role="switch" aria-checked={commissionEnabled} aria-label="El empleado genera comisión" onClick={() => { setCommissionEnabled((value) => !value); if (commissionPayrollModuleId === "NONE") setCommissionPayrollModuleId("COMMISSION"); }} className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${commissionEnabled ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${commissionEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                    <button type="button" role="switch" aria-checked={commissionEnabled} aria-label="El empleado genera comisión" onClick={() => { setCommissionEnabled((value) => !value); if (commissionPayrollModuleId === "NONE") setCommissionPayrollModuleId("COMMISSION"); }} className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${commissionEnabled ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"}`}><span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${commissionEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
                   </div>
                   {commissionEnabled && <Select value={commissionPayrollModuleId === "NONE" ? "COMMISSION" : commissionPayrollModuleId} onValueChange={(value) => setCommissionPayrollModuleId(value as Exclude<PayrollModule, "CONSOLIDATED">)}><SelectTrigger id="employee-commission-payroll" className="mt-3"><SelectValue /></SelectTrigger><SelectContent>{state.payrollModules.filter((module) => module.active && module.id !== "CONSOLIDATED" && module.concepts.includes("COMMISSION")).map((module) => <SelectItem key={module.id} value={module.id}>{module.name}</SelectItem>)}</SelectContent></Select>}
                   <p className="mt-2 text-[10px] leading-4 text-[color:var(--text-muted)]">El sueldo fijo permanece en su propia nómina. Las comisiones se cargan según la sucursal donde se registró cada venta o movimiento.</p>
@@ -905,9 +897,10 @@ function EmployeeProfileDialog({
   const [category, setCategory] = useState<EmployeeCategory>(
     employee?.category ?? "SELLER",
   );
-  const [branchId, setBranchId] = useState(
-    employee?.branchId ?? state.branches[0]?.id ?? "",
+  const [primaryBranchIds, setPrimaryBranchIds] = useState<string[]>(() =>
+    employee?.primaryBranchIds ?? [employee?.branchId ?? state.branches.find(b => b.active)?.id ?? ""].filter(Boolean),
   );
+  const branchId = primaryBranchIds[0] ?? "";
   const [costBranchIds, setCostBranchIds] = useState<string[]>(
     employee
       ? employeeCostBranchIds(employee, state.branches)
@@ -982,6 +975,7 @@ function EmployeeProfileDialog({
       position: position.trim(),
       category,
       branchId,
+      primaryBranchIds,
       costBranchIds,
       roleId,
       monthlySalary: salary,
@@ -1081,30 +1075,16 @@ function EmployeeProfileDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="profile-branch">Sucursal principal</Label>
-            <Select
-              value={branchId}
-              onValueChange={(nextBranchId) => {
-                setBranchId(nextBranchId);
-                if (costBranchIds.length <= 1) setCostBranchIds([nextBranchId]);
-              }}
-            >
-              <SelectTrigger id="profile-branch">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {state.branches
-                  .filter(
-                    (branch) =>
-                      branch.active || branch.id === employee.branchId,
-                  )
-                  .map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                      {branch.active ? "" : " · BAJA"}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+                <CostBranchSelector
+                  id="profile-branch"
+                  primary
+                  branches={state.branches.filter(b => b.active || primaryBranchIds.includes(b.id))}
+                  selectedIds={primaryBranchIds}
+                  onChange={(ids) => {
+                    setPrimaryBranchIds(ids);
+                    if (ids[0] && costBranchIds.length <= 1 && (!costBranchIds[0] || costBranchIds[0] === branchId)) setCostBranchIds([ids[0]]);
+                  }}
+                />
           </div>
           <div className="space-y-2">
             <Label htmlFor="profile-role">Rol de acceso</Label>
@@ -1168,7 +1148,7 @@ function EmployeeProfileDialog({
             <div className={`rounded-xl border p-3 ${commissionEnabled ? "border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20" : "border-[color:var(--border-color)]"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div><p className="text-xs font-semibold">Participa en comisiones</p><p className="mt-0.5 text-[10px] leading-4 text-[color:var(--text-muted)]">El cambio se aplica desde el periodo actual; las nóminas anteriores conservan el estatus que tenían.</p></div>
-                <button type="button" role="switch" aria-checked={commissionEnabled} aria-label="El empleado participa en comisiones" onClick={() => { setCommissionEnabled((value) => !value); if (commissionPayrollModuleId === "NONE") setCommissionPayrollModuleId("COMMISSION"); }} className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${commissionEnabled ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${commissionEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                <button type="button" role="switch" aria-checked={commissionEnabled} aria-label="El empleado participa en comisiones" onClick={() => { setCommissionEnabled((value) => !value); if (commissionPayrollModuleId === "NONE") setCommissionPayrollModuleId("COMMISSION"); }} className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${commissionEnabled ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"}`}><span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${commissionEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
               </div>
               {commissionEnabled && <Select value={commissionPayrollModuleId === "NONE" ? "COMMISSION" : commissionPayrollModuleId} onValueChange={(value) => setCommissionPayrollModuleId(value as Exclude<PayrollModule, "CONSOLIDATED">)}><SelectTrigger id="profile-commission-payroll" className="mt-3"><SelectValue /></SelectTrigger><SelectContent>{state.payrollModules.filter((module) => module.active && module.id !== "CONSOLIDATED" && module.concepts.includes("COMMISSION")).map((module) => <SelectItem key={module.id} value={module.id}>{payrollModuleLabel(state, module.id)}</SelectItem>)}</SelectContent></Select>}
               <p className="mt-2 text-[10px] leading-4 text-[color:var(--text-muted)]">Sueldo y comisión pueden ir a módulos distintos sin duplicarse.</p>
@@ -1265,7 +1245,7 @@ function EmployeeProfileDialog({
 }
 
 export function PayrollEmployeesDemo() {
-  const { state, setEmployeePayrollVisibility } = usePayrollDemo();
+  const { state, privilegedPayroll, monthlyFixedCost, setEmployeePayrollVisibility } = usePayrollDemo();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [employmentEmployee, setEmploymentEmployee] =
     useState<DemoEmployee | null>(null);
@@ -1279,13 +1259,11 @@ export function PayrollEmployeesDemo() {
   const filteredEmployees = useMemo(
     () =>
       state.employees.filter((employee) => {
-        const branch = state.branches.find(
-          (item) => item.id === employee.branchId,
-        );
+        const branchNames = state.branches.filter(b => (employee.primaryBranchIds ?? [employee.branchId]).includes(b.id)).map(b => b.name).join(", ");
         const role = state.roles.find((item) => item.id === employee.roleId);
         return (
           !normalizedSearch ||
-          `${employee.name} ${employee.position} ${categoryLabels[employee.category]} ${branch?.name ?? ""} ${role?.name ?? ""}`
+          `${employee.name} ${employee.position} ${categoryLabels[employee.category]} ${branchNames} ${role?.name ?? ""}`
             .toLocaleLowerCase("es-MX")
             .includes(normalizedSearch)
         );
@@ -1319,17 +1297,8 @@ export function PayrollEmployeesDemo() {
   const branchesCovered = new Set(
     state.employees
       .filter((employee) => employee.active)
-      .map((employee) => employee.branchId),
+      .flatMap((employee) => employee.primaryBranchIds ?? [employee.branchId]),
   ).size;
-  const monthlyFixedCost = state.employees
-    .filter(
-      (employee) =>
-        employee.active &&
-        employee.category !== "SELLER" &&
-        employee.category !== "CONTRACTOR",
-    )
-    .reduce((sum, employee) => sum + employee.monthlySalary, 0);
-
   return (
     <div className="space-y-6">
       <header className="flex flex-col items-start gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -1451,9 +1420,7 @@ export function PayrollEmployeesDemo() {
             </div>
             <div className="min-w-[1100px] divide-y divide-[color:var(--border-color)]">
             {pagedEmployees.map((employee) => {
-              const branch = state.branches.find(
-                (item) => item.id === employee.branchId,
-              );
+              const branchNames = state.branches.filter(b => (employee.primaryBranchIds ?? [employee.branchId]).includes(b.id)).map(b => b.name).join(", ");
               const costBranches = employeeCostBranchIds(
                 employee,
                 state.branches,
@@ -1507,7 +1474,7 @@ export function PayrollEmployeesDemo() {
                         </Badge>
                       </div>
                       <p className="truncate text-[9px] uppercase tracking-[0.05em] text-[color:var(--text-muted)]">
-                        {employee.position} · {branch?.name ?? "SIN SUCURSAL"}
+                        {employee.position} · {branchNames || "SIN SUCURSAL"}
                       </p>
                       <p className="mt-0.5 truncate text-[8px] font-semibold uppercase tracking-[0.06em] text-[#987049]">
                         Costo: {costBranchLabel}
@@ -1532,7 +1499,7 @@ export function PayrollEmployeesDemo() {
                     <p className="text-[8px] uppercase tracking-[0.08em] text-[color:var(--text-muted)] md:hidden">
                       Pago / cuenta
                     </p>
-                    {salaryVisible ? (
+                    {privilegedPayroll || salaryVisible ? (
                       <p className="number-display truncate text-[11px]">
                         {money.format(employee.monthlySalary)}
                       </p>
@@ -1567,7 +1534,7 @@ export function PayrollEmployeesDemo() {
                           },
                         },
                       ].map((control) => (
-                        <button
+                        <button disabled={!privilegedPayroll}
                           key={control.key}
                           type="button"
                           role="switch"
@@ -1620,6 +1587,7 @@ export function PayrollEmployeesDemo() {
                       size="icon"
                       variant="ghost"
                       className="h-7 w-7"
+                      disabled={!privilegedPayroll && !salaryVisible}
                       onClick={() => setProfileEmployee(employee)}
                       aria-label={`Editar perfil de ${employee.name}`}
                       title="Editar perfil y acceso"

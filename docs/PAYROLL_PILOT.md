@@ -14,6 +14,37 @@ El proyecto Supabase `keysar-payroll-pilot` (referencia `yopfaxxvlcpcfzxvqmfw`, 
 
 **Verificación del acceso definitivo**. Chrome, con un perfil nuevo y sin cuenta de Vercel, llegó al formulario oficial del piloto. La cuenta ajena de control recibió HTTP 401, al igual que las lecturas anónimas y un callback inválido. El antiguo ingreso temporal devolvió HTTP 404. Las pruebas de integración comprobaron la emisión y el canje único del código con una identidad sintética. La confirmación personal del primer ingreso con la contraseña productiva corresponde al PO.
 
+## Revisión de Emmanuel del 25 de noviembre de 2026
+
+Se trabajó sobre el mismo corte del 24 de noviembre. Los cambios de Emmanuel estaban guardados en la revisión 18. La actualización de la interfaz no requiere importar otra copia ni migrar la base.
+
+**Cómo revisar una diferencia.** Entrar en Consolidado o en Nómina Comisiones, elegir la quincena y abrir **Ver movimientos** junto a **Descuentos totales** en la fila de la persona. Cálculo de comisiones ofrece el mismo detalle. El cuadro muestra concepto, identificador, fecha de movimiento o inicio de cuota e importe. También muestra las multas, las cuotas y los ajustes negativos de la línea de referencia, con su periodo y estado. Esa línea comprende todas las nóminas de la persona.
+
+| Lo que muestra el piloto | De dónde sale |
+| --- | --- |
+| Multas | Movimientos de multa y ajustes de multa aprobados que aplican a la persona, al módulo y al periodo. |
+| Préstamos y adelantos importados | Importe de cada cuota del calendario. Se incluyen las cuotas programadas con vencimiento hasta el fin de la quincena que aún están por cubrir. Una pagada o reservada pertenece a su quincena. Las canceladas aportan cero. El préstamo conserva su identificador. |
+| Otros descuentos | Parte individual de los ajustes negativos y abonos aprobados, viáticos con efecto de descuento, saldo trasladado e impuesto del trabajador cuando esté habilitado. |
+| Saldo pendiente de nómina | Parte de los descuentos que el ingreso disponible deja por cubrir. El cuadro lo desglosa en multas, préstamos, adelantos y otros. El saldo insoluto del préstamo se consulta en Préstamos. |
+| Módulo del préstamo importado | El corte identifica a la persona. El piloto usa su módulo de comisión si lo tiene, en su defecto el módulo de sueldo y, como último recurso, Comisiones. Una corrida productiva aporta un total por persona. |
+
+**Comprobación con el corte real.** Antes de la corrección, el piloto dividía el importe solicitado entre el número de pagos, incluso cuando el calendario tenía pagos distintos o cancelados. La pantalla y la descarga también componían las deducciones de manera distinta y algunos indicadores sumaban dos veces los viáticos. Se contrastó la suma de cuotas por persona con las líneas de corrida y se reprodujo el cálculo de la interfaz con los cambios guardados. Se comprobaron 217 filas entre ambos módulos y periodos. En todas, los conceptos del desglose sumaron el total de deducciones y el desglose del saldo pendiente sumó el pendiente al centavo.
+
+| Quincena y referencia | Personas con diferencia de cuotas en el Consolidado, antes | Después |
+| --- | ---: | ---: |
+| 16–31 de octubre, aprobada | 15 | 1 |
+| 16–30 de noviembre, borrador | 17 | 6 |
+
+En el módulo de Comisiones de noviembre hay siete diferencias al contrastar con la referencia de **todas** las nóminas por persona. Una corresponde a una persona con cuota en la referencia y sin línea en ese módulo. Las diferencias entre el calendario del corte y el importe que la corrida guardó requieren la quincena, el identificador interno, el concepto y el monto que esperaba Emmanuel. Los importes oficiales del corte permanecen disponibles en la conciliación.
+
+**Ajustes de la interfaz**
+
+- Consolidado imprime y descarga la tabla seleccionada con la marca de prueba. En Sueldo fijo se retiró el bloque **Análisis del reporte** de Excel, PDF e impresión.
+- El perfil máster y el de administrador general ven los importes individuales aunque el sueldo esté marcado como confidencial. Los demás perfiles del ensayo ven la fila confidencial en la tabla de nómina y en la conciliación. Los informes personales se limitan al detalle autorizado. El acceso real al piloto continúa reservado a la cuenta del PO.
+- El alta y el perfil del empleado admiten elegir una, varias o todas las sucursales con casillas. La primera seleccionada sirve de referencia en las operaciones que requieren una sucursal. La distribución de costo se configura en su propio campo. Se ajustó el interruptor **Participa en comisiones**.
+- En Salario fijo, la gráfica **Dispersión de costo** muestra el total distribuido, el número de empleados distintos y el porcentaje del costo. En Salario fijo y Especialistas, el botón **Días feriados** abre la captura y las consultas de esos días.
+- La prueba de regresión usa datos sintéticos en Chrome. Tras compilar Payroll, ejecutar `pnpm --filter @cosmetics/e2e exec playwright test --config=playwright.payroll-pilot.config.ts payroll-revision.spec.ts`.
+
 ## Cómo lo usará el PO
 
 1. Abrir [Piloto de nómina](https://keysar-nomina-piloto.vercel.app/login). En el formulario **Piloto de nómina** escribir el mismo correo y contraseña que en el portal habitual. Al ingresar se vuelve al piloto con una sesión propia.
@@ -62,7 +93,7 @@ El importador usa `REPEATABLE READ` y `READ ONLY`. La referencia cruda y los cam
 - Se copian los nombres e identificadores necesarios para reconocer empleados, puestos, sucursales, sueldo, ventas por vendedor y sucursal, versiones y tramos de comisiones, asignaciones, catálogo, movimientos distribuidos, préstamos y cuotas. Las líneas de corrida, costos por sucursal y el estado del recibo dan la referencia. Quedan fuera clientes, cuentas bancarias, CLABE, teléfonos, correo, claves, archivos y notas libres del origen.
 - Con corrida disponible se usan las líneas registradas, incluso si la corrida sigue en borrador. Sin corrida se usa `calculatePayroll` con el corte congelado para obtener la referencia por empleado. La conciliación de sucursal compara el costo de personal. No incluye gastos generales de la sucursal.
 - El sistema de origen no proporciona las fechas laborales y tasas fiscales que solicita la propuesta. Se presupone la quincena completa para el sueldo y tasas nuevas en cero. Para empleados inactivos se habilitan las quincenas con actividad o una línea observada hasta que el PO registre fechas. La categoría inicial se infiere del puesto, y los módulos iniciales, del sueldo y las asignaciones. Las asignaciones y reglas nuevas se pueden ensayar en el piloto.
-- Los calendarios de préstamos y saldos oficiales se conservan en el original. El prototipo reparte las cuotas según sus propias reglas. Los suministros entran como ajustes positivos en el prototipo. Los módulos nuevos, como finiquitos, aguinaldos y metas de kiosco, empiezan sin movimientos inventados.
+- Los préstamos importados usan el calendario y el saldo del corte. Los préstamos nuevos creados en el ensayo usan el plan de parcialidades del prototipo. Los suministros entran como ajustes positivos en el prototipo. Los módulos nuevos, como finiquitos, aguinaldos y metas de kiosco, empiezan sin movimientos inventados.
 - En dispersión se muestran cuentas vacías o de prueba. Las confirmaciones, autorizaciones y recibos modifican el ensayo. El proceso de la API carece de conectores bancarios, de mensajería y de escritura en las tablas operativas.
 
 ## Habilitar una base y cargar el corte

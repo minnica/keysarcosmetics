@@ -1,5 +1,7 @@
 "use client";
 
+import { loanRemaining } from "./payroll-deductions";
+
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -757,8 +759,7 @@ export function PayrollLoansDemo() {
       .reduce(
         (sum, loan) =>
           sum +
-          loan.amount -
-          (loan.amount / loan.installments) * loan.paidInstallments,
+          loanRemaining(loan),
         0,
       ) + adjustmentLoanBalance,
   );
@@ -913,8 +914,7 @@ export function PayrollLoansDemo() {
                     (item) => item.id === loan.employeeId,
                   );
                   const balance =
-                    loan.amount -
-                    (loan.amount / loan.installments) * loan.paidInstallments;
+                    loanRemaining(loan);
                   const requestLabel =
                     loan.requestType === "ADVANCE" ? "ADELANTO" : "PRÉSTAMO";
                   const commissionedAmount =
@@ -969,8 +969,7 @@ export function PayrollLoansDemo() {
                       <TableCell>
                         {loan.paidInstallments} PAGADAS / {loan.installments}
                         <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
-                          {money.format(loan.amount / loan.installments)} /
-                          QUINCENA
+                          {loan.sourceSchedule ? "Según calendario del corte" : money.format(loan.amount / loan.installments) + " / QUINCENA"}
                         </p>
                       </TableCell>
                       <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">

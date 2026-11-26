@@ -263,7 +263,7 @@ function TargetDialog({
 }
 
 export function PayrollKioskCommissionDemo() {
-  const { state, setModuleTaxInclusion } = usePayrollDemo();
+  const { state, setModuleTaxInclusion, privilegedPayroll } = usePayrollDemo();
   const monthOptions = useMemo(
     () =>
       Array.from(new Set(state.kioskMonthlySales.map((sale) => sale.month)))
@@ -310,27 +310,27 @@ export function PayrollKioskCommissionDemo() {
     achievement: (row) => row.achievement,
     rate: (row) => row.appliedRate,
     commission: (row) =>
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.commission
         : 0,
     workerTax: (row) =>
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.workerTax
         : 0,
     netPayment: (row) =>
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.netPayment
         : 0,
     socialCost: (row) =>
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.socialCost
         : 0,
     isr: (row) =>
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.isr
         : 0,
     totalCost: (row) =>
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.totalCost
         : 0,
   });
@@ -368,7 +368,7 @@ export function PayrollKioskCommissionDemo() {
         branch: branch?.name ?? "SIN SUCURSAL",
         manager: manager?.name ?? "GERENCIA VACANTE",
         commissionVisible: manager
-          ? employeeShowsCommissionInPayroll(manager)
+          ? employeeShowsCommissionInPayroll(manager, privilegedPayroll)
           : true,
         target: target.monthlyTarget,
         achievement:
@@ -471,27 +471,27 @@ export function PayrollKioskCommissionDemo() {
     achievement: row.achievement,
     rate: row.appliedRate,
     commission:
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.commission
         : "CONFIDENCIAL",
     workerTax:
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.workerTax
         : "CONFIDENCIAL",
     netPayment:
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.netPayment
         : "CONFIDENCIAL",
     socialCost:
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.socialCost
         : "CONFIDENCIAL",
     isr:
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.isr
         : "CONFIDENCIAL",
     totalCost:
-      !row.manager || employeeShowsCommissionInPayroll(row.manager)
+      !row.manager || employeeShowsCommissionInPayroll(row.manager, privilegedPayroll)
         ? row.totalCost
         : "CONFIDENCIAL",
   }));
@@ -1030,7 +1030,7 @@ export function PayrollKioskCommissionDemo() {
                     </TableCell>
                     <TableCell className="number-display text-right text-emerald-700 dark:text-emerald-300">
                       {!row.manager ||
-                      employeeShowsCommissionInPayroll(row.manager) ? (
+                      employeeShowsCommissionInPayroll(row.manager, privilegedPayroll) ? (
                         money.format(row.commission)
                       ) : (
                         <ConfidentialKioskValue />
@@ -1038,7 +1038,7 @@ export function PayrollKioskCommissionDemo() {
                     </TableCell>
                     <TableCell className="number-display text-right text-amber-700 dark:text-amber-300">
                       {!row.manager ||
-                      employeeShowsCommissionInPayroll(row.manager) ? (
+                      employeeShowsCommissionInPayroll(row.manager, privilegedPayroll) ? (
                         <>−{money.format(row.workerTax)}</>
                       ) : (
                         <ConfidentialKioskValue />
@@ -1046,7 +1046,7 @@ export function PayrollKioskCommissionDemo() {
                     </TableCell>
                     <TableCell className="number-display text-right font-semibold">
                       {!row.manager ||
-                      employeeShowsCommissionInPayroll(row.manager) ? (
+                      employeeShowsCommissionInPayroll(row.manager, privilegedPayroll) ? (
                         money.format(row.netPayment)
                       ) : (
                         <ConfidentialKioskValue />
@@ -1054,7 +1054,7 @@ export function PayrollKioskCommissionDemo() {
                     </TableCell>
                     <TableCell className="number-display text-right">
                       {!row.manager ||
-                      employeeShowsCommissionInPayroll(row.manager) ? (
+                      employeeShowsCommissionInPayroll(row.manager, privilegedPayroll) ? (
                         money.format(row.socialCost)
                       ) : (
                         <ConfidentialKioskValue />
@@ -1062,7 +1062,7 @@ export function PayrollKioskCommissionDemo() {
                     </TableCell>
                     <TableCell className="number-display text-right">
                       {!row.manager ||
-                      employeeShowsCommissionInPayroll(row.manager) ? (
+                      employeeShowsCommissionInPayroll(row.manager, privilegedPayroll) ? (
                         money.format(row.isr)
                       ) : (
                         <ConfidentialKioskValue />
@@ -1070,7 +1070,7 @@ export function PayrollKioskCommissionDemo() {
                     </TableCell>
                     <TableCell className="number-display text-right font-semibold">
                       {!row.manager ||
-                      employeeShowsCommissionInPayroll(row.manager) ? (
+                      employeeShowsCommissionInPayroll(row.manager, privilegedPayroll) ? (
                         money.format(row.totalCost)
                       ) : (
                         <ConfidentialKioskValue />

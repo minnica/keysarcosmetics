@@ -1,5 +1,8 @@
 "use client";
 
+import type { PilotSnapshot } from "@cosmetics/types";
+import { applyLoanAtClose, loanCharges, type PayrollCharge } from "./payroll-deductions";
+
 import {
   createContext,
   useCallback,
@@ -137,6 +140,7 @@ export interface DemoEmployee {
   position: string;
   category: EmployeeCategory;
   branchId: string;
+  primaryBranchIds?: string[];
   costBranchIds: string[];
   monthlySalary: number;
   showSalaryInPayroll?: boolean;
@@ -164,11 +168,22 @@ export interface DemoEmployee {
   secondaryAccessKeyUpdatedBy?: string | null;
 }
 
-export function employeeShowsSalaryInPayroll(employee: DemoEmployee) {
+export function canViewConfidentialPayroll(state: Pick<DemoState, "activeEmployeeId" | "employees">) {
+  const roleId = state.employees.find(e => e.id === state.activeEmployeeId && (e.active || e.id === "pilot-operator"))?.roleId;
+  return isConfidentialPayrollRole(roleId);
+}
+
+function isConfidentialPayrollRole(roleId: string | undefined) {
+  return roleId === "role-admin" || roleId === "role-general-admin";
+}
+
+export function employeeShowsSalaryInPayroll(employee: DemoEmployee, privileged = false) {
+  if (privileged) return true;
   return employee.showSalaryInPayroll ?? employee.category !== "MANAGEMENT";
 }
 
-export function employeeShowsCommissionInPayroll(employee: DemoEmployee) {
+export function employeeShowsCommissionInPayroll(employee: DemoEmployee, privileged = false) {
+  if (privileged) return true;
   return employee.showCommissionInPayroll ?? employee.category !== "MANAGEMENT";
 }
 
@@ -427,6 +442,9 @@ export interface DemoLoan {
   installments: number;
   paidInstallments: number;
   appliedPeriodStarts?: string[];
+  sourceSchedule?: PilotSnapshot["loans"][number]["installments"];
+  sourceBalance?: number;
+  pilotPayments?: Record<number, string>;
   firstPeriod: string;
   status: ApprovalStatus;
   notes: string;
@@ -862,6 +880,7 @@ export interface EmployeePayrollLine {
   bonuses: number;
   fines: number;
   loanDeduction: number;
+  deductionDetails: PayrollCharge[];
   loanDeductionBreakdown: Pick<
     DemoNegativeBalanceBreakdown,
     "loans" | "advances"
@@ -1029,7 +1048,7 @@ export const modulePermissionCatalog = [
     permission: "module.consolidated",
     label: "Consolidado",
     section: "Nómina",
-    paths: ["/", "/gastos"],
+    paths: ["/", "/gastos", "/conciliacion"],
   },
   {
     permission: "module.fixed_payroll",
@@ -2146,6 +2165,11 @@ export function pilotConfiguration(start: string): Pick<DemoState, "payrollModul
         ],
       },
       {
+        id: "role-general-admin",
+        name: "ADMINISTRADOR GENERAL",
+        permissions: ["dashboard.view", "reports.view", "receipts.view", "portal.view", ...modulePermissionCatalog.map(m => m.permission)],
+      },
+      {
         id: "role-manager",
         name: "GERENCIA",
         permissions: [
@@ -2223,6 +2247,9 @@ function connectBranchToPayrollDependencies(
 
 interface DemoPayrollContextValue {
   state: DemoState;
+  privilegedPayroll: boolean;
+  monthlyFixedCost: number;
+  payrollLinesForTotals: DemoPayrollContextValue["payrollLines"];
   isAuthenticated: boolean;
   periodOptions: PeriodOption[];
   currentPeriod: PeriodOption;
@@ -2278,6 +2305,7 @@ interface DemoPayrollContextValue {
       | "position"
       | "category"
       | "branchId"
+      | "primaryBranchIds"
       | "costBranchIds"
       | "monthlySalary"
       | "showSalaryInPayroll"
@@ -2605,6 +2633,14 @@ export function PayrollDemoProvider({children, state, setState, original, period
     });
   }, [setState]);
 
+  const switchProfile = useCallback((employeeId: string) => {
+    update(current => {
+      const target = current.employees.find(e => e.id === employeeId);
+      if (!target || (isConfidentialPayrollRole(target.roleId) && !canViewConfidentialPayroll(current))) return current;
+      return { ...current, activeEmployeeId: employeeId };
+    });
+  }, [update]);
+
   const payrollLines = useCallback(
     (
       periodStart: string,
@@ -2898,28 +2934,19 @@ export function PayrollDemoProvider({children, state, setState, original, period
               (movement) => includesConcept("FINE") && movement.type === "FINE",
             )
             .reduce((sum, movement) => sum + movement.amount, 0);
-          const applicableLoans = state.loans.filter(
-            (loan) =>
-              loan.employeeId === employee.id &&
-              loan.status === "APPROVED" &&
-              loan.paidInstallments < loan.installments &&
-              loan.firstPeriod <= periodStart &&
-              (payrollModule === "CONSOLIDATED" ||
-                loan.payrollModule === payrollModule) &&
-              includesConcept(
-                loan.requestType === "ADVANCE" ? "ADVANCE" : "LOAN",
-              ),
-          );
-          const loanDeductionBreakdown = applicableLoans.reduce(
-            (result, loan) => {
-              const installment = loan.amount / loan.installments;
-              if (loan.requestType === "ADVANCE")
-                result.advances += installment;
-              else result.loans += installment;
-              return result;
-            },
-            { loans: 0, advances: 0 },
-          );
+          const deductionDetails: PayrollCharge[] = periodMovements
+            .filter(m => includesConcept("FINE") && m.type === "FINE")
+            .map(m => ({ source: m.concept, reference: m.id, date: m.appliedAt ?? m.periodStart, amount: m.amount }));
+          const loanDeductionBreakdown = { loans: 0, advances: 0 };
+          for (const loan of state.loans) {
+            const advance = loan.requestType === "ADVANCE";
+            if (loan.employeeId !== employee.id || (payrollModule !== "CONSOLIDATED" && loan.payrollModule !== payrollModule) || !includesConcept(advance ? "ADVANCE" : "LOAN")) continue;
+            for (const charge of loanCharges(loan, periodStart, configuredEnd)) {
+              loanDeductionBreakdown[advance ? "advances" : "loans"] += charge.amount;
+              deductionDetails.push({ source: `${advance ? "Adelanto" : "Préstamo"} · ${charge.source}${charge.index >= 0 ? " " + (charge.index + 1) : ""}`,
+                reference: loan.id, date: charge.date, amount: charge.amount });
+            }
+          }
           const loanDeduction =
             loanDeductionBreakdown.loans + loanDeductionBreakdown.advances;
           const payrollAdjustments = state.adjustments.filter(
@@ -3314,6 +3341,19 @@ export function PayrollDemoProvider({children, state, setState, original, period
             : 0;
           const total = Math.max(totalBeforeWorkerTax - workerTax, 0);
           const totalDeductions = deductionsBeforeWorkerTax + workerTax;
+          for (const adjustment of externalDeductionAdjustments) {
+            deductionDetails.push({ source: adjustment.concept, reference: adjustment.id, date: adjustment.payrollDate, amount: adjustmentShare(adjustment) });
+          }
+          for (const entry of approvedViatics) {
+            const concept = state.viaticsConcepts.find(c => c.id === entry.conceptId);
+            if (concept?.effect === "DEDUCT") deductionDetails.push({ source: concept.name, reference: entry.id, date: entry.requestedAt, amount: entry.amount });
+          }
+          for (const balance of appliedNegativeBalances) {
+            if (balance.amount > 0) deductionDetails.push({ source: "Saldo trasladado · " + payrollModuleLabel(state, balance.payrollModule),
+              reference: "", date: balance.originPeriodStart, amount: balance.amount });
+          }
+          if (workerTax > 0) deductionDetails.push({ source: "Impuesto del trabajador", reference: "", date: periodStart, amount: workerTax });
+
           const settlementTaxInclusion = effectiveTaxInclusionForRange(
             state.periodTaxInclusions,
             periodStart,
@@ -3403,6 +3443,7 @@ export function PayrollDemoProvider({children, state, setState, original, period
             bonuses,
             fines,
             loanDeduction,
+            deductionDetails,
             loanDeductionBreakdown,
             externalAdditions: totalExternalAdditions,
             externalDeductions: totalExternalDeductions,
@@ -3439,25 +3480,52 @@ export function PayrollDemoProvider({children, state, setState, original, period
     [currentPeriod, listSortMode, periodOptions, state],
   );
 
+  const privilegedPayroll = canViewConfidentialPayroll(state);
+  const confidentialIds = useMemo(() => new Set(privilegedPayroll ? [] : state.employees
+    .filter(e => !employeeShowsSalaryInPayroll(e)).map(e => e.id)), [privilegedPayroll, state.employees]);
+  const visibleState = useMemo(() => {
+    if (!confidentialIds.size) return state;
+    const visible = (item: { employeeId: string }) => !confidentialIds.has(item.employeeId);
+    return {
+      ...state,
+      employees: state.employees.map(e => confidentialIds.has(e.id) ? { ...e, monthlySalary: 0 } : e),
+      salaryAssignments: state.salaryAssignments.filter(visible),
+      terminationSettlements: state.terminationSettlements.filter(visible),
+      christmasBonuses: state.christmasBonuses.filter(visible),
+      doublePayDays: state.doublePayDays.filter(visible),
+      adjustments: state.adjustments.filter(a => a.type !== "BASE_SALARY" || a.participantIds.every(id => !confidentialIds.has(id))),
+    };
+  }, [state, confidentialIds]);
+  const visiblePayrollLines = useCallback<DemoPayrollContextValue["payrollLines"]>((...args) => {
+    const lines = payrollLines(...args);
+    return confidentialIds.size ? lines.filter(line => !confidentialIds.has(line.employee.id)) : lines;
+  }, [payrollLines, confidentialIds]);
+
   const value = useMemo<DemoPayrollContextValue>(
     () => ({
-      state,
+      state: visibleState,
+      privilegedPayroll,
+      monthlyFixedCost: state.employees
+    .filter(
+      (employee) =>
+        employee.active &&
+        employee.category !== "SELLER" &&
+        employee.category !== "CONTRACTOR",
+    )
+    .reduce((sum, employee) => sum + employee.monthlySalary, 0),
+      payrollLinesForTotals: payrollLines,
       isAuthenticated,
       periodOptions,
       currentPeriod,
       listSortMode,
       setListSortMode,
       refreshSystem: () => update((current) => ({ ...current })),
-      startSession: (employeeId) => {
-        update((current) => ({ ...current, activeEmployeeId: employeeId }));
-
-      },
+      startSession: switchProfile,
       endSession: () => {
         setListSortMode("DEFAULT");
         onLogout();
       },
-      setActiveEmployee: (employeeId) =>
-        update((current) => ({ ...current, activeEmployeeId: employeeId })),
+      setActiveEmployee: switchProfile,
       addBranch: (branch) =>
         update((current) =>
           connectBranchToPayrollDependencies(current, {
@@ -4010,6 +4078,10 @@ export function PayrollDemoProvider({children, state, setState, original, period
             (employee) => employee.id === employeeId,
           );
           if (!previous) return current;
+          if (!canViewConfidentialPayroll(current)) {
+            if (!employeeShowsSalaryInPayroll(previous) || (previous.roleId !== input.roleId && isConfidentialPayrollRole(input.roleId))) return current;
+            input = { ...input, showSalaryInPayroll: employeeShowsSalaryInPayroll(previous), showCommissionInPayroll: employeeShowsCommissionInPayroll(previous) };
+          }
           const normalizedName = input.name.toLocaleUpperCase("es-MX");
           const movedOutOfManagement =
             previous.category === "MANAGEMENT" &&
@@ -4115,7 +4187,7 @@ export function PayrollDemoProvider({children, state, setState, original, period
           };
         }),
       setEmployeePayrollVisibility: (employeeId, visibility) =>
-        update((current) => ({
+        update((current) => !canViewConfidentialPayroll(current) ? current : ({
           ...current,
           employees: current.employees.map((employee) =>
             employee.id === employeeId
@@ -4965,38 +5037,7 @@ export function PayrollDemoProvider({children, state, setState, original, period
                   }
                 : run,
             ),
-            loans: current.loans.map((loan) => {
-              const appliedPeriods = loan.appliedPeriodStarts ?? [];
-              if (
-                loan.status !== "APPROVED" ||
-                loan.payrollModule !== "COMMISSION" ||
-                loan.firstPeriod > selectedRun.periodStart ||
-                loan.paidInstallments >= loan.installments ||
-                appliedPeriods.includes(selectedRun.periodStart)
-              )
-                return loan;
-              const nextPaidInstallments = Math.min(
-                loan.paidInstallments + 1,
-                loan.installments,
-              );
-              return {
-                ...loan,
-                paidInstallments: nextPaidInstallments,
-                appliedPeriodStarts: [
-                  ...appliedPeriods,
-                  selectedRun.periodStart,
-                ],
-                history: [
-                  ...loan.history,
-                  {
-                    id: id("history"),
-                    date: isoDate(new Date()),
-                    action: `CUOTA ${nextPaidInstallments} APLICADA EN EL CIERRE ${selectedRun.periodStart}`,
-                    by: activeEmployee.name,
-                  },
-                ],
-              };
-            }),
+            loans: current.loans.map(loan => applyLoanAtClose(loan, "COMMISSION", selectedRun.periodStart, selectedRun.periodEnd, activeEmployee.name)),
           };
         });
       },
@@ -5205,35 +5246,7 @@ export function PayrollDemoProvider({children, state, setState, original, period
             ...current,
             runs,
             negativeBalances,
-            loans: current.loans.map((loan) => {
-              const appliedPeriods = loan.appliedPeriodStarts ?? [];
-              if (
-                loan.status !== "APPROVED" ||
-                loan.payrollModule !== run.module ||
-                loan.firstPeriod > run.periodStart ||
-                loan.paidInstallments >= loan.installments ||
-                appliedPeriods.includes(run.periodStart)
-              )
-                return loan;
-              const nextPaidInstallments = Math.min(
-                loan.paidInstallments + 1,
-                loan.installments,
-              );
-              return {
-                ...loan,
-                paidInstallments: nextPaidInstallments,
-                appliedPeriodStarts: [...appliedPeriods, run.periodStart],
-                history: [
-                  ...loan.history,
-                  {
-                    id: id("history"),
-                    date: isoDate(new Date()),
-                    action: `CUOTA ${nextPaidInstallments} APLICADA EN EL CIERRE ${run.periodStart}`,
-                    by: activeEmployee?.name ?? "SISTEMA MOCK",
-                  },
-                ],
-              };
-            }),
+            loans: current.loans.map(loan => applyLoanAtClose(loan, run.module, run.periodStart, run.periodEnd, activeEmployee?.name ?? "Operador")),
             periodConfigs: current.periodConfigs.map((config) =>
               config.module === run.module
                 ? {
@@ -6089,7 +6102,7 @@ export function PayrollDemoProvider({children, state, setState, original, period
           }),
         })),
       assignRole: (employeeId, roleId) =>
-        update((current) => ({
+        update((current) => !canViewConfidentialPayroll(current) && isConfidentialPayrollRole(roleId) ? current : ({
           ...current,
           employees: current.employees.map((employee) =>
             employee.id === employeeId ? { ...employee, roleId } : employee,
@@ -6235,35 +6248,7 @@ export function PayrollDemoProvider({children, state, setState, original, period
                 : run,
             ),
             loans: closesCommissionRun
-              ? current.loans.map((loan) => {
-                  const appliedPeriods = loan.appliedPeriodStarts ?? [];
-                  if (
-                    loan.status !== "APPROVED" ||
-                    loan.payrollModule !== "COMMISSION" ||
-                    loan.firstPeriod > periodStart ||
-                    loan.paidInstallments >= loan.installments ||
-                    appliedPeriods.includes(periodStart)
-                  )
-                    return loan;
-                  const nextPaidInstallments = Math.min(
-                    loan.paidInstallments + 1,
-                    loan.installments,
-                  );
-                  return {
-                    ...loan,
-                    paidInstallments: nextPaidInstallments,
-                    appliedPeriodStarts: [...appliedPeriods, periodStart],
-                    history: [
-                      ...loan.history,
-                      {
-                        id: id("history"),
-                        date: isoDate(new Date()),
-                        action: `CUOTA ${nextPaidInstallments} APLICADA EN EL CIERRE ${periodStart}`,
-                        by: closingEmployee?.name ?? "SISTEMA MOCK",
-                      },
-                    ],
-                  };
-                })
+              ? current.loans.map(loan => applyLoanAtClose(loan, "COMMISSION", periodStart, commissionRun!.periodEnd, closingEmployee?.name ?? "Operador"))
               : current.loans,
           };
         });
@@ -6291,7 +6276,7 @@ export function PayrollDemoProvider({children, state, setState, original, period
           lastUpdatedAt: new Date().toISOString(),
         });
       },
-      payrollLines,
+      payrollLines: visiblePayrollLines,
     }),
     [
       currentPeriod,
@@ -6300,6 +6285,10 @@ export function PayrollDemoProvider({children, state, setState, original, period
       setState,
       isAuthenticated,
       listSortMode,
+      privilegedPayroll,
+      visiblePayrollLines,
+      visibleState,
+      switchProfile,
       payrollLines,
       periodOptions,
       state,

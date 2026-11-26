@@ -1,5 +1,7 @@
 "use client";
 
+import { PayrollDeductionDetail } from "./payroll-deduction-detail";
+
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -271,9 +273,9 @@ export function PayrollCommissionCalculationDemo() {
     commission: (row) => row.line.commission,
     bonus: (row) => row.line.bonuses,
     deductions: (row) =>
-      row.line.fines + row.line.loanDeduction + row.line.carriedNegativeBalance,
+      row.line.totalDeductions,
     adjustment: (row) =>
-      row.line.externalAdditions - row.line.externalDeductions,
+      row.line.externalAdditions - row.line.viaticsAdditions - (row.line.externalDeductions - row.line.viaticsDeductions),
     viatics: (row) => row.line.viaticsAdditions - row.line.viaticsDeductions,
     account: (row) => row.line.employee.account,
     approval: (row) =>
@@ -284,25 +286,8 @@ export function PayrollCommissionCalculationDemo() {
     setDetailSort((current) => nextTableSort(current, key, kind));
     setPage(1);
   }
-  const filteredDeductions = filteredRows.reduce(
-    (sum, row) =>
-      sum +
-      row.line.fines +
-      row.line.loanDeduction +
-      row.line.externalDeductions +
-      row.line.viaticsDeductions +
-      row.line.carriedNegativeBalance,
-    0,
-  );
-  const filteredAdjustments = filteredRows.reduce(
-    (sum, row) =>
-      sum +
-      row.line.externalAdditions -
-      row.line.externalDeductions +
-      row.line.viaticsAdditions -
-      row.line.viaticsDeductions,
-    0,
-  );
+  const filteredDeductions = filteredRows.reduce((sum, row) => sum + row.line.totalDeductions, 0);
+  const filteredAdjustments = filteredRows.reduce((sum, row) => sum + row.line.externalAdditions - row.line.externalDeductions, 0);
   const effectivePageSize =
     pageSize === "ALL" ? Math.max(filteredRows.length, 1) : Number(pageSize);
   const totalPages = Math.max(
@@ -352,25 +337,8 @@ export function PayrollCommissionCalculationDemo() {
     Math.abs(commissionDifference) < 0.01 &&
     Math.abs(bonusDifference) < 0.01;
   const payrollTotal = detailRows.reduce((sum, row) => sum + row.line.total, 0);
-  const deductions = detailRows.reduce(
-    (sum, row) =>
-      sum +
-      row.line.fines +
-      row.line.loanDeduction +
-      row.line.externalDeductions +
-      row.line.viaticsDeductions +
-      row.line.carriedNegativeBalance,
-    0,
-  );
-  const adjustments = detailRows.reduce(
-    (sum, row) =>
-      sum +
-      row.line.externalAdditions -
-      row.line.externalDeductions +
-      row.line.viaticsAdditions -
-      row.line.viaticsDeductions,
-    0,
-  );
+  const deductions = detailRows.reduce((sum, row) => sum + row.line.totalDeductions, 0);
+  const adjustments = detailRows.reduce((sum, row) => sum + row.line.externalAdditions - row.line.externalDeductions, 0);
   const exportRows = filteredRows.map((row) => ({
     employee: row.line.employee.name,
     branch: row.branch,
@@ -383,6 +351,7 @@ export function PayrollCommissionCalculationDemo() {
     bonus: row.line.bonuses,
     fine: row.line.fines,
     loan: row.line.loanDeduction,
+    deductions: row.line.totalDeductions,
     carriedBalance: row.line.carriedNegativeBalance,
     pendingBalance: row.line.newNegativeBalance,
     approval: row.approvalStatus === "AUTHORIZED" ? "APROBADO" : "",
@@ -518,6 +487,11 @@ export function PayrollCommissionCalculationDemo() {
         accessor: (row: (typeof exportRows)[number]) => row.carriedBalance,
         format: "currency" as const,
         width: 17,
+      },
+      {
+        header: "TOTAL DEDUCCIONES",
+        accessor: (row: (typeof exportRows)[number]) => row.deductions,
+        format: "currency" as const,
       },
       {
         header: "SALDO PENDIENTE",
@@ -1112,8 +1086,7 @@ export function PayrollCommissionCalculationDemo() {
                       state.commissionModeOverrides[
                         `${period.start}:${row.line.employee.id}`
                       ] ?? state.commissionModeOverrides[row.line.employee.id];
-                    const adjustment =
-                      row.line.externalAdditions - row.line.externalDeductions;
+                    const adjustment = row.line.externalAdditions - row.line.viaticsAdditions - (row.line.externalDeductions - row.line.viaticsDeductions);
                     const viatics =
                       row.line.viaticsAdditions - row.line.viaticsDeductions;
                     return (
@@ -1212,6 +1185,8 @@ export function PayrollCommissionCalculationDemo() {
                           >
                             P −{money.format(row.line.loanDeduction)}
                           </span>
+                          <div>{money.format(row.line.totalDeductions)}</div>
+                          <PayrollDeductionDetail line={row.line} start={period.start} end={period.end} />
                           {row.line.carriedNegativeBalance > 0 ? (
                             <span className="mt-0.5 block text-[7px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
                               SALDO −

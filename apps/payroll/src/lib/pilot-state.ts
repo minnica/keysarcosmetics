@@ -353,6 +353,8 @@ export function buildPilotState(cut: PilotSnapshot): DemoState {
       requestedAmount: l.requestedAmount,
       amount: l.requestedAmount,
       installments: l.installmentCount,
+      sourceSchedule: l.installments,
+      sourceBalance: l.balance,
       paidInstallments: l.installments.filter((i) => i.status === "PAID")
         .length,
       appliedPeriodStarts: l.installments

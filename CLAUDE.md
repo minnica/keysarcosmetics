@@ -6,7 +6,7 @@
 
 ## Piloto de nómina
 
-En la rama `pilot/payroll-v2`, consulta la [guía de operación y continuidad](docs/PAYROLL_PILOT.md) antes de desplegar, cargar un corte o probar la propuesta de Nómina. Indica los entornos, el estado del acceso y cómo verificar la separación con producción.
+En la rama `pilot/payroll-v2`, consulta la [guía de operación y continuidad](docs/PAYROLL_PILOT.md) antes de desplegar, cargar un corte o probar la propuesta de Nómina. Indica los entornos, el estado del acceso y cómo verificar la separación con producción. La [revisión de Emmanuel](docs/PAYROLL_PILOT.md#revisión-de-emmanuel-del-25-de-noviembre-de-2026) documenta el calendario de cuotas, el desglose de deducciones, los sueldos confidenciales y las diferencias que requieren validación de Nómina.
 
 ## Descripción del proyecto
 

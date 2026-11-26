@@ -1,5 +1,7 @@
 "use client";
 
+import { loanRemaining } from "./payroll-deductions";
+
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -283,8 +285,7 @@ export function EmployeePayrollPortalDemo() {
         (sum, loan) =>
           sum +
           Math.max(
-            loan.amount -
-              (loan.amount / loan.installments) * loan.paidInstallments,
+            loanRemaining(loan),
             0,
           ),
         0,

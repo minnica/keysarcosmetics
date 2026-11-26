@@ -75,11 +75,13 @@ export function PayrollModuleAnalytics({
   periodStart,
   periodEnd,
   title,
+  showDistributionTotal = false,
 }: {
   lines: EmployeePayrollLine[];
   periodStart: string;
   periodEnd: string;
   title: string;
+  showDistributionTotal?: boolean;
 }) {
   const { state, listSortMode } = usePayrollDemo();
   const periodBranches = state.branches.filter(
@@ -88,6 +90,7 @@ export function PayrollModuleAnalytics({
       (branch.active ||
         Boolean(branch.deactivatedAt && branch.deactivatedAt > periodEnd)),
   );
+  const distributedEmployees = new Set<string>();
   const rows: BranchAnalytics[] = sortByListMode(
     periodBranches.map((branch) => {
       let sales = 0;
@@ -124,7 +127,10 @@ export function PayrollModuleAnalytics({
             variableAmount: Math.max(line.total - fixedAmount, 0),
           }).find((allocation) => allocation.branchId === branch.id)?.share ??
           0;
-        if (costShare > 0) employees.add(line.employee.id);
+        if (costShare > 0) {
+          employees.add(line.employee.id);
+          distributedEmployees.add(line.employee.id);
+        }
         sales += line.sales * salesShare;
         payroll += line.total * costShare;
         workerTax += line.workerTax * costShare;
@@ -153,6 +159,7 @@ export function PayrollModuleAnalytics({
   const isr = lines.reduce((sum, line) => sum + line.isrCost, 0);
   const totalCost = lines.reduce((sum, line) => sum + line.totalCost, 0);
   const totalSales = rows.reduce((sum, row) => sum + row.sales, 0);
+  const distributedCost = rows.reduce((sum, row) => sum + row.totalCost, 0);
   const maxCost = Math.max(...rows.map((row) => row.totalCost), 1);
 
   return (
@@ -246,6 +253,17 @@ export function PayrollModuleAnalytics({
                 </p>
               </div>
             ))}
+            {showDistributionTotal && (
+              <div className="border-t pt-3">
+                <div className="flex items-baseline justify-between gap-3 font-semibold">
+                  <span>Total distribuido</span>
+                  <span className="number-display">{money.format(distributedCost)}</span>
+                </div>
+                <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                  {distributedEmployees.size} {distributedEmployees.size === 1 ? "empleado" : "empleados"} · {totalCost > 0 ? (100 * distributedCost / totalCost).toFixed(1) : "0.0"} % del costo
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card className="overflow-hidden border-[color:var(--border-color)]">

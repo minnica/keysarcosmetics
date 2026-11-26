@@ -57,6 +57,7 @@ import {
 } from "@cosmetics/ui";
 import {
   requiredModulePermission,
+  employeeShowsSalaryInPayroll,
   roleHasPermission,
   usePayrollDemo,
 } from "./payroll-demo-context";
@@ -1006,7 +1007,7 @@ function PayrollSecurityGuard({ children }: { children: React.ReactNode }) {
 
 function ConfidentialContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { state, isAuthenticated } = usePayrollDemo();
+  const { state, isAuthenticated, privilegedPayroll } = usePayrollDemo();
   const activeEmployee = state.employees.find(
     (employee) => employee.id === state.activeEmployeeId,
   );
@@ -1060,6 +1061,13 @@ function ConfidentialContent({ children }: { children: React.ReactNode }) {
         </div>
       </section>
     );
+  }
+  const showsIndividualReport = ["/calculo-comisiones", "/centro-control", "/dispersion-nomina", "/resumen-nomina", "/recibos", "/reportes/desglose-sucursal", "/reportes/gastos-por-puesto"].includes(pathname);
+  if (showsIndividualReport && !privilegedPayroll && state.employees.some(e => !employeeShowsSalaryInPayroll(e))) {
+    return <>
+      <p className="mb-3 text-sm text-[color:var(--text-secondary)]">El detalle y los subtotales de este reporte corresponden a los sueldos visibles para tu perfil.</p>
+      {children}
+    </>;
   }
   return children;
 }

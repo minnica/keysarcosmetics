@@ -1,14 +1,14 @@
 "use client";
 import { useState } from "react";
 import { usePilotCut } from "@/components/payroll/pilot-gate";
-import { usePayrollDemo } from "@/components/payroll/payroll-demo-context";
+import { employeeShowsSalaryInPayroll, usePayrollDemo } from "@/components/payroll/payroll-demo-context";
 import { employeeMixedCostAllocationShares } from "@/components/payroll/payroll-cost-branch-selector";
 
 const money = (n: number) =>
   n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 export default function ReconciliationPage() {
   const cut = usePilotCut(),
-    { state, payrollLines } = usePayrollDemo();
+    { state, privilegedPayroll, payrollLinesForTotals: payrollLines } = usePayrollDemo();
   const [period, setPeriod] = useState(cut.original.closedStart);
   const p = cut.original.periods.find((v) => v.start === period)!;
   const reference = cut.references.find((r) => r.period === period)!;
@@ -134,6 +134,10 @@ export default function ReconciliationPage() {
           </thead>
           <tbody>
             {ids.map((id) => {
+              const employee = state.employees.find(e => e.id === id);
+              if (!privilegedPayroll && (!employee || !employeeShowsSalaryInPayroll(employee))) return (
+                <tr key={id}><td className="p-2">{employee?.name ?? id}</td><td colSpan={11}>Sueldo confidencial</td></tr>
+              );
               const r = refMap.get(id),
                 v = trial.get(id);
               const vals = [
@@ -147,6 +151,7 @@ export default function ReconciliationPage() {
                   (r?.perDiem ?? 0),
                 (v?.externalAdditions ?? 0) -
                   (v?.externalDeductions ?? 0) -
+                  (v?.viaticsAdditions ?? 0) + (v?.viaticsDeductions ?? 0) -
                   (r?.adjustmentPositive ?? 0) -
                   (r?.supplies ?? 0) +
                   (r?.adjustmentNegative ?? 0),
